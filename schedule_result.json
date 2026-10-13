@@ -1,0 +1,785 @@
+[
+  {
+    "case": "small",
+    "title": "小规模（5 单 / 2 台设备 / 无故障）",
+    "best_strategy": "lookahead+consolidate",
+    "metrics": {
+      "tardy_weighted": 0.0,
+      "tardy_count": 0.0,
+      "max_tardy": 0.0,
+      "makespan": 861,
+      "startup_cost": 180.0,
+      "startup_count": 1,
+      "energy_kwh": 19.3,
+      "energy_cost": 14.48,
+      "battery_kwh": 23.16,
+      "peak_kw": 6.0,
+      "travel_min": 50.0,
+      "work_min": 243.0,
+      "assigned": 5.0,
+      "day_energy": {
+        "0": 19.3
+      },
+      "energy_total_kwh": 19.3
+    },
+    "violations": [],
+    "unassigned": [],
+    "skipped_done": [],
+    "placements": [
+      {
+        "oid": "S2",
+        "machine": "M2",
+        "head": 0,
+        "day": 0,
+        "start": 525,
+        "finish": 561,
+        "setup_before": 15,
+        "area": "NORTH",
+        "pinned": false
+      },
+      {
+        "oid": "S3",
+        "machine": "M2",
+        "head": 0,
+        "day": 0,
+        "start": 571,
+        "finish": 643,
+        "setup_before": 10,
+        "area": "SOUTH",
+        "pinned": false
+      },
+      {
+        "oid": "S4",
+        "machine": "M2",
+        "head": 0,
+        "day": 0,
+        "start": 653,
+        "finish": 707,
+        "setup_before": 10,
+        "area": "EAST",
+        "pinned": false
+      },
+      {
+        "oid": "S5",
+        "machine": "M2",
+        "head": 1,
+        "day": 0,
+        "start": 525,
+        "finish": 552,
+        "setup_before": 15,
+        "area": "CITY",
+        "pinned": false
+      },
+      {
+        "oid": "S1",
+        "machine": "M2",
+        "head": 0,
+        "day": 0,
+        "start": 807,
+        "finish": 861,
+        "setup_before": 0,
+        "area": "CITY",
+        "pinned": false
+      }
+    ],
+    "strategies": [
+      {
+        "strategy": "greedy+consolidate",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 948,
+          "startup_cost": 180.0,
+          "startup_count": 1,
+          "energy_kwh": 22.2,
+          "energy_cost": 16.65,
+          "battery_kwh": 26.64,
+          "peak_kw": 6.0,
+          "travel_min": 60.0,
+          "work_min": 243.0,
+          "assigned": 5.0,
+          "day_energy": {
+            "0": 22.2
+          },
+          "energy_total_kwh": 22.2
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "lookahead+consolidate",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 861,
+          "startup_cost": 180.0,
+          "startup_count": 1,
+          "energy_kwh": 19.3,
+          "energy_cost": 14.48,
+          "battery_kwh": 23.16,
+          "peak_kw": 6.0,
+          "travel_min": 50.0,
+          "work_min": 243.0,
+          "assigned": 5.0,
+          "day_energy": {
+            "0": 19.3
+          },
+          "energy_total_kwh": 19.3
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "matching",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 1006,
+          "startup_cost": 260.0,
+          "startup_count": 2,
+          "energy_kwh": 28.54,
+          "energy_cost": 21.41,
+          "battery_kwh": 34.25,
+          "peak_kw": 7.6,
+          "travel_min": 50.0,
+          "work_min": 432.0,
+          "assigned": 5.0,
+          "day_energy": {
+            "0": 28.54
+          },
+          "energy_total_kwh": 28.54
+        },
+        "violations": 0
+      }
+    ],
+    "tips": []
+  },
+  {
+    "case": "medium",
+    "title": "中规模（15 单 / 4 台设备 / 故障+时间窗+指定机器+进行中锁定）",
+    "best_strategy": "greedy+consolidate",
+    "metrics": {
+      "tardy_weighted": 0.0,
+      "tardy_count": 0.0,
+      "max_tardy": 0.0,
+      "makespan": 3840,
+      "startup_cost": 820.0,
+      "startup_count": 5,
+      "energy_kwh": 85.75,
+      "energy_cost": 64.31,
+      "battery_kwh": 76.67,
+      "peak_kw": 19.6,
+      "travel_min": 155.0,
+      "work_min": 1224.0,
+      "assigned": 14.0,
+      "day_energy": {
+        "0": 63.89,
+        "2": 21.86
+      },
+      "energy_total_kwh": 85.75
+    },
+    "violations": [],
+    "unassigned": [],
+    "skipped_done": [
+      "M14"
+    ],
+    "placements": [
+      {
+        "oid": "M15",
+        "machine": "M2",
+        "head": 0,
+        "day": 0,
+        "start": 780,
+        "finish": 852,
+        "setup_before": 0,
+        "area": "SOUTH",
+        "pinned": true
+      },
+      {
+        "oid": "M3",
+        "machine": "M2",
+        "head": 1,
+        "day": 0,
+        "start": 525,
+        "finish": 597,
+        "setup_before": 15,
+        "area": "EAST",
+        "pinned": false
+      },
+      {
+        "oid": "M9",
+        "machine": "M2",
+        "head": 1,
+        "day": 0,
+        "start": 597,
+        "finish": 651,
+        "setup_before": 0,
+        "area": "EAST",
+        "pinned": false
+      },
+      {
+        "oid": "M12",
+        "machine": "M2",
+        "head": 1,
+        "day": 0,
+        "start": 671,
+        "finish": 707,
+        "setup_before": 20,
+        "area": "NORTH",
+        "pinned": false
+      },
+      {
+        "oid": "M13",
+        "machine": "M4",
+        "head": 0,
+        "day": 0,
+        "start": 510,
+        "finish": 618,
+        "setup_before": 15,
+        "area": "EAST",
+        "pinned": false
+      },
+      {
+        "oid": "M1",
+        "machine": "M1",
+        "head": 0,
+        "day": 0,
+        "start": 515,
+        "finish": 659,
+        "setup_before": 15,
+        "area": "CITY",
+        "pinned": false
+      },
+      {
+        "oid": "M2",
+        "machine": "M3",
+        "head": 0,
+        "day": 0,
+        "start": 535,
+        "finish": 589,
+        "setup_before": 15,
+        "area": "NORTH",
+        "pinned": false
+      },
+      {
+        "oid": "M5",
+        "machine": "M3",
+        "head": 1,
+        "day": 0,
+        "start": 535,
+        "finish": 589,
+        "setup_before": 15,
+        "area": "WEST",
+        "pinned": false
+      },
+      {
+        "oid": "M6",
+        "machine": "M3",
+        "head": 2,
+        "day": 0,
+        "start": 535,
+        "finish": 571,
+        "setup_before": 15,
+        "area": "CITY",
+        "pinned": false
+      },
+      {
+        "oid": "M4",
+        "machine": "M3",
+        "head": 2,
+        "day": 0,
+        "start": 581,
+        "finish": 671,
+        "setup_before": 10,
+        "area": "SOUTH",
+        "pinned": false
+      },
+      {
+        "oid": "M8",
+        "machine": "M3",
+        "head": 2,
+        "day": 0,
+        "start": 780,
+        "finish": 852,
+        "setup_before": 0,
+        "area": "SOUTH",
+        "pinned": false
+      },
+      {
+        "oid": "M7",
+        "machine": "M3",
+        "head": 0,
+        "day": 0,
+        "start": 780,
+        "finish": 888,
+        "setup_before": 0,
+        "area": "NORTH",
+        "pinned": false
+      },
+      {
+        "oid": "M10",
+        "machine": "M1",
+        "head": 0,
+        "day": 2,
+        "start": 3395,
+        "finish": 3539,
+        "setup_before": 15,
+        "area": "WEST",
+        "pinned": false
+      },
+      {
+        "oid": "M11",
+        "machine": "M1",
+        "head": 0,
+        "day": 2,
+        "start": 3660,
+        "finish": 3840,
+        "setup_before": 20,
+        "area": "CITY",
+        "pinned": false
+      }
+    ],
+    "strategies": [
+      {
+        "strategy": "greedy+consolidate",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 3840,
+          "startup_cost": 820.0,
+          "startup_count": 5,
+          "energy_kwh": 85.75,
+          "energy_cost": 64.31,
+          "battery_kwh": 76.67,
+          "peak_kw": 19.6,
+          "travel_min": 155.0,
+          "work_min": 1224.0,
+          "assigned": 14.0,
+          "day_energy": {
+            "0": 63.89,
+            "2": 21.86
+          },
+          "energy_total_kwh": 85.75
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "lookahead+consolidate",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 3840,
+          "startup_cost": 740.0,
+          "startup_count": 4,
+          "energy_kwh": 89.47,
+          "energy_cost": 67.1,
+          "battery_kwh": 81.13,
+          "peak_kw": 18.0,
+          "travel_min": 215.0,
+          "work_min": 1242.0,
+          "assigned": 14.0,
+          "day_energy": {
+            "0": 67.61,
+            "2": 21.86
+          },
+          "energy_total_kwh": 89.47
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "matching+consolidate",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 3539,
+          "startup_cost": 900.0,
+          "startup_count": 6,
+          "energy_kwh": 94.767,
+          "energy_cost": 71.08,
+          "battery_kwh": 75.39,
+          "peak_kw": 16.0,
+          "travel_min": 155.0,
+          "work_min": 1404.0,
+          "assigned": 14.0,
+          "day_energy": {
+            "0": 62.827,
+            "1": 23.3,
+            "2": 8.64
+          },
+          "energy_total_kwh": 94.767
+        },
+        "violations": 0
+      }
+    ],
+    "tips": []
+  },
+  {
+    "case": "edge",
+    "title": "边界（9 单 / 同截止 tie-break / 贴边时间窗 / 故障绕行 / 2 笔真不可行）",
+    "best_strategy": "lookahead",
+    "metrics": {
+      "tardy_weighted": 936.0,
+      "tardy_count": 1.0,
+      "max_tardy": 312,
+      "makespan": 2063,
+      "startup_cost": 260.0,
+      "startup_count": 2,
+      "energy_kwh": 30.38,
+      "energy_cost": 22.79,
+      "battery_kwh": 28.68,
+      "peak_kw": 6.0,
+      "travel_min": 90.0,
+      "work_min": 483.0,
+      "assigned": 7.0,
+      "day_energy": {
+        "0": 23.9,
+        "1": 6.48
+      },
+      "energy_total_kwh": 30.38
+    },
+    "violations": [],
+    "unassigned": [
+      [
+        "E9",
+        "前瞻扫描后仍无可行位置"
+      ],
+      [
+        "E8",
+        "前瞻扫描后仍无可行位置"
+      ]
+    ],
+    "skipped_done": [],
+    "placements": [
+      {
+        "oid": "E2",
+        "machine": "M2",
+        "head": 0,
+        "day": 0,
+        "start": 525,
+        "finish": 561,
+        "setup_before": 15,
+        "area": "CITY",
+        "pinned": false
+      },
+      {
+        "oid": "E1",
+        "machine": "M2",
+        "head": 1,
+        "day": 0,
+        "start": 525,
+        "finish": 561,
+        "setup_before": 15,
+        "area": "CITY",
+        "pinned": false
+      },
+      {
+        "oid": "E6",
+        "machine": "M2",
+        "head": 0,
+        "day": 0,
+        "start": 571,
+        "finish": 661,
+        "setup_before": 10,
+        "area": "WEST",
+        "pinned": false
+      },
+      {
+        "oid": "E3",
+        "machine": "M2",
+        "head": 1,
+        "day": 0,
+        "start": 571,
+        "finish": 685,
+        "setup_before": 10,
+        "area": "NORTH",
+        "pinned": false
+      },
+      {
+        "oid": "E5",
+        "machine": "M2",
+        "head": 0,
+        "day": 0,
+        "start": 840,
+        "finish": 867,
+        "setup_before": 15,
+        "area": "EAST",
+        "pinned": false
+      },
+      {
+        "oid": "E4",
+        "machine": "M1",
+        "head": 0,
+        "day": 1,
+        "start": 1955,
+        "finish": 2063,
+        "setup_before": 15,
+        "area": "SOUTH",
+        "pinned": false
+      },
+      {
+        "oid": "E7",
+        "machine": "M2",
+        "head": 1,
+        "day": 0,
+        "start": 780,
+        "finish": 852,
+        "setup_before": 10,
+        "area": "CITY",
+        "pinned": false
+      }
+    ],
+    "strategies": [
+      {
+        "strategy": "greedy",
+        "metrics": {
+          "tardy_weighted": 936.0,
+          "tardy_count": 1.0,
+          "max_tardy": 312,
+          "makespan": 2063,
+          "startup_cost": 260.0,
+          "startup_count": 2,
+          "energy_kwh": 31.113,
+          "energy_cost": 23.34,
+          "battery_kwh": 29.56,
+          "peak_kw": 6.0,
+          "travel_min": 65.0,
+          "work_min": 456.0,
+          "assigned": 6.0,
+          "day_energy": {
+            "0": 24.633,
+            "1": 6.48
+          },
+          "energy_total_kwh": 31.113
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "lookahead",
+        "metrics": {
+          "tardy_weighted": 936.0,
+          "tardy_count": 1.0,
+          "max_tardy": 312,
+          "makespan": 2063,
+          "startup_cost": 260.0,
+          "startup_count": 2,
+          "energy_kwh": 30.38,
+          "energy_cost": 22.79,
+          "battery_kwh": 28.68,
+          "peak_kw": 6.0,
+          "travel_min": 90.0,
+          "work_min": 483.0,
+          "assigned": 7.0,
+          "day_energy": {
+            "0": 23.9,
+            "1": 6.48
+          },
+          "energy_total_kwh": 30.38
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "matching",
+        "metrics": {
+          "tardy_weighted": 1704.0,
+          "tardy_count": 2.0,
+          "max_tardy": 312,
+          "makespan": 2063,
+          "startup_cost": 340.0,
+          "startup_count": 3,
+          "energy_kwh": 37.133,
+          "energy_cost": 27.85,
+          "battery_kwh": 36.78,
+          "peak_kw": 7.6,
+          "travel_min": 95.0,
+          "work_min": 519.0,
+          "assigned": 7.0,
+          "day_energy": {
+            "0": 30.653,
+            "1": 6.48
+          },
+          "energy_total_kwh": 37.133
+        },
+        "violations": 0
+      }
+    ],
+    "tips": [
+      "E9：指定设备 M9 不存在或不可用 -> 建议解除机器指定或启用该设备",
+      "E8：时间窗仅 20 分钟 < 最短占用 36 分钟 -> 建议把时间窗放宽到 D1 10:20 之后（至少 36 分钟）"
+    ]
+  },
+  {
+    "case": "degenerate-empty",
+    "title": "退化（空输入：0 笔订单）",
+    "best_strategy": "greedy",
+    "metrics": {
+      "tardy_weighted": 0.0,
+      "tardy_count": 0.0,
+      "max_tardy": 0.0,
+      "makespan": 0.0,
+      "startup_cost": 0.0,
+      "startup_count": 0.0,
+      "energy_kwh": 0.0,
+      "energy_cost": 0.0,
+      "battery_kwh": 0.0,
+      "peak_kw": 0.0,
+      "travel_min": 0.0,
+      "work_min": 0.0,
+      "assigned": 0.0
+    },
+    "violations": [],
+    "unassigned": [],
+    "skipped_done": [],
+    "placements": [],
+    "strategies": [
+      {
+        "strategy": "greedy",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 0.0,
+          "startup_cost": 0.0,
+          "startup_count": 0.0,
+          "energy_kwh": 0.0,
+          "energy_cost": 0.0,
+          "battery_kwh": 0.0,
+          "peak_kw": 0.0,
+          "travel_min": 0.0,
+          "work_min": 0.0,
+          "assigned": 0.0
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "lookahead",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 0.0,
+          "startup_cost": 0.0,
+          "startup_count": 0.0,
+          "energy_kwh": 0.0,
+          "energy_cost": 0.0,
+          "battery_kwh": 0.0,
+          "peak_kw": 0.0,
+          "travel_min": 0.0,
+          "work_min": 0.0,
+          "assigned": 0.0
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "matching",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 0.0,
+          "startup_cost": 0.0,
+          "startup_count": 0.0,
+          "energy_kwh": 0.0,
+          "energy_cost": 0.0,
+          "battery_kwh": 0.0,
+          "peak_kw": 0.0,
+          "travel_min": 0.0,
+          "work_min": 0.0,
+          "assigned": 0.0
+        },
+        "violations": 0
+      }
+    ],
+    "tips": []
+  },
+  {
+    "case": "degenerate-all-done",
+    "title": "退化（全部已完成，无可排订单）",
+    "best_strategy": "greedy",
+    "metrics": {
+      "tardy_weighted": 0.0,
+      "tardy_count": 0.0,
+      "max_tardy": 0.0,
+      "makespan": 0.0,
+      "startup_cost": 0.0,
+      "startup_count": 0.0,
+      "energy_kwh": 0.0,
+      "energy_cost": 0.0,
+      "battery_kwh": 0.0,
+      "peak_kw": 0.0,
+      "travel_min": 0.0,
+      "work_min": 0.0,
+      "assigned": 0.0
+    },
+    "violations": [],
+    "unassigned": [],
+    "skipped_done": [
+      "D1",
+      "D2"
+    ],
+    "placements": [],
+    "strategies": [
+      {
+        "strategy": "greedy",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 0.0,
+          "startup_cost": 0.0,
+          "startup_count": 0.0,
+          "energy_kwh": 0.0,
+          "energy_cost": 0.0,
+          "battery_kwh": 0.0,
+          "peak_kw": 0.0,
+          "travel_min": 0.0,
+          "work_min": 0.0,
+          "assigned": 0.0
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "lookahead",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 0.0,
+          "startup_cost": 0.0,
+          "startup_count": 0.0,
+          "energy_kwh": 0.0,
+          "energy_cost": 0.0,
+          "battery_kwh": 0.0,
+          "peak_kw": 0.0,
+          "travel_min": 0.0,
+          "work_min": 0.0,
+          "assigned": 0.0
+        },
+        "violations": 0
+      },
+      {
+        "strategy": "matching",
+        "metrics": {
+          "tardy_weighted": 0.0,
+          "tardy_count": 0.0,
+          "max_tardy": 0.0,
+          "makespan": 0.0,
+          "startup_cost": 0.0,
+          "startup_count": 0.0,
+          "energy_kwh": 0.0,
+          "energy_cost": 0.0,
+          "battery_kwh": 0.0,
+          "peak_kw": 0.0,
+          "travel_min": 0.0,
+          "work_min": 0.0,
+          "assigned": 0.0
+        },
+        "violations": 0
+      }
+    ],
+    "tips": []
+  }
+]

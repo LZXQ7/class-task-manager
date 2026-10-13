@@ -1,0 +1,696 @@
+.tt { min-height: 100vh; }
+.tt-nav-right { display: flex; align-items: center; }
+.tt-nav-btn { font-size: 30rpx; color: #3370FF; padding: 0 16rpx; }
+
+.tt-wrap { padding: 0 32rpx; }
+
+/* ---------- 骨架屏（loading 态沿用旧的 5 行结构） ---------- */
+.tt-time {
+  width: 86rpx;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.tt-head .tt-time { height: 80rpx; }
+.tt-time-p { font-size: 26rpx; font-weight: 600; color: #1D2129; }
+/* .tt-time-t（节次下的上课时间）已按要求去掉，只留「1-5」节次号 */
+.tt-cells {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+}
+.tt-grid { padding: 0 32rpx; }
+
+/* ---------- 课表主体：左「节次」列固定 + 右侧横向滚动 ----------
+ * 宽度账：一屏 750rpx − 左右留白 64rpx = 686rpx；
+ *         左列 86rpx，右侧可视 600rpx，正好 5 列 × 120rpx（周一至周五）；
+ *         第 6、7 列（周六 / 周日）落在滚动区右侧，滑动才能看到。
+ * ⚠️ 这个 120rpx 必须与 index.js 里的 COL_W 一致，否则表头与格子错位。 */
+.tt-board {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 0 32rpx;
+}
+.tt-fixed { width: 86rpx; flex-shrink: 0; }
+.tt-fixed-head { height: 72rpx; }
+.tt-fixed-row {
+  /* 行高由 JS 按屏幕高度内联下发（自适应），这里只留兜底值 */
+  height: 132rpx;
+  border-top: 2rpx solid #F2F3F5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.tt-scroll { flex: 1; min-width: 0; }
+.tt-body { display: inline-block; }
+
+.tt-scroll-hint {
+  text-align: center;
+  font-size: 22rpx;
+  color: #C9CDD4;
+  padding: 16rpx 0 0;
+}
+
+/* ---------- 表头 ---------- */
+/* 列宽不写死：.tt-body 用内联 width 定总宽，列用 flex:1 等分 —— 天数变化时自动适配 */
+.tt-head { display: flex; flex-direction: row; width: 100%; }
+.tt-row {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  border-top: 2rpx solid #F2F3F5;
+}
+.tt-head-cell {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24rpx;
+}
+/* 周末底色最浅；.today / .off 写在后面，同优先级下后者覆盖前者 */
+.tt-head-cell.wk { background: #F7F8FA; }
+.tt-head-cell.today { background: #F0F5FF; }
+.tt-head-w { font-size: 26rpx; color: #4E5969; }
+.tt-head-cell.today .tt-head-w { color: #3370FF; font-weight: 600; }
+.tt-head-d { font-size: 24rpx; color: #86909C; margin-top: 2rpx; }
+
+/* ---------- 网格 ---------- */
+.tt-cell-slot {
+  flex: 1;
+  min-width: 0;
+  height: 100%;      /* 行高由 JS 内联下发，格子撑满所在行 */
+  padding: 2rpx;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+/* 空的周末格子给一层浅底，让人一眼看出「这两天是周末」，可往这里排调休课 */
+.tt-cell-slot.wk { background: #F5F6F8; }
+.tt-cell {
+  flex: 1;
+  min-height: 56rpx;
+  border-radius: 24rpx;
+  padding: 6rpx 8rpx;
+  margin-bottom: 2rpx;
+  position: relative;
+  overflow: hidden;
+}
+/* 空格子占位（无课） */
+.tt-cell.empty {
+  background: transparent;
+  border: 1rpx dashed #E5E6EB;
+}
+.tt-cell-name {
+  font-size: 22rpx;
+  font-weight: 500;
+  line-height: 28rpx;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.tt-cell-room {
+  position: absolute;
+  left: 8rpx;
+  bottom: 8rpx;
+  font-size: 20rpx;
+  opacity: 0.6;
+}
+/* A/B 组标签：放在课程名前，独占一行，不再绝对定位遮挡课程名 */
+.tt-cell-tag {
+  display: inline-block;
+  height: 24rpx;
+  padding: 0 6rpx;
+  margin-bottom: 4rpx;
+  border-radius: 4rpx;
+  background: rgba(51,112,255,0.12);
+  font-size: 18rpx;
+  line-height: 24rpx;
+  color: #3370FF;
+  font-weight: 600;
+}
+.tt-foot { height: 48rpx; }
+
+/* ---------- FAB ---------- */
+/* 新增课次「＋」：右下角。高度自适应后课表已占满屏，浮动按钮贴身底部即可。
+ * bottom 让开悬浮胶囊 tabBar（占位 98rpx）+ 安全区。 */
+.fab {
+  position: fixed;
+  right: 32rpx;
+  /* 让开悬浮胶囊 tabBar（占位 98rpx）+ 安全区；无安全区机型兜底 32px（同 TABBAR_LIFT_PX）。
+     前一行是回退：引擎不认 max() 时整条声明被丢弃。 */
+  bottom: calc(138rpx + env(safe-area-inset-bottom));
+  bottom: calc(138rpx + max(env(safe-area-inset-bottom), 32px));
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 48rpx;
+  /* 主操作 FAB = 品牌色玻璃（v0.7.17）：仍以品牌蓝为主色（白色「＋」的可读性靠 tint 保底），
+     只把实心蓝换成「半透明蓝 + 模糊 + 顶部高光」，与其余玻璃面同一套语汇。 */
+  background: rgba(51,112,255,0.84);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6rpx 22rpx rgba(51,112,255,0.28), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
+  z-index: 700;
+}
+.fab:active { background: rgba(36,91,219,0.9); }
+
+/* 临时调课：左下角胶囊（超管）。与右侧「＋」分列两边，互不遮挡。 */
+/* ---------- 左下角视图入口（v0.7.21 需求③） ----------
+ * 原先是「顶部 A/B 分段 + 左下角『临时调课』胶囊」两处入口，现在合并成一个：
+ * 按钮上写着当前正在看的组，点开向上展开 A 组 / B 组 / 临时调课。
+ * ⚠️ fixed 元素：必须留在 .wk-swipe 动画容器外面（transform 建包含块），由 check-tab-enter 守着。
+ * ⚠️ 展开/收起只用 opacity + transform 过渡（不写 animation）：随时能反着播，不会被「点了没反应」。 */
+.fab-menu {
+  position: fixed;
+  left: 32rpx;
+  /* 同 .fab：让开悬浮胶囊 tabBar + 安全区；无安全区机型兜底 32px（前一行回退） */
+  bottom: calc(144rpx + env(safe-area-inset-bottom));
+  bottom: calc(144rpx + max(env(safe-area-inset-bottom), 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  z-index: 700;
+}
+.fab-menu-btn {
+  height: 84rpx;
+  padding: 0 24rpx;
+  border-radius: 42rpx;
+  background: rgba(255, 255, 255, 0.50);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  box-shadow: 0 6rpx 22rpx rgba(51,112,255,.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+}
+.fab-menu-t {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #3370FF;
+  margin: 0 6rpx 0 8rpx;
+}
+/* 收起态：整体下移 12rpx + 透明 + 不接点击；展开态回到原位。
+   两态之间是同一个 transition，所以「展开到一半再点一下」能立刻反向，不会卡住。 */
+.fab-menu-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 16rpx;
+  opacity: 0;
+  transform: translateY(12rpx);
+  pointer-events: none;
+  transition: opacity .18s ease, transform .22s cubic-bezier(.22, .61, .36, 1);
+}
+.fab-menu.open .fab-menu-list {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.fab-menu-item {
+  height: 76rpx;
+  line-height: 76rpx;
+  padding: 0 30rpx;
+  margin-top: 12rpx;
+  border-radius: 38rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #4E5969;
+  background: rgba(255, 255, 255, 0.62);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 6rpx 20rpx rgba(51,112,255,.14), inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+}
+/* 当前正在看的那一组：品牌渐变实心，一眼能看出「现在看的是谁」 */
+.fab-menu-item.on {
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #7C5CFF 0%, #3370FF 100%);
+}
+.fab-menu-item:active { opacity: 0.85; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .fab-menu-btn { background: rgba(255, 255, 255, 0.93); }
+  .fab-menu-item { background: rgba(255, 255, 255, 0.95); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .fab-menu-btn {
+    background: #FFFFFF;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .fab-menu-item {
+    background: #FFFFFF;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fab-menu-list { transition: opacity .12s linear; transform: none; }
+  .fab-menu.open .fab-menu-list { transform: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .fab { background: #3370FF; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .fab {
+    background: #3370FF;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* ---------- 详情 / 表单 ---------- */
+.ds-form { padding: 8rpx 32rpx 48rpx; }
+.tt-detail-name { font-size: 34rpx; font-weight: 600; color: #1D2129; margin-bottom: 16rpx; }
+.tt-detail-row {
+  display: flex;
+  flex-direction: row;
+  padding: 12rpx 0;
+  border-bottom: 2rpx solid #F2F3F5;
+}
+.tt-detail-row .k { width: 140rpx; font-size: 26rpx; color: #86909C; }
+.tt-detail-row .v { flex: 1; font-size: 26rpx; color: #1D2129; }
+.tt-detail-duties { margin-top: 24rpx; }
+.tt-detail-sub { font-size: 26rpx; color: #4E5969; margin-bottom: 12rpx; }
+.tt-duty-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 12rpx 0;
+}
+.tt-duty-name { margin: 0 16rpx; flex: 1; font-size: 28rpx; color: #1D2129; }
+.tt-detail-actions {
+  display: flex;
+  flex-direction: row;
+  margin-top: 32rpx;
+}
+.tt-dbtn {
+  height: 88rpx;
+  border-radius: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  margin-right: 16rpx;
+  padding: 0 32rpx;
+}
+.tt-dbtn.danger { background: #FFECE8; color: #F53F3F; }
+.tt-dbtn.primary { flex: 1; background: #3370FF; color: #FFFFFF; font-weight: 600; margin-right: 0; }
+
+.f-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 112rpx;
+  border-bottom: 2rpx solid #F2F3F5;
+}
+.f-label { width: 180rpx; font-size: 30rpx; color: #1D2129; flex-shrink: 0; }
+.f-input {
+  flex: 1;
+  height: 96rpx;
+  font-size: 30rpx;
+  color: #1D2129;
+  text-align: right;
+}
+.f-ph { color: #C9CDD4; font-size: 28rpx; }
+.f-block { padding: 16rpx 0; border-bottom: 2rpx solid #F2F3F5; }
+.f-chips { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 12rpx; }
+/* ⚠️ 两条为了让「挤开动画」真的平滑而加的改动：
+   ① box-sizing: border-box —— 否则 .on 多出来的 2rpx 边框会把盒子撑大 4rpx，
+      选中瞬间整行高度抖一下（边框只能过渡颜色，不能过渡「有没有」）；
+   ② 默认就挂一圈 transparent 边框 —— 选中时只换 border-color，不再凭空长出边框。 */
+.f-chip {
+  height: 64rpx;
+  padding: 0 24rpx;
+  margin: 0 16rpx 16rpx 0;
+  border-radius: 32rpx;
+  background: #F2F3F5;
+  color: #4E5969;
+  font-size: 26rpx;
+  line-height: 64rpx;
+  box-sizing: border-box;
+  border: 2rpx solid transparent;
+}
+/* .on 补的 padding 是「挤开动画」的目标值（0 24rpx → 0 34rpx），
+   过渡由 app.wxss 的 .chip-motion 负责 → 邻项平滑让位而不是瞬移 */
+.f-chip.on {
+  background: #F0F5FF;
+  color: #3370FF;
+  font-weight: 600;
+  border: 2rpx solid #3370FF;
+  padding: 0 34rpx;
+}
+/* 「当前正在看的那一周」只变色不加边框，与「已选中」区分开 */
+.f-chip.cur { color: #3370FF; }
+.f-tip { font-size: 24rpx; color: #86909C; }
+.f-actions { margin-top: 32rpx; padding-bottom: 24rpx; }
+.f-save {
+  height: 96rpx;
+  border-radius: 32rpx;
+  background: #3370FF;
+  color: #FFFFFF;
+  font-size: 32rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.f-save.off { background: #A8C1FF; }
+
+/* ---------- 周次选择 ---------- */
+.wk-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  padding: 8rpx 32rpx 32rpx;
+}
+.wk-chip {
+  width: 148rpx;
+  height: 96rpx;
+  margin: 0 12rpx 16rpx 0;
+  border-radius: 32rpx;
+  background: #F2F3F5;
+  color: #4E5969;
+  font-size: 30rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 同 .f-chip：默认挂透明边框 + border-box，选中时不凭空长边框、盒子不抖 */
+  box-sizing: border-box;
+  border: 2rpx solid transparent;
+}
+.wk-chip:nth-child(4n) { margin-right: 0; }
+.wk-chip.cur { color: #3370FF; }
+.wk-chip.on {
+  background: #F0F5FF;
+  color: #3370FF;
+  font-weight: 600;
+  border: 2rpx solid #3370FF;
+}
+
+/* ---------- 节假日 / 调休标记 ---------- */
+.tt-head-cell.off { background: #FFF3F3; position: relative; }
+.tt-head-cell.off .tt-head-w,
+.tt-head-cell.off .tt-head-d { color: #F53F3F; }
+.tt-head-tag {
+  position: absolute;
+  right: 6rpx;
+  top: 4rpx;
+  height: 24rpx;
+  padding: 0 6rpx;
+  border-radius: 4rpx;
+  background: #F53F3F;
+  color: #FFFFFF;
+  font-size: 18rpx;
+  line-height: 24rpx;
+}
+.tt-head-tag.mk { background: #FF7D00; }
+.tt-head-shift {
+  position: absolute;
+  left: 6rpx;
+  top: 4rpx;
+  font-size: 18rpx;
+  line-height: 22rpx;
+  padding: 0 5rpx;
+  border-radius: 4rpx;
+  font-weight: 600;
+}
+.tt-head-shift.out { background: #FFF7E8; color: #FF7D00; }
+.tt-head-shift.in { background: #D6E0FF; color: #3370FF; }
+.tt-cell-shift {
+  position: absolute;
+  right: 4rpx;
+  top: 4rpx;
+  max-width: 116rpx;
+  padding: 0 6rpx;
+  border-radius: 4rpx;
+  font-size: 18rpx;
+  line-height: 24rpx;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tt-cell-shift.out { background: #FFF7E8; color: #FF7D00; }
+.tt-cell-shift.in { background: #D6E0FF; color: #3370FF; }
+/* 放假也照常显示课次，仅打「假期」标记（见 timetable.js sessionsOfWeek 的 isHoliday） */
+.tt-cell.holiday {
+  box-shadow: inset 0 0 0 200rpx rgba(134, 144, 156, 0.16);
+  border-left: 6rpx solid #F53F3F;
+}
+/* 按天「调入」的课：左侧蓝色条，一眼看出是别处调来的 */
+.tt-cell.moved-in {
+  border-left: 6rpx solid #3370FF;
+}
+.tt-cell-holiday {
+  position: absolute;
+  right: 4rpx;
+  top: 4rpx;
+  height: 24rpx;
+  padding: 0 6rpx;
+  border-radius: 4rpx;
+  background: #F53F3F;
+  color: #FFFFFF;
+  font-size: 18rpx;
+  line-height: 24rpx;
+  font-weight: 600;
+  z-index: 2;
+}
+
+/* ---------- 校历弹层 ---------- */
+.cal-sec { padding: 8rpx 0 24rpx; border-bottom: 2rpx solid #F2F3F5; }
+.cal-sec:last-child { border-bottom: none; }
+.cal-sec-t { font-size: 28rpx; font-weight: 600; color: #1D2129; padding: 8rpx 0 12rpx; }
+.cal-list { padding-bottom: 4rpx; }
+.cal-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 14rpx 0;
+  border-bottom: 2rpx solid #F7F8FA;
+}
+.cal-date { width: 210rpx; font-size: 26rpx; color: #1D2129; }
+.cal-name { flex: 1; font-size: 26rpx; color: #4E5969; }
+.cal-kind {
+  font-size: 22rpx;
+  color: #F53F3F;
+  background: #FFF3F3;
+  padding: 2rpx 12rpx;
+  border-radius: 16rpx;
+  margin-right: 16rpx;
+}
+.cal-kind.mk { color: #FF7D00; background: #FFF7E8; }
+.cal-del { font-size: 26rpx; color: #86909C; padding: 0 8rpx; }
+.cal-empty { font-size: 26rpx; color: #C9CDD4; padding: 20rpx 0; text-align: center; }
+.cal-form { margin-top: 16rpx; }
+.cal-two { display: flex; flex-direction: row; align-items: center; }
+.cal-picker {
+  height: 80rpx;
+  padding: 0 20rpx;
+  border-radius: 32rpx;
+  background: #F2F3F5;
+  color: #1D2129;
+  font-size: 28rpx;
+  line-height: 80rpx;
+  margin-right: 16rpx;
+}
+.cal-picker.ph { color: #C9CDD4; }
+.cal-arrow { font-size: 30rpx; color: #86909C; margin-right: 16rpx; }
+.cal-input {
+  flex: 1;
+  height: 80rpx;
+  padding: 0 20rpx;
+  border-radius: 32rpx;
+  background: #F2F3F5;
+  font-size: 28rpx;
+  color: #1D2129;
+  margin: 16rpx 0 0;
+}
+.cal-two .cal-input { margin: 0; }
+.cal-save {
+  height: 88rpx;
+  margin-top: 20rpx;
+  border-radius: 32rpx;
+  background: #3370FF;
+  color: #FFFFFF;
+  font-size: 30rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cal-hint { font-size: 24rpx; color: #86909C; margin-top: 12rpx; }
+
+/* ---------- 临时调课弹层 ---------- */
+.ts-pick {
+  height: 88rpx;
+  padding: 0 20rpx;
+  border-radius: 32rpx;
+  background: #F2F3F5;
+  color: #1D2129;
+  font-size: 28rpx;
+  line-height: 88rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ts-pick.ph { color: #C9CDD4; }
+
+/* 「这几天不上」的日期格：一行 7 个（周一至周日） */
+.ts-days { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 12rpx; }
+.ts-day {
+  width: 88rpx;
+  height: 104rpx;
+  margin: 0 8rpx 12rpx 0;
+  border-radius: 32rpx;
+  background: #F2F3F5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.ts-day:nth-child(7n) { margin-right: 0; }
+.ts-day.on { background: #FFF3F3; border: 2rpx solid #F53F3F; }
+.ts-day-w { font-size: 24rpx; color: #86909C; }
+.ts-day-d { font-size: 28rpx; font-weight: 600; color: #1D2129; margin-top: 4rpx; }
+.ts-day.on .ts-day-w, .ts-day.on .ts-day-d { color: #F53F3F; }
+
+.ts-area {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 180rpx;
+  padding: 20rpx;
+  margin-top: 12rpx;
+  border-radius: 32rpx;
+  background: #F7F8FA;
+  font-size: 28rpx;
+  color: #1D2129;
+  line-height: 40rpx;
+}
+.ts-area.tall { min-height: 480rpx; }
+
+.ts-chips { display: flex; flex-direction: column; margin-top: 12rpx; }
+.ts-chip {
+  font-size: 26rpx;
+  color: #3370FF;
+  background: #F0F5FF;
+  border-radius: 24rpx;
+  padding: 12rpx 20rpx;
+  margin-bottom: 12rpx;
+}
+
+.ts-row { display: flex; flex-direction: row; margin-top: 20rpx; }
+.ts-btn {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+.ts-btn + .ts-btn { margin-left: 16rpx; }
+.ts-btn.primary { background: #3370FF; color: #FFFFFF; }
+.ts-btn.primary.off { background: #A8C1FF; }
+.ts-btn.ghost { background: #F2F3F5; color: #4E5969; font-weight: 500; }
+.ts-btn.ghost.danger { background: #FFECE8; color: #F53F3F; }
+
+.ts-err {
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 24rpx;
+  background: #FFECE8;
+  color: #F53F3F;
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+.ts-note { font-size: 26rpx; color: #4E5969; padding: 8rpx 0 12rpx; }
+
+.ts-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 18rpx 0;
+  border-bottom: 2rpx solid #F7F8FA;
+}
+.ts-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ts-item-name {
+  font-size: 28rpx;
+  color: #1D2129;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ts-item-eff { font-size: 24rpx; color: #86909C; margin-top: 6rpx; }
+.ts-item-note { font-size: 22rpx; color: #C9CDD4; margin-left: 16rpx; max-width: 220rpx; }
+.ts-warn { font-size: 24rpx; color: #FF7D00; line-height: 36rpx; padding: 4rpx 0; }
+.ts-del { font-size: 26rpx; color: #F53F3F; padding: 8rpx 0 8rpx 16rpx; }
+
+/* 课格按压反馈：cell 背景是内联 style（按课程着色），tap-hover 加底色会被盖住，
+   用整体轻微变暗代替；只动 opacity，不建包含块（页面有 FAB fixed 元素）。 */
+.tt-cell-hover { opacity: .78; }
+
+/* 空态（非课表班学生 / 辅导员未绑班）：课表待接入教务系统 */
+.tt-empty {
+  margin: 120rpx 48rpx 0;
+  padding: 56rpx 40rpx;
+  background: #FFFFFF;
+  border-radius: 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.tt-empty-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+.tt-empty-desc {
+  margin-top: 16rpx;
+  font-size: 25rpx;
+  line-height: 40rpx;
+  color: #86909C;
+  text-align: center;
+}
+
+/* 辅导员/超管切班筛选（2026-10 需求⑧升级）：几何与 duty 页 .dt-fchip 同规格，
+   chip-motion 基类管过渡，选中态 padding/font-size 变大邻项平滑让位，flex-wrap 支持小屏换行 */
+.tt-fchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  padding: 0 28rpx 16rpx;
+}
+.tt-fchip {
+  flex: 0 0 auto;
+  padding: 8rpx 24rpx;
+  font-size: 24rpx;
+  line-height: 1.2;
+  color: var(--text-2);
+  background: rgba(255, 255, 255, 0.55);
+  border: 2rpx solid #E5E6EB;
+  border-radius: 999rpx;
+}
+.tt-fchip.on {
+  padding: 12rpx 32rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tt-fchip { transition-duration: .01ms; }
+}

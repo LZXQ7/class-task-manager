@@ -1,0 +1,34 @@
+-- 请假 v2（2026-10-08）：半天假 + 假条图片 + 历史记录 + 图片回收站
+-- ---------------------------------------------------------------
+-- ⚠️ TDSQL **没有 ADD COLUMN IF NOT EXISTS**（2026-09-26 踩过），必须先
+--    `DESCRIBE leave_request` 确认目标列不存在，再一条一条单独执行；
+--    一次执行多条 ALTER 会在第二条起报 1060 Duplicate column。
+-- ⚠️ 执行顺序：① 只读探查 → ② 建 bak_ 备份表并核对行数 → ③ 逐条 ALTER → ④ DESCRIBE 复核
+--
+-- 1) 备份（改前必做）
+-- CREATE TABLE bak_leave_request_20261008 AS SELECT * FROM leave_request;
+-- SELECT COUNT(*) FROM bak_leave_request_20261008;      -- 必须与原表行数一致才继续
+--
+-- 2) 逐条加列（每次只跑一条）
+-- ALTER TABLE leave_request ADD COLUMN start_time TIME NULL DEFAULT NULL AFTER end_date;
+-- ALTER TABLE leave_request ADD COLUMN end_time   TIME NULL DEFAULT NULL AFTER start_time;
+-- ALTER TABLE leave_request ADD COLUMN leave_image VARCHAR(128) NULL DEFAULT NULL AFTER end_time;
+-- ALTER TABLE leave_request ADD COLUMN cancelled_at DATETIME NULL DEFAULT NULL AFTER leave_image;
+--
+-- 3) 复核
+-- DESCRIBE leave_request;
+
+-- ===================== 列语义（唯一口径，改代码前先看这里） =====================
+-- start_time / end_time ：TIME，NULL = 整天请假（00:00–24:00 全算）。
+--                         非 NULL = **区间内每天**的相同时段（跨天也按每天这个时段，
+--                         不支持「首日 14:00 才开始」这类错位写法）。
+--                         跨天 + 时段的「正在请假」判定 = 当天 ∈ [start_date,end_date]
+--                         且 当前时刻 ∈ [start_time,end_time]。
+-- leave_image   ：请假条图片的云存储 fileID（单张，覆盖式）。仅班委/超管可传，
+--                 仅 requireLeaveView 身份可见。NULL = 没图 / 已被清理任务删除。
+-- cancelled_at  ：撤销时间。**图片归档倒计时的第二个起点** ——
+--                 · APPROVED 请假：归档起点 = end_date 次日 0 点，删除 = 起点 + 7 天
+--                   （例：请到 10-08 → 10-09 凌晨归档、显示「7 天后清除」→ 10-16 凌晨物理删）
+--                 · CANCELLED 请假：撤销即归档，删除 = cancelled_at + 7 天
+--                 物理删 = cloud.deleteFile + 本列置 NULL（不能只清列，云存储会一直涨）
+-- =============================================================================

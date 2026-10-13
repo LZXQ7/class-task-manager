@@ -1,0 +1,657 @@
+<!-- 防滚动穿透（v0.7.9）：弹层里的 scroll-view 滑到下沿后，touchmove 会继续冒泡给 page，
+     「在弹层里滑到底 → 后面的页面跟着一起滑」就是这么来的。
+     page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
+     ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
+<page-meta page-style="{{(detailShow || formShow || weekPickerShow || shiftShow || calShow) ? 'overflow:hidden' : ''}}"></page-meta>
+
+<view class="page tt {{tClass}} {{paReady ? (animSeq === 0 ? 'pa-first' : (animSeq === 1 ? 'pa-lite-a' : 'pa-lite-b')) : 'pa-hold'}}">
+
+  <nav-bar title="课表">
+    <view slot="right" class="tt-nav-right">
+      <text wx:if="{{isSuper && hasTimetable && !isCounselor}}" class="tt-nav-btn" bindtap="onCalOpen">校历</text>
+    </view>
+  </nav-bar>
+
+  <!-- 「切换测试账号」模拟态护栏（v1.0.5）：放导航栏正下方（本页无 spring-scroll，
+       直接做块级元素即可；不参与 st-item 入场序列）。 -->
+  <notice-bar
+    wx:if="{{impersonateBanner}}"
+    type="danger"
+    icon="info"
+    text="{{impersonateBanner}}"
+    btnText="恢复本人"
+    bind:action="onRecoverSelf"
+  />
+
+  <!-- addGlobalClass: true，外部 class 能作用到组件根节点，所以它也参与入场（st-item） -->
+  <!-- ⚠️ 守卫两个维度互相独立、不能互相替代：学生的切周条跟「本班是否已有课表」走（hasTimetable，
+       由云端同步结果决定）；辅导员的「看」走 canSwitchClass 切班分支，但仍须带 !isCounselor
+       守住「不能借 hasTimetable 混进学生视图」的旧口径。 -->
+  <week-switcher
+    wx:if="{{(!isCounselor && hasTimetable) || (canSwitchClass && classList.length)}}"
+    class="st-item st-1"
+    week="{{week}}"
+    total="{{totalWeeks}}"
+    current="{{current}}"
+    term-start="{{termStart}}"
+    bind:change="onWeekChange"
+    bind:pick="onWeekPick"
+  />
+
+  <!-- 切班查看（2026-10 需求⑧升级 + 2026-10-09 收窄）：复用 duty 页班级筛选标签，
+       选中态 padding/font-size 变大（chip-motion），邻项被平滑推开；flex-wrap 支持小屏换行。
+       可见范围（showClassSwitch）：仅「辅导员」与「超管且处于切换测试账号态」展示——
+       真实超管（本人、未切换）与学生都不显示，锁定本班。
+       ⚠️ 不要改回 canSwitchClass：canSwitchClass 还管周次条 / fab 菜单 / 分组「全部」默认 / 空态，
+       真实超管看本班时仍需这些功能；切班条必须单独用 showClassSwitch 收口。 -->
+  <view wx:if="{{showClassSwitch && classList.length}}" class="tt-fchips st-item st-2">
+    <view
+      wx:for="{{classList}}"
+      wx:key="id"
+      class="tt-fchip chip-motion {{viewClassId === item.id ? 'on' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onTimetableClass"
+      hover-class="press-dim"
+      hover-stay-time="60"
+    >{{item.name}}</view>
+  </view>
+
+  <!-- 分组视图（A 组 / B 组）与「临时调课」合并进左下角悬浮入口（v0.7.21 需求③）：
+       原来顶部一条 A/B 分段 + 左下角一个「临时调课」胶囊，同一件事散在两处。
+       现在收成一个入口，点开向上展开三行：A 组 / B 组 / 临时调课（仅超管）。
+       空出来的顶部位置也顺手还给了课表本体。 -->
+
+  <!-- 本班在云端还没有课次的学生（且非辅导员/超管）：走空态（hasTimetable 由云端同步结果决定） -->
+  <block wx:if="{{!canSwitchClass && !hasTimetable && !loading && !failed}}">
+    <view class="tt-empty">
+      <view class="tt-empty-title">课表待接入教务系统</view>
+      <view class="tt-empty-desc">暂不展示课程表。学校教务系统开通后，这里会接入教务数据。</view>
+    </view>
+  </block>
+
+  <!-- 辅导员/超管：未绑定任何班级（联系超管在「班级」里绑定） -->
+  <block wx:elif="{{canSwitchClass && !classList.length && !loading && !failed}}">
+    <view class="tt-empty">
+      <view class="tt-empty-title">暂无可查看的班级</view>
+      <view class="tt-empty-desc">你没有绑定任何班级，请联系超级管理员在「班级」里把你绑定到相应班级。</view>
+    </view>
+  </block>
+
+  <!-- 辅导员/超管：所选班级在云端还没有课次（不渲染空网格，给明确空态） -->
+  <block wx:elif="{{canSwitchClass && classList.length && !hasTimetable && !loading && !failed}}">
+    <view class="tt-empty">
+      <view class="tt-empty-title">该班还没有课表</view>
+      <view class="tt-empty-desc">这个班级尚未录入课程表，录入后会自动显示在这里。</view>
+    </view>
+  </block>
+
+  <!-- 加载 / 失败 -->
+  <block wx:elif="{{loading}}">
+    <view class="tt-grid">
+      <view class="tt-row" wx:for="{{[0,1,2,3,4]}}" wx:key="*this">
+        <view class="tt-time"></view>
+        <view class="tt-cells">
+          <skeleton type="grid" rows="{{5}}" height="{{136}}" />
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <empty-state
+    wx:elif="{{failed}}"
+    icon="cloud-off"
+    title="课表没显示出来"
+    desc="{{failMsg || '请重启小程序后重试'}}"
+    btn-text="重新加载"
+    bind:action="onReload"
+    padding="{{160}}"
+  />
+
+  <block wx:else>
+    <!-- 数据区（课表主体 / 提示 / 底部留白）：左右切换周时这一整块做方向性过渡，
+         class 由 utils/swipe.js 下发、样式在 app.wxss（与值日页共用同一套 keyframes）。
+         ⚠️ 别把 fixed 元素（.fab / .fab-menu）放进这个容器 —— transform 会创建包含块，
+            fixed 后代会跟着一起位移。它们刻意留在容器外，由 scripts/check-tab-enter.js 守着。
+         ⚠️ 缩进刻意与容器内层同列：套一层不改变 .st-item 的兄弟关系与档位顺序，
+            重排缩进只会让 diff 变脏（值日页 .wk-swipe 也是这个写法）。 -->
+    <view class="wk-swipe {{swipeCls}}">
+    <!-- 课表主体：左侧「节次」列固定，右侧「日期 + 格子」按需横向滚动。
+         默认只显示周一 ~ 周五并铺满屏幕宽；周末有课（含调课调入）时才补上周六 / 周日两列。 -->
+    <view class="tt-board st-item st-3">
+      <view class="tt-fixed">
+        <view class="tt-fixed-head" style="height:{{headH}}rpx"></view>
+        <view
+          wx:for="{{grid}}"
+          wx:for-item="row"
+          wx:for-index="r"
+          wx:key="r"
+          class="tt-fixed-row"
+          style="height:{{rowH}}rpx"
+        >
+          <text class="tt-time-p">{{periods[r].p}}</text>
+        </view>
+      </view>
+
+      <scroll-view class="tt-scroll" scroll-x>
+        <view class="tt-body" style="width:{{dateWidth}}rpx">
+          <!-- 日期表头 -->
+          <view class="tt-head" style="height:{{headH}}rpx">
+            <view
+              wx:for="{{dates}}"
+              wx:key="dow"
+              class="tt-head-cell {{item.isWeekend ? 'wk' : ''}} {{item.isToday ? 'today' : ''}} {{item.isHoliday ? 'off' : ''}}"
+            >
+              <text class="tt-head-w">{{item.short}}</text>
+              <text class="tt-head-d">{{item.day}}</text>
+              <text wx:if="{{item.isHoliday}}" class="tt-head-tag">假</text>
+              <text wx:elif="{{item.isMakeup}}" class="tt-head-tag mk">班</text>
+              <text wx:if="{{item.shiftOutText}}" class="tt-head-shift out">调</text>
+              <text wx:elif="{{item.shiftInText}}" class="tt-head-shift in">入</text>
+            </view>
+          </view>
+
+          <!-- 网格 -->
+          <view wx:for="{{grid}}" wx:for-item="row" wx:for-index="r" wx:key="r" class="tt-row" style="height:{{rowH}}rpx">
+            <view
+              wx:for="{{row}}"
+              wx:for-item="cell"
+              wx:for-index="c"
+              wx:key="c"
+              class="tt-cell-slot {{cell.wk ? 'wk' : ''}}"
+            >
+              <block wx:if="{{!cell.empty}}">
+                <view
+                  wx:for="{{cell.courses}}"
+                  wx:for-item="co"
+                  wx:for-index="ci"
+                  wx:key="sessionId"
+                  class="tt-cell {{co.isHoliday ? 'holiday' : ''}} {{co.movedIn ? 'moved-in' : ''}}"
+                  style="background:{{co.bg}};{{co.flip}}"
+                  data-r="{{r}}"
+                  data-c="{{c}}"
+                  data-sid="{{co.sessionId}}"
+                  hover-class="tt-cell-hover"
+                  hover-start-time="0"
+                  hover-stay-time="60"
+                  bindtap="onCell"
+                  bindlongpress="onCellLongPress"
+                >
+                  <view wx:if="{{co.groupScope}}" class="tt-cell-tag">{{co.groupScope}} 组</view>
+                  <text class="tt-cell-name" style="color:{{co.fg}}">{{co.name}}</text>
+                  <text class="tt-cell-room" style="color:{{co.fg}}">{{co.room}}</text>
+                  <view wx:if="{{co.movedIn}}" class="tt-cell-shift in">自{{co.shiftFromText}}调入</view>
+                  <view wx:elif="{{co.shifted}}" class="tt-cell-shift">调课</view>
+                  <view wx:if="{{co.isHoliday}}" class="tt-cell-holiday">假期</view>
+                </view>
+              </block>
+              <view wx:else class="tt-cell empty" data-r="{{r}}" data-c="{{c}}" bindtap="onCell" bindlongpress="onCellLongPress"></view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view wx:if="{{showScrollHint}}" class="tt-scroll-hint">← 左右滑动可查看周六 / 周日 →</view>
+    <view wx:if="{{isSuper}}" class="tt-scroll-hint">长按某个格子可以快速临时调课</view>
+
+    <!-- 分组课提示 -->
+    <view wx:if="{{tip}}" class="tt-wrap">
+      <notice-bar type="warning" icon="info" text="{{tip}}" />
+    </view>
+
+    <view class="tt-foot"></view>
+    </view>
+  </block>
+
+  <!-- 视图 + 调课入口（左下角，v0.7.21 需求③）：一个按钮，点开向上展开三行。
+       原先是「顶部 A/B 分段 + 左下角临时调课胶囊」两处，现在收成一处：
+       按钮上写着当前正在看的组，展开后能换组、也能进临时调课。
+       ⚠️ fixed 元素：必须留在 .wk-swipe 动画容器**外面**（transform 建包含块）。
+       ⚠️ 「临时调课」只给超管；普通同学看到的菜单里就是 A 组 / B 组两行。 -->
+  <view wx:if="{{!loading && ((canSwitchClass && classList.length) || (!isCounselor && hasTimetable))}}" class="fab-menu {{fabMenuOpen ? 'open' : ''}}">
+    <view class="fab-menu-list">
+      <view
+        wx:if="{{canSwitchClass}}"
+        class="fab-menu-item {{viewGroup === 'ALL' ? 'on' : ''}}"
+        hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
+        data-key="ALL" bindtap="onMenuGroup"
+      >全部</view>
+      <view
+        class="fab-menu-item {{viewGroup === 'A' ? 'on' : ''}}"
+        hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
+        data-key="A" bindtap="onMenuGroup"
+      >A 组</view>
+      <view
+        class="fab-menu-item {{viewGroup === 'B' ? 'on' : ''}}"
+        hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
+        data-key="B" bindtap="onMenuGroup"
+      >B 组</view>
+      <view
+        wx:if="{{isSuper}}"
+        class="fab-menu-item"
+        hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
+        bindtap="onMenuShift"
+      >临时调课</view>
+    </view>
+    <view class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onMenuToggle">
+      <app-icon name="grid" variant="brand" size="{{34}}" />
+      <text class="fab-menu-t">{{viewGroup === 'ALL' ? '全部' : (viewGroup === 'B' ? 'B 组' : 'A 组')}}</text>
+      <app-icon name="{{fabMenuOpen ? 'chevron-down' : 'chevron-up'}}" variant="gray" size="{{26}}" />
+    </view>
+  </view>
+
+  <!-- 新增课次 FAB（删除课次在课次详情弹层内） -->
+  <view wx:if="{{isAdmin && !loading && !isCounselor}}" class="fab" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFab">
+    <app-icon name="plus" variant="white" size="{{44}}" />
+  </view>
+
+  <!-- 课次详情 -->
+  <bottom-sheet show="{{detailShow}}" title="课次详情" bind:close="onDetailClose">
+    <view wx:if="{{detail}}" class="ds-form">
+      <view class="tt-detail-name">{{detail.name}}</view>
+      <view class="tt-detail-row">
+        <text class="k">教师</text><text class="v">{{detail.teacher || '未填写'}}</text>
+      </view>
+      <view class="tt-detail-row">
+        <text class="k">教室</text><text class="v">{{detail.room || '未填写'}}</text>
+      </view>
+      <view class="tt-detail-row">
+        <text class="k">时间</text><text class="v">周{{detail.dowText}} 第 {{detail.period}} 节</text>
+      </view>
+      <view class="tt-detail-row">
+        <text class="k">周次</text><text class="v">{{detail.weekText}}</text>
+      </view>
+      <view class="tt-detail-row">
+        <text class="k">分组</text><text class="v">{{detail.groupScope ? detail.groupScope + ' 组（分组课）' : '全体课'}}</text>
+      </view>
+      <view class="tt-detail-row">
+        <text class="k">需值日</text><text class="v">{{detail.dutyCount}} 人</text>
+      </view>
+      <view class="tt-detail-duties" wx:if="{{detail.duties.length}}">
+        <view class="tt-detail-sub">已排值日</view>
+        <view wx:for="{{detail.duties}}" wx:key="id" class="tt-duty-row">
+          <avatar-tag name="{{item.name}}" text="{{item.seqText}}" no-fallback="{{true}}" size="{{64}}" />
+          <text class="tt-duty-name">{{item.name}}</text>
+          <status-pill status="{{item.status}}" size="sm" />
+        </view>
+      </view>
+      <view wx:if="{{isAdmin}}" class="tt-detail-actions">
+        <view class="tt-dbtn danger" bindtap="onDeleteCourse">删除课次</view>
+        <view class="tt-dbtn primary" bindtap="onEditCourse">编辑</view>
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 新增 / 编辑课次 P3.1 -->
+  <bottom-sheet show="{{formShow}}" title="{{form.sessionId ? '编辑课次' : '新增课次'}}" height="{{1080}}" bind:close="onFormClose">
+    <view wx:if="{{form}}" class="ds-form">
+      <view class="f-row">
+        <text class="f-label">课程名</text>
+        <input class="f-input" value="{{form.name}}" placeholder="请输入课程名" placeholder-class="f-ph" data-field="name" bindinput="onFormInput" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">教师</text>
+        <input class="f-input" value="{{form.teacher}}" placeholder="选填" placeholder-class="f-ph" data-field="teacher" bindinput="onFormInput" />
+      </view>
+      <view class="f-row">
+        <text class="f-label">教室</text>
+        <input class="f-input" value="{{form.room}}" placeholder="选填" placeholder-class="f-ph" data-field="room" bindinput="onFormInput" />
+      </view>
+
+      <view class="f-row">
+        <text class="f-label">课程类型</text>
+        <segmented
+          items="{{[{key:'ALL',text:'全体课'},{key:'GROUP',text:'分组课'}]}}"
+          value="{{form.courseType}}"
+          width="{{320}}"
+          bind:change="onFormSegmented"
+          data-field="courseType"
+        />
+      </view>
+      <view wx:if="{{form.courseType === 'GROUP'}}" class="f-row">
+        <text class="f-label">上课分组</text>
+        <view class="f-chips">
+          <view class="f-chip chip-motion {{form.groupScope === 'A' ? 'on' : ''}}" data-field="groupScope" data-value="A" bindtap="onFormChoose">A 组</view>
+          <view class="f-chip chip-motion {{form.groupScope === 'B' ? 'on' : ''}}" data-field="groupScope" data-value="B" bindtap="onFormChoose">B 组</view>
+        </view>
+        <text class="f-tip">A 组＝学号尾号单数，B 组＝学号尾号双数</text>
+      </view>
+
+      <view class="f-block">
+        <text class="f-label">上课时间</text>
+        <view class="f-chips">
+          <view
+            wx:for="{{dayChips}}"
+            wx:key="key"
+            class="f-chip chip-motion {{form.dayOfWeek === item.key ? 'on' : ''}}"
+            data-field="dayOfWeek"
+            data-value="{{item.key}}"
+            bindtap="onFormChoose"
+          >周{{item.text}}</view>
+        </view>
+        <view class="f-chips">
+          <view
+            wx:for="{{[1,2,3,4,5]}}"
+            wx:key="*this"
+            class="f-chip chip-motion {{form.period === item ? 'on' : ''}}"
+            data-field="period"
+            data-value="{{item}}"
+            bindtap="onFormChoose"
+          >第{{item}}节</view>
+        </view>
+        <text class="f-tip">1-2 上午 · 3-4 下午 · 5 晚上</text>
+      </view>
+
+      <view class="f-block">
+        <text class="f-label">上课周次</text>
+        <text class="f-tip">不勾选＝每周都上；可多选指定周次（1–{{totalWeeks}}）</text>
+        <view class="f-chips">
+          <view
+            wx:for="{{weekBtns}}"
+            wx:key="n"
+            class="f-chip chip-motion {{item.on ? 'on' : ''}} {{item.n === week ? 'cur' : ''}}"
+            data-week="{{item.n}}"
+            bindtap="onToggleWeek"
+          >{{item.n}}</view>
+        </view>
+      </view>
+
+      <view class="f-row">
+        <text class="f-label">每次需值日</text>
+        <stepper value="{{form.dutyCount}}" min="{{1}}" max="{{4}}" bind:change="onStepper" />
+      </view>
+
+      <view class="f-actions">
+        <view class="f-save {{saving ? 'off' : ''}}" bindtap="onSave">{{saving ? '保存中' : '保存'}}</view>
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 周次选择 -->
+  <bottom-sheet show="{{weekPickerShow}}" title="选择周次" bind:close="onWeekPickerClose">
+    <view class="wk-grid">
+      <view
+        wx:for="{{weekList}}"
+        wx:key="*this"
+        class="wk-chip chip-motion {{week === item ? 'on' : ''}} {{current === item ? 'cur' : ''}}"
+        data-week="{{item}}"
+        bindtap="onPickWeek"
+      >{{item}}</view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 临时调课（超级管理员）：本周 / 多周次 / 按日期 / AI / 结果 -->
+  <bottom-sheet show="{{shiftShow}}" title="临时调课" height="{{1220}}" bind:close="onShiftClose">
+    <view class="ds-form">
+
+      <segmented items="{{shiftTabs}}" value="{{shiftTab}}" width="{{686}}" bind:change="onShiftTab" />
+
+      <!-- ① 本周调整 -->
+      <block wx:if="{{shiftTab === 'week' || shiftTab === 'multi'}}">
+        <view class="f-block">
+          <text class="f-label">选择课次</text>
+          <picker mode="selector" range="{{shiftSessionLabels}}" value="{{shiftSessionIndex}}" bindchange="onShiftPickSession">
+            <view class="ts-pick {{shiftSessionLabels.length ? '' : 'ph'}}">
+              {{shiftSessionLabels[shiftSessionIndex] || '本周没有可调课次'}}
+            </view>
+          </picker>
+          <text class="f-tip">也可以直接在课表上长按某一格，自动选中那节课</text>
+        </view>
+
+        <view class="f-block">
+          <text class="f-label">怎么调</text>
+          <segmented
+            items="{{[{key:'OFF',text:'这一周不上'},{key:'MOVE',text:'改到别的格子'}]}}"
+            value="{{shiftKind}}"
+            width="{{520}}"
+            bind:change="onShiftKind"
+          />
+        </view>
+
+        <view wx:if="{{shiftKind === 'MOVE'}}" class="f-block">
+          <text class="f-label">改到</text>
+          <view class="f-chips">
+            <view
+              wx:for="{{dayChips}}"
+              wx:key="key"
+              class="f-chip chip-motion {{shiftToDay === item.key ? 'on' : ''}}"
+              data-value="{{item.key}}"
+              bindtap="onShiftToDay"
+            >周{{item.text}}</view>
+          </view>
+          <view class="f-chips">
+            <view
+              wx:for="{{periodChips}}"
+              wx:key="*this"
+              class="f-chip chip-motion {{shiftToPeriod === item ? 'on' : ''}}"
+              data-value="{{item}}"
+              bindtap="onShiftToPeriod"
+            >第{{item}}节</view>
+          </view>
+        </view>
+
+        <view wx:if="{{shiftTab === 'multi'}}" class="f-block">
+          <text class="f-label">应用到哪些周</text>
+          <text class="f-tip">可多选；带「本周」标记的是你正在看的这一周</text>
+          <view class="f-chips">
+            <view
+              wx:for="{{shiftWeekBtns}}"
+              wx:key="n"
+              class="f-chip chip-motion {{item.on ? 'on' : ''}} {{item.cur ? 'cur' : ''}}"
+              data-week="{{item.n}}"
+              bindtap="onToggleShiftWeek"
+            >{{item.n}}</view>
+          </view>
+        </view>
+
+        <view class="f-actions">
+          <view
+            wx:if="{{shiftTab === 'week'}}"
+            class="f-save {{shiftSaving ? 'off' : ''}}"
+            bindtap="onShiftApplyWeek"
+          >应用到第 {{week}} 周</view>
+          <view
+            wx:else
+            class="f-save {{shiftSaving ? 'off' : ''}}"
+            bindtap="onShiftApplyMulti"
+          >应用到选中的 {{shiftWeeks.length}} 周</view>
+        </view>
+      </block>
+
+      <!-- ② 按日期：这几天不上 / 某天调到另一天 -->
+      <block wx:elif="{{shiftTab === 'date'}}">
+        <view class="f-block">
+          <text class="f-label">这几天不上课</text>
+          <text class="f-tip">选中第 {{week}} 周里要取消的日期，那一整天所有课都不上</text>
+          <view class="ts-days">
+            <view
+              wx:for="{{dates}}"
+              wx:key="dow"
+              class="ts-day {{item.off ? 'on' : ''}}"
+              data-dow="{{item.dow}}"
+              bindtap="onToggleOffDay"
+            >
+              <text class="ts-day-w">周{{item.short}}</text>
+              <text class="ts-day-d">{{item.day}}</text>
+            </view>
+          </view>
+          <view class="cal-save {{shiftSaving ? 'off' : ''}}" bindtap="onApplyDateOff">
+            {{offDays.length ? ('取消这 ' + offDays.length + ' 天的课') : '取消选中的日期'}}
+          </view>
+        </view>
+
+        <view class="f-block">
+          <text class="f-label">某天调到另一天</text>
+          <text class="f-tip">整天的课都挪到目标日期（可跨周，属于校历调整）</text>
+          <view class="cal-two">
+            <picker mode="date" value="{{shiftForm.from}}" bindchange="onShiftFrom">
+              <view class="cal-picker {{shiftForm.from ? '' : 'ph'}}">{{shiftForm.from || '调出日期'}}</view>
+            </picker>
+            <text class="cal-arrow">→</text>
+            <picker mode="date" value="{{shiftForm.to}}" bindchange="onShiftTo">
+              <view class="cal-picker {{shiftForm.to ? '' : 'ph'}}">{{shiftForm.to || '调入日期'}}</view>
+            </picker>
+          </view>
+          <view class="cal-save" bindtap="onShiftSave">添加调课</view>
+          <text class="f-tip">调课只改变「上课与值日的日期」；调休日的值日请到值日页手动调整。</text>
+        </view>
+      </block>
+
+      <!-- ③ AI 智能调课 -->
+      <block wx:elif="{{shiftTab === 'ai'}}">
+        <view class="f-block">
+          <text class="f-label">说说要怎么调</text>
+          <textarea
+            class="ts-area"
+            value="{{aiText}}"
+            placeholder="例如：这周四第 3 节不上；周三第 5 节的音乐基础改到周五第 1 节"
+            placeholder-class="f-ph"
+            maxlength="300"
+            bindinput="onAiText"
+          />
+          <view class="ts-chips">
+            <view
+              wx:for="{{aiExamples}}"
+              wx:key="*this"
+              class="ts-chip"
+              data-text="{{item}}"
+              bindtap="onAiExample"
+            >{{item}}</view>
+          </view>
+        </view>
+
+        <view class="f-block">
+          <view class="ts-row">
+            <view class="ts-btn ghost" bindtap="onAiPromptShow">查看提示词</view>
+            <view class="ts-btn ghost" bindtap="onAiCheck">链路自检</view>
+          </view>
+          <view class="ts-row">
+            <view
+              class="ts-btn primary {{aiBusy ? 'off' : ''}}"
+              bindtap="onAiPlan"
+            >{{aiBusy ? 'AI 正在想…' : 'AI 生成调课方案'}}</view>
+          </view>
+          <view wx:if="{{aiError}}" class="ts-err">{{aiError}}</view>
+        </view>
+
+        <view wx:if="{{aiPromptShow}}" class="f-block">
+          <text class="f-label">提示词（可编辑）</text>
+          <textarea class="ts-area tall" value="{{aiPrompt}}" maxlength="4000" bindinput="onAiPromptInput" />
+          <view class="ts-row">
+            <view class="ts-btn ghost" bindtap="onAiPromptClose">收起</view>
+            <view class="ts-btn ghost" bindtap="onAiPromptReset">恢复默认</view>
+          </view>
+        </view>
+
+        <view wx:if="{{aiPreview.length}}" class="f-block">
+          <text class="f-label">方案预览（{{aiPreview.length}} 节课）</text>
+          <view wx:if="{{aiNotes}}" class="ts-note">{{aiNotes}}</view>
+          <view wx:for="{{aiPreview}}" wx:key="sessionId" class="ts-item">
+            <view class="ts-item-main">
+              <text class="ts-item-name">{{item.name}}</text>
+              <text class="ts-item-eff">{{item.fromText}} → {{item.effect}}</text>
+            </view>
+            <text wx:if="{{item.note}}" class="ts-item-note">{{item.note}}</text>
+          </view>
+          <view wx:for="{{aiWarnings}}" wx:key="*this" class="ts-warn">⚠ {{item}}</view>
+          <view class="ts-row">
+            <view class="ts-btn ghost" bindtap="onAiDiscard">放弃</view>
+            <view
+              class="ts-btn primary {{shiftSaving ? 'off' : ''}}"
+              bindtap="onAiApply"
+            >应用到第 {{week}} 周</view>
+          </view>
+        </view>
+      </block>
+
+      <!-- ④ 调课结果 -->
+      <block wx:else>
+        <view class="f-block">
+          <text class="f-label">第 {{week}} 周的临时调课（{{shiftItems.length}}）</text>
+          <view wx:if="{{!shiftItems.length}}" class="cal-empty">本周没有临时调课</view>
+          <view wx:for="{{shiftItems}}" wx:key="sessionId" class="ts-item">
+            <view class="ts-item-main">
+              <text class="ts-item-name">{{item.name}}</text>
+              <text class="ts-item-eff">{{item.effText}}</text>
+            </view>
+            <text class="ts-del" data-id="{{item.sessionId}}" catchtap="onShiftUndo">撤销</text>
+          </view>
+          <view wx:if="{{shiftItems.length}}" class="ts-row">
+            <view class="ts-btn ghost danger" bindtap="onShiftClearWeek">撤销本周全部临时调课</view>
+          </view>
+          <text class="f-tip">调课会改变上课日期与值日日期；本周若已发布，调课后退回草稿，需要重新发布。</text>
+        </view>
+
+        <view class="f-block">
+          <text class="f-label">本周按天调课（校历）</text>
+          <view wx:if="{{!calShifts.length}}" class="cal-empty">暂无按天调课</view>
+          <view wx:for="{{calShifts}}" wx:key="id" class="cal-item">
+            <text class="cal-date">{{item.from}} → {{item.to}}</text>
+            <text class="cal-name">{{item.note}}</text>
+            <text class="cal-del" data-id="{{item.id}}" catchtap="onShiftDel">取消</text>
+          </view>
+        </view>
+      </block>
+
+    </view>
+  </bottom-sheet>
+
+  <!-- 校历：节假日 / 调休 / 调课（超级管理员） -->
+  <bottom-sheet show="{{calShow}}" title="节假日与调休" height="{{1180}}" bind:close="onCalClose">
+    <view class="ds-form">
+
+      <view class="cal-sec">
+        <view class="cal-sec-t">节假日（放假不上课）</view>
+        <view class="cal-list">
+          <view wx:for="{{calHolidays}}" wx:key="date" class="cal-item">
+            <text class="cal-date">{{item.date}}</text>
+            <text class="cal-name">{{item.name}}</text>
+            <text class="cal-kind {{item.kind === 'MAKEUP' ? 'mk' : ''}}">{{item.kind === 'MAKEUP' ? '调休上班' : '放假'}}</text>
+            <text class="cal-del" data-date="{{item.date}}" catchtap="onHolidayDel">删除</text>
+          </view>
+          <view wx:if="{{!calHolidays.length && !calLoading}}" class="cal-empty">暂无节假日</view>
+        </view>
+        <view class="cal-form">
+          <view class="cal-two">
+            <picker mode="date" value="{{holidayForm.date}}" bindchange="onHolidayPick">
+              <view class="cal-picker {{holidayForm.date ? '' : 'ph'}}">{{holidayForm.date || '选择日期'}}</view>
+            </picker>
+            <input class="cal-input" value="{{holidayForm.name}}" placeholder="名称，如 国庆节" placeholder-class="f-ph" bindinput="onHolidayName" />
+          </view>
+          <view class="f-chips">
+            <view class="f-chip chip-motion {{holidayForm.kind === 'OFF' ? 'on' : ''}}" data-value="OFF" bindtap="onHolidayKind">放假</view>
+            <view class="f-chip chip-motion {{holidayForm.kind === 'MAKEUP' ? 'on' : ''}}" data-value="MAKEUP" bindtap="onHolidayKind">调休上班</view>
+          </view>
+          <view class="cal-save" bindtap="onHolidaySave">添加 / 保存</view>
+        </view>
+      </view>
+
+      <view class="cal-sec">
+        <view class="cal-sec-t">按天整体调课（把某天的课挪到另一天）</view>
+        <view class="cal-list">
+          <view wx:for="{{calShifts}}" wx:key="id" class="cal-item">
+            <text class="cal-date">{{item.from}} → {{item.to}}</text>
+            <text class="cal-name">{{item.note}}</text>
+            <text class="cal-del" data-id="{{item.id}}" catchtap="onShiftDel">取消</text>
+          </view>
+          <view wx:if="{{!calShifts.length && !calLoading}}" class="cal-empty">暂无调课</view>
+        </view>
+        <view class="cal-form">
+          <view class="cal-two">
+            <picker mode="date" value="{{shiftForm.from}}" bindchange="onShiftFrom">
+              <view class="cal-picker {{shiftForm.from ? '' : 'ph'}}">{{shiftForm.from || '调出日期'}}</view>
+            </picker>
+            <text class="cal-arrow">→</text>
+            <picker mode="date" value="{{shiftForm.to}}" bindchange="onShiftTo">
+              <view class="cal-picker {{shiftForm.to ? '' : 'ph'}}">{{shiftForm.to || '调入日期'}}</view>
+            </picker>
+          </view>
+          <input class="cal-input" value="{{shiftForm.note}}" placeholder="备注（选填）" placeholder-class="f-ph" bindinput="onShiftNote" />
+          <view class="cal-save" bindtap="onShiftSave">添加调课</view>
+        </view>
+        <view class="cal-hint">调课只改变「上课与值日的日期」；调休日的值日请手动调整。</view>
+      </view>
+
+    </view>
+  </bottom-sheet>
+</view>

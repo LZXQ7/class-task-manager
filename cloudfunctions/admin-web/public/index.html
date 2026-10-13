@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>班级任务管理 · 后台</title>
+<!--⚠️ 静态资源必须带 **/admin 前缀**，不能写 /app.js、也不能靠相对路径。
+    原因（2026-10-10 线上实测踩坑）：gatewayPath="/admin" 意味着**网关只转发 /admin 前缀的路径**。
+    实测 /admin/app.js=200，而 /app.js=404、/admin.css=404。
+    丢 JS 的后果极隐蔽：app.js 没加载 ⇒ #login-form 的 submit 监听器没绑上
+    ⇒ 点「登录」退化成**浏览器原生表单 GET 提交**，页面原地刷新、无任何提示
+    （用户视角＝「点了没反应」），而且**口令会被拼进 URL**（?username=..&password=..）
+    落进浏览器历史记录。
+    ⚠️ 相对路径（href="app.js"）在这里也不行：页面 URL 是 /admin 且**无尾斜杠**，
+    浏览器会把它当文件名，相对路径仍解析到根目录 /app.js。
+    同源不变 ⇒ HttpOnly Cookie 不受影响。-->
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<!--
+  ⚠️ 为什么是**零构建链**的原生页面，而不是 Vue/React + amis SDK：
+  方案已定「amis SDK 打进云函数包、schema 由后端返回、零构建」。
+  但 amis SDK 本身有数 MB，会让云函数包变大、冷启动变慢（方案已列为风险）。
+  本期先交付**手写原生页面**：
+    · 后台是内部工具，一天用不到几次，冷启动敏感度远低于「开发链路复杂度」；
+    · 所有接口形状按 amis 的 RESTful 约定设计（GET 列表 / POST 提交 / 统一 ok+data），
+      后续真要换 amis，只需要换前端渲染层，**后端一行不改**。
+  换句话说：这不是「没做 amis」，而是「先把数据通路做对，渲染层后补」。
+-->
+<div id="app" class="app">
+  <!-- 登录 -->
+  <div id="login-view" class="login-wrap">
+    <form class="login-card" id="login-form" autocomplete="on">
+      <div class="login-brand">
+        <div class="login-title">班级任务管理</div>
+        <div class="login-sub">网页管理后台</div>
+      </div>
+      <label class="field">
+        <span class="field-label">账号</span>
+        <input type="text" id="login-username" name="username" autocomplete="username" placeholder="请输入后台账号">
+      </label>
+      <label class="field">
+        <span class="field-label">密码</span>
+        <input type="password" id="login-password" name="password" autocomplete="current-password" placeholder="请输入密码">
+      </label>
+      <div id="login-err" class="login-err" hidden></div>
+      <button type="submit" class="btn btn-primary btn-block" id="login-btn">登录</button>
+      <div class="login-note">仅超级管理员可登录；连续多次失败会被临时锁定。</div>
+    </form>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="main-view" class="main-wrap" hidden>
+    <aside class="side">
+      <div class="side-brand">
+        <div class="side-title">班级任务管理</div>
+        <div class="side-sub">管理后台</div>
+      </div>
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-view="overview">概览</button>
+        <button class="nav-item" data-view="timetable">课程表</button>
+        <button class="nav-item" data-view="member">成员</button>
+        <button class="nav-item" data-view="class">账号班级</button>
+        <button class="nav-item" data-view="config">系统配置</button>
+        <button class="nav-item" data-view="audit">操作审计</button>
+        <button class="nav-item" data-view="leave">请假</button>
+        <button class="nav-item" data-view="binding">绑定</button>
+      </nav>
+      <div class="side-foot">
+        <div class="who" id="who"></div>
+        <button class="btn btn-ghost btn-block" id="logout-btn">退出登录</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <h1 class="page-title" id="page-title">概览</h1>
+        <div class="topbar-right">
+          <label class="class-picker" id="class-picker-wrap">
+            <span class="picker-label">当前班级</span>
+            <select id="class-picker"></select>
+          </label>
+        </div>
+      </header>
+      <section class="view" id="view"></section>
+    </main>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+<!-- SheetJS：课表 xlsx 解析在**浏览器侧**做（后端不引它，避免云函数包膨胀 + 冷启动变慢）。
+     ⚠️ 走 CDN 意味着内网无外网时导入功能不可用 —— 其余功能（课程表/成员/班级/配置/审计）不受影响。
+     onerror 只提示、不阻断页面：解析库挂掉不该让整个后台打不开。 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
+        onerror="window.__noXlsx=true"></script>
+<!-- 青果课表页 HTML 解析器：与 xlsx 同 rationale —— 纯 JS、在浏览器本地跑，
+     后端云函数包一行不改（详情见文件头注释）。 -->
+<script src="/admin/timetable-html.js" onerror="window.__noHtmlParser=true"></script>
+<script src="/admin/app.js"></script>
+</body>
+</html>

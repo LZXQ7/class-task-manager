@@ -1,0 +1,167 @@
+/* 过渡时长 .24s 必须与 components/popup-anim.js 的 DURATION 一致（那个用来决定何时卸载节点） */
+.sheet-root {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1000;
+  /* 关闭动画期间节点还在 DOM 里，用一个「不挡点击」的空壳兜住：
+     只有真正到了终态（.in / .up）才接管点击，否则会吞掉页面的点击。 */
+  pointer-events: none;
+}
+.sheet-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.45);
+  opacity: 0;
+  transition: opacity .24s ease;
+}
+.sheet-mask.in {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sheet-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 78vh;
+  /* 弹层 = 玻璃材质（v0.7.17）：面板压在页面内容之上，背后就是被模糊的正文 ——
+     这是全站最「像玻璃」的位置。
+     ⚠️ tint 从 0.52 提到 0.72（v0.7.21 需求④「成员详情界面比较暗」）：
+        遮罩是 rgba(0,0,0,0.45)，把背后的极光压成 ≈#85858A；面板只有 52% 白时
+        合成结果 ≈#C4C4C6 —— 一块灰板。内容少的弹层（普通管理员的成员详情就只有
+        头像 + 三行字 + 一两个按钮）看上去就是「一块暗色面板」。
+        0.72 合成 ≈#DCDCDE，是干净的近白，同时仍有 28% 底色透上来保住玻璃感。
+        原注释写的 0.66 其实一直没落到代码里，这次一并改成真实值。 */
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform .24s cubic-bezier(.22, .61, .36, 1);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sheet-panel { background: rgba(255, 255, 255, 0.94); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .sheet-panel {
+    background: #FFFFFF;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+.sheet-panel.up {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+/* v0.7.25：更高面板 —— 内容确实装不进 78vh 的弹层用（如成员详情） */
+.sheet-panel.tall { max-height: 92vh; }
+/* ===== 拖动感应区（v0.7.32）：grabber + 标题栏，合计约 124rpx ≈ 62px =====
+   ⚠️ 只有这一块接 touchmove（见 index.wxml），内容区 scroll-view 不受影响。
+   改这里的高度要同步 components/bottom-sheet/index.js 的 bodyMaxH 里扣掉的 124rpx。 */
+.sheet-drag { flex-shrink: 0; }
+.sheet-grab {
+  height: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 拖动指示条（grabber）：短横胶囊 */
+.sheet-grab::after {
+  content: '';
+  width: 72rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: rgba(78, 89, 105, 0.28);
+}
+/* 拖动/回弹/滑出期间关掉 CSS 过渡 —— 位移完全由内联 transform 跟手驱动 */
+.sheet-panel.drag { transition: none; }
+/* v1.0.7 高度过渡：内容变高/变矮时平滑伸缩。
+   ⚠️ 过渡的是 **min-height + max-height 这一对夹紧值**，不是 height：
+      面板常态是 `height:auto + max-height`，**CSS 过渡不了 auto**（第一版就栽在这：
+      高度「闪烁两下」且「几乎不平滑」—— 两段式的第一拍把面板写回旧高度造成回跳，
+      第二拍 `px → auto` 根本不可插值）。
+      成对夹紧的好处：① 上下同值 ⇒ 面板高度完全由这两个值决定，内容变化动不了它，
+      不会出现「先跳到新高度再跳回来」；② 两端都是 JS 下发的确定 px ⇒ 直接插值；
+      ③ **变高变矮完全对称**（只写 min-height 的话变高会被 auto 顶上去，仍然是硬跳变）。
+   ⚠️ `transition` 是**简写属性、会整条覆盖**：这里必须把 transform 一并写上，
+      否则挂上 .animating 的这 220ms 里面板的位移过渡（.24s）会一起消失。
+      两条各管各的属性、互不覆盖，谁也不抢谁。
+   ⚠️ min-height 与 max-height 的时长/曲线**必须写成一样的**：两端同值同曲线，
+      夹紧区才是一个整体在动；不一致会出现「先撞上某一头再被另一头拽回去」的抽搐。 */
+.sheet-panel.animating {
+  transition: transform .24s cubic-bezier(.22, .61, .36, 1), min-height 220ms cubic-bezier(.22, .61, .36, 1), max-height 220ms cubic-bezier(.22, .61, .36, 1);
+}
+.sheet-head {
+  position: relative;
+  height: 96rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 2rpx solid rgba(229,230,235,0.7);
+  flex-shrink: 0;
+}
+.sheet-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+.sheet-close {
+  position: absolute;
+  right: 16rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sheet-body {
+  flex: 1;
+  /* v1.0.5：flex 子项默认 min-height:auto（= 内容高度）会阻止它收缩 → scroll-view
+     拿不到确定高度、长内容滚不动。显式 min-height:0 让它在面板 max-height 内收缩并滚动。 */
+  min-height: 0;
+  overflow: hidden;
+}
+/* v1.0.5：body 改用 spring-scroll 后，spring-scroll 根节点（.ss-viewport）需要作为
+   panel 的 flex 子项填满头部以下区域；min-height:0 让它在面板 max-height 内收缩并滚动。
+
+   ⚠️ v1.0.6：光给 body 下发 max-height **不够**，实测「请假登记」整段完全滚不动。
+      根因：面板是 **auto 高度**（只有 max-height，没有确定高度），它的高度是
+      「先按内容算、再被 cap」—— 这种链上内核**不解析子节点的 height:100%**
+      （项目踩过同一条：备注滚动那次记的「内核不支持 height:100% 解析时退化为
+      max-height」）。`.ss-viewport { height:100% }` 落不了地 ⇒ 视口高度退化成
+      **内容高度** ⇒ spring-scroll 算出的 `_maxScroll` 恒为 0 ⇒ 手指怎么滑都不动，
+      长内容被直接截在屏幕底沿（看着像「就这么多了」）。
+      现在让宿主自己成为 **column flex 容器**，由 `.ss-viewport { flex:1; min-height:0 }`
+      拿到确定高度 —— 整条链不再依赖百分比高度解析。 */
+.sheet-spring {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* 双保险：万一 flex 没落地，宿主自己也要把溢出裁掉（至少不会糊到面板外面去） */
+  overflow: hidden;
+}
+.sheet-body-inner {
+  width: 100%;
+}
+/* v0.7.25：底部固定操作条 —— panel（flex column）的第三个子项，flex-shrink:0
+   保证不随 sheet-body 滚动/压缩。
+   ⚠️ v0.7.32：容器只给「上留白 + 左右留白 + 上边框」，**底部留白归 footer 内容自己**
+   （原来这里给 20rpx + 安全区，而使用方又各给一份 → 并入 duty-sheet 后会出现双份；
+     而且需要让开悬浮 tabBar 的 footer 还得额外加，两处相加很难对上）。
+   现在是：需要让位的 footer 内容自己写 `padding-bottom: calc(114rpx + max(env(...), 32px))`。 */
+.sheet-footer {
+  flex-shrink: 0;
+  padding: 20rpx 32rpx 0;
+  border-top: 2rpx solid rgba(229, 230, 235, 0.7);
+}

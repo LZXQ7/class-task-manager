@@ -1,0 +1,9 @@
+{
+  "name": "admin-web",
+  "timeout": 60,
+  "runtime": "Nodejs18.15",
+  "installDependency": true,
+  "envVariables": {
+    "NODE_ENV": "production"
+  }
+}

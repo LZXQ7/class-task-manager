@@ -1,0 +1,34 @@
+CloudBase CLI 3.8.4
+Try the tcb ai command to start your AI full-stack development experience
+- Loading data...
+- Executing SQL...
+[90m┌─────────────┐[39m
+[90m│[39m[33m COLUMN_NAME [39m[90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m     id      [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m  class_id   [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m  member_id  [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m    name     [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m   teacher   [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m    room     [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m day_of_week [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m   period    [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m    weeks    [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m  week_rule  [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m    kind     [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m created_at  [90m│[39m
+[90m├─────────────┤[39m
+[90m│[39m updated_at  [90m│[39m
+[90m└─────────────┘[39m
+i 13 records in total

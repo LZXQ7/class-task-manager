@@ -1,0 +1,14 @@
+{
+  "name": "cron-weekly",
+  "timeout": 120,
+  "permissions": {
+    "openapi": ["subscribeMessage.send"]
+  },
+  "triggers": [
+    { "name": "weekly", "type": "timer", "config": "0 0 20 * * 0 *" },
+    { "name": "daily",  "type": "timer", "config": "0 0 6 * * * *" },
+    { "name": "hourly", "type": "timer", "config": "0 0 * * * * *" },
+    { "name": "remind", "type": "timer", "config": "0 0 21 * * * *" },
+    { "name": "remindAM", "type": "timer", "config": "0 0 7 * * * *" }
+  ]
+}

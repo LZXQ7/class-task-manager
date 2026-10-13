@@ -1,0 +1,35 @@
+{
+  "envId": "<YOUR_ENV_ID>",
+  "region": "ap-shanghai",
+  "functions": [
+    {
+      "name": "admin-web",
+      "type": "HTTP",
+      "protocolType": "HTTP",
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "timeout": 60,
+      "memorySize": 512,
+      "installDependency": true,
+      "dir": "./cloudfunctions/admin-web",
+      "description": "网页管理后台（仅超管）：课程表 / 成员 / 账号班级 / 系统配置 / 操作审计",
+      "gatewayPath": "/admin",
+      "public": true,
+      "vpc": {
+        "vpcId": "<YOUR_VPC_ID>",
+        "subnetId": "<YOUR_SUBNET_ID>"
+      }
+    }
+  ],
+  "gateway": {
+    "routes": [
+      {
+        "path": "/admin",
+        "target": "function:admin-web",
+        "protocol": "HTTP_AND_HTTPS",
+        "enablePathTransmission": false,
+        "enableAuth": false
+      }
+    ]
+  }
+}

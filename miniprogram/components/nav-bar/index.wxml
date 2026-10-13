@@ -1,0 +1,62 @@
+<view class="nav {{fixed ? 'nav-fixed' : ''}} {{border ? 'nav-border' : ''}}" style="background:{{bg}}">
+  <view class="nav-status" style="height:{{statusBarHeight}}px"></view>
+  <view class="nav-body" style="height:88rpx">
+    <view class="nav-side nav-left">
+      <!-- ⚠️ sheetOpen（弹层打开时）不渲染返回键：否则它会从弹层左上角透出来 ——
+           遮罩 rgba(0,0,0,.45) 盖不暗亮色图标，面板又是半透明玻璃，物理上遮不住。
+           详见 index.js 里 sheetOpen 属性的注释。⚠️ 判据极性是「弹层开着就不渲染」。 -->
+      <view wx:if="{{showBack && !sheetOpen}}" class="nav-btn" bindtap="onBack">
+        <app-icon name="arrow-left" variant="{{color === '#FFFFFF' ? 'white' : 'gray'}}" size="{{44}}" />
+      </view>
+      <slot name="left" />
+    </view>
+    <view class="nav-title">
+      <slot name="center"></slot>
+      <text wx:if="{{title}}" class="nav-title-t" style="color:{{color}}">{{title}}</text>
+    </view>
+    <view class="nav-side nav-right" style="{{padRight ? 'padding-right:' + padRight + 'px;' : ''}}">
+      <slot name="right" />
+      <view wx:if="{{showHome}}" class="nav-btn" bindtap="onHome">
+        <app-icon name="tab-home" variant="on" size="{{44}}" />
+      </view>
+    </view>
+  </view>
+</view>
+<!-- 占位块：**只在导航固定时才需要** —— 固定时 nav 脱离文档流，正文要靠它顶下来。
+     ⚠️ 2026-09-25 修：原来只判 placeholder，于是「placeholder=true 且 fixed=false」的页面
+     （notice 通知 / bind 身份绑定）会同时得到「文档流里的 nav」+「占位块」，
+     正文被顶两倍导航高度 —— 用户报的「通知页这个提示太靠下」就是它。
+     fixed 时用 px 状态栏 + rpx 标题行，避免大屏上 88rpx≠44px 造成偏移 -->
+<view wx:if="{{placeholder && fixed}}" class="nav-placeholder" style="padding-top:{{statusBarHeight}}px"></view>
+
+<!-- ============ 主题切换（深色模式 C-4）============
+     ⚠️ **只在没有返回按钮时出现**（`showBack` 为假 = 四个 tab 页）：左上角是
+     `.nav-left` 的地盘，有返回按钮时插进来会把它顶走/重叠。
+     二级页的切换入口在「我的」页（mine）里，那里有完整的设置区。
+     ⚠️ 两者都用 `position: fixed` 而非 absolute：祖先链上**不能**出现
+     filter / backdrop-filter / transform / will-change —— 它们会让 fixed 退化成
+     相对该祖先定位（那样 overlay 就盖不满屏）。`.nav` 自己有 backdrop-filter，
+     所以这两条必须是它的**兄弟节点**、不能是它的子节点（见文件末尾）。 -->
+<view
+  wx:if="{{!showBack && themeEnabled}}"
+  class="theme-btn"
+  style="top:{{statusBarHeight + themeTopPx}}px"
+  bindtap="onToggleTheme"
+  hover-class="theme-btn-hover"
+  hover-stay-time="80"
+>
+  <!-- 纯 CSS 画的太阳/月亮：不走 app-icon（那套是脚本生成 + 云存储 SVG，
+       新增图标要上传资源；且图标是固定色，主题切换时颜色不会跟着变） -->
+  <view class="theme-sun"></view>
+  <view class="theme-moon"></view>
+</view>
+
+<!-- 圆形揭示 overlay：clip-path 从触点扩散，扩散完立刻 setData 摘掉自身。
+     🔴 用 circle() 而非 scale：scale 会把底下内容一起缩放（几何变形），
+     circle 只裁剪、不变形 —— 这才是「揭开一层」而不是「放大一张图」。
+     🔴 禁 Ripple：Ripple 是点击反馈（圆会消失、外面照旧），这里要的是「旧主题被新主题覆盖」。 -->
+<view
+  wx:if="{{revealShow}}"
+  class="theme-reveal"
+  style="background:{{revealColor}}; clip-path: circle({{revealR}}px at {{revealX}}px {{revealY}}px);"
+></view>

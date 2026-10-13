@@ -1,0 +1,335 @@
+miniprogram/
+  ├── app.js
+  ├── app.json
+  ├── app.wxss
+  ├── assets/
+  │   └── icons/
+  │       ├── arrow-left-gray.svg
+  │       ├── arrow-left-white.svg
+  │       ├── arrow-right-gray.svg
+  │       ├── arrow-right-light.svg
+  │       ├── bell-brand.svg
+  │       ├── bell-gray.svg
+  │       ├── bell-orange.svg
+  │       ├── calendar-brand.svg
+  │       ├── calendar-check-brand.svg
+  │       ├── calendar-check-gray.svg
+  │       ├── calendar-gray.svg
+  │       ├── check-circle-green.svg
+  │       ├── check-green.svg
+  │       ├── check-white.svg
+  │       ├── chevron-down-brand.svg
+  │       ├── chevron-down-gray.svg
+  │       ├── chevron-up-gray.svg
+  │       ├── clock-orange.svg
+  │       ├── close-gray.svg
+  │       ├── cloud-off-line.svg
+  │       ├── copy-brand.svg
+  │       ├── copy-gray.svg
+  │       ├── crown-orange.svg
+  │       ├── download-brand.svg
+  │       ├── download-gray.svg
+  │       ├── download-white.svg
+  │       ├── edit-brand.svg
+  │       ├── edit-gray.svg
+  │       ├── empty-box-line.svg
+  │       ├── grid-brand.svg
+  │       ├── grid-gray.svg
+  │       ├── info-brand.svg
+  │       ├── info-orange.svg
+  │       ├── info-red.svg
+  │       ├── lock-brand.svg
+  │       ├── lock-gray.svg
+  │       ├── logo-brand.svg
+  │       ├── logout-gray.svg
+  │       ├── logout-red.svg
+  │       ├── mic-brand.svg
+  │       ├── mic-white.svg
+  │       ├── more-gray.svg
+  │       ├── pause-brand.svg
+  │       ├── pause-white.svg
+  │       ├── people-brand.svg
+  │       ├── people-gray.svg
+  │       ├── photo-gray.svg
+  │       ├── photo-plus-gray.svg
+  │       ├── play-brand.svg
+  │       ├── play-white.svg
+  │       ├── plus-brand.svg
+  │       ├── plus-white.svg
+  │       ├── refresh-brand.svg
+  │       ├── refresh-gray.svg
+  │       ├── scan-brand.svg
+  │       ├── scan-white.svg
+  │       ├── search-empty-line.svg
+  │       ├── search-gray.svg
+  │       ├── settings-brand.svg
+  │       ├── settings-gray.svg
+  │       ├── share-brand.svg
+  │       ├── share-gray.svg
+  │       ├── share-white.svg
+  │       ├── swap-brand.svg
+  │       ├── tab-duty-off.svg
+  │       ├── tab-duty-on.svg
+  │       ├── tab-home-off.svg
+  │       ├── tab-home-on.svg
+  │       ├── tab-mine-off.svg
+  │       ├── tab-mine-on.svg
+  │       ├── tab-timetable-off.svg
+  │       ├── tab-timetable-on.svg
+  │       ├── tag-brand.svg
+  │       ├── tag-gray.svg
+  │       ├── trash-red.svg
+  │       ├── undo-gray.svg
+  │       ├── warn-orange.svg
+  │       └── warn-red.svg
+  ├── components/
+  │   ├── app-icon/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── avatar-tag/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── bottom-sheet/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── dialog/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── duty-sheet/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── empty-state/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── nav-bar/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── notice-bar/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── photo-uploader/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── record-panel/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── segmented/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── skeleton/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── status-pill/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── stepper/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   └── week-switcher/
+  │       ├── index.js
+  │       ├── index.json
+  │       ├── index.wxml
+  │       └── index.wxss
+  ├── custom-tab-bar/
+  │   ├── index.js
+  │   ├── index.json
+  │   ├── index.wxml
+  │   └── index.wxss
+  ├── pages/
+  │   ├── bind/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── duty/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── home/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── mine/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   ├── poster/
+  │   │   ├── index.js
+  │   │   ├── index.json
+  │   │   ├── index.wxml
+  │   │   └── index.wxss
+  │   └── timetable/
+  │       ├── index.js
+  │       ├── index.json
+  │       ├── index.wxml
+  │       └── index.wxss
+  ├── sitemap.json
+  └── utils/
+      ├── api.js
+      ├── icons.js
+      ├── request.js
+      └── util.js
+cloudfunctions/
+  ├── adjust/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── audit-receiver/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── auth/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── common/
+  │   ├── audit.js
+  │   ├── db.js
+  │   ├── guard.js
+  │   ├── resp.js
+  │   └── week.js
+  ├── course/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── cron-weekly/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── duty/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── export/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── media/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── member/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  ├── poster/
+  │   ├── common/
+  │   │   ├── audit.js
+  │   │   ├── db.js
+  │   │   ├── guard.js
+  │   │   ├── resp.js
+  │   │   └── week.js
+  │   ├── config.json
+  │   ├── index.js
+  │   └── package.json
+  └── schedule/
+      ├── common/
+      │   ├── audit.js
+      │   ├── db.js
+      │   ├── guard.js
+      │   ├── resp.js
+      │   └── week.js
+      ├── config.json
+      ├── index.js
+      └── package.json
+scripts/
+  ├── check-api.js
+  ├── check-icons-cloud.js
+  ├── check-icons.js
+  ├── check-wxml.js
+  ├── deploy.md
+  ├── gen-icons.js
+  ├── init.sql
+  └── sync-common.js
+docs/
+  ├── 备案-服务内容备注文案.md
+  ├── 班级任务安排助理-MVP产品开发文档.md
+  ├── 班级任务安排助理-MVP需求与可行性方案.md
+  ├── 班级任务安排助理-设计提示词-单段可复制.md
+  └── 班级任务安排助理-高保真UI设计提示词.md
+project.config.json

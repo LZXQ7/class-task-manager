@@ -1,0 +1,776 @@
+<!-- 弹层打开时锁住页面滚动（防滚动穿透）：
+     bottom-sheet 的 scroll-view 滑到下沿后，touchmove 会继续冒泡给 page，
+     表现就是「弹层里滑到底，后面的名单跟着一起滑」。
+     page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
+     ⚠️ 新增任何 bottom-sheet / duty-sheet 时，必须把它的 show 标志加进下面这个表达式，
+        否则门禁 scripts/check-scroll-lock.js 会直接报错。 -->
+<page-meta page-style="{{(mDetailShow || addShow || importShow || posShow || leaveShow || leaveViewShow) ? 'overflow:hidden' : ''}}"></page-meta>
+
+<view class="page rb page-fade {{tClass}}">
+
+  <!-- 自定义导航（navigationStyle=custom，无系统 nav-bar）：含返回按钮。
+       ⚠️ sheet-open：弹层打开时隐藏返回键 —— 它会被弹层左上角透出来（遮罩 0.45 黑
+          盖不暗亮色图标，面板又是半透明玻璃，物理上遮不住）。表达式与上面 page-meta 一致。 -->
+  <nav-bar title="{{navTitle}}" show-back="{{true}}" custom-back="{{true}}" sheet-open="{{mDetailShow || addShow || importShow || posShow || leaveShow || leaveViewShow}}" bind:back="onBack" />
+
+  <!-- 顶部概览（1.0.5 玻璃头部卡）：名册概览 + 今日在位 两组，收进一张玻璃卡。
+       1.0.6 需求④：**壳常驻**，不再整卡挂在 wx:if 上 —— 以前 memberStats/leaveStat
+       要等两个云函数回来卡片才「凭空冒出来」，而搜索框/按钮行都不依赖数据、早就渲染了，
+       视觉上就是「卡片等名单」。现在卡片第一帧就在，数字用 '—' 占位，数据到了再填。
+       ⚠️ 只改**显示时机**，统计口径不动（仍然单一来源 memberStats，不搞第二套现算 —— 统计同源铁律）。 -->
+  <view class="rb-head card">
+    <view class="rb-grp">
+      <view class="rb-grp-t">名册概览</view>
+      <view class="rb-grid">
+        <view class="rb-cell">
+          <text class="rb-num">{{memberStats ? memberStats.total : '—'}}</text><text class="rb-lab">总人数</text>
+        </view>
+        <view class="rb-cell">
+          <text class="rb-num">{{memberStats ? memberStats.groupA : '—'}}</text><text class="rb-lab">A 组</text>
+        </view>
+        <view class="rb-cell">
+          <text class="rb-num">{{memberStats ? memberStats.groupB : '—'}}</text><text class="rb-lab">B 组</text>
+        </view>
+        <view wx:if="{{isSuper || isCounselor}}" class="rb-cell">
+          <text class="rb-num {{memberStats && boundCount < memberStats.total ? 'warn' : ''}}">{{boundCount != null ? boundCount : '—'}}</text><text class="rb-lab">已绑定</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 今日在位（1.0.5 需求④）：请假人数 / A组在位 / B组在位 / 全体在位。
+         「在位」= 名册人数 − 当天请假人数（同源计算，见 roster/index.js 的 _applyLeaveStat）。
+         辅导员（X 组）只展示「请假人数」；点「请假人数」或右上「请假名单」看名单（需求①②）。
+         ⚠️ 显隐按**身份**而不是按数据：以前挂 wx:if="{{leaveStat}}"，而 leaveStat 只有
+            _loadLeaveBoard 跑完才有 —— 同学（canLeave/isCounselor 都 false）那个函数直接
+            return，leaveStat 恒为 null，这组整组不渲染。改成按身份判断后行为不变
+            （同学仍然看不到），但班委/辅导员在数据回来前就能看到壳。 -->
+    <view wx:if="{{canLeave || isCounselor}}" class="rb-grp rb-grp-last">
+      <view class="rb-grp-t">
+        <text>今日在位</text>
+        <text class="rb-grp-more" bindtap="onLeaveViewOpen">请假名单 ›</text>
+      </view>
+      <view class="rb-grid">
+        <view class="rb-cell rb-cell-lv" bindtap="onLeaveViewOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+          <text class="rb-num {{leaveStat && leaveStat.leave > 0 ? 'danger' : ''}}">{{leaveStat ? leaveStat.leave : '—'}}</text><text class="rb-lab">请假人数</text>
+        </view>
+        <view wx:if="{{!isCounselor}}" class="rb-cell">
+          <text class="rb-num">{{leaveStat ? leaveStat.onA : '—'}}</text><text class="rb-lab">A组在位</text>
+        </view>
+        <view wx:if="{{!isCounselor}}" class="rb-cell">
+          <text class="rb-num">{{leaveStat ? leaveStat.onB : '—'}}</text><text class="rb-lab">B组在位</text>
+        </view>
+        <view wx:if="{{!isCounselor}}" class="rb-cell">
+          <text class="rb-num">{{leaveStat ? leaveStat.onAll : '—'}}</text><text class="rb-lab">全体在位</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{memberStats && (memberStats.groupA - memberStats.groupB >= 2 || memberStats.groupB - memberStats.groupA >= 2)}}" class="rb-warn">
+    <notice-bar type="warning" text="两组人数相差较大，建议手动调整以保证轮转公平" />
+  </view>
+
+  <!-- 搜索（独占一行） -->
+  <view class="mb-bar">
+    <view class="mb-search">
+      <app-icon name="search" variant="gray" size="{{32}}" />
+      <input class="mb-search-input" value="{{memberKw}}" placeholder="搜索姓名或学号" placeholder-class="f-ph" bindinput="onMemberKw" />
+    </view>
+  </view>
+
+  <!-- 操作按钮行（录入 / 请假）：整行平分，不再挤在搜索框右侧 -->
+  <view wx:if="{{canRosterEdit || canLeave}}" class="mb-actions">
+    <!-- 添加 / 导入 = 名册录入（增改）：超管 / 辅导员 / 班长（需求 D） -->
+    <view wx:if="{{canRosterEdit}}" class="mb-act" bindtap="onAddOpen">添加</view>
+    <view wx:if="{{canRosterEdit}}" class="mb-act mb-act-primary" bindtap="onImportOpen">导入名单</view>
+    <!-- 请假登记（1.0.5 需求④）：超管 / 本班学生班委（canLeave） -->
+    <view wx:if="{{canLeave}}" class="mb-act mb-act-leave" bindtap="onLeaveOpen">请假<text wx:if="{{leaveStat && leaveStat.leave > 0}}" class="mb-leave-dot">{{leaveStat.leave}}</text></view>
+  </view>
+
+  <!-- 筛选：全班 / 仅班委（纯展示层过滤，不影响搜索与详情） -->
+  <view class="mb-filters">
+    <view class="mb-chip chip-motion {{!onlyCommittee ? 'on' : ''}}" bindtap="onFilterAll">全班 {{members.length}}</view>
+    <view class="mb-chip chip-motion {{onlyCommittee ? 'on' : ''}}" bindtap="onToggleCommittee">仅班委 {{committeeCount}}</view>
+  </view>
+
+  <!-- 加载骨架（Req 3）：首屏名单异步拉取期间显示，替代原来「没有匹配的成员」的闪现 -->
+  <skeleton wx:if="{{!membersLoaded}}" type="list" rows="{{6}}" />
+
+  <view
+    wx:for="{{viewMembers}}"
+    wx:key="id"
+    class="mb-row fade-item {{item.status === 'DISABLED' ? 'off' : ''}}"
+    data-id="{{item.id}}"
+    style="{{item.lt}}"
+    hover-class="tap-hover"
+    hover-start-time="0"
+    hover-stay-time="60"
+    bindtap="onMemberRow"
+  >
+    <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{64}}" disabled="{{item.status === 'DISABLED'}}" />
+    <view class="mb-info">
+      <view class="mb-nameline">
+        <text class="mb-name">{{item.name}}</text>
+        <view wx:if="{{isSuper || isCounselor}}" class="mb-bind {{item.bound ? 'on' : ''}}">{{item.bound ? '已绑定' : '未绑定'}}</view>
+      </view>
+      <!-- 辅导员（X 组）不展示学号（需求①）：教职工的学号只是入库占位，展示会误导 -->
+      <view wx:if="{{item.groupTag === 'X'}}" class="mb-sub"><text>辅导员 · 不参与值日轮转</text></view>
+      <view wx:else class="mb-sub"><text>{{item.seq}} 号 · 值日</text><text class="cnt-num">{{item.dutyCount}}</text><text>次</text></view>
+    </view>
+    <!-- X = 教职工（辅导员）：青色「辅导员」头衔，不显示 A/B 组；其余按职位头衔显示（超管金 / 班委蓝） -->
+    <view wx:if="{{item.groupTag === 'X'}}" class="mb-tag counselor">{{item.roleTag || '辅导员'}}</view>
+    <block wx:else>
+      <view class="mb-tag {{item.groupTag === 'A' ? 'ga' : 'gb'}}">{{item.groupTag}} 组</view>
+      <!-- 今天处于请假区间内（1.0.5 需求④）—— 与顶部「请假人数」同源（leaveMap 由 leaveBoard 下发） -->
+      <view wx:if="{{leaveMap[item.id]}}" class="mb-tag leave">请假中</view>
+      <view wx:if="{{item.roleTag}}" class="mb-tag {{item.roleTier}}">{{item.roleTag}}</view>
+    </block>
+    <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+  </view>
+
+  <view wx:if="{{membersLoaded && !viewMembers.length}}" class="rb-empty">
+    <text>{{onlyCommittee ? '本班暂无班委' : '没有匹配的成员'}}</text>
+  </view>
+
+  <view style="height:40rpx"></view>
+
+  <!-- 成员详情 -->
+  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}">
+    <view wx:if="{{mDetail}}" class="mb-detail">
+      <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" label="{{true}}" label-size="{{34}}" />
+      <view class="mb-detail-grid">
+        <text>{{mDetail.groupTag === 'X' ? '教职工（不参与分组与值日轮转）' : '学号 ' + mDetail.seq + ' 号'}}</text>
+        <view><text>{{mDetail.groupTag === 'X' ? '辅导员' : mDetail.groupTag + ' 组'}} · 值日</text><text class="cnt-num">{{mDetail.dutyCount}}</text><text>次</text></view>
+        <text wx:if="{{isSuper || isCounselor}}" class="{{mDetail.bound ? 'bound' : ''}}">微信 {{mDetail.bound ? '已绑定' : '未绑定'}}</text>
+      </view>
+      <view wx:if="{{mDetail.roleTag}}" class="mb-detail-role {{mDetail.roleTier}}">{{mDetail.roleTag}}<block wx:if="{{mDetail.isSuper}}"> · 可解绑账号、安排值日</block></view>
+      <view class="mb-detail-actions">
+        <!-- 教职工（X）不参与 A/B 轮转，不给调组按钮；调组=名册编辑（需求 D：含班长） -->
+        <view wx:if="{{mDetail.groupTag !== 'X' && !mDetailIsSelf && canRosterEdit}}" class="mb-abtn" bindtap="onToggleGroup">调至 {{mDetail.groupTag === 'A' ? 'B' : 'A'}} 组</view>
+        <!-- 设置班委（2026-09-26 需求②）：超管 + 辅导员均可，点开后选具体职位。
+             需求 D（2026-09-27）：其中「生活委员」「班长兼团支书」是授权职位（分别给排班权、
+             名册录入权），非超管置灰不可点 —— 见 onPickPosition 与云函数 requirePositionGrant。
+             对「辅导员（X）」「超管（isSuper）」「自己」都不给 —— 后端 setPosition 同样会拒。 -->
+        <view
+          wx:if="{{canManage && !mDetailIsSelf && mDetail.groupTag !== 'X' && !mDetail.isSuper}}"
+          class="mb-abtn"
+          bindtap="onOpenPosition"
+        >{{mDetail.role === 'ADMIN' ? '改班委职位' : '设为班委'}}</view>
+        <!-- 固定到主页（v0.7.17 需求⑥；v0.7.18 需求① 收紧为**仅辅导员**）：
+             辅导员把需要长期跟踪的学生钉在首页，点开首页卡片即可继续记备注。
+             超管不再有这个入口 —— 与后端 pinList / pinToggle 的「仅辅导员」同口径。 -->
+        <view
+          wx:if="{{pinVisible && !mDetailIsSelf}}"
+          class="mb-abtn {{pinned ? 'on' : ''}} {{pinBusy ? 'busy' : ''}}"
+          bindtap="onTogglePin"
+        >{{pinBusy ? '处理中…' : (pinned ? '已固定到主页 · 点此取消' : '固定到主页')}}</view>
+        <!-- 自保（§41 需求①）：选中自己时不给「停用 / 解绑」按钮。
+             把自己停用/解绑会立刻丢掉全部管理权限，把自己锁在外面。 -->
+        <block wx:if="{{!mDetailIsSelf && (isSuper || isCounselor)}}">
+          <view class="mb-abtn" bindtap="onToggleStatus">{{mDetail.status === 'DISABLED' ? '恢复' : '停用'}}</view>
+        </block>
+        <view wx:if="{{isSuper && !mDetailIsSelf}}" class="mb-abtn danger" bindtap="onUnbindMember">解除微信绑定</view>
+        <!-- 移出班级（超管 / 辅导员）：破坏性主操作，独占一整行的大按钮 -->
+        <view wx:if="{{canManage && !mDetailIsSelf && !mDetail.bound}}" class="mb-abtn danger block" bindtap="onRemoveMember">移出班级</view>
+      </view>
+      <view wx:if="{{mDetailIsSelf}}" class="mb-super-hint">这是你自己的账号：不能在此停用或解绑，避免把自己锁在外面</view>
+      <view wx:elif="{{!canManage && isAdmin}}" class="mb-super-hint">设置班委、停用、移出成员需超级管理员或辅导员操作</view>
+
+      <!-- 成员备注（v0.7.16 需求⑦，仅教职工 + 超管可见可写）：
+           辅导员的学生信息 / 家庭情况管理记录；学生与普通班委看不到这里。
+           v0.7.17 需求⑤：原版式字小行挤、像页脚注释 —— 改成独立卡区块：
+           标题行（条数）+ 说明 + 每条一张带竖条的卡 + 独立的书写区。 -->
+      <view wx:if="{{noteVisible}}" class="mb-notes">
+        <view class="mb-notes-head">
+          <text class="mb-notes-title">备注</text>
+          <text class="mb-notes-count">{{noteList.length}} 条</text>
+        </view>
+        <text class="mb-notes-sub">仅教职工与超级管理员可见，学生本人看不到</text>
+
+        <!-- v0.7.25 终版：列表不再单独包 scroll-view —— 外层 sheet-body 本身就是滚动容器，
+             嵌套滚动 + % 高度在内层不可靠（表现为「能滑但保存按钮被裁」）；
+             「保存备注」移入弹层固定底栏（bottom-sheet footer 槽），永远可见可点 -->
+          <view wx:if="{{!noteList.length}}" class="mb-notes-empty">
+            <text class="mb-notes-empty-t">还没有记录</text>
+            <text class="mb-notes-empty-d">家庭情况、家长沟通、重点关注事项都可以记在这里，方便随时回看</text>
+          </view>
+
+          <view wx:for="{{noteList}}" wx:key="id" class="mb-note {{item.mine ? 'mine' : ''}}">
+            <view class="mb-note-main" data-id="{{item.id}}" bindtap="{{item.mine ? 'onNoteEdit' : ''}}">
+              <text class="mb-note-content">{{item.content}}</text>
+              <view class="mb-note-foot">
+                <text class="mb-note-author">{{item.authorName}}</text>
+                <text class="mb-note-time">{{item.createdAtText}}</text>
+                <text wx:if="{{item.mine}}" class="mb-note-edit">点按编辑</text>
+              </view>
+            </view>
+            <view wx:if="{{item.mine || isSuper}}" class="mb-note-del" data-id="{{item.id}}" bindtap="onNoteDelete">删除</view>
+          </view>
+
+        <view class="mb-note-form">
+          <textarea
+            class="mb-note-input"
+            value="{{noteDraft}}"
+            placeholder="{{noteEditId ? '正在编辑这条备注…' : '写点什么：学生信息 / 家庭情况 / 重点关注…'}}"
+            placeholder-class="f-ph"
+            maxlength="500"
+            auto-height
+            bindinput="onNoteInput"
+          />
+          <view class="mb-note-formfoot">
+            <text class="mb-note-counter">{{noteDraft.length}}/500</text>
+            <view wx:if="{{noteEditId}}" class="mb-note-cancel" bindtap="onNoteCancel">取消编辑</view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <!-- v0.7.25：保存备注固定底栏 —— 不随内容滚动，任何列表长度下都可见可点 -->
+    <view slot="footer" wx:if="{{noteVisible}}" class="mb-footer-bar">
+      <view class="mb-abtn block {{noteBusy ? 'busy' : ''}}" bindtap="onNoteSave">{{noteBusy ? '保存中…' : (noteEditId ? '保存修改' : '保存备注')}}</view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 设置班委：选具体职位（超管 / 辅导员）。取值唯一来源 util.POSITIONS -->
+  <bottom-sheet show="{{posShow}}" title="设置班委" bind:close="onPosClose">
+    <view class="im-wrap">
+      <view class="ps-title">为「{{mDetail.name}}」选择职位</view>
+      <view class="ps-list">
+        <view
+          wx:for="{{posList}}"
+          wx:key="text"
+          class="ps-item {{item.on ? 'on' : ''}} {{item.locked ? 'locked' : ''}}"
+          data-pos="{{item.text}}"
+          bindtap="onPickPosition"
+        >
+          <text class="ps-text">{{item.text}}</text>
+          <text wx:if="{{item.locked}}" class="ps-lock">超管任命</text>
+          <app-icon wx:elif="{{item.on}}" name="check" variant="brand" size="{{36}}" />
+        </view>
+      </view>
+      <text class="im-tip">设为班委后，该同学可发布通知、查看与管理本班名单。</text>
+      <text wx:if="{{!canGrantPosition}}" class="im-tip">「生活委员」「班长兼团支书」为授权职位，由超级管理员任命：前者可安排值日表，后者可管理本班名单。</text>
+      <view wx:if="{{posIsCommittee}}" class="ps-cancel" bindtap="onCancelPosition">取消班委</view>
+      <view class="im-actions">
+        <view class="im-btn-ghost" bindtap="onPosClose">关闭</view>
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 添加成员（超管 / 辅导员） -->
+  <bottom-sheet show="{{addShow}}" title="添加成员" bind:close="onAddClose">
+    <view class="im-wrap">
+      <view class="im-field">
+        <view class="im-label">姓名</view>
+        <input class="im-input" value="{{addName}}" placeholder="如：张伟" placeholder-class="f-ph" bindinput="onAddName" />
+      </view>
+      <view class="im-field">
+        <view class="im-label">学号</view>
+        <input class="im-input" type="number" value="{{addNo}}" placeholder="完整学号，如 209901030358" placeholder-class="f-ph" bindinput="onAddNo" />
+      </view>
+      <text class="im-tip">学号尾号奇数为 A 组，偶数为 B 组（自动判定）</text>
+      <view class="im-actions">
+        <view class="im-btn-ghost" bindtap="onAddClose">取消</view>
+        <view class="im-btn-primary {{addBusy ? 'busy' : ''}}" bindtap="onAddSubmit">{{addBusy ? '添加中…' : '添加成员'}}</view>
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 导入名单：粘贴 → 预览分组 → 确认导入（可撤回） -->
+  <bottom-sheet show="{{importShow}}" title="导入名单" height="{{1180}}" bind:close="onImportClose">
+    <view class="im-wrap">
+
+      <!-- 阶段一：粘贴 或 选 Excel -->
+      <block wx:if="{{importPhase === 'input'}}">
+        <textarea
+          class="im-area"
+          value="{{importText}}"
+          placeholder="每行一条，顺序不限：&#10;张伟,20230101&#10;20230101,张伟&#10;小学教育示例班级B,209901030201,示例成员58,女"
+          placeholder-class="f-ph"
+          bindinput="onImportText"
+          maxlength="-1"
+        />
+        <text class="im-tip">支持「姓名,学号」「学号,姓名」，也支持带班级列的整表（班级,学号,姓名,性别…）——带班级列时会自动分到各班，先预览再确认</text>
+
+        <view class="im-or"><text>或直接导入表格</text></view>
+        <view class="im-pick {{importBusy ? 'busy' : ''}}" bindtap="onImportPickFile">
+          <app-icon name="download" variant="brand" size="{{34}}" />
+          <text>从聊天选择 Excel / CSV</text>
+        </view>
+        <text wx:if="{{importFileName}}" class="im-file">已选择：{{importFileName}}</text>
+        <text class="im-tip">支持 .xlsx / .csv（旧版 .xls 请先另存为 .xlsx）。若文件列表是空的，说明那个聊天里没有文件 —— 先把表格发到任意聊天（发给「文件传输助手」最省事），再回来选。</text>
+
+        <view wx:if="{{importResult}}" class="im-result">
+          新增 {{importResult.imported}} 人 / 更新 {{importResult.updated}} 人 / 跳过 {{importResult.skipped}} 人<block wx:if="{{importResult.createdClasses.length}}"> / 新建 {{importResult.createdClasses.length}} 个班级</block>
+        </view>
+        <view class="im-actions">
+          <view class="im-btn-primary {{importBusy ? 'busy' : ''}}" bindtap="onImportParse">{{importBusy ? '解析中…' : '解析并预览'}}</view>
+        </view>
+        <!-- 撤回最近一次导入 -->
+        <view wx:if="{{canRosterEdit && lastBatch}}" class="im-revert" bindtap="onRevertTap">
+          撤回最近一次导入（{{lastBatch.createdAt}} · 新增 {{lastBatch.inserted}} 人）<app-icon name="undo" variant="gray" size="{{28}}" />
+        </view>
+      </block>
+
+      <!-- 阶段二：预览分组 -->
+      <block wx:else>
+        <view class="im-sec-t">确认每个班导入到哪（共 {{importGroups.length}} 组）</view>
+        <view wx:if="{{canRosterEdit}}" class="im-switch">
+          <view class="im-switch-info">
+            <text class="im-switch-title">自动新建缺失的班级</text>
+            <text class="im-switch-sub">表里出现、系统还没有的班级会先建好再导入（可撤回）</text>
+          </view>
+          <switch checked="{{importCreateMissing}}" color="#3370FF" bindchange="onToggleCreateMissing" />
+        </view>
+        <view wx:for="{{importGroups}}" wx:key="label" class="im-pg {{item.include ? 'on' : ''}}">
+          <view class="im-pg-chk {{item.include ? 'on' : ''}}" data-i="{{index}}" bindtap="onToggleInclude">{{item.include ? '✓' : ''}}</view>
+          <view class="im-pg-main">
+            <view class="im-pg-label">{{item.label || '（未标注班级）'}}</view>
+            <view class="im-pg-meta">→ {{item.willCreate ? (item.suggestName + '（将新建）') : (item.className || '未指定班级')}} · {{item.count}} 人</view>
+            <view wx:if="{{item.conflict}}" class="im-pg-warn">班号与学号前缀不一致，请确认后手动选班</view>
+            <view wx:elif="{{item.weak}}" class="im-pg-warn">仅按班号匹配，可能是同班号的不同专业，请确认</view>
+            <view wx:elif="{{item.willCreate}}" class="im-pg-create">将新建班级「{{item.suggestName}}」并导入</view>
+            <view wx:elif="{{item.missingNo && !item.seqSample}}" class="im-pg-warn">有 {{item.missingNo}} 行只有姓名、没有学号，无法按序号补全 —— 请先给这组选一个班</view>
+            <view wx:elif="{{item.missingNo}}" class="im-pg-create">有 {{item.missingNo}} 行只有姓名，将按班级学号补齐（如 {{item.seqSample}}）</view>
+            <view wx:elif="{{item.classId}}" class="im-pg-sample">{{item.sample}}</view>
+            <view wx:else class="im-pg-warn">未匹配到班级，请手动选择或开启「自动新建班级」</view>
+          </view>
+          <view class="im-pg-sel" data-i="{{index}}" bindtap="onPickGroupClass">选班</view>
+        </view>
+        <view wx:if="{{!importGroups.length}}" class="im-empty">没有解析到有效名单</view>
+        <view class="im-actions">
+          <view class="im-btn-ghost" bindtap="onImportBack">返回</view>
+          <view class="im-btn-primary {{importBusy ? 'busy' : ''}}" bindtap="onImportConfirm">{{importBusy ? '导入中…' : '确认导入'}}</view>
+        </view>
+      </block>
+
+    </view>
+  </bottom-sheet>
+
+  <!-- ============ 请假登记（1.0.5 需求④） ============
+       权限 = 超管 / 本班学生班委（canLeave）。上：今日请假名单（可撤销）；下：日期区间 + 选人。
+       内容只用普通 view 列表，滚动交给 bottom-sheet 的 sheet-body（内层禁再嵌 scroll-view）。 -->
+  <bottom-sheet id="leaveSheet" show="{{leaveShow}}" title="请假登记" tall="{{true}}" resizeAnim="{{true}}" bind:close="onLeaveClose">
+    <view class="lv">
+      <!-- 1.0.6：今日 / 历史 切换（历史=所有登记过的请假，含已撤销）
+           ⚠️ 复用全站 segmented 组件（与值日页「按日 / 按人」同款：独立胶囊指示器 +
+              两拍 stretch→settle），不再自己写一份 lv-tab。
+              事件契约：change 事件只带 { key }，页面必须读 e.detail.key。
+           ⚠️ 以前注释里写「复用全站 `<segmented>`」会被 scripts/check-segmented.js
+              当成真标签扫进去（4 处误报）—— 该脚本现已先剥 WXML 注释再扫。 -->
+      <view class="lv-seg">
+        <segmented
+          items="{{[{key:'today',text:'今日'},{key:'history',text:'历史'}]}}"
+          value="{{leaveTab}}"
+          width="{{320}}"
+          bind:change="onLeaveTab"
+        />
+      </view>
+
+      <!-- ⚠️ 两个板块各是一个**独立的 view**（不是 block）：切 tab 时容器本身被 wx:if 重建，
+           CSS animation 才会重新播一遍；挂在常驻容器上，动画只在第一次进弹层播一次。 -->
+      <view wx:if="{{leaveTab === 'today'}}" class="{{leavePane === 'l' ? 'lv-pane-l' : ''}}">
+        <!-- ⚠️ 用**名单行数**而不是 leaveStat —— 后者是顶部「在位」卡的实时口径，
+             两个口径不能互套（数字恒等于行数，统计同源） -->
+        <view class="lv-sec-t">今日请假 · {{leaveList.length}} 人</view>
+        <view wx:if="{{leaveListA.length}}" class="lv-grp">
+          <text class="lv-grp-t">A 组 · {{leaveListA.length}} 人</text>
+          <view wx:for="{{leaveListA}}" wx:key="leaveId" class="lv-row">
+            <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{56}}" />
+            <view class="lv-info">
+              <text class="lv-name">{{item.name}}</text>
+              <text class="lv-sub">{{item.startDate}} ~ {{item.endDate}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
+            </view>
+            <!-- 「假条」= **缩略图**，全站同一条视觉规则（今日行 / 历史行 / 首页行都一样）：
+                 文字看不出「到底传了没」，缩略图一眼就知道，还能点开核对。
+                 没有图时才给幽灵「传假条」按钮 —— 上传入口不能被缩略图吃掉。 -->
+            <view
+              wx:if="{{item.hasImage}}"
+              class="lv-thumb"
+              data-id="{{item.leaveId}}"
+              data-has="1"
+              catchtap="onLeaveImageTap"
+            >
+              <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
+              <text wx:else class="lv-thumb-t">假条</text>
+            </view>
+            <view
+              wx:elif="{{canLeave}}"
+              class="lv-btn ghost"
+              data-id="{{item.leaveId}}"
+              data-has="0"
+              catchtap="onLeaveImageTap"
+            >传假条</view>
+            <view class="lv-cancel {{leaveBusy ? 'busy' : ''}}" data-id="{{item.leaveId}}" catchtap="onLeaveCancelTap">撤销</view>
+          </view>
+        </view>
+        <view wx:if="{{leaveListB.length}}" class="lv-grp">
+          <text class="lv-grp-t">B 组 · {{leaveListB.length}} 人</text>
+          <view wx:for="{{leaveListB}}" wx:key="leaveId" class="lv-row">
+            <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{56}}" />
+            <view class="lv-info">
+              <text class="lv-name">{{item.name}}</text>
+              <text class="lv-sub">{{item.startDate}} ~ {{item.endDate}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
+            </view>
+            <!-- 「假条」= **缩略图**，全站同一条视觉规则（今日行 / 历史行 / 首页行都一样）：
+                 文字看不出「到底传了没」，缩略图一眼就知道，还能点开核对。
+                 没有图时才给幽灵「传假条」按钮 —— 上传入口不能被缩略图吃掉。 -->
+            <view
+              wx:if="{{item.hasImage}}"
+              class="lv-thumb"
+              data-id="{{item.leaveId}}"
+              data-has="1"
+              catchtap="onLeaveImageTap"
+            >
+              <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
+              <text wx:else class="lv-thumb-t">假条</text>
+            </view>
+            <view
+              wx:elif="{{canLeave}}"
+              class="lv-btn ghost"
+              data-id="{{item.leaveId}}"
+              data-has="0"
+              catchtap="onLeaveImageTap"
+            >传假条</view>
+            <view class="lv-cancel {{leaveBusy ? 'busy' : ''}}" data-id="{{item.leaveId}}" catchtap="onLeaveCancelTap">撤销</view>
+          </view>
+        </view>
+        <view wx:if="{{!leaveList.length}}" class="lv-empty">今天没有人请假</view>
+
+        <view class="lv-sec-t">请假日期</view>
+        <view class="lv-dates">
+          <picker mode="date" value="{{leaveStart}}" end="{{leaveMaxDate}}" data-kind="start" bindchange="onLeaveDate">
+            <view class="lv-date">{{leaveStart}}<app-icon name="calendar" variant="gray" size="{{28}}" /></view>
+          </picker>
+          <text class="lv-tilde">至</text>
+          <picker mode="date" value="{{leaveEnd}}" end="{{leaveMaxDate}}" data-kind="end" bindchange="onLeaveDate">
+            <view class="lv-date">{{leaveEnd}}<app-icon name="calendar" variant="gray" size="{{28}}" /></view>
+          </picker>
+        </view>
+
+        <!-- 2026-10-09 改版：请假时段 = **全天 / 上午 / 下午 三选一**。
+     旧版是「点『全天』展开两个 time picker」，用户反馈「很多人用不明白」：
+       ① 胶囊长得像状态标签，不像能按的东西；
+       ②「指定时段」是抽象词 —— 用户脑子里就是「我要请半天假」；
+       ③ 让他挑 08:00~12:00 是把内部结构漏给了用户。
+     现在用全站同一套 `<segmented>`（与今日/历史、三个快捷筛选同一个控件），
+     钟点写死（上午 08:00–12:00 / 下午 13:00–18:00 / 晚上 18:00–21:00）。
+     ⚠️ handler 里必须读 `e.detail.key`（segmented 只 emit key；门禁
+         check-segmented.js 按这一条扫），所以这里没有 dataset。
+     ⚠️ width 必须显式给 440：组件默认 320rpx 等分，三档时每格 107rpx，
+         加到四档后只剩 80rpx ——「全天」两字在选中态（30rpx 字号）左右只剩 ~10rpx 会显挤。
+         440/4 = 110rpx ≈ 原三档密度，视觉密度不变。 -->
+        <view class="lv-sec-t">请假时段</view>
+        <segmented
+          value="{{leaveSlot}}"
+          items="{{leaveSlotOpts}}"
+          width="{{440}}"
+          bind:change="onLeaveSlot"
+        />
+        <!-- 选半天时段时把钟点写出来（用户不用猜「上午」到底是几点到几点）；
+             选全天时这句话没有信息量，换成说明半天假的跨天口径。
+             ⚠️ 档位顺序必须与 LEAVE_SLOTS 一致：新增「晚上」后 `pm` 必须显式 `wx:elif`，
+             否则会被后面的 `wx:else` 接住，晚上档显示成下午的文案。 -->
+        <view wx:if="{{leaveSlot === 'all'}}" class="lv-hint">半天假选「上午」「下午」或「晚上」，区间内**每天**都按这个时段算（如 10-09 至 10-11 每天上午）。</view>
+        <view wx:elif="{{leaveSlot === 'am'}}" class="lv-hint">上午 = 每天 08:00–12:00（跨天也按每天这个时段算）。</view>
+        <view wx:elif="{{leaveSlot === 'pm'}}" class="lv-hint">下午 = 每天 13:00–18:00（跨天也按每天这个时段算）。</view>
+        <view wx:else class="lv-hint">晚上 = 每天 18:00–21:00（跨天也按每天这个时段算）。</view>
+        <view class="lv-hint">区间内已排的值日会自动标记为「已请假」（半天假也按整天标记）；撤销时恢复。</view>
+
+        <view class="lv-sec-t">选择同学（点一下即登记上面的日期）</view>
+        <view class="lv-search">
+          <app-icon name="search" variant="gray" size="{{32}}" />
+          <input class="lv-search-input" value="{{leaveKw}}" placeholder="搜索姓名或序号" placeholder-class="f-ph" bindinput="onLeaveKw" />
+        </view>
+        <!-- 头像网格：每人一个圆牌 + 姓名，每行 4 个（比长列表紧凑，需求③） -->
+        <view class="lv-grid">
+          <view
+            wx:for="{{leaveCands}}"
+            wx:key="id"
+            class="lv-cell {{leaveMap[item.id] ? 'lv-cell-off' : ''}}"
+            data-id="{{item.id}}"
+            bindtap="onLeavePick"
+            hover-class="lv-cell-hover"
+            hover-start-time="0"
+            hover-stay-time="60"
+          >
+            <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{56}}" />
+            <text class="lv-cell-name">{{item.name}}</text>
+            <text wx:if="{{leaveMap[item.id]}}" class="lv-cell-tag">已请假</text>
+          </view>
+        </view>
+        <empty-state wx:if="{{!leaveCands.length}}" icon="empty-box" title="没有匹配的同学" desc="换个关键词试试" padding="{{40}}" />
+      </view>
+
+      <!-- 历史：所有登记过的请假（含已撤销），倒序 300 条
+           1.0.7：筛选（日期区间 / 快捷时段 / 人员搜索 / 人员多选）+ **按开始日期分组**。
+           ⚠️ 渲染源是 leaveHistGroups（筛选后的分组产物），**不是** leaveHistory ——
+              后者是全量数据源，直接渲染它会让筛选条形同虚设。 -->
+      <view wx:else class="{{leavePane === 'r' ? 'lv-pane-r' : ''}}">
+        <!-- 筛选区 -->
+        <view class="lv-filters">
+          <!-- 快捷时段：**复用全站 <segmented>**（与上方「今日/历史」同款：独立胶囊指示器 +
+               两拍 stretch→settle）。1.0.7 起不再手写 .lv-chip 药丸 —— 两套控件并排时
+               动画手感不一致，一眼就能看出不是同一套。
+               ⚠️ segmented 是**单选且不可取消**（组件内 `key === value` 直接 return），
+                  所以「再点一次取消」在这里不成立；清空走下方 .lv-clear / 搜索框 ×。
+               ⚠️ 事件契约：change 只带 { key }，页面必须读 e.detail.key。 -->
+          <view class="lv-chips">
+            <segmented
+              items="{{[{key:'all',text:'全部'},{key:'7',text:'近 7 天'},{key:'30',text:'近 30 天'}]}}"
+              value="{{histRange === '' ? 'all' : histRange}}"
+              width="{{420}}"
+              bind:change="onHistRangeTap"
+            />
+          </view>
+          <!-- 日期区间：原生 picker，选了区间就清掉快捷时段（两者互斥，避免两套口径打架） -->
+          <view class="lv-daterange">
+            <picker mode="date" value="{{histFromShow}}" bindchange="onHistFromChange">
+              <view class="lv-dr {{histFromShow ? 'on' : ''}}">{{histFromShow || '开始日期'}}</view>
+            </picker>
+            <text class="lv-drtilde">→</text>
+            <picker mode="date" value="{{histToShow}}" bindchange="onHistToChange">
+              <view class="lv-dr {{histToShow ? 'on' : ''}}">{{histToShow || '结束日期'}}</view>
+            </picker>
+            <view wx:if="{{histAny}}" class="lv-clear" catchtap="onHistClear">清空</view>
+          </view>
+          <!-- 人员搜索（输入即筛）+ 选人多选：候选从本班名单现算，不额外请求 -->
+          <view class="lv-search">
+            <text class="lv-search-ico">搜</text>
+            <input
+              class="lv-search-input"
+              value="{{histKw}}"
+              placeholder="搜索姓名或学号（可多选）"
+              placeholder-class="lv-search-ph"
+              confirm-type="search"
+              bindinput="onHistSearchInput"
+            />
+            <text wx:if="{{histKw}}" class="lv-search-x" catchtap="onHistClear">×</text>
+          </view>
+          <!-- 已选人员胶囊 -->
+          <view wx:if="{{histMembers.length}}" class="lv-picked">
+            <view wx:for="{{histPickedNames}}" wx:key="id" class="lv-pick" data-id="{{item.id}}" catchtap="onHistMemberRemove">
+              {{item.name}}×
+            </view>
+          </view>
+          <view wx:if="{{histCandShow}}" class="lv-cands">
+            <view wx:if="{{!histCands.length}}" class="lv-cands-empty">本班没有匹配的同学</view>
+            <view
+              wx:for="{{histCands}}"
+              wx:key="id"
+              class="lv-cand2 {{histPickedMap[item.id] ? 'on' : ''}}"
+              data-id="{{item.id}}"
+              catchtap="onHistCandTap"
+            >
+              <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{44}}" />
+              <text class="lv-cand2-n">{{item.name}}</text>
+              <text class="lv-cand2-s">{{item.seq}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="lv-sec-t">历史请假 · {{leaveHistCount}} 条</view>
+
+        <!-- 按开始日期分组：组头是日期，下面挂当天所有请假（含跨天假，只出现一次）
+             ⚠️ 1.0.7 起组头不再做「白底 sticky 横条」—— 全站只有这一处是 sticky，
+                贴白底压在记录行上会显得像另一层卡片。改为和其他小节标题
+                （.lv-sec-t / .lv-grp-t）同一种轻量标题，靠上方留白分组。 -->
+        <view wx:for="{{leaveHistGroups}}" wx:key="key" wx:for-item="grp" class="lv-hgrp">
+          <view class="lv-hgrp-t">
+            <text class="lv-hgrp-date">{{grp.label}}</text>
+            <text class="lv-hgrp-c">{{grp.count}} 条</text>
+          </view>
+          <view wx:for="{{grp.items}}" wx:key="leaveId" wx:for-item="item" class="lv-row">
+            <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{56}}" />
+            <view class="lv-info">
+              <text class="lv-name">{{item.name}} <text class="lv-state {{item.state}}">{{item.stateText}}</text></text>
+              <text class="lv-sub">{{item.subText}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
+              <text wx:if="{{item.hasImage && item.imageArchived}}" class="lv-arc">{{item.clearText}}</text>
+            </view>
+            <view
+              wx:if="{{item.hasImage}}"
+              class="lv-thumb"
+              data-id="{{item.leaveId}}"
+              data-has="1"
+              catchtap="onLeaveImageTap"
+            >
+              <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
+              <text wx:else class="lv-thumb-t">假条</text>
+            </view>
+            <view
+              wx:elif="{{canLeave && item.state !== 'CANCELLED'}}"
+              class="lv-btn ghost"
+              data-id="{{item.leaveId}}"
+              data-has="0"
+              catchtap="onLeaveImageTap"
+            >传假条</view>
+            <!-- 🔴 删除（2026-10-09 需求）：只给**已撤销**的记录（后端也会拒其它状态）。
+                 ⚠️ 与上面「假条缩略图 / 传假条」**并存**（刻意不用 wx:elif 互斥）——
+                    撤销过的记录仍可能补传假条截图存档，两个入口都要留。
+                 ⚠️ 权限跟 canLeave（超管 + 班委，与撤销同一套口径）；辅导员不显示。
+                 ⚠️ 用 lv-del（灰底红字）而不是主色按钮：破坏性操作不该长得像「确认」。 -->
+            <view
+              wx:if="{{canLeave && item.state === 'CANCELLED'}}"
+              class="lv-del"
+              data-id="{{item.leaveId}}"
+              catchtap="onHistDelete"
+              hover-class="press-dim"
+              hover-start-time="0"
+              hover-stay-time="60"
+            >删除</view>
+          </view>
+        </view>
+
+        <view wx:if="{{!leaveHistCount}}" class="lv-empty">{{histAny ? '没有符合筛选条件的记录' : '还没有请假记录'}}</view>
+        <view wx:else class="lv-hint">假条图片在请假结束后保留 7 天，之后自动清除（撤销的同样 7 天）。</view>
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- ============ 请假名单（只读，辅导员） ============
+       辅导员只看不改：按 A/B 组列出今日请假的人，无撤销/登记（登记权在班委/超管）。 -->
+  <bottom-sheet id="leaveViewSheet" show="{{leaveViewShow}}" title="请假名单" resizeAnim="{{true}}" bind:close="onLeaveViewClose">
+    <view class="lv">
+      <!-- 1.0.6：辅导员也不能改，但**能看**今日与历史（含假条图片，只读）。
+           与登记弹层同一套 `<segmented>` + 同一套切换动画（定案分支⑤：辅导员侧全部同步）。 -->
+      <view class="lv-seg">
+        <segmented
+          items="{{[{key:'today',text:'今日'},{key:'history',text:'历史'}]}}"
+          value="{{leaveTab}}"
+          width="{{320}}"
+          bind:change="onLeaveTab"
+        />
+      </view>
+
+      <view wx:if="{{leaveTab === 'today'}}" class="{{leavePane === 'l' ? 'lv-pane-l' : ''}}">
+        <view wx:if="{{leaveViewListA.length}}" class="lv-grp">
+          <text class="lv-grp-t">A 组 · {{leaveViewListA.length}} 人</text>
+          <view wx:for="{{leaveViewListA}}" wx:key="leaveId" class="lv-row">
+            <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{56}}" />
+            <view class="lv-info">
+              <text class="lv-name">{{item.name}}</text>
+              <text class="lv-sub">{{item.startDate}} ~ {{item.endDate}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
+            </view>
+            <!-- 只读侧（辅导员）：有假条就显示同样的缩略图，可点开大图；没图就不显示任何东西。 -->
+            <view
+              wx:if="{{item.hasImage}}"
+              class="lv-thumb"
+              data-id="{{item.leaveId}}"
+              data-has="1"
+              catchtap="onLeaveImageTap"
+            >
+              <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
+              <text wx:else class="lv-thumb-t">假条</text>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{leaveViewListB.length}}" class="lv-grp">
+          <text class="lv-grp-t">B 组 · {{leaveViewListB.length}} 人</text>
+          <view wx:for="{{leaveViewListB}}" wx:key="leaveId" class="lv-row">
+            <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{56}}" />
+            <view class="lv-info">
+              <text class="lv-name">{{item.name}}</text>
+              <text class="lv-sub">{{item.startDate}} ~ {{item.endDate}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
+            </view>
+            <!-- 只读侧（辅导员）：有假条就显示同样的缩略图，可点开大图；没图就不显示任何东西。 -->
+            <view
+              wx:if="{{item.hasImage}}"
+              class="lv-thumb"
+              data-id="{{item.leaveId}}"
+              data-has="1"
+              catchtap="onLeaveImageTap"
+            >
+              <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
+              <text wx:else class="lv-thumb-t">假条</text>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{!leaveViewListA.length && !leaveViewListB.length}}" class="lv-empty">今天没有人请假</view>
+      </view>
+
+      <!-- 历史（辅导员只读）：筛选 + 按开始日期分组，与登记弹层同一套控件，
+           只是没有「传假条」按钮（辅导员无登记/上传权）。 -->
+      <view wx:else class="{{leavePane === 'r' ? 'lv-pane-r' : ''}}">
+        <view class="lv-filters">
+          <view class="lv-chips">
+            <segmented
+              items="{{[{key:'all',text:'全部'},{key:'7',text:'近 7 天'},{key:'30',text:'近 30 天'}]}}"
+              value="{{histRange === '' ? 'all' : histRange}}"
+              width="{{420}}"
+              bind:change="onHistRangeTap"
+            />
+          </view>
+          <view class="lv-daterange">
+            <picker mode="date" value="{{histFromShow}}" bindchange="onHistFromChange">
+              <view class="lv-dr {{histFromShow ? 'on' : ''}}">{{histFromShow || '开始日期'}}</view>
+            </picker>
+            <text class="lv-drtilde">→</text>
+            <picker mode="date" value="{{histToShow}}" bindchange="onHistToChange">
+              <view class="lv-dr {{histToShow ? 'on' : ''}}">{{histToShow || '结束日期'}}</view>
+            </picker>
+            <view wx:if="{{histAny}}" class="lv-clear" catchtap="onHistClear">清空</view>
+          </view>
+          <view class="lv-search">
+            <text class="lv-search-ico">搜</text>
+            <input
+              class="lv-search-input"
+              value="{{histKw}}"
+              placeholder="搜索姓名或学号（可多选）"
+              placeholder-class="lv-search-ph"
+              confirm-type="search"
+              bindinput="onHistSearchInput"
+            />
+            <text wx:if="{{histKw}}" class="lv-search-x" catchtap="onHistClear">×</text>
+          </view>
+          <view wx:if="{{histMembers.length}}" class="lv-picked">
+            <view wx:for="{{histPickedNames}}" wx:key="id" class="lv-pick" data-id="{{item.id}}" catchtap="onHistMemberRemove">
+              {{item.name}}×
+            </view>
+          </view>
+          <view wx:if="{{histCandShow}}" class="lv-cands">
+            <view wx:if="{{!histCands.length}}" class="lv-cands-empty">本班没有匹配的同学</view>
+            <view
+              wx:for="{{histCands}}"
+              wx:key="id"
+              class="lv-cand2 {{histPickedMap[item.id] ? 'on' : ''}}"
+              data-id="{{item.id}}"
+              catchtap="onHistCandTap"
+            >
+              <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{44}}" />
+              <text class="lv-cand2-n">{{item.name}}</text>
+              <text class="lv-cand2-s">{{item.seq}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="lv-sec-t">历史请假 · {{leaveHistCount}} 条</view>
+
+        <view wx:for="{{leaveHistGroups}}" wx:key="key" wx:for-item="grp" class="lv-hgrp">
+          <view class="lv-hgrp-t">
+            <text class="lv-hgrp-date">{{grp.label}}</text>
+            <text class="lv-hgrp-c">{{grp.count}} 条</text>
+          </view>
+          <view wx:for="{{grp.items}}" wx:key="leaveId" wx:for-item="item" class="lv-row">
+            <avatar-tag name="{{item.name}}" text="{{item.seq}}" no-fallback="{{true}}" size="{{56}}" />
+            <view class="lv-info">
+              <text class="lv-name">{{item.name}} <text class="lv-state {{item.state}}">{{item.stateText}}</text></text>
+              <text class="lv-sub">{{item.subText}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
+              <text wx:if="{{item.hasImage && item.imageArchived}}" class="lv-arc">{{item.clearText}}</text>
+            </view>
+            <view
+              wx:if="{{item.hasImage}}"
+              class="lv-thumb"
+              data-id="{{item.leaveId}}"
+              data-has="1"
+              catchtap="onLeaveImageTap"
+            >
+              <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
+              <text wx:else class="lv-thumb-t">假条</text>
+            </view>
+          </view>
+        </view>
+
+        <view wx:if="{{!leaveHistCount}}" class="lv-empty">{{histAny ? '没有符合筛选条件的记录' : '还没有请假记录'}}</view>
+      </view>
+    </view>
+  </bottom-sheet>
+</view>

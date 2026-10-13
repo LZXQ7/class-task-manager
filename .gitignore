@@ -1,0 +1,58 @@
+# 依赖与构建产物
+node_modules/
+.cloudbaserc/
+*.log
+
+# 会话/临时文件（仓库根下长期堆积的调试产物）
+.wb_tmp/
+_verify/
+__pycache__/
+.gate-out.txt
+.gate-run*.txt
+.deploy-poster.log
+.fn-detail.json
+_tmp_*
+_online/
+*.sqlrun/
+
+# ⛔ 含口令哈希，绝不能进版本库
+#由 scripts/admin-create-user.js 生成（后台账号创建 SQL）
+outputs/admin-create-user.sql
+# ⛔ 云函数环境变量（含 DB 口令），由 tcb fn env pull 拉取到本地
+.env-*
+.env
+# 云函数依赖与打包缓存
+cloudfunctions/*/node_modules/
+.verify/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+
+# ===== 项目特定排除（密钥 / 生产数据 / 衍生物） =====
+
+# ⛔ 工作区记忆与备份：含生产 SQL 备份（学生姓名/学号等隐私）+ 记忆密钥，绝不可入库
+.workbuddy/
+
+# ⛔ 微信 IDE 私钥 / 上传密钥 / 用户专属配置（IDE 可重新生成）
+project.private.config.json
+
+# 衍生物与参考副本（非本项目源码，体积大且无版本意义）
+.fnverify/
+Dawn-Course-ref/
+preview/
+miniapp/
+
+# outputs/：702MB 构建/验证/迁移垃圾（含 Windows 保留名 aux 目录，git 无法读取），默认全忽略，仅保留 *.md 发版说明
+outputs/**
+!outputs/*.md
+
+# 根目录散落的截图（非源码资源）
+c1.png
+c2.png
+c3.png
+c4.png
+p2check.png
+
+# 散落临时清单/导出文件
+.tmp-*

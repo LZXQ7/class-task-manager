@@ -1,0 +1,200 @@
+/* 导航条 = 玻璃材质（v0.7.17）：
+   底色由 `bg` 属性（inline style）给，模糊 / 亮边 / 底部高光在这里给。
+   导航是 fixed 的，正文会从它下面滚过 —— 这正是玻璃最容易「显形」的位置。 */
+.nav {
+  width: 100%;
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 -1rpx 0 rgba(255, 255, 255, 0.6);
+}
+/* 🔴 深色模式：底部高光那条 `inset 0 -1rpx 0 rgba(255,255,255,.6)` 在深色下会变成
+ *   一条刺眼的白线（深色玻璃的「厚度感」要靠更弱的高光）。两条兜底底色同理。 */
+.t-dark .nav {
+  box-shadow: inset 0 -1rpx 0 rgba(200, 215, 245, 0.14);
+}
+/* 不支持模糊的机型：底色不足以撑住文字（半透明白 + 无模糊 = 正文透上来）→ 加厚 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .nav { background: rgba(255, 255, 255, 0.92) !important; }
+  /* 深色下必须是深色实心，否则标题白字压在白底上完全看不见 */
+  .t-dark .nav { background: rgba(28, 32, 39, 0.96) !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .nav {
+    background: #FFFFFF !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .t-dark .nav {
+    background: #1C2027 !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+.nav-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 800;
+}
+.nav-border {
+  border-bottom: 2rpx solid rgba(229,230,235,0.7);
+}
+.nav-status {
+  width: 100%;
+}
+/* 固定导航的占位块：高度 = 状态栏(px) + 标题行 88rpx，与 .nav-body 严格对齐 */
+.nav-placeholder {
+  box-sizing: content-box;
+  height: 88rpx;
+  width: 100%;
+}
+.nav-body {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16rpx;
+}
+.nav-side {
+  position: relative;
+  z-index: 2;
+  min-width: 120rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.nav-left {
+  justify-content: flex-start;
+}
+.nav-right {
+  justify-content: flex-end;
+}
+.nav-btn {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 标题绝对居中，不受左右插槽宽度影响（与微信原生导航一致） */
+.nav-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  /* 左右各留 190rpx：右侧插槽 + 胶囊避让区不会压到标题文字 */
+  padding: 0 190rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 34rpx;
+  line-height: 48rpx;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.nav-title .nav-title-t {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============ 主题切换按钮（深色模式 C-4）============
+ * 🔴 **必须是 fixed 而不是 absolute**：absolute 的定位基准是最近的定位祖先，
+ *    而页面根节点 `.page` 不是定位元素 → 会退化成相对视口，看起来一样；
+ *    但一旦将来某页给根节点加了 `position: relative`（很多页面都会），
+ *    按钮就会跟着滚走。用 fixed 则与祖先定位无关，恒定在屏幕左上角。
+ * ⚠️ fixed 的祖先链上不能有 filter / backdrop-filter / transform / will-change，
+ *    它们会让 fixed 相对该祖先定位 —— 所以本组件的 `.nav`（有 backdrop-filter）
+ *    绝不能是按钮的祖先，这正是 wxml 里把按钮放在 `.nav` **外面**的原因。
+ *
+ * 位置与 .nav-left 的返回按钮对齐：状态栏高 + (88rpx - 64rpx)/2。
+ * 🔴 top 由 JS（statusBarHeight）算好后用 inline style 传 —— 不用 calc 把 px 和 rpx
+ *    混在一个表达式里：状态栏是 **px**、偏移是 **rpx**，部分机型上两者换算时序不同
+ *    会差 1~2px，表现为按钮上下抖。 */
+.theme-btn {
+  position: fixed;
+  left: 16rpx;
+  z-index: 950;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 半透明玻璃圆钮：与 .card 同材质，但更淡（不该抢标题的视觉重心） */
+  background: var(--glass-bg);
+  border: 1rpx solid var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-sizing: border-box;
+}
+.theme-btn-hover {
+  background: var(--brand-light);
+  border-color: var(--brand);
+}
+/* 太阳 / 月亮：纯 CSS 画，不走 app-icon（那套是云存储 SVG + 固定色，
+ * 主题切换时颜色不会跟着变）。两个都用绝对定位叠在一起，
+ * 靠 opacity 交叉淡入淡出 —— 纯 CSS 过渡，不占 setData。 */
+.theme-sun,
+.theme-moon {
+  position: absolute;
+  width: 30rpx;
+  height: 30rpx;
+  box-sizing: border-box;
+  transition: opacity .22s ease, transform .22s ease;
+  pointer-events: none;
+}
+/* 太阳：一个圆 + 中心实心（简化的日面，不画光芒 —— 64rpx 里光芒会糊成一团） */
+.theme-sun {
+  border-radius: 50%;
+  background: var(--warning);
+  box-shadow: inset 0 0 0 5rpx var(--bg-page);
+}
+/* 月亮：实心圆用底色「咬」出一个缺口 —— 比用两段 border 拼 crescent 干净得多 */
+.theme-moon {
+  border-radius: 50%;
+  background: var(--text-1);
+  box-shadow: inset 6rpx 3rpx 0 0 var(--bg-page);
+}
+/* 浅色模式显示月亮（点它变深色） */
+.theme-moon { opacity: 0; transform: scale(.6) rotate(-30deg); }
+.theme-sun  { opacity: 1; transform: scale(1); }
+/* 深色模式反过来：显示太阳（点它变浅色） */
+.t-dark .theme-sun  { opacity: 0; transform: scale(.6) rotate(30deg); }
+.t-dark .theme-moon { opacity: 1; transform: scale(1) rotate(0); }
+
+/* ============ 圆形揭示 overlay（C-4）============
+ * 盖住整屏，clip-path 从触点扩散。z-index 必须**高于按钮**（950 → 960），
+ * 否则展开到按钮位置时按钮会露在遮罩上面，看着像「按钮没被盖住」。
+ * 🔴 且必须高于**全站所有浮层**：bottom-sheet 是 1000、dialog 是 1100。
+ *    主题切换是「整屏换肤」，遮罩只盖一半（弹层浮在上面不变色）看起来就是 bug。
+ *    取 1200 = 高于当前最高的 dialog(1100)，留出余量给后续新浮层。
+ * `will-change: clip-path` 提示浏览器提前提升为合成层，避免逐帧重绘整屏
+ * （这是 18 帧动画在中低端机上不掉帧的关键）。 */
+.theme-reveal {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1200;
+  pointer-events: none;      /* 动画期间不拦任何触摸 */
+  will-change: clip-path;
+}
+/* 系统「减弱动效」：直接切换、不要这层遮罩。
+ * ⚠️ 定时器驱动的半径增长不受 CSS media 影响（那在 index.js 里判），
+ *    这里只是把「万一 CSS 动画也被触发」的路径也关掉。 */
+@media (prefers-reduced-motion: reduce) {
+  .theme-reveal { display: none; }
+  .theme-sun,
+  .theme-moon { transition: none; }
+}

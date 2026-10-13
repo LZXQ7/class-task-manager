@@ -1,0 +1,290 @@
+{
+ "courses": [
+  {
+   "name": "形势与政策5",
+   "teacher": "示例老师01",
+   "room": "3号教学楼208"
+  },
+  {
+   "name": "小学人工智能教育",
+   "teacher": "示例老师05",
+   "room": "3号教学楼110（教师技能虚拟仿真实验室）"
+  },
+  {
+   "name": "小学语文课程与教学论",
+   "teacher": "示例老师10",
+   "room": "综合实验楼一区212(微课制作实训室)"
+  },
+  {
+   "name": "小学综合实践活动设计",
+   "teacher": "示例老师11",
+   "room": "3号教学楼110（教师技能虚拟仿真实验室）"
+  },
+  {
+   "name": "微课设计与制作",
+   "teacher": "示例老师02",
+   "room": "3号教学楼109（教育技术与远程互动实验室）"
+  },
+  {
+   "name": "小学数学课程与教学论",
+   "teacher": "示例老师06",
+   "room": "3号教学楼305"
+  },
+  {
+   "name": "习近平新时代中国特色社会主义思想概论",
+   "teacher": "示例老师03",
+   "room": "3号教学楼213"
+  },
+  {
+   "name": "小学生心理健康与指导",
+   "teacher": "示例老师08",
+   "room": "3号教学楼222"
+  },
+  {
+   "name": "儿童文学",
+   "teacher": "示例老师12",
+   "room": "3号教学楼205"
+  },
+  {
+   "name": "三笔字",
+   "teacher": "示例老师07",
+   "room": "3号教学楼111（三笔字画智能教学实训室）"
+  },
+  {
+   "name": "音乐基础",
+   "teacher": "示例老师09",
+   "room": "综合实验楼二区302（数码钢琴实训室03）"
+  }
+ ],
+ "sessions": [
+  {
+   "courseIndex": 0,
+   "name": "形势与政策5",
+   "teacher": "示例老师01",
+   "room": "3号教学楼208",
+   "dayOfWeek": 1,
+   "period": 1,
+   "weeks": "6,8,10,12",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 1,
+   "name": "小学人工智能教育",
+   "teacher": "示例老师05",
+   "room": "3号教学楼110（教师技能虚拟仿真实验室）",
+   "dayOfWeek": 2,
+   "period": 1,
+   "weeks": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 2,
+   "name": "小学语文课程与教学论",
+   "teacher": "示例老师10",
+   "room": "综合实验楼一区212(微课制作实训室)",
+   "dayOfWeek": 4,
+   "period": 1,
+   "weeks": "5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 3,
+   "name": "小学综合实践活动设计",
+   "teacher": "示例老师11",
+   "room": "3号教学楼110（教师技能虚拟仿真实验室）",
+   "dayOfWeek": 5,
+   "period": 1,
+   "weeks": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 4,
+   "name": "微课设计与制作",
+   "teacher": "示例老师02",
+   "room": "3号教学楼109（教育技术与远程互动实验室）",
+   "dayOfWeek": 1,
+   "period": 2,
+   "weeks": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 5,
+   "name": "小学数学课程与教学论",
+   "teacher": "示例老师06",
+   "room": "3号教学楼305",
+   "dayOfWeek": 2,
+   "period": 2,
+   "weeks": "1,2,3,4",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 2,
+   "name": "小学语文课程与教学论",
+   "teacher": "示例老师10",
+   "room": "3号教学楼303",
+   "dayOfWeek": 4,
+   "period": 2,
+   "weeks": "1,2,3,4",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 5,
+   "name": "小学数学课程与教学论",
+   "teacher": "示例老师06",
+   "room": "3号教学楼112（科学教育实验室）",
+   "dayOfWeek": 2,
+   "period": 2,
+   "weeks": "5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 6,
+   "name": "习近平新时代中国特色社会主义思想概论",
+   "teacher": "示例老师03",
+   "room": "3号教学楼213",
+   "dayOfWeek": 1,
+   "period": 3,
+   "weeks": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 7,
+   "name": "小学生心理健康与指导",
+   "teacher": "示例老师08",
+   "room": "3号教学楼222",
+   "dayOfWeek": 3,
+   "period": 3,
+   "weeks": "1,3,5,7,9,11,13,15",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 6,
+   "name": "习近平新时代中国特色社会主义思想概论",
+   "teacher": "示例老师03",
+   "room": "3号教学楼213",
+   "dayOfWeek": 4,
+   "period": 3,
+   "weeks": "1,3,5,7,9,11,15",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 8,
+   "name": "儿童文学",
+   "teacher": "示例老师12",
+   "room": "3号教学楼205",
+   "dayOfWeek": 5,
+   "period": 3,
+   "weeks": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 7,
+   "name": "小学生心理健康与指导",
+   "teacher": "示例老师08",
+   "room": "3号教学楼121（幼儿保育实训室）",
+   "dayOfWeek": 3,
+   "period": 3,
+   "weeks": "2,4,6,8,10,12,14,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 6,
+   "name": "习近平新时代中国特色社会主义思想概论",
+   "teacher": "示例老师03",
+   "room": "精神谱系馆",
+   "dayOfWeek": 4,
+   "period": 3,
+   "weeks": "13",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 9,
+   "name": "三笔字",
+   "teacher": "示例老师07",
+   "room": "3号教学楼111（三笔字画智能教学实训室）",
+   "dayOfWeek": 2,
+   "period": 5,
+   "weeks": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  },
+  {
+   "courseIndex": 10,
+   "name": "音乐基础",
+   "teacher": "示例老师09",
+   "room": "综合实验楼二区302（数码钢琴实训室03）",
+   "dayOfWeek": 3,
+   "period": 5,
+   "weeks": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+   "weekRule": "ALL",
+   "groupScope": null,
+   "courseType": "ALL",
+   "kind": "COURSE",
+   "dutyCount": 2
+  }
+ ],
+ "warnings": [],
+ "meta": {
+  "sectionCol": 1,
+  "headerRow": 2
+ }
+}
