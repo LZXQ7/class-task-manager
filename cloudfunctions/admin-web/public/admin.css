@@ -265,6 +265,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .td-day, .td-day td { background: #fafbfc; }
 .td-day { font-weight: 500; }
 .td-weeks { max-width: 200px; font-size: 12px; color: var(--text-2); word-break: break-all; }
+/* 「第 x 节」列不折行（2026-10-14 需求④：窄屏下「节」字曾被挤到下一行） */
+.tbl td.td-period { white-space: nowrap; }
 .td-sum { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .td-ops { white-space: nowrap; }
 

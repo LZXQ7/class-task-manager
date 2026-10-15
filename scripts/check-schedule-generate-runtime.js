@@ -61,7 +61,7 @@ function makeFakePool(log, opts) {
     }
     if (/FROM member WHERE class_id/i.test(sql)) {
       return [roster.map((r, i) => Object.assign({
-        id: i + 1, student_no: '2099010301' + String(i + 10).padStart(2, '0'),
+        id: i + 1, student_no: '0000000003' + String(i + 10).padStart(2, '0'),
         group_tag: 'A', duty_count: 0
       }, r))];
     }
@@ -231,11 +231,11 @@ async function main() {
      这里用假池真跑generate 数「实际写进 duty 表的人」——
      纯文本正则查不出「名额算错」这类口径错误（判据写了但没接上，见 D2）。 */
   {
-    /* 名册 5 人：学号尾号 11..15 ⇒ seq 1..5（seqOf 取学号后两位后两位，2099010301xx → 1..5）*/
+    /* 名册 5 人：学号尾号 11..15 ⇒ seq 1..5（seqOf 取学号后两位后两位，0000000003xx → 1..5）*/
     const roster5 = [
-      { student_no: '209901030111' }, { student_no: '209901030112' },
-      { student_no: '209901030113' }, { student_no: '209901030114' },
-      { student_no: '209901030115' }
+      { student_no: '000000000311' }, { student_no: '000000000312' },
+      { student_no: '000000000313' }, { student_no: '000000000314' },
+      { student_no: '000000000315' }
     ];
     /* D1：课次 9 的 duty_count=2，已手动排 2 人（seq1、seq2）⇒ 必须一个都不再追加。
      * 修复前：created=2（又排了 seq3、seq4）⇒ 这里会红。 */
@@ -302,11 +302,30 @@ async function main() {
       assert(inserted.length === 2 && d.created === 2,
         'D3 无手动排班 → 照常排满 2 人（实际 ' + inserted.length + ' 人 / created=' + d.created + '）');
     }
+    /* D6 duty_count=0 = 不排值日（2026-10-14「书香校园」口径：45 分钟短课不排人）。
+     * 旧写法 `Number(s.duty_count) || 1` 把 0 当「未填」⇒ 排 1 人；`??` 窄化后 0 保持 0。
+     * 双向自证：把 `?? 1` 改回 `|| 1`，D6c 立刻红（0 被当成 1，排进 1 人）。 */
+    {
+      const code = stripComments(src);
+      assert(/const n = Math\.max\(0, Number\(s\.duty_count \?\? 1\) - alreadyFilled\);/.test(code),
+        'D6a generate 名额式用 ?? 窄化（duty_count=0 时排 0 人，不被 || 1 误当 1）');
+      const inserted = [];
+      const zeroSessions = [
+        { id: 9, week_rule: null, weeks: '1,2,3,4,5', day_of_week: 1, period: 1, group_scope: null, duty_count: 0 }
+      ];
+      const mod = loadSchedule(src, [], { roster: roster5, inserted, sessionList: zeroSessions, manual: [] });
+      let r = null, e = null;
+      try { r = await mod.main({ action: 'generate', payload: { week: 4 } }); } catch (x) { e = x; }
+      const d = (r && r.data) || {};
+      assert(!e, 'D6b duty_count=0 的课次 generate 不抛错' + (e ? '（' + e.message + '）' : ''));
+      assert(inserted.length === 0 && (d.created || 0) === 0,
+        'D6c duty_count=0 → 一个都不排（实际追加 ' + inserted.length + ' 人 / created=' + d.created + '）');
+    }
     /* D4 cron-weekly 同口径：周自动生成也必须只补空缺，否则周日 cron 会把超管手动排的课顶成双倍。
      * 判据直接读源码里那条真实的 `n` 计算式（剥注释，避免命中注释里的字面量）。*/
     {
       const cronCode = stripComments(fs.readFileSync(CRON, 'utf8'));
-      assert(/Math\.max\(0,\s*\(Number\(s\.duty_count\)\s*\|\|\s*1\)\s*-\s*alreadyFilled\)/.test(cronCode),
+      assert(/Math\.max\(0,\s*Number\(s\.duty_count\s*\?\?\s*1\)\s*-\s*alreadyFilled\)/.test(cronCode),
         'D4 cron-weekly 同步只补空缺（Math.max(0, duty_count − alreadyFilled)）');
       assert(/manualFilled\[Number\(m\.session_id\)\]/.test(cronCode),
         'D4b cron-weekly 手动排班也按课次统计占用（manualFilled[session_id]）');

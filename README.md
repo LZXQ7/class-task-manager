@@ -161,7 +161,7 @@ node scripts/deploy-admin-web.js
   git tag vx.y.z                      # 仅「已上传微信平台」的版本才打 tag
   git push origin main --tags
   ```
-- **仓库**：`https://github.com/LZXQ7/class-task-manager.git`（开源脱敏模板，默认分支 `main`）。内部未脱敏版本另存于私有仓库 `class-task-manager-template`。
+- **仓库**：`https://github.com/LZXQ7/class-task-manager-template.git`（默认分支 `main`）。
 - **微信端上传 / 送审**：在微信开发者工具或公众平台操作。
   > 🔴 **本仓库无法自动感知你是否上传/送审**。请在上传或送审后**主动告知**，
   > 我会据此更新 `HANDOFF.md`【主线状态】（标记版本上传/送审日期、跑复核、按需开关审核体验入口）。
@@ -180,12 +180,7 @@ node scripts/deploy-admin-web.js
 - `.env-*` —— 数据库明文口令（`DB_*`）；
 - `Dawn-Course-ref/`、`preview/`、`miniapp/`、`_tmp_*`、`outputs/**`（非 `*.md`）—— 衍生物 / 大体积 / 临时。
 
-本仓库是**开源脱敏模板**：`envId`、`appid`、真实姓名、学号、班级名、令牌等均已模板化为占位符（如 `<YOUR_ENV_ID>`、`<YOUR_APPID>`、`示例班级A`、`示例成员01`）。
-部署前请：
-1. 在 `project.config.json` / `cloudfunctions/cloudbaserc.json` 中填入你自己的 `appid` 与 `envId`；
-2. 在 `miniprogram/utils/config.js`、`cloudfunctions/common/config.js` 等位置替换占位符；
-3. 用你自己的微信 AppID 与 CloudBase 环境重新走一遍 §4–§7 的初始化。
-内部未脱敏的版本（含真实数据、私钥、`.workbuddy/` 备份）请放在**私有仓库**，切勿推送到公开仓库。
+建议仓库设为 **Private**。令牌、openid、学生真实信息一律不进版本库。
 
 ---
 

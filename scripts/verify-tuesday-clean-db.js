@@ -218,7 +218,7 @@ async function main() {
     // 40 名在册学生（序号 1~40），A/B 交替分组
     const memVals = [];
     for (let i = 1; i <= 40; i += 1) {
-      memVals.push([1, '同学' + i, '2099010301' + String(i).padStart(2, '0'), i % 2 ? 'A' : 'B']);
+      memVals.push([1, '同学' + i, '0000000003' + String(i).padStart(2, '0'), i % 2 ? 'A' : 'B']);
     }
     await conn.query(
       'INSERT INTO member (class_id, name, student_no, group_tag) VALUES ?',

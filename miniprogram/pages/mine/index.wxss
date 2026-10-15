@@ -181,6 +181,11 @@
 .mn-card {
   margin: 24rpx 32rpx 0;
 }
+/* 「更多」弹层的行容器：行本身复用 .mn-row（含 .mn-row + .mn-row 的分隔线），
+   这里只补弹层内的上下留白，别再抄一份行样式过来。 */
+.mn-more {
+  padding: 8rpx 0 32rpx;
+}
 .mn-row {
   display: flex;
   align-items: center;
@@ -520,6 +525,37 @@
 /* 微信提醒「额度已用完」的行尾提示（v0.7.15）：沿用本页告警色，与左侧橙色铃铛同色 */
 .mn-row-warn {
   color: #FF7D00;
+}
+
+/* ---------- 审核体验口令（2026-10-15 · v1.0.6.8，仅超管） ----------
+   等宽 + 大字距 + 可整块点击复制：口令要被手抄/粘贴，糊成一团最容易抄错。
+   ⚠️ 色值一律走 token（深色模式才能自动翻），不在这里硬编码。 */
+.rv-code {
+  margin: 8rpx 0 8rpx;
+  padding: 28rpx 24rpx;
+  background: var(--bg-fill);
+  border: 2rpx dashed var(--line-1);
+  border-radius: var(--r-md);
+  font-size: 34rpx;
+  line-height: 48rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  text-align: center;
+  color: var(--text-1);
+  user-select: true;
+  word-break: break-all;
+}
+.rv-code:active {
+  background: var(--brand-light);
+}
+.rv-warn {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  background: var(--warning-bg);
+  border-radius: var(--r-sm);
+  font-size: 24rpx;
+  line-height: 36rpx;
+  color: var(--warning);
 }
 
 /* ---------- 发送更新公告（v0.7.25，仅超管） ---------- */

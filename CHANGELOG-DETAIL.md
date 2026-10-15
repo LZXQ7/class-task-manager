@@ -7,6 +7,275 @@
 
 ---
 
+## v0.7.42 · 2026-10-15 · 对外 1.0.6.9
+**主题：课表编辑与周次细节 + 值日页精简**
+
+> 口径：本次同时纳入工作区里一批已完成的功能改动（班费/团费、课表编辑弹层、审核体验入口改为超管开关、部署脚本改造等），与本轮三次修复合并为一个版本上传。前端待上传。门禁 **84/84 全绿**。
+
+**① 背景与用户诉求（均来自用户实锤）**
+- 「课程表页加载特别慢」→ 量化诊断见 `outputs/课表页加载慢-诊断报告.md`（**诊断完成，修复未实施**，线上已回滚）。
+- 「删除这个提示」（班费弹层的「仅查看，无法修改或删除」横幅）。
+- 「值日页不要加值日」。
+- 「书香校园没显示 / 多了一节空行 / 没按我写的时间」→ 三轮修复（周次区间、行数自适应、短课归位）。
+
+**② 改动一：课表页新增编辑课次**
+
+- 弹层 `formShow` 复用为「新增课次 / **编辑课次** / 添加选修课 / 编辑选修课」四态（标题按 `formMode` + `sessionId` / `electiveId` 切换）。
+- 可编辑字段：课程名称、教师、教室、星期、大节、每节值日人数（与后台 `admin-web` 的课次编辑同口径）。
+- 后端 `course` 云函数对应 action 已上线。
+
+**③ 改动二：周次区间写法 `6-13`（端上 / 后端同口径）**
+
+| 位置 | 原实现 | 对 `6-13` 的结果 |
+|---|---|---|
+| `miniprogram/data/timetable.js matchesWeeks` | `split(',') + Number()` | `Number('6-13')` = NaN ⇒ **整批周次全丢** |
+| `cloudfunctions/common/week.js parseWeeks` | `parseInt('6-13')` | = **6** ⇒ 第 7~13 周静默丢弃 |
+| `admin-web/public/app.js normalizeWeeks`（课表导入器） | 支持区间 | ✅ 一直正常 |
+
+- 根子：**三条录入入口里只有「添加课次」没做区间归一化** ⇒ 两对一错。
+- 修：三处统一为 `^(\d+)\s*-\s*(\d+)$` 区间展开（自动纠正 `13-6` 反写）；`mod-course.addSession` **落库前先 `parseWeeks` 归一化**，库里不再出现裸区间。
+
+**④ 改动三：allSessions 回传 duty_count**
+
+- `course.allSessions` 的 SQL **漏取 `duty_count`** ⇒ 端上 `data/timetable.js` 两处只能写死 `dutyCount: 2` ⇒「不排值日」（`duty_count=0`）的课在课表详情显示成 2 人。
+- 修：SQL 补 `s.duty_count`、返回补 `dutyCount`；端上改 `(s.dutyCount === 0 || s.dutyCount) ? Number(s.dutyCount) : 2`（**不能用 `|| 2`，会把 0 吃掉** —— 与 duty_count=0 通道同一个坑）。
+
+**⑤ 改动四：课表行数随周次自适应**
+
+- 平时一天五节大课，第 6 节是短课特殊时段；原实现无条件按 `period_time` 画满 ⇒ 没有第 6 节课的周次多出一整行空格子。
+- 改为 **`nPeriods = max(1, tt.periodCount(), maxUsedPeriod)`**，`maxUsedPeriod` = 本周全部课次里出现的最大 period（排除「调出」的课）。
+- ⚠️ 判定按整周 `courses` 而非当前分组视图，与同页 `hasWeekend`（周末列）**同口径** —— 否则切 A/B 组时网格在 5↔6 行间跳动。
+
+**⑥ 改动五：短课归位（产品口径，用户拍板）**
+
+- 短课时间与既有大节**重叠**时 ⇒ **归到时间重叠的那个节次**，不新增第 N 行大节。
+- 生产库修正三班 5 条「书香校园」：示例班级A 周四 6→4；2601 周二/周四 6→1；示例班级B 周四 6→3；示例班级B 周一 7→1。同批删除三班 `period_time` 的第 6/7 行（已无课次使用，`JSON_LENGTH` 复核 = 5）。
+- ⚠️ 以后加短课：**不要**新增大节配置行，直接归到时间重叠的大节（**一格两课是预期行为**）。
+
+**⑦ 改动六：值日页隐藏「+ 加值日生」**
+
+- `pages/duty/index.js` data 加开关 `showAddDutyBtn: false`；`index.wxml` 的 `wx:if` 改 `{{canSchedule && showAddDutyBtn}}`。
+- **保留** `onAddOpen` 等全部逻辑与 `bottom-sheet`、后端接口 ⇒ 恢复只需把开关改回 `true`。
+- `check-permission-delegate` ④段判据同步：接受两种形态，**总数 6 仍是硬要求**。
+
+**⑧ 改动七：班费弹层去重**
+
+- 删除 `.fee-viewonly-hint` 横幅（wxml + wxss）。它与标题「班费 · 仅查看」重复，而「增加消费」按钮本就受 `feeCanManage` 控制不渲染 ⇒ 双重提示反而像坏了。
+- 🔴 权限口径不变：非管理者仍无增删改入口，身份提示仍在卡片「查看」标签与弹层标题里。
+
+**⑨ 门禁与部署**
+
+- 全量门禁 **84/84 全绿**（84 项含 `check-period-count` 24 项、`check-admin-web` 46 项）。
+- `check-admin-web` 因宿主 `fs.rmSync` 垫片单次 ~9s 而累计 71s 超批跑阈值 ⇒ 改为整轮统一清理（`cleanupMutDir`），71s→18s，批跑 9min→35s。
+
+**⑩ ⚠️ 未实施的诊断（课表页慢）**
+
+- 结论：端上计算 0.058ms/次、网络 25–31ms 均正常，**推断**主因是云函数包体积（`class` 线上 11.77MB）。
+- 🔴 踩坑记录：`--install-dependency false` 会把 `node_modules` 一起丢掉（线上依赖全缺失、函数崩溃），**已回滚**。详见 `outputs/课表页加载慢-诊断报告.md`。
+
+---
+
+## v0.7.41 · 2026-10-15 · 对外 1.0.6.8
+**主题：班费 / 团费模块（新云函数 + 两表）+「我的 → 更多」入口收纳 + 首页刷新与课次行视觉修复**
+
+> 口径：新增 **`fee` 云函数（已部署，含 VPC + 5 个 DB_* 环境变量）**，新增 **`class_fund` / `class_fund_record` 两张表（生产已建）**；其余为前端改动，前端待上传。门禁 **84/84 全绿**。
+
+**① 背景与用户诉求**
+- 「首页要有班费、团费卡片，能看到余额、能记消费、能设总额」——新增整个班费/团费模块。
+- 「『我的』页面增加『更多』选项，把切换测试账号、班级绑定入口、AI 排班设置、手动排班都放在更多里面」（`grill-me` 四轮拍板：bottom-sheet 弹层 / 只移这 4 项 / 放「更多」弹层 / 同弹层双视图）。
+- 「设置总额不放在首页弹层，放在『我的』页面；首页弹层显示消费记录 + 增加消费按钮」。
+- 「合并成班/团费总额，点进去可像值日上面的动效一样滑动切换班费团费」。
+- 线上报障：`FUNCTION_NOT_FOUND`(-501000) `getSummary` 刷屏；「设置了班费，但是首页班费更新很慢」。
+- 首页课次行视觉四连改（实机截图驱动）：间距太大 → 两行显示 → 居中 → 「靠上吧还是」→ 「间距再大一点点，两个字符」。
+
+**② 改动一：新增 `fee` 云函数 + 两张表**
+
+| 文件 | 改动 |
+|---|---|
+| `cloudfunctions/fee/index.js` | 新建。路由 `getSummary` / `setTotal` / `addExpense` / `deleteRecord`；`auth: { needBind: true }` |
+| `scripts/migrate-fee.sql` | 新建。`class_fund(class_id, type, total)` + `class_fund_record(id, class_id, type, amount, note, images JSON, operator_*)`，`CREATE TABLE IF NOT EXISTS` 幂等 |
+| `cloudbaserc.json` | 新增 fee 条目（Nodejs18.15 / 20s / 256MB / installDependency / vpc-c4ga6fms + subnet-a5mkrg1l） |
+| `scripts/deploy-fee.js` | 新建。临时注入 `envVariables` → `tcb fn deploy fee` → 还原（抗中断安全备份、只动 fee） |
+| `miniprogram/utils/api.js` | `feeSummary` / `feeSetTotal` / `feeAddExpense` / `feeDeleteRecord` |
+
+- **余额不落库**：`余额 = 总额 − 已消费`，每次 `getSummary` 运行时算。
+- **图片**：客户端 `wx.chooseMedia` → 直传云存储拿 fileID → 服务端只存 `cloud://` 字符串数组；删除记录时先删云存储文件再删行。
+- **踩坑**：`CreateFunction InvalidParameterValue.Description` —— description 含全角减号 `−`，改为普通标点版本后通过。
+
+**③ 改动二：权限单一真源 `util.feeRights()`**
+
+- `miniprogram/utils/util.js` 新增 `feeRights(m)`，返回 `canManageClass / canManageLeague / canSetTotalClass / canSetTotalLeague / showLeagueCard / hasAny`；首页与「我的」页**都调它**，后端 `fee/index.js` 的 `feeManager` / `feeTotalSetter` 与之**逐字同口径** —— 改权限只改这一处。
+- 口径：班费管理 = 超管 | 班长兼团支书 | 副班长 | 生活委员；团费管理 = 超管 | 班长兼团支书；班费总额设置 = 超管 | 生活委员；团费总额设置 = 超管 | 班长兼团支书；团费卡可见 = 团费管理权（其余角色只看班费，普通成员班费卡仅展示不可点开）。
+
+**④ 改动三：首页班费卡 + 双视图弹层**
+
+- `pages/home/index.wxml`：班费弹层改为**双视图** —— 列表视图（余额 + 「总额/已消费」只读小字 + 消费明细 + 「增加消费」按钮）⇄ 表单视图（金额 / 备注 / 凭证图 + 提交 / 返回）；**设置总额入口已移除**，避免同一值两处编辑。
+- `pages/home/index.js`：`feeView: 'list'`、`onFeeAddOpen` / `onFeeFormBack`；`onFeeClose` 复位 list；提交 / 删除成功后强制重拉。
+- 管理员入口卡（成员与分组 / 发布通知）整体移到「本班请假」**之后**（`st-7`），班费块 `st-7` → `st-6`。
+
+**⑤ 改动四：「我的 → 更多」+ 班/团费总额分段切换**
+
+- `pages/mine/index.wxml`：`page-meta` 的 `page-style` 补 `moreShow || feeTotalShow`（`check-scroll-lock` 判死）；管理卡保留「换班待确认 / 发送更新公告」，其余 4 项收进新增「更多」行（`wx:if="{{showMore}}"`）。
+- 「更多」弹层：切换测试账号 / 班级绑定入口 / 手动排班 / AI 排班设置 + 一行「班/团费总额」（行尾 `feeTotalRowText`）。
+- 总额弹层：`segmented` 组件（`items=[{key,text}]`、事件负载 `e.detail.key`），**仅当 tabs > 1 时渲染**（只有一档权限时不显示分段控件）；双草稿 `feeInputClass` / `feeInputLeague` 分开保存，切 tab 不串值；保存后置 `app.globalData.feeDirty = true`。
+- `_afterMoreClose(fn)`：先关弹层、200ms 后再推进目标页（避免页面跳转与弹层关闭动画打架）。
+- `pages/mine/index.json` 注册 `segmented`；`index.wxss` 新增 `.mn-more`。
+
+**⑥ 改动五：首页班费刷新滞后修复**
+
+- **根因**：`_loadFee` 只挂在 `load().then(...)` 里，而 `load()` 有 `STALE_MS = 20000` 早退 —— 数据新鲜时**连请求都不发**，挂在其后的刷新被整段跳过。
+- **改动**：`onShow` 独立拉一次（`_loadFee(feeDirty)`），不受 STALE_MS 影响；`_loadFee(force)` 内加 2 秒去重窗口，`force` 时跳过去重；写操作（点开卡片 / 提交 / 删除）一律 `_loadFee(true)`；跨页用 `app.globalData.feeDirty` 脏标记（同 `swapDirty` / `rosterDirty` 套路）。
+- 与既有铁律一致：**每次进页面都要准的数据（班费余额、通知角标）必须在 `onShow` 独立拉**。
+
+**⑦ 改动六：首页课次行视觉（4 轮实机迭代终版）**
+
+- 结构重构（今日两份 + 明日共 3 处）：`<view class="course-side">`（时间 + 教室）与 `<text class="course-name">` 并列为 `.course-row` 直接子元素。
+- `.course-time` 宽度 216rpx → **152rpx**（实测只需 ~140rpx，写死 216 是间距过大的根因）；`.course-name` `margin-left: 48rpx`、`align-self: flex-start`（靠上）、`-webkit-line-clamp: 2` 两行截断。
+- 已删除 `.course-info` / `.course-line1` 中间层（无残留）。
+
+**⑦ 改动七：审核体验入口改为超管开关 + 开启即自动生成新口令**
+
+- **背景**：老流程是「我在更新说明里手写一条口令 → 用户跑 `UPDATE class SET review_demo_on=1, review_demo_code='...'` → 提审」，**每个版本都要来一遍**，且手写口令存在「复用旧口令 / 抄错 / 随仓库泄漏」三个方向的风险。用户要求：入口在「我的」页加开关、且**每次更新版本自动换一条仅预览的新口令**。
+- **拍板口径**（三问）：① **仅超管** · 管理卡平铺一行（不收进「更多」）；② **开启时后端自动生成**新口令并回显，开启期间可再看、关闭即作废；③ **沿用现有演示态**（功能可完整体验、只拦破坏性动作）—— 不改成全只读，否则审核员点哪都「不能操作」会被判功能不可用而驳回。
+- **后端**（`cloudfunctions/auth/index.js`）：
+
+  | 项 | 实现 |
+  |---|---|
+  | 口令生成 | `crypto` + `newReviewCode()` ⇒ `LXQ-XXXX-XXXX-XXXX-XXXX`（4 组 × 4 位）。字符表**刻意去掉 0/O/1/I** —— 审核员要手抄，这 4 个字形最容易看错 |
+  | `reviewDemoStatus` | `auth: { needSuper: true }`，返回 `{ on, code }`（开启期间可再看一次） |
+  | `reviewDemoSet` | `auth: { needSuper: true }`；`on=true` = 生成新口令，`on=false` = 作废 + 踢下线 |
+  | 开启顺序 | 先自检 `ctx.member.class_id`（拿不到就报错、**先别动手**）→ 踢演示身份 → **把所有班的开关清一遍** → 再写自己班 |
+  | 关闭 | 踢演示身份（`UPDATE member SET openid=NULL, is_review_demo=0 WHERE is_review_demo=1`）+ 全表清开关 |
+
+  - ⚠️ **为什么开启要先清所有班**：`reviewDemoRow` 是**全表扫描取第一条开着的**（`WHERE review_demo_on=1 ... LIMIT 1`）。只要别班残留一行开着的，就会出现「我以为关掉了，其实另一道后门还开着」—— 关不干净比不关更危险。
+  - ⚠️ 与「口令永不回传前端」那条铁律**不冲突**：铁律约束的是 `login` 下发给所有人的布尔位、以及面向未绑定审核员的 `reviewDemo` 返回体；这两个新路由要求 `needSuper`，口令只回给本人是超管的调用者。
+- **演示态拒绝清单**（`common/review-demo.js`）：新增 `'auth.reviewDemoSet'` 与 `'auth.reviewDemoStatus'` —— 演示身份不得自己换一条口令出来。`sync-common.js` 同步 **14 份**副本。
+- **前端**（`pages/mine`）：管理卡新增一行（`wx:if="{{isSuper}}"`）；关闭态行尾「开启」按钮，开启态「已开启 · 点此关闭」+「口令」按钮；口令弹层可点可复制（`wx.setClipboardData`）。
+  - ⚠️ **「口令」按钮只回显（走 `status`）、不换口令（走 `set`）** —— 换口令会踢掉正在体验的审核员。
+  - `page-meta` 补 `reviewShow`（`check-scroll-lock` 判死）。
+- **门禁**：`check-review-demo.js` 扩到 **12 组变异自证全被抓**（新增：去掉 `needSuper` / 口令写死 / 随机源换 `Math.random` / 前端去掉 `wx:if isSuper` / 从拒绝清单删 `auth.reviewDemoSet`）。
+  - 🔴 顺带修掉一处**假自证**：原 M7 变异锚点 `is_review_demo = 1` 被新增的「踢演示身份」语句顶掉 ⇒ 改了个不相干的地方、测的还是原文件。判据已收进 `rd[0]`（reviewDemo 块内），锚点改为 `is_review_demo = 1 WHERE id = ?`。
+  - 🔴 `check-staff-bind.js` 会 eval `auth/index.js` 并桩化 require，新 `require('crypto')` 不在桩表 ⇒ 报「门禁未桩化 require：crypto」。已补（用真模块，别桩成定值）。
+
+**⑧ 部署状态**
+
+| 项 | 状态 |
+|---|---|
+| `fee` 云函数 | ✅ 已部署（`fn detail` 复核 VPC + 5 个 DB_* 环境变量 + Auto install dependencies=TRUE） |
+| `class_fund` / `class_fund_record` | ✅ 已建（`tcb db execute` 跑 `migrate-fee.sql`，`SHOW TABLES` 复核） |
+| `auth` | ✅ 已重新部署（`fn code download` + `diff -r` 复核线上 == 仓库） |
+| 其余 11 个含 common 副本的函数 | ✅ 已重部署（`deploy_all.sh`；`admin-web` / `fee` 需 VPC 与环境变量，走各自脚本，本轮无需动） |
+| 前端 | ⏳ 待上传 |
+
+---
+
+## v0.7.40 · 2026-10-14 · 对外 1.0.6.7
+**主题：值日状态口径 + 保洁主教室 + 课表节次放开（含 duty_count=0 通道）**
+
+> 口径：本版**云函数已全部部署生效**（7 个函数 + 1 条 DDL）；前端待上传。门禁 **84/84 全绿**，admin-web e2e **75 项全绿**。
+
+**① 背景与用户诉求（均为用户实锤）**
+- 「下午 13:30 了，上午第二节课还显示进行中」—— 值日状态机翻转点设错了。
+- 「2601/示例班级B/示例班级A 都要加一门『书香校园』课，**仅 45 分钟**，并且不排值日」——需要能排到第 6 个大节，且该课次不排值日。
+- 「首页今日课次的课程名称没有对齐」「后台『第 x 节』折成多行」。
+
+**② 改动一：值日状态改为「下课 10 分钟」（`common/week.js`）**
+
+| 文件 | 改动 |
+|---|---|
+| `cloudfunctions/common/week.js` | `effectiveStatus` 的 COURSE 分支由「下一节课开始才 DONE」改为 **下课 10 分钟宽限**；删 `flipTimeOf`，新增 `addHHmm(hhmm, minutes)`（跨天取模回绕，如 23:59+10 → 00:09）。**CLEAN 保洁口径不变**（18:00 前 PENDING / 18:00 起 DONE，对应「18 点前打扫完」） |
+| `cloudfunctions/*/common/week.js` × 13 | `sync-common.js` 同步 |
+| `cloudfunctions/course/index.js` | `listWeek` 原来给 `effectiveStatus` 传 `period: 0` ⇒ 取不到真实时间窗（8:00 前 PENDING、8:00 后直接 DONE）⇒ 改 `JOIN session s ON s.id = d.session_id` 取 `s.period` |
+
+- **根因**：旧口径靠 `flipTimeOf`（下一节课起始；最后一节兜底 21:00）。下午无课时，当天所有上午课次一路 ONGOING。cron 每日 06:00 只把**昨天**的置 EXPIRED，救不了当天。
+- **验证**：`_dbg_room/verify-duty-flip.js` 18/18（注入时刻覆盖课前/课中/下课瞬间/+5min/+10min/用户场景 13:30/晚间/CLEAN/非 PENDING/昨天/明天/period 缺测）。
+
+**③ 改动二：duty_count=0 = 不排值日（为「书香校园」铺路）**
+
+- 🔴 `Number(x) || N` 会把 **0 当「未填」** ⇒ duty_count=0 反而排 1~2 人。全部改 `??`（只让 undefined/null 回落默认）：
+  - `schedule/index.js` `Math.max(0, Number(s.duty_count ?? 1) - alreadyFilled)`（generate 一键生成）；`cron-weekly/index.js` 同式；`buildCleaningPlan` 的 `const need = Number(s.duty_count ?? 2) - taken.size`；两处 `dutyCount:` 展示字段。
+  - `course/index.js` `upsert`：由 `Math.min(Math.max(Number(c.dutyCount) || 2, 1), 4)`（钳死 1..4）改为 `Math.min(Math.max(Number.isFinite(dcRaw) ? dcRaw : 2, 0), 4)`。
+  - 小程序课表表单 `stepper min` 1→0；`_openForm` 的 `(cell && cell.dutyCount) || 2` 会把 0 弹回 2 ⇒ 改显式判 undefined/null。
+  - `admin-web` 的 `mod-course.addSession` 早本就允许 0（`>= 0 && <= 20`），前端 number input 也 `min="0"` —— 后台侧本来能录 0，只是云函数会吃掉。
+- 门禁：`check-schedule-generate-runtime` 新增 **D6**（源码形态 + 运行时双断言：duty_count=0 的课次 generate 后 `inserted=0` 且 `created=0`）；D4 与 `check-tuesday-clean` 的 C/G 段判据同步新写法。**变异自证**：改回 `|| 1` ⇒ D6a/D6c 双红（"实际追加 1 人 / created=1"）。
+
+**④ 改动三：大节数跟随班级 `period_time`（不再写死 5）**
+
+- 背景：线上三班 `period_time` 是 5 个 **100 分钟大节**，而 `period_time` **每班可配**、后台也能加行，小程序端却全链路写死 5（`upsert` 校验 / 前端 grid / 节次选择器 / `replaceSessions` 校验 / admin-web 解析器 / admin-web 下拉）。
+- 改动：
+  - `cloudfunctions/common/week.js` 新增 **`periodCount(config)`** = max(兜底 5, 数组长度, 最大 period 号)，上限 10；**必须吃 JSON 字符串**（`class.period_time` 是 JSON 列，mysql2 返回字符串；早前只认数组 ⇒ 字符串走「非数组」分支 ⇒ **无声兜底成 5**）。
+  - `course/index.js` 的 `upsert` / `applyTimetable` 两处 `period<=5` → `week.periodCount(cfg)`，报错回显「1-N」。
+  - `miniprogram/data/timetable.js`：新增 `setPeriods` / `periodCount` / `MAX_PERIOD(10)`；**`replaceSessions` 校验上限 5 → MAX_PERIOD**（最硬的一道：写死 5 会让整批课次被拒收 ⇒ 课表空白）。
+  - `miniprogram/pages/timetable/index.js`：class.list 的 chips 带 `periodTime`；新增 `_syncPeriodCount`（**初载 + `onTimetableClass` 两条切班路径都要调**）；网格行数与 `p > nPeriods` 过滤读 `tt.periodCount()`。wxml 节次选择器读 `periodChips`、骨架屏读 `periods`，去掉写死的 `[1,2,3,4,5]` 与「1-2 上午 · 3-4 下午 · 5 晚上」。
+    - 🔴 **行数二次调整（同日，用户实锤「多了一节空行」）**：平时一天就是**五节大课**，第 6 节是「书香校园」这类 45 分钟短课的特殊时段；无条件按 `period_time` 画满 ⇒ 没有第 6 节课的周次多出一整行空格子。改为
+      **`nPeriods = max(1, tt.periodCount(), maxUsedPeriod)`**，`maxUsedPeriod` = **本周全部课次里出现的最大 period**（排除「调出」的课）。
+      判定同样按整周 `courses` 而非当前分组视图，与同页 `hasWeekend`（周末列）**完全同口径** —— 否则 A 组有第 6 节、B 组没有时，切组会让网格在 5↔6 行间跳动（与 §43 报障过的周末列跳动同款）。
+  - `admin-web/lib/mod-course.js`：新增 `classPeriodCfg(pool, classId)`；`addSession` **与 `updateSession` 两条路径同口径**（后者曾漏改 ⇒「编辑比新增更严」，用户只能删除重加；并容错 `max(nPeriods, before.period)`，配置后来改小时仍可保存其它字段）。
+  - `admin-web/public/app.js`：解析器上限 5→10（否则第 6 节**整行被丢**）；新增 `periodOptions(cls, mustInclude)` 生成大节下拉（编辑弹层必须传 `mustInclude`，防「配置后来改小」时 select 落到第一项、静默改掉节次）。
+- 门禁：新增 `scripts/check-period-count.js`（**20 项，含 2 条变异自证**：replaceSessions 上限写回字面量 5、前端 `p>5` 硬编码都必须被抓）。`check-timetable-local` 的「节次收口 1-5」是**旧铁律**（当年就为挡第 6 节）⇒ 按新需求翻转，并放宽其 `periodGuardMax` 正则（报错文案现在带动态「1-N」回显）。
+
+**⑤ 改动四：课堂主教室（`880a7c6`，本版已上线）**
+
+- `class.main_room VARCHAR(32) NULL`（`scripts/migrate-main-room.sql` 幂等加列）；`mod-class.js` 收 `patch.mainRoom`（限长 32 / 禁换行 / 可清空），仅当值变化才调同步。
+- `mod-course.js` 新增 **`syncMainRoomCleaning(pool, classId, newRoom)`**：按名规则改名（含「大扫除」→ `newRoom+'大扫除'` 前缀式；含「打扫」→ `'打扫'+newRoom` 后缀式）并 UPDATE `course.room`；只碰 CLEAN、幂等、不碰普通课次。值日/通知靠 session→course 运行时读 name/room ⇒ **改名后历史值日显示自动跟上**，不需重排/退草稿。
+- 生产上线：`tcb db execute` 加列（先探测 `has_col=0` → 单条 ALTER → 复核 `IS_NULLABLE=YES`）；示例班级A 落 `main_room='410'`，5 条 CLEAN 复核与 410 完全一致（同步为 no-op）。线上复核 17/17 过。
+
+**⑥ 改动五：两轮 bug 修复（用户两次实锤）**
+
+- **「配了第 6 节，添加课次下拉仍只有 5 项」**（3 病根）：
+  1. 🔴 `/api/me` 的 `classes: classes.map(c => ({id,name,isActive}))` **只回传 3 字段，把 `maskClass` 解析好的 `periodTime` 丢在服务端** ⇒ 前端 `state.classes` 里没有该字段（改前端时没核对接口字段白名单 = 疏漏）。
+  2. 🔴 `reload()` 只 `go(state.view)` 重渲染、**不重拉 `/api/me`** ⇒ 配置保存后当次不生效（用户以为"保存没生效"）。新增 `refreshClasses()`。
+  3. 顺带发现自相矛盾：课表页 `.filter(r => r.kind !== 'CLEAN')` 已过滤保洁，却仍留「保洁」标签分支 ⇒ 永不命中的死代码，已删。
+- **「编辑课次报『大节应为 1-5』」**：直接病根 = `updateSession` 漏改（见 ④）；深层病根 = `periodCount` 不吃 JSON 字符串（见 ④）。
+- 🔴 **mock 隐蔽缺陷（差点误判）**：`verify-admin-web.js` 的 `rowMatches` 正则强制要求「表名.列名」，而 `WHERE id = ?`（无前缀）解析不出任何条件 ⇒ `conds` 为空 ⇒ 直接 `return true` ⇒ **过滤完全失效、返回全表第一行**。症状与真代码 bug **一模一样**（「加第 6 节课报 1-5」）。已改为 `(?:\w+\.)?(\w+)` 前缀可选；并在 e2e 里加「mock 保真度自检」断言把桩与代码的责任分开。
+
+**⑦ 改动七：周次区间写法 `6-13` 端上/后端同口径（同批发布）**
+
+> 用户上传体验版后反馈「第 6 行网格已出现，但书香校园仍不显示」——**上一轮「只需重传前端」的结论不完整**，漏查了 `weeks`。
+
+| 位置 | 原实现 | 对 `6-13` 的结果 |
+|---|---|---|
+| `miniprogram/data/timetable.js matchesWeeks` | `split(',') + Number()` | `Number('6-13')` = NaN ⇒ **整批周次全丢** |
+| `cloudfunctions/common/week.js parseWeeks` | `parseInt('6-13')` | = **6** ⇒ 第 7~13 周静默丢弃 |
+| `admin-web/public/app.js normalizeWeeks`（课表导入器） | 支持区间 | ✅ 一直正常 |
+
+- **根子**：三条录入入口里，**只有「添加课次」这条没做区间归一化** ⇒ 两对一错。
+- 修：三处统一为 `^(\d+)\s*-\s*(\d+)$` 区间展开（自动纠正 `13-6` 反写），1..53 过滤与去重排序保持；`mod-course.addSession` **落库前先 `parseWeeks` 归一化**，库里不再出现裸区间。
+- **顺带修**：`course.allSessions` 的 SQL **漏取 `duty_count`** ⇒ 端上 `data/timetable.js` 两处只能写死 `dutyCount: 2` ⇒ 「不排值日」的课在课表详情显示成 2 人。已在 SQL 补 `s.duty_count`、返回补 `dutyCount`；端上改 `(s.dutyCount === 0 || s.dutyCount) ? Number(s.dutyCount) : 2`（**不能用 `|| 2`，会把 0 吃掉** —— 与本轮 duty_count=0 通道同一个坑）。
+- **存量数据**：`tcb db execute` 把 id=436 的 `weeks='6-13'` 展开为 `6,7,...,13`；另 4 条本就是逗号写法（`UPDATE` 返回 `Affected rows: 0` 属正常，已 SELECT 复核 5 条全对）。
+- 门禁 `check-period-count` 扩到 **24 项**（F1 后端区间 / F2 端上同口径 / F3 落库归一化 / F4 `dutyCount` 回传且端上不许写死 2）。
+- 回路 `_dbg_room/repro-sxxy-real.js`：用**线上真实数据**（id=436 周四 / 第6节 / 全体 / weeks=6-13）+ 用户场景（第 6 周）复现，修复前红「第 6 周 0 条」，修复后第 6~13 周命中正确。
+- 🔴 **排查教训**：查「课表看不到某节课」必须查全 `period / day_of_week / group_scope / weeks / week_rule`，并连用户当时看的周次一起对 —— **weeks 是「按周生效」课的决定性字段**。
+
+**⑧ 改动八：门禁提速（宿主环境问题，非业务改动）**
+
+- `check-admin-web` 批跑被判「卡死 >60s」而**单跑秒过**。实测：宿主给 `fs.rmSync` 套的「安全删除」垫片**单次约 9 秒**，而该门禁 14 个变异自证用例各自在 `finally` 里删一次临时目录 ⇒ 累计 ~71s，超过 `run_all_gates_bounded.sh` 的 `timeout 60`。
+- 修：临时目录改为**整轮结束统一清一次**（`cleanupMutDir`），**71s → 18s**，46 项仍全绿；全量批跑 9min → 5.5min。
+- 💡 教训：任何带变异自证的门禁都**不要在每个用例 `finally` 里删临时目录**；遇到「批跑卡死但单跑秒过」先量化单跑耗时再下结论，别急着改业务代码。
+
+**⑩ 改动十：值日页隐藏「+ 加值日生」入口**
+
+- 用户要求去掉值日页每天下方的「+ 加值日生」虚线按钮（v0.7.16 需求③）。
+- 改法：**只挡入口、不删功能** —— `pages/duty/index.js` 的 `data` 加开关 `showAddDutyBtn: false`，`index.wxml` 的 `wx:if` 由 `{{canSchedule}}` 改为 `{{canSchedule && showAddDutyBtn}}`。
+  `onAddOpen / onAddBackSession / onAddPickSession` 与整个 `bottom-sheet`、后端 `scheduleAddManual` **全部保留** ⇒ 恢复只需把开关改回 `true`。
+- ⚠️ 为什么不直接删 wxml 的 `wx:if`：删了以后想恢复得翻 git 找历史；一行开关就能表达「暂时不想露出这个入口」。
+- 布局核对：`.dt-dayfoot`（「本日 N 次值日」）是**固定 64rpx**、不依赖下方按钮；按钮是 `.dt-daycard` 最后一个子元素 ⇒ 隐藏后卡片视觉完整、无孤立留白。
+- 与既有门禁的关系：`check-duty-ended.js` 的 C2「弹层内不含加值日生」只管 `pastDays` 弹层（`index.wxml` L406 附近），与本次改的主列表页入口**不冲突**，两条门禁全绿。
+
+**⑨ 改动九：两处显示修正**
+
+- 首页 `pages/home/index.wxss`：`.course-time` 固定 `width:216rpx; flex-shrink:0`；`.course-name` 加 `flex:1; min-width:0` + 省略号截断。
+- `admin-web/public/app.js`：课表「第 x 节」td 加 `class="td-period"` + `.tbl td.td-period{white-space:nowrap}`（**只给这一列加**，别动全局 `.tbl td` —— `td-weeks` 依赖 `word-break:break-all` 换行）。
+
+**⑧ 门禁与部署**
+
+- 全量门禁 **84/84 全绿**（83 + 新增 `check-period-count`）；`check-schedule-generate-runtime` 加 D6；`check-timetable-local` 判据翻转。
+- `verify-admin-web.js` e2e **75 项全绿**（夹具三班 `period_time` 由 null 改真实配置，让「大节下拉」这条链路**首次被测到**；新增 [6.2] 5 项 / [6.2b] 保存后立即生效 / [6.2c] 保洁死代码 / [6.2c-2] 新增与编辑第 6 节不被拒 5 项）。顺手收掉两条**长期假红**（「保洁课次可见并标记」与「删除前课表有 4 行」——均与过滤口径矛盾，用 `git stash` 对比基线确认是既有失败）。
+- **变异自证**：`updateSession` 改回写死 5 ⇒ [6.2c-2] 如期红；还原用「事前存原文 / 事后写回」，**未用 `git checkout`**（会连带丢该文件其它未提交改动）。
+- 部署：DDL 1 条 + 云函数 7 个（admin-web / duty / adjust / schedule / course / export / cron-weekly，其中 admin-web 与 course 因两轮修复二次部署）；线上复核 17/17 + 13/13；`verify-admin-web-online.js` 14/14。
+
+---
+
 ## v0.7.39 · 2026-10-13 · 对外 1.0.6.5
 **主题：值日卡视觉优化 + 首页请假按时段自动刷新（纯前端）**
 
@@ -2779,7 +3048,7 @@ background: rgba(255, 255, 255, 0.55);1F2;   /* ← 真编译器 fatal */
 
 ### 6. 随版数据修正（非代码）
 
-- 示例班级C（id 2）混入 3 个专业共 87 人（示例专业B3班 10 + 英语2601 20 + 示例专业B1班 57），系更早「按班号静默错配」残留。经授权删除 30 人（id 135–164；删前核查全部未绑定 / 无值日 / 无外键引用 / 关联表计数全 0），class 2 → **57 人**（单一前缀 `2099010303`），残留 0；还原快照 `.workbuddy/backups/20260925-2336-class2-removed-30.restore.sql`。全库终态 **173 行**（60+57+56，含 4 个测试账号）、`student_no` 全库唯一无重复。
+- 示例班级C（id 2）混入 3 个专业共 87 人（示例专业B3班 10 + 英语2601 20 + 示例专业B1班 57），系更早「按班号静默错配」残留。经授权删除 30 人（id 135–164；删前核查全部未绑定 / 无值日 / 无外键引用 / 关联表计数全 0），class 2 → **57 人**（单一前缀 `0000000001`），残留 0；还原快照 `.workbuddy/backups/20260925-2336-class2-removed-30.restore.sql`。全库终态 **173 行**（60+57+56，含 4 个测试账号）、`student_no` 全库唯一无重复。
 
 ---
 
@@ -3016,12 +3285,12 @@ background: rgba(255, 255, 255, 0.55);1F2;   /* ← 真编译器 fatal */
 ### 2. 「序号 + 姓名」点名册（无学号列）
 
 - **背景**：用户桌面有 `示例班级A点名册.xlsx`，只有 `序号 | 姓名` 两列，导入时读不出学号 → 整份名单 0 行有效。
-- **可行性验证**：库里每个班的学号都是**统一 12 位、前 10 位相同**（`COUNT(DISTINCT LEFT(student_no,10))=1` 且长度唯一）：示例班级A→`2099010301`、2601→`2099010303`、示例班级B→`2099010302`，后两位即班内序号。
+- **可行性验证**：库里每个班的学号都是**统一 12 位、前 10 位相同**（`COUNT(DISTINCT LEFT(student_no,10))=1` 且长度唯一）：示例班级A→`0000000003`、2601→`0000000001`、示例班级B→`0000000002`，后两位即班内序号。
 - **改动**：
   - `parseLine` 增加 `seq` 识别（1~999 的小整数，兼容 Excel 的 `1.0`）；`parseRoster` 现在接受「有姓名 + 有学号或序号」的行。
   - 新增 `loadSeqPrefix(pool)`：按班级汇总存量学号，**长度一致 + 前 N-2 位一致 + 全数字**才认为可推导，得到 `{prefix, width:2}`。
   - `applyImport` 新增补全分支：**仅当整份名单都没有学号**（`allMissingNo`）时，按目标班级前缀 + 序号补出学号；补不出的行如实计入 skipped/failed。
-  - 预览返回 `missingNo` / `seqSample`，前端分组卡片显示「将按班级学号补齐（如 209901030101）」或「无法按序号补全 —— 请先给这组选一个班」。
+  - 预览返回 `missingNo` / `seqSample`，前端分组卡片显示「将按班级学号补齐（如 000000000301）」或「无法按序号补全 —— 请先给这组选一个班」。
 - **正确性证明（写进门禁）**：把 `示例班级A点名册.xlsx` 按前缀补出的学号，与 `示例班级A点名册.xlsx` 里的真实学号**逐行比对** —— 56/56 完全一致（`check-roster-parse.js` §8）。
 - **安全边界**：只有「整份都没有学号」才走补全（避免正常学号表被误当序号）；无前缀参照的班直接拒绝；绝不猜。
 
@@ -3076,7 +3345,7 @@ background: rgba(255, 255, 255, 0.55);1F2;   /* ← 真编译器 fatal */
 
 ### 1. 数据修正（先处理已发生的事故）
 
-- **背景**：用户把 示例班级B（小学教育）的名单导进了 示例班级C，5 条落到 `class_id=2`（学号 `2099010302xx`）。
+- **背景**：用户把 示例班级B（小学教育）的名单导进了 示例班级C，5 条落到 `class_id=2`（学号 `0000000002xx`）。
 - **处理**：核对全库后把这 5 条（id 130–134）改归属到 `class_id=3`（示例班级B），而不是删除 —— 它们本就属于 示例班级B，移动后既修正了班级，也不必日后重复导入。
 - **修正后核对**：class 1（示例班级A）= 56 人 + 4 测试账号；class 2（示例班级C）= 57；class 3（示例班级B）= 5（其余待导）。
 
@@ -3093,7 +3362,7 @@ import_batch_item (id, batch_id, member_id, action('INSERT'|'UPDATE'), prev_name
 ### 3. 后端 `member` 云函数
 
 - **解析器**（列序自适应）：按「这一格像什么」认列 —— 学号=4 位以上纯数字；姓名=中文/字母且排除性别、班级字样；班级=含「班/专业/专升本」。支持逗号 / 中文逗号 / 制表符 / 竖线 / 连续空格分隔，自动跳过表头行。
-- **自动分类**：`resolveLabel` 优先级 = 学号前缀命中 > 班号命中；两者不一致标 `conflict`；只按班号命中且与该班已有前缀不符标 `weak`（同班号不同专业的辨识信号）。前缀来自存量成员的 `student_no` 前 10 位，能区分 `2099010303xx`（示例专业B1班）与 `2608030201xx`（示例专业B3班）。
+- **自动分类**：`resolveLabel` 优先级 = 学号前缀命中 > 班号命中；两者不一致标 `conflict`；只按班号命中且与该班已有前缀不符标 `weak`（同班号不同专业的辨识信号）。前缀来自存量成员的 `student_no` 前 10 位，能区分 `0000000001xx`（示例专业B1班）与 `2608030201xx`（示例专业B3班）。
 - **写入策略**：同班已存在 → 更新姓名/分组；**已存在于其它班 → 跳过并报告**（防跨班串号）；新学号 → 插入。
 - **新 action**：`importCsv`（含 `preview` 预览模式与 `mapping` 显式映射）、`importBatches`、`revertImport`、`addMember`、`removeMember`。
 - **权限**：`addMember` / `removeMember` / `revertImport` 需**超管或辅导员**（本地 `requireSuperOrCounselor`，未改 `common/guard.js` 以免全量重部署）；`importCsv` 仍是 `needAdmin`。

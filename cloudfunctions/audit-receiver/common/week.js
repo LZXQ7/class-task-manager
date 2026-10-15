@@ -94,10 +94,24 @@ function isWeeksBlank(weeks) {
 /** 将逗号分隔的周次串解析为去重后的升序数字数组（未指定 / 全非法 → 空数组） */
 function parseWeeks(weeks) {
   if (isWeeksBlank(weeks)) return [];
-  const arr = String(weeks)
-    .split(',')
-    .map(s => parseInt(s, 10))
-    .filter(n => Number.isInteger(n) && n >= 1 && n <= 53);
+  // 🔴 必须支持**区间写法**「6-13」（2026-10-14 用户实踩）：
+  //   后台「添加课次」的具体周次输入框允许直接写 `6-13`，而 parseInt('6-13') 只取到 **6**
+  //   ⇒ 7~13 周被静默丢弃 ⇒ 那些周课表上看不到这节课（用户以为"没保存成功"）。
+  //   课表导入器的 normalizeWeeks 一直支持区间，只有这条链路没做归一化，两端口径必须一致。
+  const out = [];
+  String(weeks).split(',').forEach(part => {
+    const s = String(part).trim();
+    if (!s) return;
+    const rng = /^(\d+)\s*-\s*(\d+)$/.exec(s);
+    if (rng) {
+      let a = Number(rng[1]), b = Number(rng[2]);
+      if (a > b) { const t = a; a = b; b = t; }      // 容错：写成 13-6 也按区间处理
+      for (let i = a; i <= b; i++) out.push(i);
+    } else {
+      out.push(parseInt(s, 10));
+    }
+  });
+  const arr = out.filter(n => Number.isInteger(n) && n >= 1 && n <= 53);
   return Array.from(new Set(arr)).sort((a, b) => a - b);
 }
 
@@ -164,6 +178,41 @@ function periodMap(config) {
   return map;
 }
 
+/**
+ * 本班**大节数**（2026-10-14 新增）。
+ *
+ * 🔴 过去全链路把「一天 5 个大节」写死（upsert 校验 period<=5 / 前端网格 5 行 /
+ *    节次选择器 [1..5] / replaceSessions 校验 <=5），于是 `class.period_time`
+ *    虽然**每班可配**、后台也能加第 6 行，小程序端却把第 6 节课直接过滤掉看不见，
+ *    甚至整批课次被 replaceSessions 判为非法而拒收（课表空白）。
+ *    现改为节次数一律跟随本班配置。
+ *
+ * 取「数组长度」与「最大 period 号」的较大者 ⇒ 跳号配置（如只写 1、3）也能正确显示到第 3 节；
+ * 配置缺失/为空 ⇒ 兜底 5（与历史行为一致，保证配置晚到时页面不塌）。
+ */
+const DEFAULT_PERIOD_COUNT = 5;
+const MAX_PERIOD_COUNT = 10;   // 上限：挡脏数据（一天排 10 大节已远超现实）
+
+function periodCount(config) {
+  // ⚠️ period_time 在库里是 JSON **字符串**（mysql2 对 JSON 列也返回字符串），
+  //   getConfig 会先 parse 好，但 admin-web 的 classPeriodCfg 等直读场景拿到的仍是字符串。
+  //   这里必须自己兜住解析，否则字符串会被当成「非数组」⇒ 无声兜底成 5（2026-10-14 实踩：
+  //   用户配了 7 个大节，后台却按 5 校验，编辑第 6/7 节时报「大节应为 1-5」）。
+  let arr = (config && (config.periodTime || config.period_time)) || [];
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); } catch (e) { arr = []; }
+  }
+  let n = DEFAULT_PERIOD_COUNT;
+  if (Array.isArray(arr) && arr.length) {
+    arr.forEach(p => {
+      const v = Number(p && p.period);
+      if (Number.isInteger(v) && v >= 1 && v <= MAX_PERIOD_COUNT) n = Math.max(n, v);
+    });
+    n = Math.max(n, Math.min(arr.length, MAX_PERIOD_COUNT));
+  }
+  return n;
+}
+
 /* ============================================================
  * 校历：节假日 / 调休 / 调课（按天整体调课）
  * ============================================================ */
@@ -207,7 +256,7 @@ async function loadCalendar(pool) {
 
 /* ============================================================
  * 名册序号：全项目唯一的「序号」定义
- * 209901030101 → 1，209901030111 → 11；非数字/空 → 0
+ * 000000000301 → 1，000000000311 → 11；非数字/空 → 0
  * 取值天然等于 A/B 分组（奇=A、偶=B）
  * ============================================================ */
 function seqOf(studentNo) {
@@ -230,14 +279,17 @@ function classDateOf(cfg, wk, dayOfWeek, cal) {
 }
 
 /**
- * 值日展示态推导（1.0.4.4 状态机）：库内 PENDING + 时间窗 → ONGOING / DONE / EXPIRED
+ * 值日展示态推导（1.0.4.4 状态机；2026-10-14 改翻转口径）：库内 PENDING + 时间窗 → ONGOING / DONE / EXPIRED
  * - 库内 status 非 PENDING（DONE/LEAVE/SWAPPED_OUT/EXPIRED）→ 原样返回（DB 写入为准）
  * - 过期日期 → EXPIRED（已结束）；未来日期 → PENDING（待值日）
  * - 今天：
- *   · 课次（COURSE）：课中时间窗内 = 进行中；下课～下一节开课 = 进行中（打扫时段）；
- *     下一节开课（最后一节 = 当天 21:00）→ DONE（已值日）
+ *   · 课次（COURSE）：课中时间窗内 = 进行中；**下课 10 分钟宽限**（值日生下课后打扫）后
+ *     → DONE（已值日）
  *   · 保洁（CLEAN）：18:00 前 = 待值日；18:00 起 = 已值日（对应「18点前打扫完」口径）
  * 纯派生，不回写 DB（游标 / 统计口径以 duty 表行数为准，不受影响）。
+ *
+ * 🔴 历史口径（勿回退）：翻转点曾是「下一节课开始」（flipTimeOf），导致下午无课时
+ *    上午的课到 21:00 还是「进行中」；用户口径 = 下课 10 分钟即已值日。
  */
 function effectiveStatus(duty, periods) {
   if (duty.status !== 'PENDING') return duty.status;
@@ -253,20 +305,19 @@ function effectiveStatus(duty, periods) {
   const p = periods[duty.period] || { start: '00:00', end: '23:59' };
   if (now < p.start) return 'PENDING';
   if (now <= p.end) return 'ONGOING'; // 课中
-  // 已过本节课时间窗：进入打扫时段，到下一切换点翻「已值日」
-  const flip = flipTimeOf(periods, duty.period);
-  return now >= flip ? 'DONE' : 'ONGOING';
+  // 已过下课时刻：10 分钟打扫宽限，过后翻「已值日」
+  return now >= addHHmm(p.end, 10) ? 'DONE' : 'ONGOING';
 }
 
-/** 下一节开始时刻（作为「已值日」翻转点）；最后一节无下一节 → 当天 21:00 */
-function flipTimeOf(periods, period) {
-  const sorted = Object.keys(periods || {})
-    .map((k) => periods[k])
-    .sort((a, b) => (Number(a.period) || 0) - (Number(b.period) || 0));
-  for (const p of sorted) {
-    if ((Number(p.period) || 0) > Number(period)) return p.start;
-  }
-  return '21:00';
+/** 'HH:mm' + minutes，跨天取模回绕（'23:59' + 10 → '00:09'）；非法串兜底 '23:59' */
+function addHHmm(hhmm, minutes) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm == null ? '' : hhmm));
+  if (!m) return '23:59';
+  let total = Number(m[1]) * 60 + Number(m[2]) + Number(minutes || 0);
+  total = ((total % 1440) + 1440) % 1440;
+  const h = Math.floor(total / 60);
+  const mm = total % 60;
+  return ('0' + h).slice(-2) + ':' + ('0' + mm).slice(-2);
 }
 
 /* ============================================================
@@ -327,7 +378,7 @@ function resolveSlot(sessionId, dayOfWeek, period, week, shifts) {
 module.exports = {
   fmtDate, stampOf, nowStamp, addMinutes, todayStr, nowHHmm,
   getWeek, getDateOfWeekDay, weekStart, weekdayOf,
-  matchesWeekRule, matchesWeeks, parseWeeks, isWeeksBlank, currentWeek, getConfig, periodMap, effectiveStatus,
+  matchesWeekRule, matchesWeeks, parseWeeks, isWeeksBlank, currentWeek, getConfig, periodMap, periodCount, effectiveStatus,
   dateStr, loadCalendar, classDateOf,
   seqOf,
   shiftKey, loadSessionShifts, resolveSlot

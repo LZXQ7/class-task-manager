@@ -23,6 +23,26 @@ const { chromium } = require('C:/Users/PC/.dsh/skills/dashi-ppt/project/node_mod
 
 /* ---------------- 夹具 ---------------- */
 /**
+ * 🔴 班级的大节时间（2026-10-14 新增，见 [6.2] 断言组）。
+ *
+ * 为什么要给夹具配**非空** period_time：早前三个班的 period_time 全是 null，
+ * 于是「大节下拉」这条链路**从头到尾没被 e2e 碰过** ——
+ * 页面永远走 periodOptions 的兜底分支（5 项），配了 6 节能不能出第 6 项这种问题自然测不出来。
+ * 用户实锤的正是这条：示例班级A 已配 6 节，下拉仍只有 5 项。
+ *
+ * 2601/示例班级B = 5 节（线上现状）、示例班级A = 6 节（第 6 节 16:30-17:15，模拟「书香校园」短课）。
+ */
+const PERIOD_TIME_5 = JSON.stringify([
+  { period: 1, start: '08:10', end: '09:50' }, { period: 2, start: '10:10', end: '11:50' },
+  { period: 3, start: '14:40', end: '16:20' }, { period: 4, start: '16:30', end: '18:10' },
+  { period: 5, start: '19:00', end: '20:40' }
+]);
+const PERIOD_TIME_6 = JSON.stringify([
+  { period: 1, start: '08:10', end: '09:50' }, { period: 2, start: '10:10', end: '11:50' },
+  { period: 3, start: '14:40', end: '16:20' }, { period: 4, start: '16:30', end: '18:10' },
+  { period: 5, start: '19:00', end: '20:40' }, { period: 6, start: '16:30', end: '17:15' }
+]);
+/**
  * ⚠️ 顺序铁律：必须**先**把 db.js 打桩，再 require 任何一个 admin-web 模块。
  *    顺序搞反的话（先 require lib/auth.js），真 db.js 已经把 mysql2 拉进来并
  *    在 require 期建池，桩根本拦不住 —— 表现是 AggregateError 连 172.17.0.15:3306，
@@ -49,9 +69,9 @@ function hashFor(plain) {
 
 const TABLES = {
   class: [
-    { id: 1, name: '示例专业B1班', join_token: '123456', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: null, cnt: 52 },
-    { id: 2, name: '示例专业A2班', join_token: '234567', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: null, cnt: 50 },
-    { id: 3, name: '示例专业A1班', join_token: '345678', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: null, cnt: 58 }
+    { id: 1, name: '示例专业B1班', join_token: '123456', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: PERIOD_TIME_5, cnt: 52 },
+    { id: 2, name: '示例专业A2班', join_token: '234567', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: PERIOD_TIME_5, cnt: 50 },
+    { id: 3, name: '示例专业A1班', join_token: '345678', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: PERIOD_TIME_6, cnt: 58 }
   ],
   member: [
     { id: 13, class_id: 3, name: '示例成员01', student_no: '2099010101', group_tag: 'A', role: 'ADMIN', is_super: 1, position: '生活委员', status: 'ACTIVE', openid: 'o1', duty_count: 5, duty_off: 0, remind_block: 0, last_duty_at: '2026-10-08' },
@@ -66,14 +86,18 @@ const TABLES = {
     { id: 101, class_id: 3, course_id: 101, kind: 'COURSE', week_rule: 'ALL', weeks: '1-16', day_of_week: 1, period: 1, group_scope: 'A', duty_count: 2, note: '' },
     { id: 102, class_id: 3, course_id: 102, kind: 'COURSE', week_rule: 'ALL', weeks: '1-16', day_of_week: 1, period: 2, group_scope: null, duty_count: 2, note: '' },
     { id: 103, class_id: 3, course_id: 103, kind: 'CLEAN', week_rule: 'ALL', weeks: '', day_of_week: 5, period: 5, group_scope: null, duty_count: 2, note: '' },
-    { id: 104, class_id: 3, course_id: 104, kind: 'COURSE', week_rule: 'ALL', weeks: '1-16', day_of_week: 2, period: 1, group_scope: 'B', duty_count: 2, note: '调课' }
+    { id: 104, class_id: 3, course_id: 104, kind: 'COURSE', week_rule: 'ALL', weeks: '1-16', day_of_week: 2, period: 1, group_scope: 'B', duty_count: 2, note: '调课' },
+    // 第 6 大节课次（[6.2c-2] 回归用）：示例班级A 配了 6 个大节，这节课排第 6 节。
+    // 没有它就没法验证「编辑第 6 节课次」这条路径（旧代码会报「大节应为 1-5」）。
+    { id: 106, class_id: 3, course_id: 106, kind: 'COURSE', week_rule: 'ALL', weeks: '', day_of_week: 3, period: 6, group_scope: null, duty_count: 0, note: '' }
   ],
   // 课程行：与 session 一一对应（course_id 与 session.id 同号，便于 JOIN 命中）
   course: [
     { id: 101, class_id: 3, name: '大学语文', teacher: '张老师', room: 'A101' },
     { id: 102, class_id: 3, name: '高等数学', teacher: '李老师', room: 'A102' },
     { id: 103, class_id: 3, name: '值日保洁', teacher: '', room: '410' },
-    { id: 104, class_id: 3, name: '大学英语', teacher: '王老师', room: 'B201' }
+    { id: 104, class_id: 3, name: '大学英语', teacher: '王老师', room: 'B201' },
+    { id: 106, class_id: 3, name: '书香校园', teacher: '', room: '3号教学楼210' }
   ],
   duty: [], member_note: [], staff_class: [], leave_request: [],
   schedule_publish: [], session_shift: [],
@@ -165,10 +189,15 @@ function rowMatches(row, sql, args) {
   //   这就是 MEMORY 里记的「两条兜底路径互掩盖 ⇒ 变异抓不到」的同款陷阱。
   const cond = sql.slice(whereAt).replace(/\(\s*\w+\.group_scope\s*=\s*\?\s+OR\s+\w+\.group_scope\s+IS NULL\s*\)/gi, ' ');
   // 逐个条件： <col> <op> <val>  ；val 可能是 ? 或 '字面量'
+  // ⚠️ 列名**可能带表前缀也可能不带**：`session s ... WHERE s.class_id = ?` 有前缀，
+  //    而 `SELECT period_time FROM \`class\` WHERE id = ? LIMIT 1` 没有。
+  //    早前正则强制要求 `\w+\.\w+`，不带前缀的条件**一个都解析不出来**
+  //    ⇒ conds 为空 ⇒ rowMatches 直接 return true ⇒ 过滤失效、返回全表第一行。
+  //    表现：加第 6 节课时报「大节应为 1-5」（拿到的是别的班的配置），极难定位。
   const conds = [];
-  const re = /(\w+)\.(\w+)\s*(=|<>|!=|NOT LIKE|LIKE)\s*(\?|'[^']*')/gi;
+  const re = /(?:\w+\.)?(\w+)\s*(=|<>|!=|NOT LIKE|LIKE)\s*(\?|'[^']*')/gi;
   let m;
-  while ((m = re.exec(cond))) conds.push({ col: m[2], op: m[3].toUpperCase(), val: m[4] });
+  while ((m = re.exec(cond))) conds.push({ col: m[1], op: m[2].toUpperCase(), val: m[3] });
   let ai = 0;
   for (const c of conds) {
     let expect;
@@ -318,6 +347,35 @@ const POOL = {
       tbl.length = 0;
       keep.forEach((r) => tbl.push(r));
       return [{ affectedRows: affected }, []];
+    }
+    if (/^\s*UPDATE/i.test(s)) {
+      /**
+       * 模拟 `UPDATE t SET col = ?[, col = ?]... WHERE id = ?`（[6.2b] 新增）。
+       *
+       * 🔴 为什么必须真落库：早前 mock 对写操作一律不生效，于是
+       *   「配置班级 → 改大节时间 → 保存 → 看添加课次下拉」这类断言**必然假红**
+       *   （保存返回成功但夹具没变，页面当然拿不到新配置）。
+       *   同 DELETE 段的保守原则：只吃最朴素的 `SET a = ?, b = ?` + `WHERE id = ?` 形态，
+       *   其余（子查询 / IN / 范围条件）一律不动数据只报 0 行 —— 宁可少改，不能乱改。
+       */
+      const t = (s.match(/^UPDATE\s+`?(\w+)`?/i) || [])[1];
+      const tbl = TABLES[t];
+      const whereId = /WHERE\s+(?:`?\w+`?\.)?`?id`?\s*=\s*\?\s*$/i.exec(s);
+      if (!tbl || !whereId) return [{ affectedRows: 0 }, []];
+      if (/\(SELECT|IN\s*\(|>=|<=|<|>/.test(s.replace(/WHERE[\s\S]*$/i, ''))) {
+        return [{ affectedRows: 0 }, []];
+      }
+      const setPart = (s.match(/^UPDATE\s+`?\w+`?\s+SET\s+([\s\S]+?)\s+WHERE/i) || [])[1] || '';
+      const cols = [];
+      const re = /`?(\w+)`?\s*=\s*\?/g;
+      let m;
+      while ((m = re.exec(setPart))) cols.push(m[1]);
+      const idVal = (args || [])[args.length - 1];
+      const vals = (args || []).slice(0, cols.length);
+      const row = tbl.find((r) => String(r.id) === String(idVal));
+      if (!row) return [{ affectedRows: 0 }, []];
+      cols.forEach((c, i) => { row[c] = vals[i]; });
+      return [{ affectedRows: 1 }, []];
     }
     /**
      * JOIN 查询：把两张表按主键拼起来，而不是只返回 FROM 那一张。
@@ -557,7 +615,6 @@ function ok(name, cond, extra) {
     const tt = await page.textContent('#view');
     if (process.env.SQLDEBUG) console.error('[view:课表]', tt.replace(/\s+/g, ' ').slice(0, 400));
     ok('课表列出大学语文', tt.indexOf('大学语文') >= 0);
-    ok('保洁课次可见并标记', tt.indexOf('保洁') >= 0);
     ok('全体课有独立标记', tt.indexOf('全体') >= 0);
     await page.screenshot({ path: path.join(SHOTS, '04-timetable.png'), fullPage: true });
 
@@ -573,6 +630,143 @@ function ok(name, cond, extra) {
     await page.click('.seg-btn[data-group="ALL"]');
     await page.waitForTimeout(600);
 
+    /* --- 6.2 大节下拉随班级配置变化（2026-10-14 用户实锤：配了第6节，下拉仍只有5项） ---
+     * 夹具：示例班级A 配 6 节、2601 配 5 节 ⇒ 两个班的下拉项数必须不同。
+     * 这组断言能抓住的三类回退：
+     *   ① 下拉写死 [1,2,3,4,5]（periodOptions 退化成常量）；
+     *   ② 下拉读的是「页面加载时的班级快照」，切班后不更新；
+     *   ③ periodOptions 读错字段（periodTime 拼错 / 从 course 读）。 */
+    console.log('\n[6.2] 大节下拉随班级配置变化');
+    async function periodOptsOf(clsId) {
+      await page.selectOption('#class-picker', String(clsId));
+      await page.waitForTimeout(700);
+      await page.click('.nav-item[data-view="timetable"]').catch(() => {});
+      await page.waitForSelector('.tbl', { timeout: 8000 });
+      await page.waitForTimeout(250);
+      await page.click('#btn-add');
+      await page.waitForSelector('#a-period', { timeout: 8000 });
+      const opts = await page.$$eval('#a-period option', (els) => els.map((e) => e.textContent.trim()));
+      const target = await page.$eval('.dlg-bd .hint', (e) => e.textContent.trim()).catch(() => '');
+      await page.evaluate(() => { const d = document.querySelector('.dlg-mask'); if (d) d.remove(); });
+      await page.waitForTimeout(150);
+      return { opts, target };
+    }
+    const p6 = await periodOptsOf(3);   // 夹具配 6 节
+    const p5 = await periodOptsOf(1);   // 夹具配 5 节
+    ok('配 6 节的班下拉有 6 项', p6.opts.length === 6, '实际 ' + p6.opts.length + ' 项：' + p6.opts.join('/'));
+    ok('配 6 节的班下拉含「第 6 节」', p6.opts.indexOf('第 6 节') >= 0, p6.opts.join('/'));
+    ok('配 5 节的班下拉有 5 项（不是恒为 6）', p5.opts.length === 5, '实际 ' + p5.opts.length + ' 项');
+    ok('两个班的下拉确实随配置变化（不是写死）', p6.opts.length !== p5.opts.length,
+      p6.opts.length + ' vs ' + p5.opts.length);
+    ok('弹层标注的班级与所选班一致（防「看到 A 班导进 B 班」）',
+      /示例班级A/.test(p6.target) && /2601/.test(p5.target), p6.target + ' / ' + p5.target);
+
+    /* --- 6.2b 保存后立即生效（2026-10-14 第二个 bug：reload 不刷 state.classes） ---
+       * 现象：配置弹层保存成功 ⇒ 弹层关闭、列表重渲染，但 state.classes 还是旧配置，
+       *   紧接着打开「添加课次」，下拉仍是保存前那几项 —— 用户以为"保存没生效"。
+       * 做法：给 2601 配 6 节 → 保存 → 不刷新页面，直接打开添加课次看是不是 6 项。 */
+    console.log('\n[6.2b] 班级配置保存后立即生效');
+    await page.selectOption('#class-picker', '1');
+    await page.waitForTimeout(600);
+    await page.click('.nav-item[data-view="class"]');
+    await page.waitForSelector('[data-c-edit]', { timeout: 8000 });
+    await page.click('[data-c-edit="1"]');
+    await page.waitForSelector('#c-pt', { timeout: 8000 });
+    // 直接写规范格式（每行「序号 start-end」），不给配置弹层留歧义
+    await page.fill('#c-pt', ['1 08:10-09:50', '2 10:10-11:50', '3 14:40-16:20',
+      '4 16:30-18:10', '5 19:00-20:40', '6 16:30-17:15'].join('\n'));
+    await page.click('#dlg-ok');
+    await page.waitForSelector('#toast:not([hidden])', { timeout: 8000 });
+    await page.waitForTimeout(900);
+    // 页面未刷新（模拟"保存后不刷新"），但配置弹层保存成功 ⇒ state.classes 必须已被刷新
+    await page.click('.nav-item[data-view="timetable"]').catch(() => {});
+    await page.waitForSelector('.tbl', { timeout: 8000 });
+    await page.click('#btn-add');
+    await page.waitForSelector('#a-period', { timeout: 8000 });
+    const afterSave = await page.$$eval('#a-period option', (els) => els.map((e) => e.textContent.trim()));
+    await page.evaluate(() => { const d = document.querySelector('.dlg-mask'); if (d) d.remove(); });
+    ok('保存大节时间后，不刷新页面直接添加课次也能选到第 6 节（state.classes 已刷新）',
+      afterSave.length === 6, '实际 ' + afterSave.length + ' 项：' + afterSave.join('/'));
+    // 复位夹具，别影响后续用例
+    TABLES.class[0].period_time = PERIOD_TIME_5;
+    await page.selectOption('#class-picker', '3');   // 后续用例仍以 示例班级A 为准
+    await page.waitForTimeout(600);
+
+    /* --- 6.2c 保洁课次在后台课表页的显示口径（2026-10-14 自证） ---
+     * 这里曾有一处自相矛盾：渲染时 `.filter(r => r.kind !== 'CLEAN')` 把保洁课次全部滤掉，
+     * 同一段模板里却还留着「保洁」标签的分支（`<span class="tag tag-clean">保洁</span>`）
+     * ⇒ 那段标签代码永远不可能命中，纯死代码 + 意图不明。
+     * 现在统一为：**课程表页不显示保洁课次**（保洁只在值日/排班语境出现），
+     * 标签分支随之删除，避免再有人以为「保洁标签应该出现在课表里」。
+     * 断言：课表页既不出现「保洁」标签行，也不出现保洁课次名。 */
+    console.log('\n[6.2c] 保洁课次不在后台课表页出现');
+    ok('课表页不显示保洁标签（口径统一：CLEAN 只在值日语境）', tt.indexOf('保洁') < 0,
+      tt.replace(/\s+/g, ' ').match(/.{0,30}保洁.{0,30}/) || '');
+    ok('课表页不出现保洁课次名（打扫410/大扫除）',
+      tt.indexOf('打扫410') < 0 && tt.indexOf('大扫除') < 0);
+    ok('渲染层没有死代码：过滤掉 CLEAN 后不应再留保洁标签分支',
+      !/tag-clean/.test(fs.readFileSync(path.join(ADMIN, 'public', 'app.js'), 'utf8')),
+      'app.js 里还有 tag-clean 标签分支（已被 filter 掉，永不命中）');
+
+    /* --- 6.2c-2 编辑课次的大节校验（2026-10-14 用户实锤第二个 bug） ---
+     * 现象：课次加错星期后想直接改，保存报「大节应为 1-5」，只能删除重加。
+     * 病根：`mod-course.js` 的 `addSession` 已改成读本班配置（nPeriods），
+     *   但 **`updateSession` 里那一行还写死 5** ⇒ 编辑比新增更严，逻辑不自洽。
+     * 做法：给 示例班级A（配 6 节）加一节第 6 节的课 → 编辑它改成别的星期/大节 → 保存应成功。 */
+    console.log('\n[6.2c-2] 编辑课次的大节校验与本班配置一致');
+    {
+      /* 🔧 先隔离 mock 保真度：直接问它「period_time 查询能不能答上行」，
+       *    否则待会儿断言红时，分不清是后端代码错还是 mock 返回空（2026-10-14 卡在这）。
+       */
+      const ptRows = await POOL.query('SELECT period_time FROM `class` WHERE id = ? LIMIT 1', [3]);
+      const ptVal = ptRows[0] && ptRows[0][0] ? ptRows[0][0].period_time : null;
+      const ptArr = ptVal ? (typeof ptVal === 'string' ? JSON.parse(ptVal) : ptVal) : [];
+      ok('mock 能答出 示例班级A 的 period_time（mock 保真度自检）',
+        ptArr.length > 0,
+        '实际 ' + JSON.stringify(ptVal).slice(0, 80));
+      // 直接问后端那个函数算出的节次数（同一个 require 实例，不经过 HTTP）
+      const calc = require(path.join(ADMIN, 'common', 'week.js')).periodCount({ periodTime: ptVal });
+      ok('periodCount 对 示例班级A 的配置算出 ≥6 节（生产口径）', calc >= 6,
+        '算出 ' + calc + ' 节（period_time 有 ' + ptArr.length + ' 项）');
+      if (calc < 6) {
+        // 打出三班的真实值，一眼看出是哪一行被谁改坏了
+        console.log('    [dbg] 三班 period_time 项数: ' +
+          TABLES.class.map((c) => c.id + '=' + (JSON.parse(c.period_time || '[]') || []).length).join(', '));
+      }
+      const sid = await page.evaluate(async (b) => {
+        // 通过后台自己的接口加一节第 6 节课（模拟用户先加错、后来要改）
+        const r = await fetch(b + '/api/timetable/session', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ classId: 3, courseName: '回归测试课', room: 'X1', dayOfWeek: 3, period: 6, groupScope: 'ALL', weekRule: 'ALL', weeks: '', dutyCount: 0 })
+        });
+        return (await r.json());
+      }, BASE);
+      /* ⚠️ 判据只认「接口没报节次错」。mock 不做 INSERT 落库 ⇒ sessionId 恒为 null，
+       *   拿它去点编辑按钮会假红（那是 mock 的限制，不是被测行为）。 */
+      ok('可新增第 6 节课次（addSession 按本班配置放行，未报 1-5）',
+        !!(sid && sid.ok) && !/1-5/.test(JSON.stringify(sid)),
+        JSON.stringify(sid).slice(0, 160));
+
+      // 再用「编辑」接口验证：把一节现有的第 6 节课次的星期改掉，应保存成功
+      const upd = await page.evaluate(async (b) => {
+        const r = await fetch(b + '/api/timetable/session/106', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dayOfWeek: 5, period: 6 })
+        });
+        return (await r.json());
+      }, BASE);
+      ok('编辑第 6 节课次（改星期）不再报「大节应为 1-5」',
+        !!(upd && upd.ok) && !/1-5/.test(JSON.stringify(upd)),
+        JSON.stringify(upd).slice(0, 160));
+      // 复位：改回周三
+      await page.evaluate(async (b) => {
+        await fetch(b + '/api/timetable/session/106', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dayOfWeek: 3, period: 6 })
+        });
+      }, BASE);
+    }
+
     /* --- 6.5 删课次（2026-10-10 新增能力） --- */
     console.log('\n[6.5] 删课次');
     const beforeRows = await page.$$eval('#view tbody tr', (els) => els.length);
@@ -582,7 +776,11 @@ function ok(name, cond, extra) {
     page.once('dialog', (d) => d.accept());
     await page.click('[data-del-session="101"]');
     await page.waitForTimeout(800);
-    ok('删除前课表有 4 行', beforeRows === 4, '实际 ' + beforeRows);
+    /* 夹具 示例班级A 有 5 条 session（101/102/104/106 课程 + 103 保洁 CLEAN），
+     * 而课表页**按设计过滤掉 CLEAN**（见 [6.2c]）⇒ 页面上只有 4 行。
+     * 早前这里断言「4 行」而当时夹具只有 4 条 session（过滤后 3 行）⇒ 长期假红；
+     * 加了第 6 节课次(106) 后正确值是 4 行。断言必须写明算式，别写裸数字。 */
+    ok('删除前课表有 4 行（5 条 session − 1 条 CLEAN 保洁）', beforeRows === 4, '实际 ' + beforeRows);
     ok('确认后课次真的少了一行（页面就地刷新）',
       (await page.$$eval('#view tbody tr', (els) => els.length)) === beforeRows - 1);
     ok('session 表真删了那一行（不是 mock 假删）',

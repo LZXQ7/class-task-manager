@@ -137,6 +137,25 @@
 
   function reload() { go(state.view); }
 
+  /**
+   * 重新拉一次班级清单并**原地更新 state.classes**（不切视图、不弹提示）。
+   *
+   * 🔴 为什么必须有它（2026-10-14 实踩）：班级的大节时间 / 主教室存在 `state.classes` 里，
+   *   「配置班级」弹层保存成功后 `reload()` 只重渲染当前页，**不重新请求 /api/me**
+   *   ⇒ state.classes 仍是旧配置，紧接着打开「添加课次」，大节下拉还是保存前那几项
+   *   （用户会以为"保存没生效"）。凡是弹层里改了班级级配置，保存后都要走这里。
+   */
+  function refreshClasses() {
+    return api('/api/me').then(function (me) {
+      if (me && me.ok && me.classes) {
+        state.classes = me.classes;
+        // 选中的班可能已被停用/删除 ⇒ 兜底选第一个可用班
+        if (!currentClass()) state.classId = state.classes.length ? state.classes[0].id : null;
+      }
+      return state.classes;
+    }).catch(function () { /* 拉不到就保持原状，不阻断保存 */ });
+  }
+
   function currentClass() {
     for (var i = 0; i < state.classes.length; i++) {
       if (state.classes[i].id === state.classId) return state.classes[i];
@@ -251,7 +270,8 @@
     api('/api/timetable?classId=' + state.classId + '&group=' + encodeURIComponent(state.group))
       .then(function (d) {
         if (!d.ok) { host.innerHTML = errHtml(d); return; }
-        var rows = d.data;
+        // 保洁课次（打扫410 / 410大扫除，kind='CLEAN'）只在值日页展示，课程表不显示
+        var rows = (d.data || []).filter(function (r) { return r.kind !== 'CLEAN'; });
         var byDay = {};
         rows.forEach(function (r) { (byDay[r.dayOfWeek] = byDay[r.dayOfWeek] || []).push(r); });
         var DAYS = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
@@ -281,7 +301,7 @@
             return list.map(function (r, i) {
               return '<tr>' +
                 (i === 0 ? '<td rowspan="' + list.length + '" class="td-day">' + DAYS[d2] + '</td>' : '') +
-                '<td>第 ' + r.period + ' 节' + (r.kind === 'CLEAN' ? ' <span class="tag tag-clean">保洁</span>' : '') + '</td>' +
+                '<td class="td-period">第 ' + r.period + ' 节</td>' +
                 '<td>' + esc(r.courseName) + '</td>' +
                 '<td>' + esc(r.teacher) + '</td>' +
                 '<td>' + esc(r.room) + '</td>' +
@@ -648,7 +668,9 @@
       if (!day) continue;
       var pRaw = String(cPeriod >= 0 ? row[cPeriod] : '').trim();
       var period = parseInt((pRaw.match(/\d+/) || [0])[0], 10);
-      if (!period || period < 1 || period > 5) continue;
+      // 上限放宽到 10（与 MAX_PERIOD 同口径）：某些班有第 6 节等 45 分钟短课，
+      // 写死 5 会让解析器**整行丢弃**这门课，导入后课表里凭空少一节（2026-10-14）。
+      if (!period || period < 1 || period > 10) continue;
       var weeks = normalizeWeeks(cWeeks >= 0 ? row[cWeeks] : '');
       var teacher = String(cTeacher >= 0 ? row[cTeacher] || '' : '').trim();
       var room = String(cRoom >= 0 ? row[cRoom] || '' : '').trim();
@@ -680,6 +702,35 @@
     return out.join(',');
   }
 
+  /**
+   * 本班可选的大节号列表（2026-10-14：不再写死 [1,2,3,4,5]）。
+   *
+   * `class.period_time` 是**每班可配**的（后台「配置班级 → 大节时间」能加第 6 行，
+   * 用于「书香校园」这类 45 分钟短课）。写死 5 时下拉里根本没有第 6 节，用户只能选到
+   * 别的节次 —— 与小程序端「第 6 节课被过滤掉」是同一个病根的两面。
+   *
+   * @param {object} [cls] 班级对象（含 periodTime）；缺省用当前班
+   * @param {number} [mustInclude] 必须包含的节次（编辑既有课次时传它，
+   *        防「配置后来被改小」导致 select 落到第一项、静默把节次改掉）
+   */
+  function periodOptions(cls, mustInclude) {
+    var c = cls || currentClass();
+    var n = 5;   // 兜底（与历史行为一致）
+    var pt = c && c.periodTime;
+    if (pt && pt.length) {
+      pt.forEach(function (x) {
+        var v = Number(x && x.period);
+        if (v >= 1 && v <= 10) n = Math.max(n, v);
+      });
+      n = Math.max(n, Math.min(pt.length, 10));
+    }
+    var m = Number(mustInclude) || 0;
+    if (m >= 1 && m <= 10) n = Math.max(n, m);
+    var out = [];
+    for (var p = 1; p <= n; p++) out.push(p);
+    return out;
+  }
+
   /* -------- 单独添加一节课：A 组 / B 组 / 全体 -------- */
   function openAddDialog() {
     var cls = currentClass();
@@ -698,7 +749,7 @@
         var N = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
         return '<option value="' + d2 + '">' + N[d2] + '</option>';
       }).join('') + '</select>') +
-      fld('大节', '<select id="a-period">' + [1, 2, 3, 4, 5].map(function (p) {
+      fld('大节', '<select id="a-period">' + periodOptions(cls).map(function (p) {
         return '<option value="' + p + '">第 ' + p + ' 节</option>';
       }).join('') + '</select>') +
       '</div>' +
@@ -777,7 +828,7 @@
             return '<option value="' + d2 + '"' + (d2 === r.dayOfWeek ? ' selected' : '') + '>' + N[d2] + '</option>';
           }).join('') + '</select>') +
         fld('大节', '<select id="f-period">' +
-          [1, 2, 3, 4, 5].map(function (p) {
+          periodOptions(currentClass(), r.period).map(function (p) {
             return '<option value="' + p + '"' + (p === r.period ? ' selected' : '') + '>第 ' + p + ' 节</option>';
           }).join('') + '</select>') +
         fld('教室', '<input type="text" id="f-room" value="' + esc(r.room) + '">') +
@@ -1138,12 +1189,13 @@
       host.innerHTML = '<div class="card">' +
         '<div class="card-hd">全部班级（后台可跨班查看与配置）</div>' +
         '<table class="tbl"><thead><tr>' +
-        '<th>班级</th><th>成员</th><th>学期起始</th><th>周数</th><th>口令</th><th>邀请码</th><th>绑定入口</th><th>状态</th><th>操作</th>' +
+        '<th>班级</th><th>成员</th><th>主教室</th><th>学期起始</th><th>周数</th><th>口令</th><th>邀请码</th><th>绑定入口</th><th>状态</th><th>操作</th>' +
         '</tr></thead><tbody>' +
         rows.map(function (c) {
           return '<tr>' +
             '<td>' + esc(c.name) + '</td>' +
             '<td>' + c.memberCount + '</td>' +
+            '<td>' + (c.mainRoom ? esc(c.mainRoom) : '<span class="muted-note">未设</span>') + '</td>' +
             '<td>' + esc(c.termStart) + '</td>' +
             '<td>' + c.totalWeeks + '</td>' +
             '<td class="td-no">' + esc(c.joinToken) + '</td>' +
@@ -1175,6 +1227,7 @@
         stat('值日记录', c.stats.dutyCount, '') +
         '</div>' +
         fld('班级名', '<input type="text" id="c-name" value="' + esc(c.name) + '">') +
+        fld('主教室（保洁值日按此房间，如 410）', '<input type="text" id="c-room" maxlength="32" value="' + esc(c.mainRoom || '') + '" placeholder="如 410 / 3号教学楼410">') +
         fld('学期第一周周一', '<input type="date" id="c-term" value="' + esc(c.termStart) + '">') +
         fld('总周数', '<input type="number" id="c-weeks" min="1" max="30" value="' + c.totalWeeks + '">') +
         fld('绑定入口', '<select id="c-bind">' +
@@ -1200,6 +1253,7 @@
         try {
           body = {
             name: $('#c-name', dlg).value.trim(),
+            mainRoom: $('#c-room', dlg).value.trim(),
             termStart: $('#c-term', dlg).value,
             totalWeeks: Number($('#c-weeks', dlg).value),
             bindOpen: $('#c-bind', dlg).value === '1',
@@ -1208,7 +1262,10 @@
         } catch (e) { toast(e.message, 'err'); return; }
         api('/api/classes/' + id, { method: 'POST', body: body }).then(function (res) {
           if (!res.ok) { toast(res.errMsg, 'err'); return; }
-          dlg.remove(); toast('已保存', 'ok'); reload();
+          dlg.remove(); toast('已保存', 'ok');
+          // 先把班级清单刷回来（periodTime / mainRoom 都在里面），
+          // 再重渲染 —— 否则本次改的大节时间/主教室在本页要等到下次刷新才生效。
+          refreshClasses().then(reload);
         });
       };
     });

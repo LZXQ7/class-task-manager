@@ -265,6 +265,42 @@ const POSITIONS = [
 const GRANTED_POSITIONS = ['生活委员', '班长兼团支书'];
 
 /**
+ * 班费 / 团费权限（2026-10-14）：前端**唯一**判定源，首页（pages/home）与我的页（pages/mine）共用。
+ * ⚠️ 口径与云函数 `cloudfunctions/fee/index.js` 的 feeManager / feeTotalSetter **逐字一致**：
+ *    可消费 = 班费（班长兼团支书 / 副班长 / 生活委员 / 超管）、团费（班长兼团支书 / 超管）；
+ *    可设总额 = 班费（超管 / 生活委员）、团费（超管 / 班长兼团支书）。
+ * ⚠️ 前端只决定「入口显不显示」，真正拦截一律以后端 fee 云函数为准。
+ * 入参：{ isSuper, position }（position 取登录 profile，字面量与 POSITIONS 一致）。
+ */
+function feeRights(m) {
+  const none = {
+    canManageClass: false, canManageLeague: false,
+    canSetTotalClass: false, canSetTotalLeague: false,
+    showLeagueCard: false, hasAny: false
+  };
+  if (!m) return none;
+  const isSuper = !!m.isSuper;
+  const pos = m.position || '';
+  const isMonitor = pos === '班长兼团支书';
+  const isVice = pos === '副班长';
+  const isDuty = pos === '生活委员';
+  const canManageClass = isSuper || isMonitor || isVice || isDuty;
+  const canManageLeague = isSuper || isMonitor;
+  const canSetTotalClass = isSuper || isDuty;
+  const canSetTotalLeague = isSuper || isMonitor;
+  return {
+    canManageClass, canManageLeague,
+    canSetTotalClass, canSetTotalLeague,
+    // 团费卡对所有人可见：普通成员点开是 view-only（仅查看），管理人点开可管理。
+    // 旧口径「仅能管团费者可见」已废弃 —— 当初是为避免非管理人看到点不动的卡，
+    // 现在班费/团费都放开为 view-only，点开能看，该理由不成立。
+    showLeagueCard: true,
+    // 只要有任一班费相关能力，我的页就该出现对应入口
+    hasAny: canManageClass || canManageLeague
+  };
+}
+
+/**
  * 职位头衔分层（超管 / 班委 / 辅导员，三类颜色明显区分）。
  * 入参 m：{ isSuper, groupTag, role, position }（来自 memberList / 登录 profile）。
  * 返回 { text, tier } 或 null（普通成员不展示头衔）。
@@ -362,5 +398,6 @@ module.exports = {
   firstChar, maskNo, avatarColor, seqOf, clockNow,
   dutyStatus, DUTY_STATUS, whenText, CLEAN_WHEN, courseColor, COURSE_COLORS,
   sortClasses, majorRank, fmtRoom,
-  toast, confirm, confirmStrict, throttleTap, randPath, pad, roleTag, POSITIONS, GRANTED_POSITIONS
+  toast, confirm, confirmStrict, throttleTap, randPath, pad, roleTag, POSITIONS, GRANTED_POSITIONS,
+  feeRights
 };

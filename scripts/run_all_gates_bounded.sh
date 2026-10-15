@@ -1,41 +1,18 @@
 #!/bin/bash
-# 带 per-gate 超时的门禁批跑（定位「哪个门禁卡死」用）
-# 为什么要它：scripts/run_all_gates.sh 的 `node "$f"` **没有 timeout**，
-# 一旦某个门禁卡死（等网络 / 等 DB / 等子进程），整轮 runner 会**无限等待**
-# ⇒ 表现为整条命令被 SIGTERM、且日志停在 0 字节（stdout 缓冲没 flush）。
-# 这里给每个门禁套 `timeout 60`，卡死的记为 TIMEOUT 并继续往下跑。
+# 带 per-gate 超时的门禁批跑（一条命令看总数）
+#
+# ⚠️ 2026-10-15 重写：原来的 shell `for` 循环在本机会**挂死** —— 现象是 bash 进程还在、
+#    却**再也不启动 node**，stdout 停在 0 字节、一个门禁都没跑完（实测 16 分钟零输出，
+#    而同样的门禁用 Node 派生的跑法 3 分钟全过）。根因是 Windows 上 shell 连续 spawn
+#    80+ 次 node 的稳定性问题，**不是门禁本身慢**（别据此去改门禁）。
+#    现在把循环整体交给 `scripts/run-gates-chunk.js`（Node 的 spawnSync 逐个派生），
+#    对外保持同样的输出约定与退出码：`check_closeout.sh` 的 D4 与既有文档都不用改。
+#
+# 单段排查（知道大概在哪一段时比全量快）：
+#   node scripts/run-gates-chunk.js 0 30     # 只跑第 1~30 个
+#   PER=30 node scripts/run-gates-chunk.js   # 收紧单门禁超时
 export PATH="/c/Program Files/Git/usr/bin:/c/Program Files/Git/bin:$PATH"
 export USERPROFILE="C:\Users\PC"
 cd "C:/Users/PC/WorkBuddy/LZXQ-WorkBuddy" || exit 1
 
-PER="${PER:-60}"
-pass=0; fail=0; slow=""
-for f in scripts/check-*.js; do
-  name=$(basename "$f")
-  ok=0
-  for try in 1 2 3; do
-    if timeout "$PER" node "$f" >/dev/null 2>&1; then ok=1; break; fi
-  done
-  if [ "$ok" = "1" ]; then
-    pass=$((pass+1))
-  else
-    # 判一次到底是「红」还是「卡死」：单跑计时
-    t0=$(date +%s)
-    timeout "$PER" node "$f" >/dev/null 2>&1
-    rc=$?
-    t1=$(date +%s)
-    if [ "$rc" = "124" ]; then
-      fail=$((fail+1)); slow="$slow $name(卡死>${PER}s)"
-      echo "[卡死] $name"
-    else
-      dt=$((t1-t0))
-      fail=$((fail+1)); slow="$slow $name(红,${dt}s)"
-      echo "[红] $name (${dt}s)"
-    fi
-  fi
-done
-echo "=============================="
-echo "门禁 通过=$pass 失败=$fail"
-[ -n "$slow" ] && echo "问题项:$slow"
-[ "$fail" -eq 0 ] && echo "全绿"
-exit "$fail"
+exec node scripts/run-gates-chunk.js "$@"

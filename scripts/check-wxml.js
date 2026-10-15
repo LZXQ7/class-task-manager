@@ -121,6 +121,39 @@ function checkExprCalls(file, raw, sink) {
 }
 
 /**
+ * 🔴 **wx:key 不得写 `{{ }}` 表达式**（2026-10-16 新增，真机渲染层报错后立的铁律）。
+ *
+ * 现象（DevTools 控制台）：
+ *   `[渲染层错误] Uncaught SyntaxError: Failed to execute 'appendChild' on 'Node': missing ) after argument list`
+ *   `[渲染层错误] Framework inner error (expect FLOW_INITIAL_CREATION end but got FLOW_CREATE_NODE)`
+ * 根因：`wx:key` 的值是**属性名**，框架内部做 `item[key]` 取值；
+ *   写成 `wx:key="{{item.a ? 'x' : 'y'}}"` 属于全仓唯一的例外形态 ⇒ 渲染层编译/创建节点时报语法错误。
+ *   （排查时会误以为「括号不配平」—— 实测所有 `{{}}` 的括号、引号、mustache 全配平，不在表达式本身。）
+ *
+ * 正确做法：**派生值在 JS 里算好**，wxml 只写裸属性名（如 `wx:key="key"`），
+ *   与项目既有铁律「WXML 不做逻辑，派生值一律 JS 预计算」一致。
+ *   全仓既有的 wx:key 写法（`id` / `*this` / `key` / `leaveId` …）都是裸属性名，照抄即可。
+ *
+ * 判据：`wx:key="…"` 的属性值里出现 `{{` 即判死。`*this` / `index` 等保留写法不受影响。
+ */
+function checkWxKeyAttr(file, raw, sink) {
+  const out = sink || problems;
+  const t = String(raw).replace(/<!--[\s\S]*?-->/g, '');
+  const re = /wx:key\s*=\s*"([^"]*)"/g;
+  let m;
+  while ((m = re.exec(t))) {
+    if (!/\{\{/.test(m[1])) continue;
+    const line = t.slice(0, m.index).split('\n').length;
+    out.push(
+      `${file.replace(/\\/g, '/')}:${line}: wx:key 不得写表达式 → wx:key="${m[1]}"`
+      + `（wx:key 只接受**属性名**，框架内部做 item[key]；写表达式会让渲染层报`
+      + ` missing ) after argument list / FLOW_INITIAL_CREATION 框架内部错误）`
+      + ` ⇒ 请在 JS 里算好唯一字段（前缀区分 id 空间）再绑 wx:key="key"`
+    );
+  }
+}
+
+/**
  * 🔴 **注释提前闭合**扫描（2026-10-09 真机编译失败后新增）。
  *
  * 判据：把文件里`<!--` 与 `-->` 按出现位置扫出来，**必须严格交替**
@@ -182,6 +215,9 @@ allWxml.forEach((f) => checkExprCalls(f, fs.readFileSync(f, 'utf8')));
 /* 注释提前闭合：同样扫全部 wxml（2026-10-09 新增，真机编译失败换来的） */
 allWxml.forEach((f) => checkCommentNest(f, fs.readFileSync(f, 'utf8')));
 
+/* wx:key 禁表达式：同样扫全部 wxml（2026-10-16 新增，渲染层 SyntaxError 换来的） */
+allWxml.forEach((f) => checkWxKeyAttr(f, fs.readFileSync(f, 'utf8')));
+
 /* 自证：两个方向都要过 —— 坏样本必须被抓到，好样本不得被误报 */
 {
   const bad = [];
@@ -209,6 +245,27 @@ allWxml.forEach((f) => checkCommentNest(f, fs.readFileSync(f, 'utf8')));
   checkCommentNest('__selfcheck__.wxml',
     '<!-- 一 -->\n<view>x</view>\n<!-- 二 -->\n<view>y</view>', goodNest2);
   if (goodNest2.length) problems.push('check-wxml 自证失败：正常多注释被误报 → ' + goodNest2[0]);
+
+  /* 自证：wx:key 禁表达式 —— 坏样本（本轮真实报错形状）必抓、裸属性名不得误报 */
+  const badKey = [];
+  checkWxKeyAttr('__selfcheck__.wxml',
+    `<view wx:for="{{sessions}}" wx:key="{{item.isPersonal ? 'pid' : 'sessionId'}}">x</view>`, badKey);
+  if (!badKey.length) problems.push('check-wxml 自证失败：wx:key 里的表达式没被抓到（本轮渲染层 SyntaxError 就是它）');
+  const badKey2 = [];
+  checkWxKeyAttr('__selfcheck__.wxml',
+    `<view wx:for="{{list}}" wx:key="{{item.id}}">x</view>`, badKey2);
+  if (!badKey2.length) problems.push('check-wxml 自证失败：wx:key="{item.id}" 这种简写也没被抓到');
+  const goodKey = [];
+  checkWxKeyAttr('__selfcheck__.wxml',
+    `<view wx:for="{{sessions}}" wx:key="key">x</view>`
+    + `<view wx:for="{{list}}" wx:key="*this">y</view>`
+    + `<view wx:for="{{list}}" wx:key="id">z</view>`, goodKey);
+  if (goodKey.length) problems.push('check-wxml 自证失败：裸属性名 wx:key 被误报 → ' + goodKey[0]);
+  const goodKeyComment = [];
+  // 注释里提到 wx:key 写法是合法的（既有注释到处在讲口径），不得误报
+  checkWxKeyAttr('__selfcheck__.wxml',
+    `<!-- 口径：wx:key="{{item.a ? 'x' : 'y'}}" 这种写法已废弃 -->\n<view wx:key="key">x</view>`, goodKeyComment);
+  if (goodKeyComment.length) problems.push('check-wxml 自证失败：注释里的 wx:key 被误报 → ' + goodKeyComment[0]);
 }
 
 /* ---------- 非 Tab 二级页必须有返回键 ----------

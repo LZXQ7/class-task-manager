@@ -102,7 +102,15 @@ app.get('/api/me', async (req, res) => {
   res.json({
     ok: true,
     user: { username: s.username, memberId: s.memberId, memberName: s.memberName },
-    classes: classes.map((c) => ({ id: c.id, name: c.name, isActive: c.isActive }))
+    // ⚠️ 这里曾只回传 {id,name,isActive} 三个字段，把 maskClass 解析好的 periodTime **丢掉了**：
+    //   前端「添加课次」的大节下拉（periodOptions）要读 cls.periodTime 才知道本班配了几个大节，
+    //   拿不到就只能走兜底 5 项 ⇒ 线上给 示例班级A 配了 6 个大节，下拉仍然只有 5 项（2026-10-14 用户实锤）。
+    //   凡是「按班级配置动态渲染」的前端逻辑，字段都必须在这一层放行。
+    classes: classes.map((c) => ({
+      id: c.id, name: c.name, isActive: c.isActive,
+      periodTime: c.periodTime || [],   // 大节时间（节次数来源）
+      mainRoom: c.mainRoom || ''        // 主教室（保洁值日房间）
+    }))
   });
 });
 

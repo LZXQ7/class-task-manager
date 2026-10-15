@@ -161,6 +161,11 @@ Page({
         // 需求 D：排班域入口（清空 / 一键生成 / 发布 / 调整 / 加人）改为
         // 「超管或本班生活委员」—— 判定来自后端 guard，前端不自己比 position
         canSchedule: !!(app && app.canSchedule && app.canSchedule()),
+        // 「+ 加值日生」按钮的显隐开关（2026-10-14 用户要求隐藏）。
+        // 功能代码（onAddOpen / 弹层 / scheduleAddManual 接口）**全部保留**，只挡入口 ⇒ 想恢复把这里改回 true 即可。
+        // ⚠️ 为什么用开关而不是直接删 wxml 的 wx:if：删了以后想恢复得重新翻 git，
+        //    而这一行改动 + 一个常量就能表达「暂时不想露出这个入口」。
+        showAddDutyBtn: false,
         isCounselor
       });
       // 教职工：加载自己绑定的班级做筛选标签（class.list 对教职工只回绑定班）

@@ -2,7 +2,8 @@
  * 门禁 #57 / #58 / #59 —— 青果课表导入（需求 D-2）
  * ------------------------------------------------------------
  * #57 解析映射（import-parse.js）：列位置 → day_of_week(1-based)、节次标签 → period、
- *      周次文本 → 显式 CSV weeks、week_rule='ALL'、同(课程名+教师)去重为一门 course、
+ *      周次文本 → 显式 CSV weeks、week_rule='ALL'、同(课程名+教师+教室)去重为一门 course
+ *      （room 碰撞修复：同一门课在多个教室上课必须拆成多条 course）、
  *      kind='COURSE' / dutyCount=2。
  * #58 班级隔离（course/index.js importTimetable）：必须用 guard.resolveClassId 收口，
  *      严禁 classIdOf（超管适配他班时 classIdOf 会忽略传入 classId，把数据写进自己班）。
@@ -64,7 +65,7 @@ function check57(t) {
   return has(t, 'WEEK_NAMES')
     && has(t, 'dayOfWeek: d + 1')
     && has(t, "weekRule: 'ALL'")
-    && has(t, "const key = name + ' ' + teacher;")
+    && has(t, "const key = name + ' ' + teacher + ' ' + room;")
     && has(t, 'parseWeekSpec')
     && has(t, "kind: 'COURSE'")
     && has(t, 'dutyCount: 2');
@@ -72,7 +73,7 @@ function check57(t) {
 console.log('── #57 解析映射（import-parse.js）');
 {
   const t = fs.readFileSync(IMPORT_PARSE, 'utf8');
-  if (check57(t)) ok('映射字段齐全：列→dayOfWeek / 节次→period / 周次→weeks CSV / 同(名+教师)去重 / COURSE');
+  if (check57(t)) ok('映射字段齐全：列→dayOfWeek / 节次→period / 周次→weeks CSV / 同(名+教师+教室)去重 / COURSE');
   else bad('解析映射缺失关键字段');
   selfProof(t,
     (s) => s.replace("weekRule: 'ALL'", "weekRule: 'BAD'"),

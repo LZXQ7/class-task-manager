@@ -92,8 +92,8 @@ check('无假期无调课时返回原始日期', week.classDateOf({ termStart: T
 /* ---------- ④ 序号 / 周次编码 ---------- */
 console.log();
 console.log('--- ④ 序号与周次编码 ---');
-check('seqOf 取学号后两位', week.seqOf(209901030101) === 1 && week.seqOf('209901030156') === 56,
-  week.seqOf(209901030101) + ',' + week.seqOf('209901030156'));
+check('seqOf 取学号后两位', week.seqOf(000000000301) === 1 && week.seqOf('000000000356') === 56,
+  week.seqOf(000000000301) + ',' + week.seqOf('000000000356'));
 check('seqOf 空值返回 0', week.seqOf('') === 0 && week.seqOf(null) === 0);
 check('parseWeeks 去重升序', JSON.stringify(week.parseWeeks('2,4,4,6')) === '[2,4,6]', JSON.stringify(week.parseWeeks('2,4,4,6')));
 check('matchesWeeks 空串 = 每周都上', week.matchesWeeks('', 5, null) === true);

@@ -8,7 +8,7 @@
      「在弹层里滑到底 → 后面的页面跟着一起滑」就是这么来的。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(sheetShow || noticeShow || anncSheetShow || npopSheetShow || leaveHomeShow || courseInfoShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(sheetShow || noticeShow || anncSheetShow || npopSheetShow || leaveHomeShow || courseInfoShow || feeShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <view class="page home {{paReady ? (animSeq === 0 ? 'pa-first' : (animSeq === 1 ? 'pa-lite-a' : 'pa-lite-b')) : 'pa-hold'}} {{tClass}}">
 
@@ -173,35 +173,53 @@
         ✅ 提到结束标记时用中文说法代替符号本身。
         （注释里**写插值花括号是合法的**，真机正常，既有代码到处都这么写。） -->
           <block wx:if="{{canCourseInfo}}">
-            <view wx:for="{{sessions}}" wx:key="sessionId" wx:for-index="ci"
-              class="course-row tappable {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}}"
+            <!-- 🔴 wx:key 用 JS 预计算好的 `key` 字段（`s<sessionId>` / `p<pid>`），
+                 **绝不能写 `{{ }}` 表达式** —— wx:key 只接受属性名，表达式会让渲染层直接报错
+                 （DevTools：`missing ) after argument list` + `FLOW_INITIAL_CREATION` 框架内部错误；
+                  详见 home/index.js 的 _withRowKey 注释）。
+                 选修课仍保留 bindtap：onCourseTap 里有 `if (s.isPersonal) return` 守卫，
+                 不会弹课堂情况；tappable 只是视觉提示，由 .personal 样式单独关掉按压反馈。 -->
+            <view wx:for="{{sessions}}" wx:key="key" wx:for-index="ci"
+              class="course-row tappable {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}} {{item.isPersonal ? 'personal' : ''}}"
               bindtap="onCourseTap" data-idx="{{ci}}"
-              hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+              hover-class="{{item.isPersonal ? '' : 'press-dim'}}" hover-start-time="0" hover-stay-time="60">
               <view class="course-bar {{item.isMine ? 'on' : ''}}"></view>
-              <view class="course-info">
-                <view class="course-line1">
-                  <text class="course-time">{{item.periodTime ? item.periodTime.start + '-' + item.periodTime.end : '第' + item.period + '节'}}</text>
-                  <text class="course-name">{{item.name}}</text>
-                </view>
+              <view class="course-side">
+                <text class="course-time">{{item.periodTime ? item.periodTime.start + '-' + item.periodTime.end : '第' + item.period + '节'}}</text>
                 <view class="course-room">{{item.room || '未填教室'}}</view>
               </view>
-              <text wx:if="{{item.groupScope}}" class="tag {{item.groupScope === 'A' ? 'ga' : 'gb'}}">{{item.groupScope}} 组</text>
-              <view wx:else class="tag all">全体</view>
+              <text class="course-name">{{item.name}}</text>
+              <!-- 选修课不显示「全体」标签（它不属于任何分组，显示「全体」会误导成全班课） -->
+              <view wx:if="{{item.isPersonal}}" class="tag elective">选修</view>
+              <block wx:else>
+                <text wx:if="{{item.groupScope}}" class="tag {{item.groupScope === 'A' ? 'ga' : 'gb'}}">{{item.groupScope}} 组</text>
+                <view wx:else class="tag all">全体</view>
+              </block>
             </view>
           </block>
           <block wx:else>
-            <view wx:for="{{sessions}}" wx:key="sessionId"
-              class="course-row {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}}">
+            <!-- ⚠️ wx:key 用预计算的 `key`（同理：不能写表达式）。为什么不直接用 sessionId：
+                 选修课的 sessionId 恒为 0（个人课次没有 session 身份）⇒ 多门选修课会撞 key，
+                 列表增删时 diff 错位。`_withRowKey` 给两个 id 空间加前缀区分（s… / p…）。
+                 2026-10-16 首页并入本人选修课时一并修正。 -->
+          <!-- ⚠️ 选修课**不加 tappable**（2026-10-16）：它不驱动值日、也没有课堂情况名单
+               （onCourseTap 里对 isPersonal 直接 return）⇒ 点了没反应反而像坏了，
+               不如做成纯展示行。 -->
+            <view wx:for="{{sessions}}" wx:key="key"
+              class="course-row {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}} {{item.isPersonal ? 'personal' : ''}}">
               <view class="course-bar {{item.isMine ? 'on' : ''}}"></view>
-              <view class="course-info">
-                <view class="course-line1">
-                  <text class="course-time">{{item.periodTime ? item.periodTime.start + '-' + item.periodTime.end : '第' + item.period + '节'}}</text>
-                  <text class="course-name">{{item.name}}</text>
-                </view>
+              <view class="course-side">
+                <text class="course-time">{{item.periodTime ? item.periodTime.start + '-' + item.periodTime.end : '第' + item.period + '节'}}</text>
                 <view class="course-room">{{item.room || '未填教室'}}</view>
               </view>
-              <text wx:if="{{item.groupScope}}" class="tag {{item.groupScope === 'A' ? 'ga' : 'gb'}}">{{item.groupScope}} 组</text>
-              <view wx:else class="tag all">全体</view>
+              <text class="course-name">{{item.name}}</text>
+              <!-- 🔴 选修课不显示「全体」标签：它不属于任何分组，显示「全体」会误导成全班课。
+                   改显「选修」角标，一眼区分本人课与全班课。 -->
+              <view wx:if="{{item.isPersonal}}" class="tag elective">选修</view>
+              <block wx:else>
+                <text wx:if="{{item.groupScope}}" class="tag {{item.groupScope === 'A' ? 'ga' : 'gb'}}">{{item.groupScope}} 组</text>
+                <view wx:else class="tag all">全体</view>
+              </block>
             </view>
           </block>
         </block>
@@ -215,36 +233,66 @@
           <text class="card-sub">{{tomorrowText}}</text>
         </view>
         <block wx:if="{{tomorrowSessions.length}}">
-          <view wx:for="{{tomorrowSessions}}" wx:key="sessionId" class="course-row">
+          <!-- 同今日课次：wx:key 用预计算的 `key`（选修课 p<pid>、全班课次 s<sessionId>），
+               选修课显「选修」角标而非「全体」 -->
+          <view wx:for="{{tomorrowSessions}}" wx:key="key" class="course-row">
             <view class="course-bar"></view>
-            <view class="course-info">
-              <view class="course-line1">
-                <text class="course-time">{{item.periodTime ? item.periodTime.start + '-' + item.periodTime.end : '第' + item.period + '节'}}</text>
-                <text class="course-name">{{item.name}}</text>
-              </view>
+            <view class="course-side">
+              <text class="course-time">{{item.periodTime ? item.periodTime.start + '-' + item.periodTime.end : '第' + item.period + '节'}}</text>
               <view class="course-room">{{item.room || '未填教室'}}</view>
             </view>
-            <view wx:if="{{item.groupScope}}" class="tag {{item.groupScope === 'A' ? 'ga' : 'gb'}}">{{item.groupScope}} 组</view>
-            <view wx:else class="tag all">全体</view>
+            <text class="course-name">{{item.name}}</text>
+            <view wx:if="{{item.isPersonal}}" class="tag elective">选修</view>
+            <block wx:else>
+              <view wx:if="{{item.groupScope}}" class="tag {{item.groupScope === 'A' ? 'ga' : 'gb'}}">{{item.groupScope}} 组</view>
+              <view wx:else class="tag all">全体</view>
+            </block>
           </view>
         </block>
         <view wx:else class="no-course">明日无课🎉</view>
       </view>
 
-      <!-- 管理员入口：紧接「明日课次」，标题按身份显示职位头衔（超管金 / 班委蓝 / 辅导员青）
-           「管理员」含超管，「超管」严格仅超管（§41 术语约定）
-           v0.7.16 需求⑥：辅导员不显示「成员与分组」（只能看到一个班的旧卡片），
-           原位换成「查看班级」—— 从班级管理里看特定班级的人员。 -->
-      <view wx:if="{{isAdmin}}" class="card mt16 admin-card st-item st-6">
-        <view wx:if="{{adminTag}}" class="admin-tag {{adminTier}}">{{adminTag}}</view>
-        <view class="admin-grid">
-          <view class="admin-cell" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="{{isCounselor ? 'goClasses' : 'goRoster'}}">
-            <app-icon name="people" variant="brand" size="{{48}}" />
-            <text>{{isCounselor ? '查看班级' : '成员与分组'}}</text>
+      <!-- 班费 / 团费（2026-10-14）：班费全员可见；团费仅超管 / 班长兼团支书可见（左右一排两卡）。
+           普通成员（及无管理职位的班委）班费卡仅展示、不可点开；点开弹出消费 / 明细弹层。 -->
+      <view class="fee-block mt16 st-item st-6">
+        <view class="fee-row">
+          <view
+            class="card fee-card tappable"
+            data-type="class"
+            bindtap="onFeeTap"
+            hover-class="press-dim"
+            hover-start-time="0"
+            hover-stay-time="60"
+          >
+            <view class="fee-card-top">
+              <view class="fee-card-left">
+                <text class="fee-name">班费</text>
+                <text class="fee-tag {{feeCanManageClass ? 'manage' : 'view'}}">{{feeCanManageClass ? '管理' : '查看'}}</text>
+              </view>
+              <app-icon name="arrow-right" variant="gray" size="{{28}}" />
+            </view>
+            <text class="fee-balance">¥{{feeClass.balanceText}}</text>
+            <text class="fee-sub">总额 ¥{{feeClass.totalText}} · 已消费 ¥{{feeClass.expenseText}}</text>
           </view>
-          <view class="admin-cell" bindtap="onNoticeOpen">
-            <app-icon name="bell" variant="brand" size="{{48}}" />
-            <text>发布通知</text>
+
+          <view
+            wx:if="{{showLeagueCard}}"
+            class="card fee-card tappable"
+            data-type="league"
+            bindtap="onFeeTap"
+            hover-class="press-dim"
+            hover-start-time="0"
+            hover-stay-time="60"
+          >
+            <view class="fee-card-top">
+              <view class="fee-card-left">
+                <text class="fee-name">团费</text>
+                <text class="fee-tag {{feeCanManageLeague ? 'manage' : 'view'}}">{{feeCanManageLeague ? '管理' : '查看'}}</text>
+              </view>
+              <app-icon name="arrow-right" variant="gray" size="{{28}}" />
+            </view>
+            <text class="fee-balance">¥{{feeLeague.balanceText}}</text>
+            <text class="fee-sub">总额 ¥{{feeLeague.totalText}} · 已消费 ¥{{feeLeague.expenseText}}</text>
           </view>
         </view>
       </view>
@@ -300,6 +348,25 @@
           </view>
           <view wx:if="{{!leaveHomeClasses.length}}" class="lh-empty">暂无可查看的班级</view>
         </block>
+      </view>
+
+      <!-- 管理员入口（2026-10-14 移动：原在「明日课次」后，现置于「本班请假」之下）：
+           标题按身份显示职位头衔（超管金 / 班委蓝 / 辅导员青）。
+           「管理员」含超管，「超管」严格仅超管（§41 术语约定）。
+           v0.7.16 需求⑥：辅导员不显示「成员与分组」（只能看到一个班的旧卡片），
+           原位换成「查看班级」—— 从班级管理里看特定班级的人员。 -->
+      <view wx:if="{{isAdmin}}" class="card mt16 admin-card st-item st-7">
+        <view wx:if="{{adminTag}}" class="admin-tag {{adminTier}}">{{adminTag}}</view>
+        <view class="admin-grid">
+          <view class="admin-cell" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="{{isCounselor ? 'goClasses' : 'goRoster'}}">
+            <app-icon name="people" variant="brand" size="{{48}}" />
+            <text>{{isCounselor ? '查看班级' : '成员与分组'}}</text>
+          </view>
+          <view class="admin-cell" bindtap="onNoticeOpen">
+            <app-icon name="bell" variant="brand" size="{{48}}" />
+            <text>发布通知</text>
+          </view>
+        </view>
       </view>
 
       <!-- 查看通知（§41 需求⑦）：全员可见，未确认数红点角标。点开直接进通知页，
@@ -677,6 +744,89 @@
       <view class="ci-copy" bindtap="onCourseInfoCopy" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
         复制课堂情况
       </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- ============ 班费 / 团费（2026-10-14）============
+       点开卡片弹出 **列表视图**：余额（含总额 / 已消费只读小字）+ 消费明细 + 「增加消费」按钮。
+       点「增加消费」切到 **表单视图**：金额 / 备注 / 凭证图片（最多 9 张）+ 提交 / 返回。
+       ⚠️ 设置总额**不在这里** —— 已迁到「我的」页「更多」（2026-10-14 需求②），
+          避免出现两处入口改同一个值。
+       ⚠️ 仅能班费/团费管理者能点开（普通成员卡片仅展示），故表单恒属于有权限者。 -->
+  <bottom-sheet show="{{feeShow}}" title="{{feeActiveName}}{{feeCanManage ? ' · 管理' : ' · 仅查看'}}" bind:close="onFeeClose">
+    <view class="np">
+      <!-- 余额（两个视图都显示：填金额时要看得见还剩多少） -->
+      <view class="fee-bal-block">
+        <text class="fee-bal-label">当前余额</text>
+        <text class="fee-bal-num">¥{{feeActive.balanceText}}</text>
+        <!-- 只读小字：总额 / 已消费。删掉的只是「可编辑的设置总额输入框」，
+             这两个数字在列表视图用来核对，留着不占地方。 -->
+        <text class="fee-bal-sub">总额 ¥{{feeActive.totalText}} · 已消费 ¥{{feeActive.expenseText}}</text>
+      </view>
+
+      <!-- 列表视图：消费明细 + 增加消费 -->
+      <block wx:if="{{feeView === 'list'}}">
+        <view class="fee-rec-head">消费明细</view>
+        <view class="fee-rec" wx:for="{{feeActive.records}}" wx:key="id">
+          <view class="fee-rec-main">
+            <text class="fee-rec-amt">-¥{{item.amountText}}</text>
+            <text class="fee-rec-note" wx:if="{{item.note}}">{{item.note}}</text>
+          </view>
+          <view class="fee-rec-meta">
+            <text class="fee-rec-op">{{item.operatorName}}</text>
+            <text class="fee-rec-time">{{item.createdAt}}</text>
+          </view>
+          <view class="fee-rec-imgs" wx:if="{{item.images.length}}">
+            <view wx:for="{{item.images}}" wx:for-item="img" wx:key="*this" class="fee-rec-img" data-src="{{img}}" bindtap="onFeePreviewImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+              <image class="fee-rec-img-pic" src="{{img}}" mode="aspectFill" />
+            </view>
+          </view>
+          <!-- 仅管理人可见：追加图片（未满 9 张）/ 删除；view-only 用户完全看不到 -->
+          <view class="fee-rec-ops" wx:if="{{feeCanManage}}">
+            <view class="fee-rec-append" wx:if="{{item.images.length < 9}}" data-id="{{item.id}}" bindtap="onFeeAppendTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">追加图片</view>
+            <view class="fee-rec-del" data-id="{{item.id}}" bindtap="onFeeDeleteRecord" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">删除</view>
+          </view>
+        </view>
+        <view class="fee-rec-empty" wx:if="{{!feeActive.records.length}}">还没有消费记录</view>
+        <!-- ⚠️ 原此处有一条「仅查看，无法修改或删除」的灰底横幅（2026-10-15 按用户要求删除）：
+             它与弹层标题「班费 · 仅查看」重复，且底部「增加消费」按钮本就不渲染（feeCanManage 控制），
+             用户看到的是「点不动的按钮 + 一句解释」，双重提示反而像出了 bug。
+             权限口径不变：非管理者依旧没有增删改入口，只是不再显式声明。 -->
+        <view class="np-actions" wx:if="{{feeCanManage}}">
+          <view class="np-btn primary" bindtap="onFeeAddOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">增加消费</view>
+        </view>
+      </block>
+
+      <!-- 表单视图：金额 / 备注 / 凭证图片 + 提交 -->
+      <block wx:if="{{feeView === 'form'}}">
+        <view class="np-field">
+          <view class="np-label">金额</view>
+          <input class="np-input" type="digit" value="{{feeAmount}}" placeholder="消费金额（元）" placeholder-class="f-ph" bindinput="onFeeAmountInput" />
+        </view>
+        <view class="np-field">
+          <view class="np-label">备注<text class="np-opt">选填</text></view>
+          <input class="np-input" value="{{feeNote}}" placeholder="例如：买卫生工具" placeholder-class="f-ph" maxlength="200" bindinput="onFeeNoteInput" />
+        </view>
+        <view class="np-field">
+          <view class="np-label">凭证图片<text class="np-opt">最多 9 张，选填</text></view>
+          <view class="np-imgs">
+            <view wx:for="{{feeImages}}" wx:key="*this" class="np-img">
+              <image class="np-img-pic" src="{{item}}" mode="aspectFill" />
+              <view class="np-img-x" data-i="{{index}}" bindtap="onFeeRemoveImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+                <app-icon name="close" variant="gray" size="{{24}}" />
+              </view>
+            </view>
+            <view wx:if="{{feeImages.length < 9}}" class="np-img np-img-add" bindtap="onFeePickImage" hover-class="np-abtn-hover" hover-start-time="0" hover-stay-time="60">
+              <app-icon name="plus" variant="brand" size="{{40}}" />
+              <text class="np-img-add-t">添加</text>
+            </view>
+          </view>
+        </view>
+        <view class="np-actions">
+          <view class="np-btn ghost" bindtap="onFeeFormBack" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">返回</view>
+          <view class="np-btn primary {{feeBusy ? 'off' : ''}}" bindtap="onFeeSubmit">{{feeBusy ? '提交中…' : '提交消费'}}</view>
+        </view>
+      </block>
     </view>
   </bottom-sheet>
 </view>

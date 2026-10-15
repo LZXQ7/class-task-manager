@@ -99,26 +99,32 @@ async function writeTimetable(conn, payload, actor) {
     [classId]
   );
 
-  // ③ 写课程（名+教师 去重）与课次。
-  //    同名课程 A/B 两组共用同一行 —— 否则课表页会显示成两门重复课。
+  // ③ 写课程（名+教师+教室 去重）与课次。
+  //    ⚠️ 课程身份 = 班级 + 课程名 + 教师 + 教室（room 碰撞 bug 修复）：
+  //       同一门课在不同教室上课 ⇒ 两条 course 行，各自带自己的 room，
+  //       否则同课不同教室会被压成第一个出现的教室（B组周三P2 被认成 3号教学楼305）。
+  //       room 仍只在 course 行上（session 无 room 列），但每条课次通过 course_id
+  //       挂到「自己真正的教室」那一行，所有 c.room 读取因此自动正确。
+  const courseKey = (name, teacher, room) => name + ' ' + (teacher || '') + ' ' + (room || '');
   const courseIdByKey = new Map();
   for (const co of courses) {
+    const room = co.room || '';
     const [exist] = await conn.query(
-      'SELECT id FROM course WHERE class_id = ? AND name = ? AND teacher = ? LIMIT 1',
-      [classId, co.name, co.teacher || '']
+      'SELECT id FROM course WHERE class_id = ? AND name = ? AND teacher = ? AND room = ? LIMIT 1',
+      [classId, co.name, co.teacher || '', room]
     );
     if (exist.length) {
-      courseIdByKey.set(co.name + ' ' + co.teacher, Number(exist[0].id));
+      courseIdByKey.set(courseKey(co.name, co.teacher, room), Number(exist[0].id));
       continue;
     }
     const [r1] = await conn.query(
       'INSERT INTO course (class_id, name, teacher, room, course_type, duty_count, created_by) VALUES (?,?,?,?,?,?,?)',
-      [classId, co.name, co.teacher || '', co.room || '', 'ALL', 2, memberId]
+      [classId, co.name, co.teacher || '', room, 'ALL', 2, memberId]
     );
-    courseIdByKey.set(co.name + ' ' + co.teacher, Number(r1.insertId));
+    courseIdByKey.set(courseKey(co.name, co.teacher, room), Number(r1.insertId));
   }
   for (const s of sessions) {
-    const cid = courseIdByKey.get(s.name + ' ' + (s.teacher || ''));
+    const cid = courseIdByKey.get(courseKey(s.name, s.teacher, s.room));
     if (!cid) continue;
     await conn.query(
       'INSERT INTO session (class_id, course_id, kind, week_rule, weeks, day_of_week, period, group_scope, duty_count) VALUES (?,?,?,?,?,?,?,?,?)',

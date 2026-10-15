@@ -91,8 +91,8 @@ console.log('\n── C. 排班取人 cloudfunctions/schedule/index.js · buildC
 const sched = read('cloudfunctions/schedule/index.js');
 pin('保洁课次取人数量 = session.duty_count − 已占（不写死 2，周二才能排满 4 人）',
   sched,
-  /const need = \(Number\(s\.duty_count\) \|\| 2\) - taken\.size;/,
-  (s) => s.replace(/const need = \(Number\(s\.duty_count\) \|\| 2\) - taken\.size;/, 'const need = 2 - taken.size;'));
+  /const need = Number\(s\.duty_count \?\? 2\) - taken\.size;/,
+  (s) => s.replace(/const need = Number\(s\.duty_count \?\? 2\) - taken\.size;/, 'const need = 2 - taken.size;'));
 pin('保洁课次名回显取 courseName（前端据此显示「410大扫除」）',
   sched,
   /course: s\.courseName \|\| '打扫410'/,
@@ -146,7 +146,7 @@ if (/softSeqs/.test(core) && /avoidSeqs/.test(core)) {
 } else {
   bad('轮转内核的 softSeqs/avoidSeqs 约束被删了（会出现同一人一周多次）');
 }
-if (/const need = \(Number\(s\.duty_count\) \|\| 2\) - taken\.size;/.test(sched)
+if (/const need = Number\(s\.duty_count \?\? 2\) - taken\.size;/.test(sched)
   && !/day_of_week === 2/.test(sched)) {
   ok('schedule 侧没有「按星期二特判」的分支（周二靠 duty_count 数据生效，不是代码分支）');
 } else {

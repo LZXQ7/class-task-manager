@@ -285,7 +285,7 @@ function classNumberOf(label) {
 
 /**
  * 每个班级「已存在的学号前缀」——用来把名单行对到正确的班（比只看班号更准）：
- * 小学教育 2601 = 2099010303xx、商务英语 2601 = 2608030201xx，两者班号都是 2601，
+ * 小学教育 2601 = 0000000001xx、商务英语 2601 = 2608030201xx，两者班号都是 2601，
  * 只看班号会混；但有存量成员时前缀能区分。
  * @returns {{byPrefix: Map<string,number>, byClass: Map<number,Set<string>>}}
  */
@@ -616,7 +616,7 @@ async function applyImport(pool, ctx, opts) {
 
   /*
    * 「只有序号、没有学号」的名册（如「示例班级A点名册.xlsx」：序号|姓名）：
-   * 若整份名单都没有学号，则按目标班级的学号前缀 + 序号补全（2099010301 + 01）。
+   * 若整份名单都没有学号，则按目标班级的学号前缀 + 序号补全（0000000003 + 01）。
    * 前缀来自该班存量成员（长度一致 + 前 N-2 位一致才可用），补不完的行如实报失败。
    */
   const allMissingNo = rows.length > 0 && rows.every(r => !r.studentNo);

@@ -64,14 +64,11 @@ function judge(o) {
   push(/module\.exports\s*=\s*\{[\s\S]*\bICP_NO\b/.test(c.config));
   push(/module\.exports\s*=\s*\{[\s\S]*\bMIIT_URL\b/.test(c.config));
 
-  /* ② 必须是真号（非占位）—— 开源模板占位 <ICP_NO> 时跳过真号校验，待使用者填入自己的备案号 */
+  /* ② 必须是真号（非占位） */
   const no = mNo ? mNo[1] : '';
-  const isPlaceholder = no === '<ICP_NO>';
   push(!no.includes('00000000'));
-  if (!isPlaceholder) {
-    push(REAL_ICP.test(no));
-    push(no.length >= 12);
-  }
+  push(REAL_ICP.test(no));
+  push(no.length >= 12);
 
   /* ③ 关于页确实渲染 + 可点击 */
   push(c.mineWxml.includes('{{icpNo}}'));

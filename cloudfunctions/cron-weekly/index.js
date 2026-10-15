@@ -143,7 +143,8 @@ async function generateWeek(pool, wk, classId) {
     for (const { s, slot, classDate } of rotatePlan) {
       // 名额 = 应排人数 − 已被手动排班占用的人数；排满则整课次跳过（游标也不为它前进）
       const alreadyFilled = (manualFilled[Number(s.id)] || new Set()).size;
-      const n = Math.max(0, (Number(s.duty_count) || 1) - alreadyFilled);
+      // duty_count=0 = 不排值日：?? 窄化让 0 保持 0（|| 1 会把 0 误当 1 排 1 人）
+      const n = Math.max(0, Number(s.duty_count ?? 1) - alreadyFilled);
       if (n <= 0) continue;
       const blocks = await loadDayBlocks(conn, classDate);
       // 取人 = 与超管手动「一键生成」完全同源（`common/schedule-core.js` 的 pickBySeq）。

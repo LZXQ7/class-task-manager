@@ -186,7 +186,9 @@
         </view>
         <view class="dt-dayfoot">本日 {{item.duties.length}} 次值日</view>
         <!-- 加值日生（v0.7.16 需求③，仅超管）：弹出本日课次 → 选人 → 挂到该课次 -->
-        <view wx:if="{{canSchedule}}" class="dt-addrow" data-date="{{item.date}}" bindtap="onAddOpen" hover-class="press-dim" hover-stay-time="60">
+        <!-- ⚠️ 2026-10-14 用户要求隐藏该入口：改由 data.showAddDutyBtn（当前 false）控制。
+             功能代码（onAddOpen / bottom-sheet / scheduleAddManual）仍完整保留，恢复只需把开关改回 true。 -->
+        <view wx:if="{{canSchedule && showAddDutyBtn}}" class="dt-addrow" data-date="{{item.date}}" bindtap="onAddOpen" hover-class="press-dim" hover-stay-time="60">
           <app-icon name="plus" variant="brand" size="{{30}}" />
           <text>加值日生</text>
         </view>

@@ -108,14 +108,23 @@ assertTrue(/<text class="card-title">明日课次<\/text>/.test(homeWxml),
   '今日课次下方新增「明日课次」卡片');
 assertTrue(/<text class="card-sub">\{\{tomorrowText\}\}<\/text>/.test(homeWxml),
   '明日课次卡片头右侧显示日期（tomorrowText）');
-assertTrue(/wx:for="\{\{tomorrowSessions\}\}" wx:key="sessionId"/.test(homeWxml),
-  '明日课次用与今日课次同一套 course-row 渲染');
+// ⚠️ 口径更新（2026-10-16 首页并入本人选修课）：原判据锚 `wx:key="sessionId"` 的**字面形态**，
+//   但选修课的 sessionId 恒为 0（个人课次没有 session 身份，多门选修课会撞 key）。
+//   ⚠️ 再更新（2026-10-16 同日）：一度改写成 `wx:key="{{item.isPersonal ? 'pid' : 'sessionId'}}"`，
+//   但 **wx:key 只接受属性名、不接受表达式**（DevTools 渲染层报 `missing ) after argument list`），
+//   现改为 JS 预计算 `key` 字段（home/index.js `_withRowKey`）⇒ wxml 写裸 `wx:key="key"`。
+//   **意图不变**：明日课次仍用与今日课次同一套 `.course-row` 渲染，只是 key 由 JS 算好。
+assertTrue(/wx:for="\{\{tomorrowSessions\}\}" wx:key="key"/.test(homeWxml)
+  && /class="course-row/.test(homeWxml),
+  '明日课次用与今日课次同一套 course-row 渲染（wx:key 用 JS 预计算的 key 字段）');
 
 const homeJs = readM('pages/home/index.js');
 assertTrue(/tomorrowSessions: \[\],/.test(homeJs) && /tomorrowText: '',/.test(homeJs),
   'data 里有 tomorrowSessions / tomorrowText');
-assertTrue(/tomorrowSessions: this\._filterSessions\(r\.tomorrowSessions \|\| \[\]/.test(homeJs),
-  '明日课次同样过 _filterSessions（与今日课次一致，可带分组 tag 参数）');
+// 同上：明日课次现在写成 `this._mergePersonalCourses(this._filterSessions(...), ...)`
+//      —— 仍**必须先过 _filterSessions**（分组可见性 + 去重），只是外面多了一层选修课合并。
+assertTrue(/tomorrowSessions: this\._mergePersonalCourses\(\s*this\._filterSessions\(r\.tomorrowSessions \|\| \[\]/.test(homeJs),
+  '明日课次同样过 _filterSessions（与今日课次一致，可带分组 tag 参数）；选修课合并在其后');
 assertTrue(/const groupTag = \(r\.member && r\.member\.groupTag\) \|\| this\._groupTag\(\);/.test(homeJs),
   '首页课次分组可见性取 dutyToday 返回的 member.groupTag（模拟态下不被超管本人组串掉）');
 assertTrue(/!s\.groupScope \|\| s\.groupScope === t/.test(homeJs),

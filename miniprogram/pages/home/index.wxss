@@ -382,6 +382,11 @@
 }
 .course-row:last-child { border-bottom: none; }
 .course-row.mine { background: #F7F8FA; }
+/* 选修课行（2026-10-16 首页并入本人选修课）：极淡蓝底 + 左侧蓝色条，
+   与课表页 PERSONAL_BG(#EAF1FF) 同一色系，让两处一眼同源。
+   🔴 不加 tappable：它不驱动值日、也没有课堂情况名单 ⇒ 纯展示行。 */
+.course-row.personal { background: #F7FAFF; }
+.course-row.personal .course-bar { background: #3370FF; opacity: 0.45; }
 .course-bar {
   position: absolute;
   left: 32rpx;
@@ -392,10 +397,36 @@
   background: #E5E6EB;
 }
 .course-bar.on { background: #3370FF; }
-.course-info { margin-left: 24rpx; flex: 1; min-width: 0; }
-.course-line1 { display: flex; flex-direction: row; align-items: center; }
-.course-time { font-size: 24rpx; color: #86909C; margin-right: 16rpx; }
-.course-name { font-size: 30rpx; color: #1D2129; }
+/* 左列（时间 + 地点竖排）：紧凑成栈，两行间距与单行行一致（4rpx）。
+   2026-10-15 结构调整：过去时间+课名同排、地点挂在整行下面 —— 课名折两行时
+   时间和地点之间被撑开一大段。现在左列独立成栈，课名作为行的直接子元素，
+   靠 .course-row 的 align-items:center 相对左列**上下居中**。 */
+.course-side { margin-left: 24rpx; flex-shrink: 0; }
+/* 时间列固定宽 ⇒ 课程名左缘全行对齐。
+   ⚠️ 宽度只给到刚好装下「08:10-09:50」（24rpx 字号下约 140rpx，取 152 留余量）——
+   曾经给到 216rpx，多出的 70rpx 全变成课程名前的空白，长课名被挤到省略号
+   （2026-10-15 用户实拍：名称和时间之间一大段空、且显示不全）。改时间格式前先核这列宽。 */
+.course-time { font-size: 24rpx; color: #86909C; width: 152rpx; flex-shrink: 0; }
+/* 课名：最多两行（2026-10-15 需求：单行放不下的用两行显示），两行仍放不下才省略。
+   ⚠️ 用 -webkit-box + line-clamp 才能拿到「两行 + 末尾省略号」；换成普通 block + height
+   会有「第二行只露出半截」的破相。
+   align-self: flex-start —— 课名**靠上**（首行与左列「时间」那行平齐），不跟着行居中。
+   ⚠️ 只改课名自己的对齐：行上的 align-items:center 仍管右侧「A 组 / 全体」标签居中，
+      别把整行改成 flex-start，那样标签会顶上去。 */
+.course-name {
+  font-size: 30rpx;
+  color: #1D2129;
+  align-self: flex-start;
+  /* 与左侧时间列的间距：约两个小字字符宽（时间列字号 24rpx × 2）。
+     2026-10-15 定：16rpx 太挤、再放宽到 48rpx。要改只动这一个值。 */
+  margin-left: 48rpx;
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
 .course-room { margin-top: 4rpx; font-size: 24rpx; color: #86909C; }
 .tag {
   flex-shrink: 0;
@@ -408,6 +439,9 @@
 .tag.ga { background: #F0F5FF; color: #3370FF; }
 .tag.gb { background: #F3F0FF; color: #7C5CFF; }
 .tag.all { background: #F2F3F5; color: #4E5969; }
+/* 选修课角标（2026-10-16 首页并入本人选修课）：配色对齐课表页的 PERSONAL_BG/PERSONAL_FG，
+   让选修课在首页与课表页里是一眼同源的两处显示。 */
+.tag.elective { background: #EAF1FF; color: #3370FF; }
 .no-course {
   height: 128rpx;
   display: flex;
@@ -854,3 +888,99 @@
   background: var(--brand);
   border-radius: 999rpx;
 }
+
+/* ============ 班费 / 团费（2026-10-14） ============ */
+/* 卡片区块：一行两卡的弹性布局；小卡片本身复用全局 .card 玻璃材质（深色自适应） */
+.fee-block { padding: 0; background: transparent; border: none; box-shadow: none; overflow: visible; }
+.fee-row { display: flex; flex-direction: row; gap: 16rpx; }
+.fee-card {
+  flex: 1;
+  min-width: 0;
+  padding: 28rpx 28rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+.fee-card.readonly { opacity: 1; }
+.fee-card.tappable:active { opacity: 0.94; transform: scale(0.985); transition: opacity .1s ease, transform .1s ease; }
+.fee-card-top { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.fee-card-left { display: flex; flex-direction: row; align-items: center; }
+.fee-name { font-size: 28rpx; font-weight: 600; color: var(--text-1); }
+.fee-tag {
+  margin-left: 12rpx;
+  font-size: 20rpx;
+  line-height: 30rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 16rpx;
+}
+.fee-tag.manage { color: #3370FF; background: rgba(51,112,255,0.12); }
+.fee-tag.view { color: var(--text-3); background: var(--bg-fill); }
+.fee-balance { margin-top: 16rpx; font-size: 52rpx; line-height: 64rpx; font-weight: 700; color: var(--text-1); }
+.fee-sub { margin-top: 8rpx; font-size: 22rpx; line-height: 30rpx; color: var(--text-3); }
+
+/* 弹层：余额 / 总额 / 消费登记 / 明细 */
+.fee-bal-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20rpx 0 28rpx;
+  border-bottom: 2rpx solid var(--bg-fill);
+}
+.fee-bal-label { font-size: 24rpx; color: var(--text-3); }
+.fee-bal-num { margin-top: 8rpx; font-size: 64rpx; line-height: 76rpx; font-weight: 700; color: var(--text-1); }
+/* 余额下方的只读小字（总额 / 已消费）：列表视图用来核对，不占地方也不抢主数字的视觉重心 */
+.fee-bal-sub { margin-top: 10rpx; font-size: 22rpx; line-height: 30rpx; color: var(--text-3); }
+
+.fee-total-row { display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
+.fee-total-input { flex: 1; }
+.fee-total-save {
+  flex: 0 0 auto;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 32rpx;
+  border-radius: 20rpx;
+  background: var(--brand);
+  color: #FFFFFF;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+.fee-total-save:active { opacity: 0.85; }
+.fee-total-readonly { font-size: 32rpx; font-weight: 600; color: var(--text-1); }
+
+/* 消费明细 */
+.fee-rec-head { margin-top: 32rpx; font-size: 28rpx; font-weight: 600; color: var(--text-1); }
+.fee-rec {
+  position: relative;
+  padding: 20rpx 0 20rpx;
+  border-bottom: 2rpx solid var(--bg-fill);
+}
+.fee-rec-main { display: flex; flex-direction: row; align-items: baseline; }
+.fee-rec-amt { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
+.fee-rec-note { margin-left: 16rpx; font-size: 26rpx; color: var(--text-2); }
+.fee-rec-meta { margin-top: 6rpx; display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
+.fee-rec-op { font-size: 22rpx; color: var(--text-3); }
+.fee-rec-time { font-size: 22rpx; color: var(--text-3); }
+.fee-rec-imgs { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; margin-top: 14rpx; }
+.fee-rec-img { width: 120rpx; height: 120rpx; border-radius: 24rpx; overflow: hidden; background: var(--bg-fill); }
+.fee-rec-img-pic { width: 100%; height: 100%; display: block; }
+.fee-rec-del {
+  font-size: 24rpx;
+  color: #F53F3F;
+  padding: 4rpx 8rpx;
+}
+.fee-rec-del:active { opacity: 0.6; }
+.fee-rec-ops {
+  position: absolute;
+  top: 20rpx;
+  right: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20rpx;
+}
+.fee-rec-append {
+  font-size: 24rpx;
+  color: #3370FF;
+  padding: 4rpx 8rpx;
+}
+.fee-rec-append:active { opacity: 0.6; }
+.fee-rec-empty { margin-top: 24rpx; font-size: 26rpx; color: var(--text-3); text-align: center; }

@@ -136,6 +136,14 @@
   color: #3370FF;
   font-weight: 600;
 }
+/* 个人选修课单元 + 「个」标签：与全班课次配色区分，一眼看出是「自己的」 */
+.tt-cell.personal {
+  border: 1rpx solid rgba(51,112,255,0.45);
+}
+.personal-tag {
+  background: rgba(51,112,255,0.18);
+  color: #3370FF;
+}
 .tt-foot { height: 48rpx; }
 
 /* ---------- FAB ---------- */
@@ -366,6 +374,11 @@
   justify-content: center;
 }
 .f-save.off { background: #A8C1FF; }
+.f-save.danger {
+  background: #FFFFFF;
+  color: #E34D59;
+  border: 1rpx solid #F0C2C6;
+}
 
 /* ---------- 周次选择 ---------- */
 .wk-grid {

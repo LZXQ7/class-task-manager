@@ -25,7 +25,7 @@ const { TEST_NO_PREFIX, NOT_TEST, isTestNo } = require('./common/test-account');
 const DAY_MS = 86400000;
 const DAY_TEXT = ['一', '二', '三', '四', '五', '六', '日'];
 
-/** 名册序号：统一实现见 common/week（209901030101 → 1） */
+/** 名册序号：统一实现见 common/week（000000000301 → 1） */
 const seqOf = week.seqOf;
 
 /* ============================================================
@@ -1046,7 +1046,7 @@ async function buildCleaningPlan(conn, wk, opt = {}) {
       if (m) assigned.push({ id: m.id, name: m.name, seq: seqOf(m.student_no) });
     });
 
-    const need = (Number(s.duty_count) || 2) - taken.size;
+    const need = Number(s.duty_count ?? 2) - taken.size;
     // 本周已有的保洁/手动占用：占掉本轮名额（保洁与课程值日共用同一个轮转池）
     taken.forEach((mid) => {
       const q = seqById.get(Number(mid));
@@ -1098,7 +1098,7 @@ async function buildCleaningPlan(conn, wk, opt = {}) {
       course: s.courseName || '打扫410',
       room: s.room || '',
       groupScope: s.group_scope || null,
-      dutyCount: Number(s.duty_count) || 2,
+      dutyCount: Number(s.duty_count ?? 2),
       memberIds: assigned.map(a => a.id),
       memberSeqs: assigned.map(a => a.seq),
       names: assigned.map(a => a.name),
@@ -1393,7 +1393,7 @@ const routes = {
           // CLEAN = 保洁课次（打扫 410）→ 前端显示「18点前」，与值日页口径一致
           kind: s.kind || 'COURSE',
           groupScope: s.group_scope || null,
-          dutyCount: Number(s.duty_count) || 1,
+          dutyCount: Number(s.duty_count ?? 1),
           classDate: date,
           members,
           filled: members.length
@@ -1615,7 +1615,8 @@ const routes = {
            *   手动排过的人已经占了这个课次的坑，自动生成只**补剩下的空缺**。
            *   旧实现直接取 `s.duty_count` 无视已有手动行 ⇒ 手动排 2 人的课次又被自动追加 2 人 = 4 人。*/
           const alreadyFilled = (manualFilled[Number(s.id)] || new Set()).size;
-          const n = Math.max(0, (Number(s.duty_count) || 1) - alreadyFilled);
+          // 🔴 duty_count=0 = 「不排值日」（如书香校园）：?? 窄化让 0 保持 0（|| 1 会把 0 误当 1 排 1 人）
+          const n = Math.max(0, Number(s.duty_count ?? 1) - alreadyFilled);
           /* 手动排满（或超额）⇒ 这个课次整个跳过：一行都不动，
            * 轮转游标也**不为它前进**（它没消耗轮转名额，是手工插队的）。 */
           if (n <= 0) { keptManualSessions += 1; continue; }

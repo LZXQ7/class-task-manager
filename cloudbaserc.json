@@ -16,8 +16,22 @@
       "gatewayPath": "/admin",
       "public": true,
       "vpc": {
-        "vpcId": "<YOUR_VPC_ID>",
-        "subnetId": "<YOUR_SUBNET_ID>"
+        "vpcId": "vpc-c4ga6fms",
+        "subnetId": "subnet-a5mkrg1l"
+      }
+    },
+    {
+      "name": "fee",
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "timeout": 20,
+      "memorySize": 256,
+      "installDependency": true,
+      "dir": "./cloudfunctions/fee",
+      "description": "班费/团费：getSummary/setTotal/addExpense/deleteRecord",
+      "vpc": {
+        "vpcId": "vpc-c4ga6fms",
+        "subnetId": "subnet-a5mkrg1l"
       }
     }
   ],

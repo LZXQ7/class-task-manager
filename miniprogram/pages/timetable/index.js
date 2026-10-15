@@ -49,6 +49,11 @@ const BOARD_PAD = 64;             // 课表左右留白（各 32rpx）
 const BOARD_INNER = 750 - BOARD_PAD - FIXED_W;   // 右侧可视宽（rpx）= 600
 const COL_W_WEEKEND = 110;        // 显示周六 / 周日时的列宽（放不下就横向滚）
 
+/** 个人选修课在网格里的配色（与全班课次区分开，一眼看出是「自己的」） */
+const PERSONAL_BG = '#EAF1FF';
+const PERSONAL_FG = '#3370FF';
+
+
 /** 周次数组 → 展示文案：空 = 每周都上 */
 function weekText(weeks) {
   const arr = typeof weeks === 'string'
@@ -100,6 +105,9 @@ Page({
     viewGroup: 'A',     // 课表视图：仅看 A 组 / 仅看 B 组（含全体课）
     /** 左下角入口（视图 + 临时调课合并）的展开态，v0.7.21 需求③ */
     fabMenuOpen: false,
+    /** 右下角加课按钮是否可见（2026-10-15）：人人可见，但普通同学只能加个人选修课（限 2 门） */
+    fabShow: false,
+
     failMsg: '',
 
     detailShow: false,
@@ -107,6 +115,8 @@ Page({
 
     formShow: false,
     form: null,
+    /** 表单模式：'class' = 全班课次（管理员）；'elective' = 个人选修课（人人，最多 2 门，仅自己可见） */
+    formMode: 'class',
 
     weekPickerShow: false,
     weekList: [],
@@ -139,7 +149,7 @@ Page({
     shiftWeekBtns: [],
     shiftSaving: false,
     offDays: [],               // 「按日期」里勾选的「不上课」的星期（1-7）
-    periodChips: [1, 2, 3, 4, 5],
+    periodChips: [1, 2, 3, 4, 5],   // 节次选择器（新增/编辑课次表单用）；初值=兜底 5，class.list 回来后按本班 period_time 重算（_syncPeriodCount）
 
     /* AI 智能调课 */
     aiText: '',
@@ -214,6 +224,8 @@ Page({
       };
       if (!this._groupPicked) patch.viewGroup = ownGroup || 'ALL';
       this.setData(patch);
+      // 右下角加课按钮可见性（人人可见个人选修课；管理员额外可加全班课次）
+      this._recomputeFab();
       // 模拟态护栏（v1.0.5）：身份套用后同步顶部横幅
       impersonate.sync(this);
     };
@@ -270,7 +282,9 @@ Page({
     api.classList({}, { toast: false })
       .then((list) => {
         const chips = util.sortClasses(list || []).map(c => ({
-          id: Number(c.id), name: c.name, termStart: c.termStart, totalWeeks: c.totalWeeks
+          id: Number(c.id), name: c.name, termStart: c.termStart, totalWeeks: c.totalWeeks,
+          // 带 periodTime 供节次数用（本班可配到第 6 节等，2026-10-14）
+          periodTime: c.periodTime || []
         }));
         if (!chips.length) {
           // 清掉 tt 模块可能残留的上一身份/上一班状态，避免课表残影
@@ -290,10 +304,23 @@ Page({
           week: Math.min(this.data.week, sel.totalWeeks || tt.TOTAL_WEEKS)
         });
         tt.setClass(def, sel.termStart, sel.totalWeeks);
+        // 节次数跟随本班配置（切班时也要跟着变：不同班的大节数可以不同）
+        this._syncPeriodCount(def);
         this._buildWeekList();
         this._afterClassPicked();
       })
       .catch(() => { this.setData({ loading: false, failed: true, failMsg: '班级信息加载失败，请检查网络后重试' }); });
+  },
+
+  /** 把「当前查看班」的节次数写进 tt 模块，并同步到 data.periodChips（节次选择器） */
+  _syncPeriodCount(classId) {
+    const cid = Number(classId || this.data.viewClassId) || 0;
+    const cls = (this.data.classList || []).find(c => Number(c.id) === cid);
+    const n = tt.setPeriods((cls && cls.periodTime) || []);
+    const chips = [];
+    for (let p = 1; p <= n; p++) chips.push(p);
+    this.setData({ periodChips: chips });
+    return n;
   },
 
   /** 选定/切换班级后的统一收尾：强制重新同步该班真源并渲染 */
@@ -308,7 +335,9 @@ Page({
     this._bootedIsCounselor = this.data.isCounselor;
     this._bootedIsSuper = this.data.isSuper;
     this.setData({ loading: true, failed: false, failMsg: '' });
+    this._recomputeFab();
     this._syncFromCloud({ classId: this.data.viewClassId });
+    this._loadPersonal();
   },
 
   /** 辅导员/超管切班：换一份课表真源（强制重新同步，不走静默缓存） */
@@ -324,6 +353,8 @@ Page({
       week: Math.min(this.data.week, sel.totalWeeks || tt.TOTAL_WEEKS)
     });
     tt.setClass(id, sel.termStart, sel.totalWeeks);
+    // 节次数按新班级重算（不同班大节数可以不同）
+    this._syncPeriodCount(id);
     this._buildWeekList();
     this._afterClassPicked();
   },
@@ -354,6 +385,7 @@ Page({
         // 空列表 ⇒ hasTimetable=false ⇒ 学生走「课表待接入」、辅导员走「该班还没有课表」空态。
         tt.replaceSessions(list);
         this.setData({ hasTimetable: list.length > 0 });
+        this._recomputeFab();
         this.load();                              // 用当前真源（云端或本地兜底）重渲染
       })
       .catch(() => {
@@ -373,10 +405,10 @@ Page({
     this.setData({ loading: false, failed: false, failMsg: '' });
     this._holidays = tt.holidays();
     this._shifts = tt.shifts();
-    const courses = tt.sessionsOfWeek(this.data.week);
-    this._courses = courses;
+    const classCourses = tt.sessionsOfWeek(this.data.week);
+    this._courses = classCourses;   // 值日名单 / 调课选择器只看全班课次（不含个人选修课）
     try {
-      this._build(courses);
+      this._build(this._mergePersonal(classCourses));
     } catch (e) {
       console.error('[timetable] _build failed', e);
       this.setData({ failed: true, failMsg: '课表渲染出错：' + ((e && e.message) || e) });
@@ -385,8 +417,10 @@ Page({
     // 临时调课弹层依赖的课次列表 / 周次按钮跟着本周刷新
     this._syncShiftSessions();
     this._syncShiftWeekBtns();
+    this._recomputeFab();
     this.setData({ loading: false });
   },
+
 
   /**
    * 值日名单：只在打开课次详情时才按需拉一次。
@@ -454,18 +488,98 @@ Page({
   onMenuGroup(e) {
     const key = String(e.currentTarget.dataset.key || '');
     if (!key) return;
-    this.setData({ fabMenuOpen: false });
+      this.setData({ fabMenuOpen: false });
     if (key === this.data.viewGroup) return;
       this._groupPicked = true;
       this.setData({ viewGroup: key });
       // 换组带过渡（需求⑤）：_build 收到 animate=true 时走 FLIP
-      this._build(tt.sessionsOfWeek(this.data.week), true);
+      this._build(this._mergePersonal(tt.sessionsOfWeek(this.data.week)), true);
     },
 
   /** 进临时调课（仅超管有这一行）；收起菜单再开弹层，避免两层浮层叠在一起 */
   onMenuShift() {
     this.setData({ fabMenuOpen: false });
     this.onShiftOpen();
+  },
+
+  /**
+   * 个人选修课只对「看自己的班」的人开放：
+   *   · 辅导员（跨班查看）关闭；
+   *   · 普通同学（canSwitchClass=false，恒看本班）开放；
+   *   · 超管未切换测试账号时开放，切换去看别的班时关闭（避免把本人选修课叠到别人班上）。
+   */
+  _showPersonal() {
+    const d = this.data;
+    if (d.isCounselor) return false;
+    if (!d.canSwitchClass) return true;
+    return !!(d.isSuper && !d.showClassSwitch);
+  },
+
+  /** 右下角加课按钮可见性（2026-10-16）：人人可见，且**一律是添加个人选修课**（含超管）。 */
+  _recomputeFab() {
+    const d = this.data;
+    const showPersonal = this._showPersonal();
+    this.setData({
+      fabShow: !d.loading && !d.isCounselor && showPersonal && (d.isAdmin || d.hasTimetable)
+    });
+  },
+
+  /** 把个人选修课（仅本人可见）映射成与全班课次同构的网格单元 */
+  _personalToCell(p) {
+    return {
+      key: 'p' + Number(p.id),             // wx:key 用：与全班课次（数字 id）不会撞
+      sessionId: 0,                       // 个人课次没有 session 身份，不参与值日 / 调课选择器
+      pid: Number(p.id),
+      name: p.name,
+      room: p.room || '',
+      teacher: p.teacher || '',
+      weekRule: p.weekRule || 'ALL',
+      weeks: p.weeks || '',
+      weekText: weekText(p.weeks || ''),
+      groupScope: null,                   // 无分组语义，所有分组视图都显示
+      dutyCount: 0,
+      duties: [],
+      classDate: '',
+      shifted: false,
+      isHoliday: false,
+      holidayName: '',
+      movedOut: false,
+      movedIn: false,
+      shiftToText: '',
+      shiftFromText: '',
+      dowText: util.weekdayShort(Number(p.dayOfWeek)),
+      dayOfWeek: Number(p.dayOfWeek),
+      period: Number(p.period),
+      bg: PERSONAL_BG,
+      fg: PERSONAL_FG,
+      flip: '',
+      personal: true,                    // 标记：个人选修课（仅本人可见 / 可编辑）
+      mine: true
+    };
+  },
+
+  /** 全班课次 + 个人选修课 合并（个人课次不参与分组过滤，所有视图都显示） */
+  _mergePersonal(classCourses) {
+    const pc = (this._personal || []).map(p => this._personalToCell(p));
+    return classCourses.concat(pc);
+  },
+
+  /** 用「当前周全班课次 + 个人选修课」重建网格（个人数据变动后调用） */
+  _rebuildWithPersonal() {
+    const classCourses = tt.sessionsOfWeek(this.data.week);
+    this._courses = classCourses;
+    this._build(this._mergePersonal(classCourses));
+  },
+
+  /** 拉取「我」的个人选修课（仅本人可见），写进 this._personal 并刷新网格 */
+  _loadPersonal() {
+    if (!this._showPersonal()) { this._personal = []; return Promise.resolve(); }
+    return api.electiveList({}, { toast: false })
+      .then((r) => {
+        this._personal = (r && r.list) || [];
+        if (this.data.grid && this.data.grid.length) this._rebuildWithPersonal();
+      })
+      .catch(() => { this._personal = []; });
   },
 
   /** 构建「上课周次」多选按钮的选中态（WXML 不支持 .indexOf，改用预计算数组） */
@@ -533,25 +647,40 @@ Page({
       : COL_W_WEEKEND;
     const dates = showDows.map(d => datesAll[d - 1]);
 
-    // 左列只显示节次号「1-5」，**不显示上课时间**（用户要求去掉时间行）
+    // 左列只显示节次号「1-N」，**不显示上课时间**（用户要求去掉时间行）
+    //
+    // 🔴 行数口径（2026-10-14 用户实锤后调整）：平时**一天就是五节大课**，
+    //   第 6 节是「书香校园」这类 45 分钟短课的特殊时段 —— 若无条件按配置画满，
+    //   没有第 6 节课的周次会多出一整行空格子（用户报「多了一节空行」）。
+    //   改为：**配置节次数与本周实际最高节次取大者** —— 本周没第 6 节课就不画第 6 行，
+    //   一旦有课自动出现。
+    //   ⚠️ 判定同样按「整周全部课次」(courses) 而非当前分组视图(visible)，与 hasWeekend 同理：
+    //   否则某一组有第6节课、另一组没有时，切组会让网格在 5↔6 行间跳动。
+    //   下限钉 1（整周无课时仍显示 1 行骨架，避免出现空白页头）。
+    const maxUsedPeriod = (courses || []).reduce((mx, c) => {
+      if (c.movedOut) return mx;                 // 调出日的课已挪走，不该撑出这一行
+      return Math.max(mx, Number(c.period) || 0);
+    }, 0);
+    const nPeriods = Math.max(1, tt.periodCount(), maxUsedPeriod);
     const periods = [];
-    for (let p = 1; p <= 5; p++) periods.push({ p });
+    for (let p = 1; p <= nPeriods; p++) periods.push({ p });
 
     // 一格多课：grid[p][c] = { empty, dow, period, wk, courses:[] }；列下标 c ↔ showDows[c]
     const grid = [];
-    for (let p = 1; p <= 5; p++) {
+    for (let p = 1; p <= nPeriods; p++) {
       grid.push(showDows.map(d => ({ empty: true, dow: d, period: p, wk: d >= 6, courses: [] })));
     }
     const colorOf = (cid) => util.courseColor(Number(cid || 0));
     visible.forEach(c => {
       if (c.movedOut) return; // 调出日的课从原列消失，仅日期表头标注「调至 X/X」
       const p = Number(c.period), d = Number(c.dayOfWeek);
-      if (p < 1 || p > 5) return;
+      if (p < 1 || p > nPeriods) return;
       const ci = showDows.indexOf(d);
       if (ci < 0) return;
       const cell = grid[p - 1][ci];
       const col = colorOf(c.courseId);
       cell.courses.push({
+        key: c.sessionId,                   // wx:key 用：个人选修课与全班课次不会撞
         sessionId: c.sessionId,
         name: c.name,
         room: c.room,
@@ -629,7 +758,7 @@ Page({
     grid.forEach((row) => row.forEach((cell) => (cell.courses || []).forEach((co) => { co.flip = ''; })));
 
     lt.flip(this, {
-      sel: '.tt-cell[data-sid]', key: 'sessionId', field: 'flip',
+      sel: '.tt-cell:not(.personal)[data-sid]', key: 'sessionId', field: 'flip',
       guard: () => this._ttFlipToken === tk,
       rows: () => {
         const out = [];
@@ -834,6 +963,7 @@ Page({
 
   /** 长按课表格子 → 直接打开「本周调整」并定位到这一格的那节课 */
   onCellLongPress(e) {
+    if (e.currentTarget.dataset.personal) return;   // 个人选修课不参与临时调课
     if (!this.data.isSuper) { util.toast('只有超级管理员可以临时调课'); return; }
     const sid = Number(e.currentTarget.dataset.sid);
     if (!sid) { util.toast('这个格子没有课，长按无效'); return; }
@@ -1167,9 +1297,20 @@ Page({
     const r = Number(e.currentTarget.dataset.r);
     const c = Number(e.currentTarget.dataset.c);
     const sid = Number(e.currentTarget.dataset.sid);
+    const personal = e.currentTarget.dataset.personal;
+    const pid = Number(e.currentTarget.dataset.pid);
+    if (personal) {
+      // 个人选修课：仅本人可见、本人可编辑，点开即进入编辑
+      const p = (this._personal || []).find(x => Number(x.id) === pid);
+      if (!p) return;
+      this._openElectiveForm(p);
+      return;
+    }
     if (!sid) {
-      // 空格子：管理员点一下＝在该时间新增课次
-      if (this.data.isAdmin) this._openForm(null, c + 1, r + 1);
+      // 空格子：**不再**「点一下新增全班课次」（2026-10-16 用户定口径：加号/新增一律只加选修课）。
+      //   全班课次是公共课表，应由网页管理后台统一维护；随手加会造成重复与跨班污染。
+      //   管理员要改全班课次 ⇒ 走已有课次的详情「编辑」，或用网页管理后台。
+      //   这里静默返回：点了没反应比弹一个"新增课次"更符合用户当前认知（他只想加选修课）。
       return;
     }
     const course = (this._courses || []).find(x => Number(x.sessionId) === sid);
@@ -1208,8 +1349,29 @@ Page({
   },
 
   /* ---------------- 表单 P3.1 ---------------- */
-  onFab() { this._openForm(null, 1, 1); },
+  onFab() {
+    // 🔴 一律「添加个人选修课」（2026-10-16 用户定口径）：
+    //    「所有人右下角的加号都是添加选修课，仅自己可见的那种。超管等也是一样。」
+    //    —— 早前这里按 `isAdmin` 分流（管理员 → 新增全班课次），现已统一为选修课。
+    //
+    //    为什么这样更合理：
+    //    · 全班课次属于**公共课表**，应由后台管理（网页管理后台）统一维护，
+    //      不该由任何人在小程序里随手加 —— 否则同一门课会被重复添加、跨班也加得进去。
+    //    · 选修课天生是「我自己的安排」，语义上就该人人可加、仅自己可见。
+    //    · 管理员要改全班课次，用**课次详情里的「编辑」**（`_openForm(cell,…)` 传 cell，
+    //      走编辑态而非新建），或直接用网页管理后台。
+    const cnt = (this._personal || []).length;
+    if (cnt >= 2) { util.toast('个人选修课最多添加 2 门'); return; }
+    this._openElectiveForm(null);
+  },
 
+  /**
+   * 打开**全班课次**的编辑弹层。
+   * 🔴 2026-10-16 起**只有编辑态**（唯一调用点 `onEditCourse` 传了 detail 对象）：
+   *    「新增全班课次」的两个入口（FAB 的 isAdmin 分流、点空白格）都已下线 —— 用户口径是
+   *    「加号一律只加个人选修课（含超管）」。全班课次改由**网页管理后台**维护，
+   *    或在这里编辑已有课次。`cell` 形参保留是为了 weeks 的取值路径与将来可能的其它编辑入口。
+   */
   _openForm(cell, dayOfWeek, period) {
     let weeks = [];
     if (cell && cell.weeks) {
@@ -1219,6 +1381,7 @@ Page({
     }
     this.setData({
       formShow: true,
+      formMode: 'class',
       form: {
         sessionId: cell ? cell.sessionId : 0,
         name: cell ? cell.name : '',
@@ -1229,10 +1392,79 @@ Page({
         dayOfWeek,
         period,
         weeks,
-        dutyCount: (cell && cell.dutyCount) || 2
+        // dutyCount=0 = 不排值日（合法值）：(x || 2) 会把 0 误弹回 2，必须显式判 undefined
+        dutyCount: (cell && cell.dutyCount !== undefined && cell.dutyCount !== null) ? Number(cell.dutyCount) : 2
       }
     });
     this._syncWeekBtns();
+  },
+
+  /** 打开「个人选修课」表单（p=null 新增；否则编辑已有的那门） */
+  _openElectiveForm(p) {
+    const weeks = p && p.weeks
+      ? (typeof p.weeks === 'string' ? p.weeks.split(',').filter(Boolean).map(Number) : (p.weeks || []))
+      : [];
+    this.setData({
+      formShow: true,
+      formMode: 'elective',
+      form: {
+        electiveId: p ? Number(p.id) : 0,
+        name: p ? p.name : '',
+        teacher: p ? (p.teacher || '') : '',
+        room: p ? (p.room || '') : '',
+        courseType: 'ALL',
+        groupScope: 'A',
+        dayOfWeek: p ? Number(p.dayOfWeek) : 1,
+        period: p ? Number(p.period) : 1,
+        weeks,
+        dutyCount: 0
+      }
+    });
+    this._syncWeekBtns();
+  },
+
+  /** 保存个人选修课（新增 / 更新）；服务端强制每人最多 2 门 */
+  _saveElective(f) {
+    if (!String(f.name || '').trim()) { util.toast('请填写课程名'); return; }
+    if (this.data.saving) return;
+    this.setData({ saving: true });
+    const isEdit = Number(f.electiveId) > 0;
+    const item = {
+      id: isEdit ? Number(f.electiveId) : 0,
+      name: f.name,
+      teacher: f.teacher,
+      room: f.room,
+      dayOfWeek: Number(f.dayOfWeek),
+      period: Number(f.period),
+      weeks: (f.weeks || []),
+      weekRule: 'ALL'
+    };
+    api.electiveSave({ item }, { toast: false })
+      .then(() => {
+        this.setData({ saving: false, formShow: false });
+        util.toast(isEdit ? '已保存' : '已添加');
+        this._loadPersonal();
+      })
+      .catch((e) => {
+        this.setData({ saving: false });
+        util.toast((e && e.errMsg) || (e && e.message) || '保存失败');
+      });
+  },
+
+  /** 删除个人选修课（仅本人行） */
+  onDeleteElective() {
+    const f = this.data.form;
+    if (!f || !Number(f.electiveId)) return;
+    util.confirm('删除后该选修课不再显示', '删除选修课').then((ok) => {
+      if (!ok) return;
+      api.electiveDelete({ id: Number(f.electiveId) }, { toast: false })
+        .then(() => {
+          this.setData({ formShow: false });
+          util.toast('已删除');
+          this._loadPersonal();
+        })
+        .catch(() => {});
+    });
   },
 
   onFormClose() { this.setData({ formShow: false }); },
@@ -1302,6 +1534,7 @@ Page({
   onSave() {
     const f = this.data.form;
     if (!f) return;
+    if (this.data.formMode === 'elective') { this._saveElective(f); return; }
     if (!String(f.name || '').trim()) { util.toast('请填写课程名'); return; }
     if (this.data.saving) return;
     // 编辑已有课次时保留原 courseId，避免本地配色跳变

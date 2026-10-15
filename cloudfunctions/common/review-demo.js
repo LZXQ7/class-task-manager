@@ -56,6 +56,11 @@ const DENY_ACTIONS = [
   'class.setActive',           // 停用班级
   /* —— 绑定入口开关（关掉即锁死全班）—— */
   'auth.setBindOpen',
+  /* —— 审核体验入口开关（2026-10-15）：演示身份**不得**自己开关这道后门 ——
+       否则审核员可以自己换一条口令出来，这个「仅预览通道」就不再是超管可控的。 */
+  'auth.reviewDemoSet',
+  /* —— 同上：查询也拦 —— 演示身份不该拿到任何一条体验口令（哪怕只是回显给自己看）—— */
+  'auth.reviewDemoStatus',
   /* —— 全站通知（不可恢复 / 全员弹窗）—— */
   'media.clearNotices',        // 清空全部历史通知（不可恢复）
   'media.appNoticePublish',    // 发全员更新公告

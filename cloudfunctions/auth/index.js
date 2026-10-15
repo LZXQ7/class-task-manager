@@ -1,9 +1,13 @@
 /**
  * 云函数：auth —— 无感登录与身份绑定（开发文档 8.2 #1 / 第 9 章）
- * action: login / checkToken / bind / bindStaff / reviewDemo / unbind / resolveScene
+ * action: login / checkToken / bind / bindStaff / reviewDemo / reviewDemoStatus /
+ *         reviewDemoSet / unbind / resolveScene
  */
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+/* 体验口令的随机源（2026-10-15）：**必须**用 crypto，不能用 Math.random ——
+   后者可预测，且同一毫秒内多次调用会撞值；口令是公网后门，撞不得。 */
+const crypto = require('crypto');
 
 const { getPool } = require('./common/db');
 const guard = require('./common/guard');
@@ -155,6 +159,30 @@ function safeEqual(a, b) {
   let diff = 0;
   for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
   return diff === 0;
+}
+
+/**
+ * 生成一条**新的**体验口令：`LXQ-XXXX-XXXX-XXXX-XXXX`（4 组 × 4 位）。
+ * -----------------------------------------------------------------------------
+ * 为什么由后端自动生成而不是超管手填（2026-10-15）：
+ *   老流程是「我在更新说明里手写一条 → 用户跑 UPDATE 写库」，每个版本提审都要来一遍，
+ *   且手写口令存在「复用旧口令 / 抄错 / 泄漏在仓库里」三个方向的风险。
+ *   现在改成**每次开启自动生成一条**，旧口令当场作废 ⇒ 「每次提审都是新口令」这件事
+ *   由代码保证，不靠人记。
+ *
+ * ⚠️ 字符表**刻意去掉 0/O/1/I**：口令要被审核员手抄进小程序，这 4 个字形最容易看错，
+ *    抄错 = 白跑一趟审核。
+ * ⚠️ 随机源用 `crypto.randomInt`（密码学安全），**不要**改成 `Math.random` ——
+ *    可预测 + 同毫秒撞值，口令是公网后门，撞不得。门禁 check-review-demo 已钉死这一点。
+ */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newReviewCode() {
+  let out = '';
+  for (let g = 0; g < 4; g++) {
+    if (g) out += '-';
+    for (let i = 0; i < 4; i++) out += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
+  }
+  return 'LXQ-' + out;
 }
 
 const routes = {
@@ -431,6 +459,64 @@ const routes = {
       await clearFails(pool, ctx.openid);
       console.log(JSON.stringify({ fn: 'auth', action: 'reviewDemo', memberId: Number(t.id), demo: true }));
       return { memberId: Number(t.id), name: t.name, demo: true };
+    }
+  },
+
+  /**
+   * 审核体验入口 · 状态查询（仅超管，2026-10-15 · v1.0.6.8）。
+   * 「我的 → 管理 → 审核体验入口」那行要知道当前是开还是关；开启期间还要能**再看一次**口令 ——
+   *   超管填 mp 后台审核备注时可能已经关掉了弹层，不必为了再看一眼就重开一次
+   *   （重开会换口令、并把正在体验的审核员踢下线）。
+   *
+   * ⚠️ 与「口令永不回传前端」那条铁律的关系：铁律约束的是 **login 下发给所有人**的布尔位，
+   *   以及 **reviewDemo（面向未绑定的审核员）** 的返回体 —— 那里带口令等于公开后门。
+   *   本路由声明 `needSuper`，口令只回给**本人就是超管**的调用者。
+   */
+  reviewDemoStatus: {
+    auth: { needSuper: true },
+    handler: async (payload, ctx) => {
+      const pool = getPool();
+      const row = await reviewDemoRow(pool);
+      return { on: !!row, code: row ? String(row.review_demo_code || '') : '' };
+    }
+  },
+
+  /**
+   * 审核体验入口 · 开关（仅超管，2026-10-15 · v1.0.6.8）。
+   *   on = true  ⇒ **自动生成一条新口令**（旧口令当场作废），只回显给超管本人；
+   *   on = false ⇒ 口令作废 + 把正在体验的演示身份踢下线。
+   *
+   * 为什么开启时**先把所有班的开关清一遍**再写自己班：
+   *   `reviewDemoRow` 是**全表扫描**取第一条开着的（`WHERE review_demo_on = 1 ... LIMIT 1`）。
+   *   历史上只在 id=3 这一行开过，但只要别班残留一行开着的，就会出现
+   *   「我以为关掉了，其实另一道后门还开着」—— 关不干净比不关更危险。
+   *
+   * 为什么开启也要踢演示身份：换口令 = 换会话，旧会话不该继续持有超管身份。
+   */
+  reviewDemoSet: {
+    auth: { needSuper: true },
+    handler: async (payload, ctx) => {
+      const pool = getPool();
+      const kickDemo = () =>
+        pool.query('UPDATE member SET openid = NULL, is_review_demo = 0 WHERE is_review_demo = 1');
+      const closeAll = () =>
+        pool.query("UPDATE `class` SET review_demo_on = 0, review_demo_code = ''");
+
+      if (!payload.on) {
+        await kickDemo();
+        await closeAll();
+        console.log(JSON.stringify({ fn: 'auth', action: 'reviewDemoSet', on: false, by: ctx.member.id }));
+        return { on: false, code: '' };
+      }
+      // 先自检再动手：拿不到班级就别踢人、也别清表（否则会留下「人已下线但后门还开着」的中间态）
+      const classId = Number(ctx.member && ctx.member.class_id) || 0;
+      if (!classId) throw new BizError(40009, '无法确定所属班级');
+      const code = newReviewCode();
+      await kickDemo();
+      await closeAll();
+      await pool.query('UPDATE `class` SET review_demo_on = 1, review_demo_code = ? WHERE id = ?', [code, classId]);
+      console.log(JSON.stringify({ fn: 'auth', action: 'reviewDemoSet', on: true, classId, by: ctx.member.id }));
+      return { on: true, code };
     }
   },
 

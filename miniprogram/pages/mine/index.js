@@ -50,6 +50,33 @@ Page({
      * 只决定入口显隐，**不是安全边界**（真拦截在云函数 guard.requireScheduleAuth）。
      */
     canSchedule: false,
+    /* -------- 更多 / 班费总额（2026-10-14） --------
+       showMore：只要有任一相关能力就给「更多」入口；弹层内部每行再按自己权限二次判定。
+       ⚠️ 这里**不**写职位字面量，一律走 util.feeRights（与首页、后端 fee 云函数同一份口径）。 */
+    showMore: false,
+    moreShow: false,
+    /** 班费 / 团费总额设置权：班费 = 超管 / 生活委员；团费 = 超管 / 班长兼团支书 */
+    feeCanSetTotalClass: false,
+    feeCanSetTotalLeague: false,
+    /** 「更多」里那行是否显示（任一总额设置权）+ 行尾金额摘要 */
+    showFeeTotalRow: false,
+    feeTotalRowText: '',
+    /** 总额编辑弹层：分段切换（班费 ⇄ 团费，同值日页按日/按人的 segmented） */
+    feeTotalShow: false,
+    feeTotalTabs: [],
+    feeTotalType: 'class',
+    feeTotalCurrentText: '0',
+    /** 两档各自的输入草稿：切换档位不丢已输入的内容 */
+    feeInputClass: '',
+    feeInputLeague: '',
+    feeTotalBusy: false,
+    /* -------- 审核体验入口（2026-10-15 · v1.0.6.8，仅超管） --------
+       reviewOn：后端 `class.review_demo_on` 的当前状态（由 reviewDemoStatus 查回来，
+       不是 login 下发的那个布尔位 —— 那个只决定绑定页要不要渲染入口）。
+       reviewCode：只在「开启成功」或「点口令按钮」之后才有值，且**只在弹层里渲染**。 */
+    reviewOn: false,
+    reviewCode: '',
+    reviewShow: false,
     /* AI 排班设置（需求 D：自带密钥，跟随本人）。
        ⚠️ aiKey 只用于**输入**，永不回填服务端明文（接口只回掩码）。 */
     aiShow: false,
@@ -176,7 +203,7 @@ Page({
        生活委员也进了排班域，继续用 isSuper 会让 TA 看不到自己该处理的换班申请。 */
     const canScheduleNow = !!(app && app.canSchedule && app.canSchedule());
     const p = app.globalData.profile || null;
-    this.setData({
+    this.setData(Object.assign({
       profile: p,
       isAdmin: !!(app && app.isAdmin && app.isAdmin()),
       isSuper: isSuperNow,
@@ -190,7 +217,7 @@ Page({
       calendarOn: !!wx.getStorageSync('calendarOn'),
       selfTag: this._selfRoleTag().text,
       selfTier: this._selfRoleTag().tier
-    });
+    }, this._feeFlags()));
     this.load();
     if (canScheduleNow) {
       this._loadPending();
@@ -199,13 +226,16 @@ Page({
     }
     // v0.7.32 问题③：超管预取「可切换的测试账号」→ 点「切换测试账号」时立即弹 ActionSheet
     if (isSuperNow) this._loadTestAccounts();
+    /* 审核体验入口开关（2026-10-15）：超管进页面就拉一次状态，
+       否则「刚在别处关了 / 后端还开着」这种不一致要等下次进页面才看得到。 */
+    if (isSuperNow) this._loadReviewStatus();
     // 登录可能晚于 onShow 完成：就绪后补一次身份，否则排班负责人首屏看不到「待确认换班」
     if (app && app.globalData && !app.globalData.authChecked) {
       app.ready().then(() => {
         const s = !!(app.isSuper && app.isSuper());
         const cs = !!(app.canSchedule && app.canSchedule());
         const p2 = app.globalData.profile || null;
-        this.setData({
+        this.setData(Object.assign({
           profile: p2,
           isAdmin: !!(app.isAdmin && app.isAdmin()),
           isSuper: s,
@@ -213,9 +243,10 @@ Page({
           isCounselor: !!(p2 && p2.groupTag === 'X'),
           switched: !!(app.globalData.switched),
           impersonateBanner: impersonate.bannerText()
-        });
+        }, this._feeFlags()));
         if (cs) this._loadPending();
         if (s) this._loadTestAccounts();
+        if (s) this._loadReviewStatus();
       });
     }
     if (app.globalData.openApps) {
@@ -230,7 +261,7 @@ Page({
       app.recheckAuth().then((changed) => {
         if (!changed) return;
         const p3 = app.globalData.profile || null;
-        this.setData({
+        this.setData(Object.assign({
           profile: p3,
           isAdmin: !!(app.isAdmin && app.isAdmin()),
           isSuper: !!(app.isSuper && app.isSuper()),
@@ -240,7 +271,7 @@ Page({
           impersonateBanner: impersonate.bannerText(),
           selfTag: this._selfRoleTag().text,
           selfTier: this._selfRoleTag().tier
-        }, () => this.load());
+        }, this._feeFlags()), () => this.load());
       }).catch(() => {});
     }
   },
@@ -382,10 +413,66 @@ Page({
       }
     });
   },
+  /* ---------------- 审核体验入口（2026-10-15 · v1.0.6.8，仅超管） ----------------
+   * 老流程：我在更新说明里手写一条口令 → 用户跑 UPDATE 写库 → 提审。每个版本来一遍，
+   *   而且手写口令容易复用旧的、也容易随仓库泄漏出去。
+   * 现在：超管在这里一键开 / 关。
+   *   开启 = 后端**随机生成**一条新口令（旧口令当场作废），弹层里复制去填 mp 后台；
+   *   关闭 = 口令作废 + 把正在体验的演示身份踢下线。
+   * ⚠️ 一个易错点：**「口令」按钮只回显、不换口令**（走 status），
+   *   换口令只发生在「开启」那一刻（走 set）—— 别让超管为了再看一眼就把审核员踢下线。
+   * ⚠️ 口令只存在 data.reviewCode、且**只在弹层里渲染**；页面其余位置一律不出现。
+   */
+  _loadReviewStatus() {
+    return api.reviewDemoStatus({}, { toast: false })
+      .then((r) => { this.setData({ reviewOn: !!(r && r.on) }); })
+      .catch(() => {});
+  },
+  onReviewToggle() {
+    const on = !this.data.reviewOn;
+    wx.showModal({
+      title: on ? '开启审核体验入口？' : '关闭审核体验入口？',
+      content: on
+        ? '将生成一条新的仅预览口令（旧口令立即失效），审核员凭它可进入体验账号。审核通过后请回来关闭。'
+        : '口令将立即作废，正在体验的账号会被登出。',
+      confirmText: on ? '开启' : '关闭',
+      success: (res) => {
+        if (!res.confirm) return;
+        api.reviewDemoSet({ on }, { loading: '处理中' })
+          .then((r) => {
+            const code = String((r && r.code) || '');
+            // 关闭时 code 为空 ⇒ reviewShow 保持 false，不弹空口令层
+            this.setData({ reviewOn: !!(r && r.on), reviewCode: code, reviewShow: !!code });
+            util.toast(on ? '已开启，请复制口令' : '已关闭，体验账号已登出');
+          })
+          .catch(() => {});
+      }
+    });
+  },
+  /** 再看一次当前口令：**只回显、不换口令**（换口令会把正在体验的审核员踢下线） */
+  onReviewShowCode() {
+    api.reviewDemoStatus({}, { loading: '读取中' })
+      .then((r) => {
+        const code = String((r && r.code) || '');
+        if (!code) { util.toast('当前没有生效的口令'); return; }
+        this.setData({ reviewCode: code, reviewShow: true });
+      })
+      .catch(() => {});
+  },
+  onReviewCopy() {
+    const code = String(this.data.reviewCode || '');
+    if (!code) return;
+    // setClipboardData 自带「内容已复制」toast，不要再叠一个
+    wx.setClipboardData({ data: code });
+  },
+  onReviewClose() {
+    this.setData({ reviewShow: false });
+  },
+
   _afterSwitch(tip) {
     const app = getApp();
     app.refreshAuth().then(() => {
-      this.setData({
+      this.setData(Object.assign({
         profile: app.globalData.profile,
         isAdmin: !!(app.isAdmin && app.isAdmin()),
         isSuper: !!(app.isSuper && app.isSuper()),
@@ -394,9 +481,139 @@ Page({
         canSchedule: !!(app.canSchedule && app.canSchedule()),
         switched: !!(app.globalData.switched),
         impersonateBanner: impersonate.bannerText()
-      });
+      }, this._feeFlags()));
       util.toast(tip);
     }).catch(() => util.toast('已切换，下拉刷新后生效'));
+  },
+
+  /* ---------------- 更多 / 班费总额（2026-10-14） ----------------
+   * 「更多」把低频的管理 / 设置入口收起来，让「我的」页保持干净；
+   * 班费 / 团费总额原先在首页弹层，迁到这里的理由见 index.wxml 的注释。
+   * ⚠️ 权限判定一律走 util.feeRights —— 与首页、后端 fee 云函数同一份实现。 */
+  _feeFlags() {
+    const app = getApp();
+    const p = (app && app.globalData && app.globalData.profile) || this.data.profile;
+    const r = util.feeRights({
+      isSuper: !!(app && app.isSuper && app.isSuper()),
+      position: p ? p.position : ''
+    });
+    // canSchedule 也并进来兜底（理论上已被 hasAny 覆盖，但能力位与职位口径将来若各自演进，
+    // 「有权限却看不到入口」比「多显示一行」难查得多）
+    return {
+      feeCanSetTotalClass: r.canSetTotalClass,
+      feeCanSetTotalLeague: r.canSetTotalLeague,
+      showMore: r.hasAny || !!(app && app.canSchedule && app.canSchedule()),
+      showFeeTotalRow: r.canSetTotalClass || r.canSetTotalLeague
+    };
+  },
+  onMoreOpen() {
+    this.setData({ moreShow: true });
+    // 有总额设置权才拉汇总：用来显示当前总额、开编辑框时预填
+    if (this.data.feeCanSetTotalClass || this.data.feeCanSetTotalLeague) this._loadFeeSummary();
+  },
+  onMoreClose() { this.setData({ moreShow: false }); },
+  /**
+   * 关掉「更多」**之后**再做事：给收起动画约 200ms 喘息。
+   * 否则两个弹层同时过场（一个在退、一个在进），遮罩会瞬间叠深一层，看着像闪了一下。
+   * ⚠️ 用 setTimeout 而不是直接连着 setData —— 同类多处都这么处理，见 utils/page-anim 的过场节奏。
+   */
+  _afterMoreClose(fn) {
+    if (!this.data.moreShow) { fn(); return; }
+    this.setData({ moreShow: false }, () => setTimeout(fn, 200));
+  },
+  onMoreSwitch() { this._afterMoreClose(() => this.onSwitchAccount()); },
+  onMoreAi() { this._afterMoreClose(() => this.openAiSetting()); },
+  onMoreManual() { this._afterMoreClose(() => this.goManual()); },
+  _loadFeeSummary() {
+    return api.feeSummary({}, { toast: false })
+      .then((r) => {
+        const c = (r && r.class) || {};
+        const l = (r && r.league) || {};
+        // 留一份原始值：打开编辑弹层时预填、保存后同步用（文本只是展示）
+        this._feeRaw = { class: Number(c.total) || 0, league: Number(l.total) || 0 };
+        // 「更多」行尾摘要：只显示你有设置权的那几档
+        const parts = [];
+        if (this.data.feeCanSetTotalClass) parts.push('班费 ¥' + this._fmtMoney(this._feeRaw.class));
+        if (this.data.feeCanSetTotalLeague) parts.push('团费 ¥' + this._fmtMoney(this._feeRaw.league));
+        this.setData({ feeTotalRowText: parts.join(' · ') });
+        return this._feeRaw;
+      })
+      .catch(() => {});
+  },
+  /** 金额格式化：与首页 _fmtMoney 同口径（去掉多余的 0，保留两位以内的有效位） */
+  _fmtMoney(n) {
+    const v = Number(n) || 0;
+    const sign = v < 0 ? '-' : '';
+    return sign + Math.abs(v).toFixed(2).replace(/\.?0+$/, '');
+  },
+  /**
+   * 打开总额弹层：按设置权生成分段档位（只有一档时不渲染分段控件）。
+   * 两档草稿都按当前值预填 —— 用户是在「改」一个数，不是从空框开始猜。
+   */
+  onFeeTotalOpen() {
+    const tabs = [];
+    if (this.data.feeCanSetTotalClass) tabs.push({ key: 'class', text: '班费' });
+    if (this.data.feeCanSetTotalLeague) tabs.push({ key: 'league', text: '团费' });
+    if (!tabs.length) return;
+    this._afterMoreClose(() => {
+      this.setData({
+        feeTotalShow: true,
+        feeTotalTabs: tabs,
+        feeTotalType: tabs[0].key,
+        feeTotalBusy: false
+      });
+      this._prefillFeeInputs();
+    });
+  },
+  /** 草稿预填：_feeRaw 已有就直接用；没有先拉一次汇总（拉不到就留空，别阻塞打开） */
+  _prefillFeeInputs() {
+    const apply = (raw) => {
+      this.setData({
+        feeInputClass: this._fmtMoney(raw.class),
+        feeInputLeague: this._fmtMoney(raw.league),
+        feeTotalCurrentText: this._fmtMoney(raw[this.data.feeTotalType])
+      });
+    };
+    if (this._feeRaw) { apply(this._feeRaw); return; }
+    this._loadFeeSummary().then((raw) => { if (raw) apply(raw); });
+  },
+  /** 分段切换（e.detail.key = 'class' | 'league'）；草稿各自持有，切回去输入还在 */
+  onFeeTotalTab(e) {
+    const key = String((e.detail && e.detail.key) || 'class');
+    const cur = (this._feeRaw && this._feeRaw[key]) || 0;
+    this.setData({
+      feeTotalType: key,
+      feeTotalCurrentText: this._fmtMoney(cur)
+    });
+  },
+  onFeeTotalInput(e) {
+    const v = String(e.detail.value || '');
+    if (this.data.feeTotalType === 'league') this.setData({ feeInputLeague: v });
+    else this.setData({ feeInputClass: v });
+  },
+  onFeeTotalClose() { this.setData({ feeTotalShow: false }); },
+  onFeeTotalSave() {
+    if (this.data.feeTotalBusy) return;
+    const type = this.data.feeTotalType;
+    const total = Number(type === 'league' ? this.data.feeInputLeague : this.data.feeInputClass);
+    if (!Number.isFinite(total) || total < 0) { util.toast('请填写不小于 0 的总额'); return; }
+    this.setData({ feeTotalBusy: true });
+    api.feeSetTotal({ type, total })
+      .then(() => {
+        util.toast('已保存' + (type === 'league' ? '团费' : '班费') + '总额');
+        // 本地同步：当前档的「当前值」与草稿，避免保存后框里还是旧数
+        if (this._feeRaw) this._feeRaw[type] = total;
+        this.setData({
+          feeTotalBusy: false,
+          feeTotalCurrentText: this._fmtMoney(total)
+        });
+        // 「更多」行尾的金额摘要同步 —— 否则存了却看列表还是旧值，像没生效
+        this._loadFeeSummary();
+        // 置脏：首页切回来时强制重拉班费（与 swapDirty / dutyDirty / rosterDirty 同一套套路），
+        // 避免它落在「2 秒内刚拉过」的去重窗口里、用户看到的还是改之前的数。
+        try { const a = getApp(); if (a && a.globalData) a.globalData.feeDirty = true; } catch (e) {}
+      })
+      .catch(() => { this.setData({ feeTotalBusy: false }); });
   },
 
   /* ---------------- 提醒 ---------------- */

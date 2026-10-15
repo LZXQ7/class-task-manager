@@ -26,6 +26,46 @@ const TOTAL_WEEKS = 16;
  */
 const CLEAN_NAME_RE = /打扫|大扫除/;
 
+/**
+ * 大节数的**兜底值**（2026-10-14）。
+ *
+ * 🔴 过去全链路把「一天 5 个大节」写死（前端 grid 5 行 / periodChips [1..5] /
+ *    upsert 校验 period<=5 / replaceSessions 校验 period<=5 / admin-web 同样）。
+ *    现实是 `class.period_time` **每班可配**，后台「配置班级 → 大节时间」能加第 6 行，
+ *    但小程序端会把第 6 节课**直接过滤掉看不见**，甚至整批拒收（replaceSessions 的 bad 判定）。
+ *    现在改为「节次数跟随本班 period_time」，本常量只做「配置没到位 / 网络失败」时的兜底。
+ *
+ * 取 10 而不是更大：一天排 10 个大节已远超现实，够用且能挡住脏数据。
+ */
+const MAX_PERIOD = 10;
+/** 兜底节次数 = 5（与历史行为一致，保证配置晚到时页面不塌） */
+const DEFAULT_PERIODS = 5;
+
+/** 当前班级已配置的节次数（periodTime 由 class.list 下发，见 setPeriods）；未配置 ⇒ 5 */
+let _periodCount = DEFAULT_PERIODS;
+
+/**
+ * 设置当前班级的节次数。传入本班 `class.period_time` 数组（class.list 已带该字段）。
+ * 取「数组长度」与「最大 period 号」的较大者 ⇒ 管理员写 `1 08:00-09:40\n3 14:00-15:00`
+ * 这种跳号配置也能正确显示到第 3 节。
+ */
+function setPeriods(periodTime) {
+  let n = DEFAULT_PERIODS;
+  if (Array.isArray(periodTime) && periodTime.length) {
+    periodTime.forEach(p => {
+      const v = Number(p && p.period);
+      if (Number.isInteger(v) && v >= 1 && v <= MAX_PERIOD) n = Math.max(n, v);
+    });
+    // 数组更长时也认（period 号缺失/非法但行数有效）
+    n = Math.max(n, Math.min(periodTime.length, MAX_PERIOD));
+  }
+  _periodCount = n;
+  return _periodCount;
+}
+
+/** 当前班级节次数（渲染层网格行数 / 节次选择器都用它） */
+const periodCount = () => _periodCount;
+
 const KEY_SESSIONS = 'timetable_sessions_v1';
 const KEY_HOLIDAYS = 'timetable_holidays_v1';
 const KEY_SHIFTS = 'timetable_shifts_v1';
@@ -139,11 +179,31 @@ function dateOfWeekDay(termStart, week, weekday) {
 }
 
 /** weeks 为空串 = 每周都上；否则只有在集合里才上 */
+/**
+ * 周次串是否命中本周。
+ *
+ * 🔴 必须与后端 `common/week.js parseWeeks` **同口径**：支持逗号分隔（`7,9,11`）
+ *    **与区间写法（`6-13`）**。早前这里只做 `split(',') + Number()`，
+ *    遇到后台手填的 `6-13` ⇒ `Number('6-13')` = NaN ⇒ 整批周次判否
+ *    ⇒ 「书香校园」第 6 周起只在第 6 周出现、其余周全消失（2026-10-14 用户实锤）。
+ */
 function matchesWeeks(weeks, wk) {
   const s = String(weeks || '').trim();
   if (!s) return true;
   const set = {};
-  s.split(',').forEach(x => { const n = Number(x); if (n) set[n] = 1; });
+  s.split(',').forEach(part => {
+    const seg = String(part).trim();
+    if (!seg) return;
+    const rng = /^(\d+)\s*-\s*(\d+)$/.exec(seg);
+    if (rng) {
+      let a = Number(rng[1]), b = Number(rng[2]);
+      if (a > b) { const t = a; a = b; b = t; }
+      for (let i = a; i <= b; i++) set[i] = 1;
+      return;
+    }
+    const n = Number(seg);
+    if (n) set[n] = 1;
+  });
   return !!set[Number(wk)];
 }
 
@@ -361,7 +421,9 @@ function resetSessions() { _write(classKey(_classId), classSeed(_classId).slice(
  */
 function replaceSessions(list) {
   if (!Array.isArray(list) || !list.length) return false;
-  const bad = list.some(s => !s || !s.name || !(s.day >= 1 && s.day <= 7) || !(s.period >= 1 && s.period <= 5));
+  // 上限取 MAX_PERIOD（10）而不是写死 5：某些班（如 2601/示例班级B/示例班级A 后面要加的「书香校园」）
+  // 可能配到第 6 个大节，写死 5 会让**整批**课次被拒收 ⇒ 课表直接空白。
+  const bad = list.some(s => !s || !s.name || !(s.day >= 1 && s.day <= 7) || !(s.period >= 1 && s.period <= MAX_PERIOD));
   if (bad) {
     console.warn('[timetable] replaceSessions 收到不合法课次，已保留本地课表', list);
     return false;
@@ -427,7 +489,9 @@ function sessionsOfWeek(wk) {
         weekRule: 'ALL',
         weeks: s.weeks || '',
         groupScope: s.group || null,
-        dutyCount: 2,
+        // 取课次自身的 duty_count（云端 allSessions 已回传）；缺失才回落 2。
+        // 写死 2 会让「不排值日」的课在端上显示成 2 人值日（2026-10-14 实踩）。
+        dutyCount: (s.dutyCount === 0 || s.dutyCount) ? Number(s.dutyCount) : 2,
         dayOfWeek: toDay,
         period: slot.period,
         note: s.note || '',
@@ -469,7 +533,7 @@ function sessionsOfWeek(wk) {
       weekRule: 'ALL',
       weeks: s.weeks || '',
       groupScope: s.group || null,
-      dutyCount: 2,
+      dutyCount: (s.dutyCount === 0 || s.dutyCount) ? Number(s.dutyCount) : 2,
       dayOfWeek: slot.day,
       period: slot.period,
       note: s.note || '',
@@ -507,6 +571,10 @@ module.exports = {
   classId: currentClassId,
   termStart: currentTermStart,
   totalWeeks: currentTotalWeeks,
+  /* 节次数跟随本班 period_time（2026-10-14：不再写死 5，支持第 6 节等 45 分钟短课） */
+  setPeriods,
+  periodCount,
+  MAX_PERIOD,
   holidays,
   shifts,
   saveHolidays,

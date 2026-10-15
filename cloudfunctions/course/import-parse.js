@@ -181,8 +181,10 @@ function parseTimetableXlsx(buffer, totalWeeks) {
           warnings.push(ctx + ' 缺少节次区间（如 [1-2]），按节次 ' + periodBase + ' 处理');
         }
         for (const p of periods) {
-          // 同(课程名+教师)为一门课；教室可能随周次变化，按课次分别记录
-          const key = name + ' ' + teacher;
+          // ⚠️ room 碰撞修复：课程身份 = 课程名+教师+教室。同一门课在多个教室上课
+          //   必须拆成多条 course 记录，否则 writeTimetable 按 (name,teacher,room) 建课程行后
+          //   会让非首教室的课次找不到课程行而被丢弃。
+          const key = name + ' ' + teacher + ' ' + room;
           let ci = courseMap.get(key);
           if (ci === undefined) { ci = courses.length; courses.push({ name, teacher, room }); courseMap.set(key, ci); }
           sessions.push({

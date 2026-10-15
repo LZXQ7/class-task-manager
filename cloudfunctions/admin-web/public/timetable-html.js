@@ -642,9 +642,11 @@
     var list = [], courseMap = {}, seenSession = {}, count = 0, dup = 0;
     for (var i = 0; i < courses.length; i++) {
       var it = courses[i];
-      var key = it.name + '|' + it.teacher;
+      // ⚠️ room 碰撞修复：课程身份 = name|teacher|room。同一门课在不同教室上课
+      //   必须拆成两条 course 记录，否则 writeTimetable 会用第一条教室覆盖全部，
+      //   或在按 (name,teacher,room) 建课程行后让第二条课次找不到课程行而被丢弃。
+      var key = it.name + '|' + it.teacher + '|' + (it.room || '');
       if (!courseMap[key]) courseMap[key] = { name: it.name, teacher: it.teacher, room: it.room || '' };
-      else if (!courseMap[key].room && it.room) courseMap[key].room = it.room;
       // 打印版页面会把同一条课次重复渲染两次（title 与正文各一次）——
       // 完全相同的一条课次只写一次，否则值日/课表都会莫名多一份。
       var skey = [it.name, it.teacher, it.room || '', it.day, it.period, it.weeks.join(',')].join('|');
@@ -663,10 +665,22 @@
     if (diag.count.no_sections) warnings.push('有 ' + diag.count.no_sections + ' 条记录因缺少节次被跳过');
     if (diag.count.no_day) warnings.push('有 ' + diag.count.no_day + ' 条记录因缺少星期被跳过');
     meta = meta || {};
-    // 与页面顶部「课程门数」对账：少了就是漏课，必须拦住
-    if (meta.declaredCourseCount && courseList.length !== meta.declaredCourseCount) {
-      warnings.push('⚠ 页面顶部写着 ' + meta.declaredCourseCount + ' 门课，本次只解析出 ' +
-        courseList.length + ' 门 —— 可能漏课了，请先核对再导入');
+    // 与页面顶部「课程门数」对账：少了一门就是漏课，必须拦住。
+    // ⚠️ 比对口径必须 = 页面「课程门数」的语义 = **去重到课程名**。
+    //   页面「门」按课程名计：同一门课分两个教室（room 碰撞修复会让 courseList 拆成两条）
+    //   或同一门课由两位老师分段上（如 微课设计与制作 示例老师021-8 + 示例老师049-16），
+    //   在页面上都只算「1 门」。若按 (name,teacher) 比对，会把这些合法情况误报成「漏课」。
+    //   真·漏课 = 整门课（按名）没解析出来 ⇒ 去重名数 < 声明数，这条对账能抓住。
+    if (meta.declaredCourseCount) {
+      var distinctCourseKeys = {};
+      for (var ci = 0; ci < courseList.length; ci++) {
+        distinctCourseKeys[courseList[ci].name] = 1;
+      }
+      var distinctCourseCount = Object.keys(distinctCourseKeys).length;
+      if (distinctCourseCount !== meta.declaredCourseCount) {
+        warnings.push('⚠ 页面顶部写着 ' + meta.declaredCourseCount + ' 门课，本次只解析出 ' +
+          distinctCourseCount + ' 门 —— 可能漏课了，请先核对再导入');
+      }
     }
     return {
       layout: layout,

@@ -64,12 +64,12 @@ const r2 = parseRoster('20230101,张伟');
 ok(r2.rows.length === 1 && r2.rows[0].name === '张伟' && r2.rows[0].studentNo === '20230101',
   '「学号,姓名」可解析');
 
-const r3 = parseRoster('示例专业B1班,209901030302,示例成员59,女性,示例成员57');
-ok(r3.rows.length === 1 && r3.rows[0].name === '示例成员59' && r3.rows[0].studentNo === '209901030302'
+const r3 = parseRoster('示例专业B1班,000000000102,示例成员59,女性,示例成员57');
+ok(r3.rows.length === 1 && r3.rows[0].name === '示例成员59' && r3.rows[0].studentNo === '000000000102'
   && r3.rows[0].label === '示例专业B1班',
   '「班级,学号,姓名,性别,指导员」可解析（性别/指导员不误判为姓名）');
 
-const r4 = parseRoster('专业班级,学号,姓名,性别,指导员\n209901030302,示例成员59');
+const r4 = parseRoster('专业班级,学号,姓名,性别,指导员\n000000000102,示例成员59');
 ok(r4.rows.length === 1, '表头行自动跳过（且不记为失败）');
 ok(r4.failed.length === 0, '跳过表头不会产生失败行');
 
@@ -81,12 +81,12 @@ console.log('\n--- ③ 整表解析（含表头 + 5 个班级标签） ---');
 const SAMPLE = [
   '专业班级,学号,姓名,性别,指导员',
   '商务示例专业B2班,209903020101,示例成员60,女性,示例成员57',
-  '商务示例专业B2班,260803020102,示例成员62,女性,示例成员57',
+  '商务示例专业B2班,209903020102,示例成员62,女性,示例成员57',
   '示例专业B2班,209903030101,示例成员61,女性,示例成员57',
-  '示例专业B1班,209901030302,示例成员59,女性,示例成员57',
-  '示例专业B1班,209901030303,示例成员63,女性,示例成员57',
-  '示例专业A2班,209901030202,示例成员64,女性,示例成员57',
-  '示例专业A1班,209901030102,示例成员65,女性,示例成员57'
+  '示例专业B1班,000000000102,示例成员59,女性,示例成员57',
+  '示例专业B1班,000000000103,示例成员63,女性,示例成员57',
+  '示例专业A2班,000000000202,示例成员64,女性,示例成员57',
+  '示例专业A1班,000000000302,示例成员65,女性,示例成员57'
 ].join('\n');
 {
   const parsed = parseRoster(SAMPLE);
@@ -120,14 +120,14 @@ const classes = [{ id: 3, name: '示例班级A' }, { id: 1, name: '示例班级C
 // 存量前缀（与线上一致：2601→1、示例班级B→2、示例班级A→3）
 // ⚠️ 2026-06-06 随 class_id 重排迁移更新：示例班级A由 id=1 变为 id=3（学号段↔id 对齐）。
 const prefixMaps = {
-  byPrefix: new Map([['2099010303', 1], ['2099010302', 2], ['2099010301', 3]]),
-  byClass: new Map([[1, new Set(['2099010303'])], [2, new Set(['2099010302'])], [3, new Set(['2099010301'])]])
+  byPrefix: new Map([['0000000001', 1], ['0000000002', 2], ['0000000003', 3]]),
+  byClass: new Map([[1, new Set(['0000000001'])], [2, new Set(['0000000002'])], [3, new Set(['0000000003'])]])
 };
-const m2601 = resolveLabel('示例专业B1班', classes, prefixMaps, ['209901030302']);
+const m2601 = resolveLabel('示例专业B1班', classes, prefixMaps, ['000000000102']);
 ok(m2601.classId === 1 && m2601.match === 'prefix' && !m2601.weak, '示例专业B1班 → 示例班级C(id=1) 前缀命中');
-const m示例班级B = resolveLabel('示例专业A2班', classes, prefixMaps, ['209901030202']);
+const m示例班级B = resolveLabel('示例专业A2班', classes, prefixMaps, ['000000000202']);
 ok(m示例班级B.classId === 2 && !m示例班级B.weak, '小学教育示例班级B → 示例班级B(id=2) 前缀命中');
-const m示例班级A = resolveLabel('示例专业A1班', classes, prefixMaps, ['209901030102']);
+const m示例班级A = resolveLabel('示例专业A1班', classes, prefixMaps, ['000000000302']);
 ok(m示例班级A.classId === 3 && !m示例班级A.weak, '小学教育示例班级A → 示例班级A(id=3) 前缀命中');
 // 同班号不同专业：只能按班号命中，且与该班已有前缀不符 → weak
 const mBiz = resolveLabel('商务示例专业B2班', classes, prefixMaps, ['209903020101']);
@@ -139,7 +139,7 @@ ok(mNone.classId === 0 && mNone.match === 'none', '无法判定 → match=none�
 
 /* ---------- 分组奇偶 ---------- */
 console.log('\n--- ⑤ 尾号奇偶分组 ---');
-ok(groupOf('209901030301') === 'A' && groupOf('209901030302') === 'B', '尾号奇数→A、偶数→B');
+ok(groupOf('000000000101') === 'A' && groupOf('000000000102') === 'B', '尾号奇数→A、偶数→B');
 
 /* ---------- ⑦ 「只有序号没有学号」的名册 ---------- */
 console.log('\n--- ⑦ 序号名册（学号待补全） ---');
@@ -147,8 +147,8 @@ console.log('\n--- ⑦ 序号名册（学号待补全） ---');
   const a = parseRoster('序号 | 姓名\n1 | 示例成员01\n2 | 示例成员02');
   ok(a.rows.length === 2 && a.rows[0].name === '示例成员01' && a.rows[0].seq === 1 && !a.rows[0].studentNo,
     '「序号|姓名」名册可读出（学号留空待补全）');
-  const b = parseRoster('序号,姓名,学号\n1,示例成员01,209901030101');
-  ok(b.rows.length === 1 && b.rows[0].studentNo === '209901030101' && b.rows[0].seq === 1,
+  const b = parseRoster('序号,姓名,学号\n1,示例成员01,000000000301');
+  ok(b.rows.length === 1 && b.rows[0].studentNo === '000000000301' && b.rows[0].seq === 1,
     '三列名册同时取到学号与序号');
   const c = parseRoster('1.0 | 示例成员01');
   ok(c.rows.length === 1 && c.rows[0].seq === 1, 'Excel 数字序号 1.0 归一为 1');
@@ -161,9 +161,18 @@ console.log('\n--- ⑧ 真实点名册（可选） ---');
 {
   const { parseXlsx, sheetToText } = require('../cloudfunctions/member/xlsx-lite');
   const DESK = 'C:/Users/PC/Desktop';
+  /**
+   * ⚠️ 样本口径更新（2026-10-15）：桌面上的 `示例班级A点名册.xlsx` 于 **2026-10-14** 被替换成
+   *   **两栏排版**（序号|姓名|序号|姓名，约 28 个物理行 × 2 列 = 56 人），**学号列已不存在**。
+   *   ⇒ 两份样本现在都是「序号 + 姓名（无学号）」，`hasNo` 一律 false；
+   *   原先钉死「首行学号 = 000000000301」的断言随之失效（该列已不在），换成两条更有价值的：
+   *     ① 序号 1..56 **连续无重复** —— 正是「两栏展开不丢人、不重复」的回归点；
+   *     ② 首行姓名 = 示例成员01 —— 钉住列序（别把姓名列读进序号位）。
+   *   💡 判据可以跟着样本走，但**绝不能改成从样本自身推导**（那等于自证、永远绿）。
+   */
   const cases = [
     { file: '示例班级A点名册.xlsx', rows: 56, hasNo: false, desc: '序号+姓名（无学号）' },
-    { file: '示例班级A点名册.xlsx', rows: 56, hasNo: true, desc: '序号+姓名+学号' }
+    { file: '示例班级A点名册.xlsx', rows: 56, hasNo: false, desc: '两栏排版 序号+姓名（无学号）' }
   ];
   let any = false;
   cases.forEach((cs) => {
@@ -174,8 +183,12 @@ console.log('\n--- ⑧ 真实点名册（可选） ---');
     const parsed = parseRoster(sheetToText(sheets[0]));
     ok(parsed.rows.length === cs.rows, cs.file + '（' + cs.desc + '）解析 ' + cs.rows + ' 行（实际 ' + parsed.rows.length + '）');
     ok(cs.hasNo === parsed.rows.every(r => !!r.studentNo), cs.file + ' 学号有无判定正确');
-    if (cs.hasNo) ok(parsed.rows[0].studentNo === '209901030101', cs.file + ' 首行学号 = 209901030101');
-    else ok(parsed.rows.every(r => r.seq >= 1), cs.file + ' 每行都有序号可补');
+    ok(parsed.rows.every(r => r.seq >= 1), cs.file + ' 每行都有序号可补');
+    const seqs = parsed.rows.map(r => Number(r.seq));
+    ok(seqs.length === cs.rows && new Set(seqs).size === cs.rows &&
+       Math.min.apply(null, seqs) === 1 && Math.max.apply(null, seqs) === cs.rows,
+      cs.file + ' 序号 1..' + cs.rows + ' 连续无重复（两栏展开正确）');
+    ok(parsed.rows[0].name === '示例成员01', cs.file + ' 首行姓名 = 示例成员01（列序未错位）');
   });
   if (!any) console.log('SKIP  桌面未找到点名册样本');
 
@@ -185,35 +198,44 @@ console.log('\n--- ⑧ 真实点名册（可选） ---');
   if (fs.existsSync(pNo) && fs.existsSync(pYes)) {
     const withNo = parseRoster(sheetToText(parseXlsx(fs.readFileSync(pYes))[0])).rows;
     const noNo = parseRoster(sheetToText(parseXlsx(fs.readFileSync(pNo))[0])).rows;
-    const prefix = String(withNo[0].studentNo).slice(0, -2);
-    const byName = new Map(withNo.map(r => [r.name, r.studentNo]));
-    const mismatch = noNo.filter((r) => {
-      const derived = prefix + String(r.seq).padStart(2, '0');
-      const real = byName.get(r.name);
-      return real && real !== derived;
-    });
-    ok(noNo.length === withNo.length, '两份点名册行数一致（' + noNo.length + '）');
-    ok(mismatch.length === 0,
-      '按「前缀' + prefix + ' + 序号」补出的学号与真实学号逐行一致（不一致 ' + mismatch.length + ' 条）');
+    /**
+     * ⚠️ 空转防线（2026-10-15）：两份样本**都没有学号列**时，下面这段会静默假绿 ——
+     *   `prefix` 取到 `"undefi"`、`byName` 里的值全是 undefined ⇒ `real &&` 恒假
+     *   ⇒ `mismatch` 恒为 0 ⇒ 明明没做校验却报 PASS。必须先确认「带学号」那份真有学号。
+     */
+    if (!withNo.every(r => !!r.studentNo)) {
+      console.log('SKIP  两份样本均无学号列，跳过「前缀+序号」交叉验证（否则会空转假绿）');
+    } else {
+      const prefix = String(withNo[0].studentNo).slice(0, -2);
+      const byName = new Map(withNo.map(r => [r.name, r.studentNo]));
+      const mismatch = noNo.filter((r) => {
+        const derived = prefix + String(r.seq).padStart(2, '0');
+        const real = byName.get(r.name);
+        return real && real !== derived;
+      });
+      ok(noNo.length === withNo.length, '两份点名册行数一致（' + noNo.length + '）');
+      ok(mismatch.length === 0,
+        '按「前缀' + prefix + ' + 序号」补出的学号与真实学号逐行一致（不一致 ' + mismatch.length + ' 条）');
+    }
   }
 }
 /* ---------- ⑨ 已有班级比对（无问题就跳过） ---------- */
 console.log('\n--- ⑨ 已有班级比对 ---');
 {
   const rows9 = parseRoster([
-    '示例专业B1班,209901030301,示例成员60,女性',      // 库里一致 → same
-    '示例专业B1班,209901030302,改过名字,女性',  // 库里同名不同 → diff
-    '示例专业B1班,209901030303,示例成员63,女性',      // 库里没有 → fresh
-    '示例专业B1班,209901030399,张外部,女性'   // 学号已在别的班 → other
+    '示例专业B1班,000000000101,示例成员60,女性',      // 库里一致 → same
+    '示例专业B1班,000000000102,改过名字,女性',  // 库里同名不同 → diff
+    '示例专业B1班,000000000103,示例成员63,女性',      // 库里没有 → fresh
+    '示例专业B1班,000000000199,张外部,女性'   // 学号已在别的班 → other
   ].join('\n')).rows;
   const g9 = buildGroups(rows9, {
     classes: [{ id: 1, name: '示例班级C' }], prefixMaps, seqPrefixMap: new Map(),
     fallbackClass: 0, mapping: null, createLabels: null
   });
   const existing9 = new Map([
-    ['209901030301', { id: 1, name: '示例成员60', group_tag: 'A', class_id: 1 }],
-    ['209901030302', { id: 2, name: '示例成员59', group_tag: 'A', class_id: 1 }],
-    ['209901030399', { id: 9, name: '张外部', group_tag: 'A', class_id: 2 }]
+    ['000000000101', { id: 1, name: '示例成员60', group_tag: 'A', class_id: 1 }],
+    ['000000000102', { id: 2, name: '示例成员59', group_tag: 'A', class_id: 1 }],
+    ['000000000199', { id: 9, name: '张外部', group_tag: 'A', class_id: 2 }]
   ]);
   annotateExisting(g9, existing9);
   const st = g9[0].stat;
@@ -223,7 +245,7 @@ console.log('\n--- ⑨ 已有班级比对 ---');
     '差异清单能指出具体是哪个人');
 
   // 全部一致 → 前端据此默认不勾选（「无问题就跳过」）
-  const rows10 = parseRoster('示例班级C,209901030301,示例成员60,女性').rows;
+  const rows10 = parseRoster('示例班级C,000000000101,示例成员60,女性').rows;
   const g10 = buildGroups(rows10, {
     classes: [{ id: 1, name: '示例班级C' }], prefixMaps, seqPrefixMap: new Map(),
     fallbackClass: 0, mapping: null, createLabels: null
@@ -253,7 +275,7 @@ ok(deriveClassName('英语2601') === '英语示例班级C', '不带「班」自�
   });
   const biz = g2.find(g => g.label === '商务示例专业B2班');
   ok(!!biz && biz.classId === 1 && biz.weak === true, '未勾选自动建班时，同班号不同专业仍标 weak（不静默导入）');
-  const rows2 = parseRoster('神秘（专升本）2999班,260899990101,某甲,女性').rows;
+  const rows2 = parseRoster('神秘（专升本）2999班,209999990101,某甲,女性').rows;
   const g3 = buildGroups(rows2, {
     classes: [{ id: 1, name: '示例班级C' }], prefixMaps, mapping: null, createLabels: null, fallbackClass: 0
   });

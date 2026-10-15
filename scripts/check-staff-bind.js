@@ -378,6 +378,9 @@ async function runtimeSelfTest() {
       ADMIN_ROLES: ['ADMIN', 'MONITOR']
     };
     const req = (id) => {
+      /* 体验口令的随机源（2026-10-15 新增）：Node 内置模块，直接用真的 ——
+         桩成固定值反而会让「口令是否随机」这件事在门禁里永远测不出来。 */
+      if (id === 'crypto') return require('crypto');
       if (id === 'wx-server-sdk') return { init() {}, DYNAMIC_CURRENT_ENV: 'test' };
       if (id === './common/db') return { getPool: () => pool };
       if (id === './common/guard') return guard;

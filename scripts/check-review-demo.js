@@ -33,6 +33,9 @@ const BIND_JS = 'miniprogram/pages/bind/index.js';
 const BIND_WXML = 'miniprogram/pages/bind/index.wxml';
 const BIND_WXSS = 'miniprogram/pages/bind/index.wxss';
 const SQL = 'scripts/migrate-review-demo.sql';
+/* v1.0.6.8：审核体验入口的**超管开关**搬到「我的」页 —— 新增两处受检文件 */
+const MINE_WXML = 'miniprogram/pages/mine/index.wxml';
+const MINE_JS = 'miniprogram/pages/mine/index.js';
 /* v1.0.6.4：演示身份降权 —— 拦截模块 + 5 个受影响函数 */
 const RD = 'cloudfunctions/common/review-demo.js';
 const FN_MEMBER = 'cloudfunctions/member/index.js';
@@ -42,7 +45,8 @@ const FN_COURSE = 'cloudfunctions/course/index.js';
 
 const src = {
   auth: read(AUTH), api: read(API), bindJs: read(BIND_JS), bindWxml: read(BIND_WXML), bindWxss: read(BIND_WXSS), sql: read(SQL),
-  rd: read(RD), memberIdx: read(FN_MEMBER), classIdx: read(FN_CLASS), mediaIdx: read(FN_MEDIA), courseIdx: read(FN_COURSE)
+  rd: read(RD), memberIdx: read(FN_MEMBER), classIdx: read(FN_CLASS), mediaIdx: read(FN_MEDIA), courseIdx: read(FN_COURSE),
+  mineWxml: read(MINE_WXML), mineJs: read(MINE_JS)
 };
 
 /* 剥注释：只判代码形态，注释里提到不算 */
@@ -146,9 +150,39 @@ function judge(o) {
     push(/const reviewDemo = require\('\.\/common\/review-demo'\)/.test(c[k]));
     push(/reviewDemo\.denyDemo\(ctx\.member, action\)/.test(c[k]));
   });
-  /* DB 列：演示态标记（默认关）+ 绑定成功置 1 */
+  /* DB 列：演示态标记（默认关）+ 绑定成功置 1。
+   * ⚠️ 判据必须落在 **reviewDemo 自己的块里**，不能对全文件 grep `is_review_demo = 1` ——
+   *    reviewDemoSet 里踢演示身份那条 `WHERE is_review_demo = 1` 也含这个字面量，
+   *    全文件 grep 会让「绑定不再置演示标记」这个变异**静默通过**（2026-10-15 实踩，
+   *    与「变异锚点不唯一 = 假自证」同族）。 */
   push(/is_review_demo TINYINT NOT NULL DEFAULT 0/.test(c.sql));
-  push(/is_review_demo = 1/.test(c.auth));
+  push(!!rd);
+  if (rd) push(/is_review_demo = 1/.test(rd[0]));
+
+  /* ⑦ 超管开关（2026-10-15 · v1.0.6.8）：开启即自动生成新口令，不再「我手写 + 用户跑 SQL」 */
+  push(/reviewDemoStatus:\s*\{/.test(c.auth));
+  push(/reviewDemoSet:\s*\{/.test(c.auth));
+  /* 两个新路由都必须声明 needSuper —— 弱化成 needBind = 任何已绑定成员都能开后门 / 读到口令 */
+  const rds = /reviewDemoStatus:\s*\{[\s\S]*?\n  \},/.exec(c.auth);
+  const rdt = /reviewDemoSet:\s*\{[\s\S]*?\n  \},/.exec(c.auth);
+  push(!!rds && /auth:\s*\{\s*needSuper:\s*true\s*\}/.test(rds[0]));
+  push(!!rdt && /auth:\s*\{\s*needSuper:\s*true\s*\}/.test(rdt[0]));
+  /* 口令必须由 crypto 随机生成：Math.random 可预测、同毫秒还会撞值；写死更不用说 */
+  push(/function newReviewCode\(\)/.test(c.auth));
+  push(/crypto\.randomInt\(CODE_ALPHABET\.length\)/.test(c.auth));
+  push(!/Math\.random/.test(c.auth));
+  push(!/return 'LXQ-[A-Z0-9]{4}-/.test(c.auth));
+  /* 开启前先把**所有班**的开关清一遍：否则「以为关了，其实别班还开着一道」 */
+  push(/UPDATE `class` SET review_demo_on = 0, review_demo_code = ''/.test(c.auth));
+  /* 演示身份不得自己开关这道后门（连「只读一下口令」也不给） */
+  push(/'auth\.reviewDemoSet'/.test(c.rd));
+  push(/'auth\.reviewDemoStatus'/.test(c.rd));
+  /* 前端：「我的」页那一行仅超管可见 + handler 齐 + api 声明齐 */
+  push(/wx:if="\{\{isSuper\}\}" class="mn-row"[^>]*bindtap="onReviewToggle"/.test(c.mineWxml));
+  push(/onReviewToggle\(\)\s*\{/.test(c.mineJs));
+  push(/api\.reviewDemoSet\(\{ on \}/.test(c.mineJs));
+  push(/reviewDemoStatus: C\('auth', 'reviewDemoStatus'\)/.test(c.api));
+  push(/reviewDemoSet: C\('auth', 'reviewDemoSet'\)/.test(c.api));
 
   return n;
 }
@@ -186,8 +220,33 @@ const MUT = [
     apply: () => ({ rd: src.rd.replace("'member.removeMember',", '') })
   },
   {
+    /* ⚠️ 锚点必须唯一：只写 `is_review_demo = 1` 会先命中 reviewDemoSet 的
+       `WHERE is_review_demo = 1`，改了个不相干的地方 ⇒ 测的还是原文件（假自证）。 */
     name: 'M7 reviewDemo 绑定不再置 is_review_demo=1（演示态失效，拦截永不触发）',
-    apply: () => ({ auth: src.auth.replace('is_review_demo = 1', 'is_review_demo = 0') })
+    apply: () => ({ auth: src.auth.replace('is_review_demo = 1 WHERE id = ?', 'is_review_demo = 0 WHERE id = ?') })
+  },
+  {
+    name: 'M8 reviewDemoSet 去掉 needSuper（任何已绑定成员都能开这道后门 / 拿到口令）',
+    apply: () => ({ auth: src.auth.replace("  reviewDemoSet: {\n    auth: { needSuper: true },", "  reviewDemoSet: {\n    auth: { needBind: true },") })
+  },
+  {
+    name: 'M9 口令不再随机（固定口令 ⇒ 每次开启都是同一条，等于公开后门）',
+    apply: () => ({ auth: src.auth.replace('return \'LXQ-\' + out;', "return 'LXQ-FIXD-FIXD-FIXD-FIXD';") })
+  },
+  {
+    name: 'M10 前端开关行去掉 wx:if isSuper（普通成员也能开后门）',
+    apply: () => ({ mineWxml: src.mineWxml.replace('<view wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onReviewToggle">', '<view class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onReviewToggle">') })
+  },
+  {
+    name: 'M11 从拒绝清单删掉 auth.reviewDemoSet（演示身份可以自己换一条口令出来）',
+    apply: () => ({ rd: src.rd.replace("  'auth.reviewDemoSet',\n", '') })
+  },
+  {
+    name: 'M12 口令改用 Math.random（可预测 + 同毫秒撞值，等于口令能猜）',
+    apply: () => ({ auth: src.auth.replace(
+      'CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)]',
+      'CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]'
+    ) })
   }
 ];
 

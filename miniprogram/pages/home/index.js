@@ -3,6 +3,7 @@
  */
 const api = require('../../utils/api');
 const util = require('../../utils/util');
+const tt = require('../../data/timetable');
 const subscribe = require('../../utils/subscribe');
 const pageAnim = require('../../utils/page-anim');
 const notice = require('../../utils/notice');
@@ -187,7 +188,34 @@ Page({
     /** fileID → 临时链接（1.0.6 需求③：行尾缩略图用；与 roster 页同一套批量换链，不逐个请求） */
     leaveImgUrls: {},
     /** 弹层内「加载中…」（v0.7.32 问题②：点开即弹，名单后台再刷新） */
-    leaveHomeLoading: false
+    leaveHomeLoading: false,
+
+    /* ---- 班费 / 团费（2026-10-14） ---- */
+    /** 班费管理权（点开 + 消费）：班长兼团支书 / 副班长 / 生活委员 / 超管；普通成员 view-only */
+    feeCanManageClass: false,
+    /** 团费管理权：班长兼团支书 / 超管 */
+    feeCanManageLeague: false,
+    /** 团费卡对所有人可见（view-only 或管理），恒为 true；旧「仅管理人可见」口径已废弃 */
+    showLeagueCard: true,
+    /* 🔴 总额设置权（班费 = 超管 / 生活委员；团费 = 超管 / 班长兼团支书）已迁到「我的」页
+        —— 这里不再判定也不再展示设置框，避免出现两处入口改同一个值。 */
+    /** 班费汇总（{ total, expenseTotal, balance, totalText, expenseText, balanceText, records:[] }） */
+    feeClass: { total: 0, expenseTotal: 0, balance: 0, totalText: '0', expenseText: '0', balanceText: '0', records: [] },
+    feeLeague: { total: 0, expenseTotal: 0, balance: 0, totalText: '0', expenseText: '0', balanceText: '0', records: [] },
+    /** 弹层状态 */
+    feeShow: false,
+    feeActive: { total: 0, expenseTotal: 0, balance: 0, totalText: '0', expenseText: '0', balanceText: '0', records: [] },
+    feeType: 'class',
+    feeActiveName: '班费',
+    feeCanManage: false,
+    /** 弹层视图：'list' = 余额 + 消费明细 + 增加消费按钮；'form' = 金额 / 备注 / 凭证图片 / 提交。
+        2026-10-14 需求：表单不再常驻，点「增加消费」才进表单，避免长表单把明细挤到屏幕外。 */
+    feeView: 'list',
+    /** 消费表单：金额 / 备注 / 图片（云存储 fileID 数组，最多 9 张） */
+    feeAmount: '',
+    feeNote: '',
+    feeImages: [],
+    feeBusy: false
   },
 
   onLoad() {
@@ -264,6 +292,17 @@ Page({
     const rosterDirty = !!(app.globalData && app.globalData.rosterDirty);
     if (app.globalData) app.globalData.rosterDirty = false;
     this.load(identityChanged || swapDirty || dutyDirty || rosterDirty);
+    /*
+     * 班费 / 团费：与通知角标同一套口径 —— **每次 onShow 独立重拉一次**。
+     * ⚠️ 不能只挂在 load() 的 .then 里：load 有 STALE_MS（20s）缓存早退 ——
+     *    切回首页且数据"新鲜"时它连请求都不发，那条路径上班费永远不刷新。
+     *    于是「在『我的』改了班费总额 → 回到首页看到旧值，要等好一会儿才变」
+     *    （2026-10-15 实踩）。班费是低频小额查询，每次进首页拉一次可以接受。
+     * feeDirty：我的页刚改过总额时置位（同 swapDirty 的套路），这里跳过去重窗口强制拉。
+     */
+    const feeDirty = !!(app.globalData && app.globalData.feeDirty);
+    if (app.globalData) app.globalData.feeDirty = false;
+    this._loadFee(feeDirty);
     // 今日课次灰化计时器：即便 load 命中 STALE_MS 缓存直接 return（数据已在），也要续排到点翻面
     this._scheduleDoneTimer();
     // 请假卡：onShow 已重拉（_applyIdentity → _loadLeaveHome）；这里再补排一条时段翻面定时器
@@ -333,12 +372,24 @@ Page({
     // ⚠️ 辅导员（X 组）**不**给：他们的视角是隐藏学生功能的（见上面 isCounselor 注释），
     //    首页连今日课次都看不到，自然也不该有这个弹窗。
     const canCourseInfo = canLeave && !isCounselor;
+    // 班费 / 团费权限（2026-10-14）：判定统一走 util.feeRights —— 与后端 fee 云函数同口径，
+    // 且与我的页共用同一份实现（早先在本页直接比对职位字面量，两个页面各写一份判定式，
+    // 「这里能设置、我的页却不显示」之类的漂移迟早出现）。
+    const feeR = util.feeRights({
+      isSuper: !!(app && app.isSuper && app.isSuper()),
+      position: p ? p.position : ''
+    });
+    const feeCanManageClass = feeR.canManageClass;
+    const feeCanManageLeague = feeR.canManageLeague;
+    const showLeagueCard = feeR.showLeagueCard;   // 团费卡仅能管团费者可见
     const patch = {
       canViewClass, isCounselor, showPins,
       canLeave,
       showLeaveHome,
       canCourseInfo,
-      leaveHomeMode: isCounselor ? 'counselor' : 'class'
+      leaveHomeMode: isCounselor ? 'counselor' : 'class',
+      feeCanManageClass, feeCanManageLeague,
+      showLeagueCard
     };
     if (rt) { patch.adminTag = rt.text; patch.adminTier = rt.tier; }
     this.setData(patch);
@@ -598,7 +649,7 @@ Page({
    *   小学语文课程与教学论
    *   示例老师10 应到56人 实到55人
    *   课堂情况：正常
-   *   209901030146示例成员46请假
+   *   000000000346示例成员46请假
    */
 
   /**
@@ -618,6 +669,11 @@ Page({
     const idx = Number(e.currentTarget.dataset.idx);
     const s = (this.data.sessions || [])[idx];
     if (!s) return;
+    // 🔴 选修课不进「课堂情况」（2026-10-16 首页并入选修课时加）：
+    //    选修课 `sessionId=0`、不驱动值日 ⇒ `_loadCourseRoster` 按 sessionId 查名单只会得到
+    //    一份无意义的空名单，班委会把它当真实数据发到群里。直接忽略点击。
+    //    （未被守卫时的症状：选修课那行班长点得动、弹层标题是课程名但名单恒空。）
+    if (s.isPersonal) return;
     this.setData({
       courseInfoShow: true,
       courseInfoLoading: true,
@@ -942,8 +998,12 @@ Page({
      */
     const hasContent = !!this._hasData;
     if (!hasContent) this.setData({ loading: true, failed: false });
-    return api.dutyToday({}, { toast: false })
-      .then((r) => {
+    // 🔴 选修课（personal_course）与 dutyToday 是两条独立链路，并行拉以免拖慢首屏；
+    //    任一失败都不阻断另一条（catch 内已兜成空数组）。
+    const pToday = api.dutyToday({}, { toast: false });
+    const pPersonal = this._loadPersonalCourses();
+    return Promise.all([pToday, pPersonal])
+      .then(([r]) => {
         const myDuty = r.myDuty || null;
         // 分组可见性用的「本组」取**本次 dutyToday 返回的 member.groupTag**（后端 me.group_tag 的权威值），
         // 而不是 globalData.profile.groupTag —— 后者在「切换测试账号」模拟态下仍是超管本人，
@@ -970,8 +1030,15 @@ Page({
           hero,
           heroSub,
           periodText,
-          sessions: this._markDone(this._filterSessions(r.sessions || [], groupTag)),
-          tomorrowSessions: this._filterSessions(r.tomorrowSessions || [], groupTag),
+          // 今日 / 明日课次各并入「本人选修课」（2026-10-16 需求 A）。
+          // · 今日 = util.todayWeekday()；明日 = 今天+1 的星期（跨周自动回绕：周日→1）。
+          // · currentWeek 用后端 dutyToday 返回的权威值，周次过滤与值日/课表同一口径。
+          sessions: this._markDone(this._mergePersonalCourses(
+            this._filterSessions(r.sessions || [], groupTag),
+            this._personalCourses, util.todayWeekday(), r.currentWeek)),
+          tomorrowSessions: this._mergePersonalCourses(
+            this._filterSessions(r.tomorrowSessions || [], groupTag),
+            this._personalCourses, this._tomorrowWeekday(), r.currentWeek),
           tomorrowText: this._fmtDay(r.tomorrow),
           pendingSwapCount: r.pendingSwapCount || 0,
           unreadNotice: this._fmtNotice(r.unreadNotice),
@@ -993,6 +1060,8 @@ Page({
         if (tb && tb.data && tb.data.dot !== dotNext) tb.setData({ dot: dotNext });
         // 主页弹层（不阻塞首屏）：先看「通知一次性弹窗」，再看「更新公告」，未读才弹
         this._loadPopups();
+        // 班费 / 团费：不阻塞首屏，后台拉取余额与明细
+        this._loadFee();
       })
       .catch((e) => {
         const code = e && e.errCode;
@@ -1130,6 +1199,96 @@ Page({
       }
     });
     return out;
+  },
+
+  /** 明日的星期（1..7）。周日=7 ⇒ 明日=1（**必须回绕**，否则周日会算出 8 永远匹配不上）。 */
+  _tomorrowWeekday() {
+    return (util.todayWeekday() % 7) + 1;
+  },
+
+  /**
+   * 给「今日 / 明日课次」每行补一个稳定的唯一 `key`（渲染层 wx:key 用）。
+   *
+   * 🔴 **为什么必须materialize成字段，不能写在 WXML 里**（2026-10-16 修正）：
+   *   `wx:key` 的值只接受**属性名**（框架内部做 `item[key]` 取值），
+   *   **不接受 `{{ }}` 表达式**。全仓 33 种 wx:key 写法都是裸属性名（`id` / `*this` / `key` …），
+   *   上一版图省事写成 `wx:key="{{item.isPersonal ? 'pid' : 'sessionId'}}"`，
+   *   属于全项目唯一一处「表达式当 key」⇒ 渲染层报错，DevTools 日志：
+   *     `[渲染层错误] Uncaught SyntaxError: Failed to execute 'appendChild' on 'Node': missing ) after argument list`
+   *     `[渲染层错误] Framework inner error (expect FLOW_INITIAL_CREATION end but got FLOW_CREATE_NODE)`
+   *   所以派生值一律在 JS 里算好（与项目铁律「WXML 不做逻辑」一致）。
+   *
+   * 为什么不能用裸 `sessionId`：选修课的 `sessionId` 恒为 0（个人课次没有 session 身份），
+   * 多门选修课会撞同一个 key ⇒ 列表增删时 diff 错位（input 值 / 开关态串行）。
+   * 加前缀区分两个 id 空间：全班课次 `s<sessionId>`、个人选修课 `p<pid>`。
+   */
+  _withRowKey(arr) {
+    return (arr || []).map((s, i) => {
+      const cur = s || {};
+      if (cur.key) return cur;
+      const k = cur.isPersonal
+        ? 'p' + (Number(cur.pid) || 0)
+        : 's' + (Number(cur.sessionId) || Number(cur.id) || i);
+      return Object.assign({}, cur, { key: k });
+    });
+  },
+
+  /**
+   * 把「我」的个人选修课并进首页课次（2026-10-16 用户需求 A）。
+   *
+   * 用户原话：「首页显示的今日课次自己的选修课仅自己可见，明日有选修课也显示到明日课次中」。
+   *
+   * 🔴 为什么首页原本看不到选修课：
+   *   首页课次的数据源是 `duty.home`（值日语义）—— 后端只 JOIN `duty`+`session`+`course`，
+   *   而选修课存在**独立表 `personal_course`**（不驱动值日、不进 `session`），两条链路天然不通。
+   *   课程表页能显示是因为它额外拉了 `electiveList` 并用 `_mergePersonal` 合并；首页此前没接。
+   *
+   * 口径：
+   *  · **仅本人可见** —— `electiveList` 后端已按 `member_id = 本人` 过滤，端上不构造他人课程。
+   *  · **只并今日/明日** —— 其它星期的选修课属于课表页的职责，首页不重复列。
+   *  · **周次过滤** —— `weeks` 为区间（`6-13`）或显式列表时才在对应周出现；空则按 `weekRule` 判。
+   *  · **不参与值日** —— `sessionId: 0`（不挂值日表）、无 duty 归属 ⇒ 不会被算成「我的值日」，
+   *    也不会进「课堂情况」弹层的值日统计。
+   *  · **样式区分** —— 打 `isPersonal` 标记，wxml 可据此加一个「选修」角标。
+   */
+  _mergePersonalCourses(list, personal, targetDow, weekNo) {
+    const out = Array.isArray(list) ? list.slice() : [];
+    const dow = Number(targetDow) || 0;
+    // 星期算不出来也得给行补 key（列表照样渲染，只是不并选修课）
+    if (!dow) return this._withRowKey(out);
+    // 周次：**优先用 dutyToday 返回的 currentWeek**（后端权威，与值日/课表同一口径），
+    // 拿不到时退回本地按 termStart 算（weekOfDate 依赖 tt 模块的 _termStart，
+    // 首页没有 setClass 过，只有兜底默认值，故不能作为首选）。
+    const week = Number(weekNo) || tt.weekOfDate(util.todayStr());
+    (personal || []).forEach(p => {
+      if (Number(p.dayOfWeek) !== dow) return;                     // 只并目标日（今日或明日）
+      if (!week) return;                                           // 周次算不出来就不显示（宁缺毋滥）
+      if (!tt.matchesWeeks(p.weeks || '', week, p.weekRule || 'ALL')) return;   // 周次不命中就不显示
+      out.push({
+        sessionId: 0,           // 个人课次没有 session 身份 ⇒ 不参与值日 / 调课
+        pid: Number(p.id) || 0,
+        name: p.name || '',
+        teacher: p.teacher || '',
+        room: util.fmtRoom(p.room),
+        period: Number(p.period) || 0,
+        dayOfWeek: dow,
+        weekRule: p.weekRule || 'ALL',
+        weeks: p.weeks || '',
+        groupScope: null,       // 无分组语义，任何分组视图都显示
+        isPersonal: true,       // 供 wxml 加「选修」角标、避免被误认成值日
+        periodTime: null        // 保洁课次同样为 null；首页时间列会回退成「第N节」
+      });
+    });
+    // 唯一汇合点：全班课次（去重后）+ 本次并入的选修课一起补 key，
+    // 今日 / 明日两条链路都走这里 ⇒ WXML 只写 wx:key="key" 即可。
+    return this._withRowKey(out);
+  },
+
+  /** 拉「我」的选修课（仅本人可见），写进 this._personalCourses 供今日/明日两处合并 */
+  _loadPersonalCourses() {
+    return api.electiveList({}, { toast: false })
+      .then((r) => { this._personalCourses = (r && r.list) || []; })
+      .catch(() => { this._personalCourses = []; });
   },
 
   /* ---------------- 今日课次「已上完」灰化（2026-09-29 需求） ----------------
@@ -1731,6 +1890,216 @@ Page({
     if (this.data.remindBusy) return;
     this.setData({ remindBusy: true });
     subscribe.runTest(() => api.testRemind()).then(() => this.setData({ remindBusy: false }));
+  },
+
+  /* ---------------- 班费 / 团费（2026-10-14） ----------------
+   * 卡片：班费全员可见；团费仅超管 / 班长兼团支书可见（首页左右一排两卡）。
+   * 权限：班费管理 = 班长兼团支书 / 副班长 / 生活委员 / 超管；团费管理 = 班长兼团支书 / 超管。
+   *       普通成员（及无管理职位的班委）班费卡仅展示、不可点开。
+   * 总额设置：班费 = 超管 / 生活委员；团费 = 超管 / 班长兼团支书。
+   * 图片：消费图片客户端直传云存储，提交时与金额一起上报 fileID；最多 9 张。 */
+  _fmtMoney(n) {
+    const v = Number(n) || 0;
+    const sign = v < 0 ? '-' : '';
+    const s = Math.abs(v).toFixed(2).replace(/\.?0+$/, '');
+    return sign + s;
+  },
+  _fmtFund(f) {
+    f = f || {};
+    return {
+      total: Number(f.total) || 0,
+      expenseTotal: Number(f.expenseTotal) || 0,
+      balance: Number(f.balance) || 0,
+      totalText: this._fmtMoney(f.total),
+      expenseText: this._fmtMoney(f.expenseTotal),
+      balanceText: this._fmtMoney(f.balance),
+      records: (f.records || []).map(rec => ({
+        id: rec.id,
+        amount: Number(rec.amount) || 0,
+        amountText: this._fmtMoney(rec.amount),
+        note: rec.note || '',
+        images: rec.images || [],
+        createdAt: rec.createdAt || '',
+        operatorName: rec.operatorName || ''
+      }))
+    };
+  },
+  /**
+   * 班费 / 团费：拉取余额与明细（不阻塞首屏）。
+   * 调用点有三类：
+   *   · onShow：每次进首页都拉（不受 load 的 STALE_MS 早退影响，见 onShow 注释）；
+   *   · load() 的 .then：登录晚于 onShow 完成时补一次（那时 onShow 那次是未绑定态）；
+   *   · 写操作之后（登记消费 / 删记录 / 点开弹层）：**强制**拉，跳过去重。
+   * 前两类会连着各来一次，所以这里去重：请求中跳过、2s 内刚拉过跳过。
+   * ⚠️ 写操作必须传 force —— 否则「刚提交完、2 秒内刚拉过」会被去重吃掉，看起来像没保存。
+   * @param {boolean} [force] 强制刷新（跳过去重窗口）
+   */
+  _loadFee(force) {
+    if (this.data.unbound) return;
+    const now = Date.now();
+    if (!force) {
+      if (this._feeLoading) return;
+      if (this._feeLoadedAt && now - this._feeLoadedAt < 2000) return;
+    }
+    this._feeLoading = true;
+    this._feeLoadedAt = now;
+    api.feeSummary({}, { toast: false })
+      .then((r) => {
+        const feeClass = this._fmtFund(r && r.class);
+        const feeLeague = this._fmtFund(r && r.league);
+        const patch = { feeClass, feeLeague };
+        // 弹层打开时同步当前激活对象，避免余额 / 明细显示旧值
+        if (this.data.feeShow) patch.feeActive = this.data.feeType === 'class' ? feeClass : feeLeague;
+        this.setData(patch);
+      })
+      .catch(() => {})
+      .then(() => { this._feeLoading = false; });
+  },
+  onFeeTap(e) {
+    const type = e.currentTarget.dataset.type; // 'class' | 'league'
+    const canManage = !!(type === 'class' ? this.data.feeCanManageClass : this.data.feeCanManageLeague);
+    // 2026-10-15：班费/团费卡对所有已绑定成员可点。管理人 = 管理（可增删/补图）；
+    // 其余成员 = view-only（仅查看，无法修改）。后端 getSummary 本就对所有成员返回，这里只是放开入口。
+    const fund = type === 'class' ? this.data.feeClass : this.data.feeLeague;
+    this.setData({
+      feeShow: true,
+      feeType: type,
+      feeActiveName: type === 'class' ? '班费' : '团费',
+      feeCanManage: canManage,
+      feeActive: fund,
+      // 每次点开都回到列表视图（上次停在表单视图的话，会把明细挤看不见）
+      feeView: 'list',
+      feeAmount: '',
+      feeNote: '',
+      feeImages: [],
+      feeBusy: false
+    });
+    // 点开就拉一次最新值：别人（另一位班委）刚登记过消费时，卡片数据可能还是上一次 onShow 的
+    this._loadFee(true);
+  },
+  onFeeClose() { this.setData({ feeShow: false, feeView: 'list' }); },
+  /** 列表视图 → 表单视图（点「增加消费」） */
+  onFeeAddOpen() {
+    if (!this.data.feeCanManage) return; // 仅查看：不允许进表单
+    this.setData({ feeView: 'form' });
+  },
+  /** 给「已有消费记录」补图（仅管理人；当前图数 < 9 才能补）。选图即上传追加，不进表单。 */
+  onFeeAppendTap(e) {
+    if (!this.data.feeCanManage) return;
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    const rec = (this.data.feeActive && this.data.feeActive.records || []).find(r => Number(r.id) === id);
+    if (!rec) return;
+    const cur = (rec.images && rec.images.length) || 0;
+    const left = 9 - cur;
+    if (left <= 0) { util.toast('图片最多 9 张'); return; }
+    wx.chooseMedia({
+      count: left, mediaType: ['image'], sizeType: ['compressed'], sourceType: ['album', 'camera'],
+      success: (r) => {
+        const local = (r.tempFiles || []).map(f => f.tempFilePath).filter(Boolean).slice(0, left);
+        if (!local.length) return;
+        this._uploadAndAppend(id, local);
+      }
+    });
+  },
+  _uploadAndAppend(id, local) {
+    wx.showLoading({ title: '上传图片 0/' + local.length, mask: true });
+    let done = 0;
+    Promise.all(local.map((p, i) =>
+      request.uploadFile('fee/' + Date.now() + '-' + i + '-' + Math.floor(Math.random() * 10000) + '.jpg', p)
+        .then((fid) => { done++; wx.showLoading({ title: '上传图片 ' + done + '/' + local.length, mask: true }); return fid; })
+        .catch(() => { throw new Error('图片上传失败'); })
+    ))
+      .then((fileIds) => {
+        wx.hideLoading();
+        return api.feeAppendImages({ type: this.data.feeType, id, images: fileIds });
+      })
+      .then(() => {
+        wx.hideLoading();
+        util.toast('已补充图片');
+        this._loadFee(true); // 刷新明细，新图立即显示
+      })
+      .catch(() => { wx.hideLoading(); });
+  },
+  /** 表单视图 → 列表视图（点「返回」）；已填的内容清空，避免返回后再填出现残留 */
+  onFeeFormBack() {
+    this.setData({ feeView: 'list', feeAmount: '', feeNote: '', feeImages: [] });
+  },
+  onFeeAmountInput(e) { this.setData({ feeAmount: String(e.detail.value || '') }); },
+  onFeeNoteInput(e) { this.setData({ feeNote: String(e.detail.value || '') }); },
+  onFeePickImage() {
+    const left = 9 - this.data.feeImages.length;
+    if (left <= 0) { util.toast('图片最多 9 张'); return; }
+    wx.chooseMedia({
+      count: left, mediaType: ['image'], sizeType: ['compressed'], sourceType: ['album', 'camera'],
+      success: (r) => {
+        const add = (r.tempFiles || []).map(f => f.tempFilePath).filter(Boolean).slice(0, left);
+        if (add.length) this.setData({ feeImages: this.data.feeImages.concat(add) });
+      }
+    });
+  },
+  onFeeRemoveImage(e) {
+    const i = Number(e.currentTarget.dataset.i);
+    const arr = this.data.feeImages.slice();
+    if (i >= 0 && i < arr.length) { arr.splice(i, 1); this.setData({ feeImages: arr }); }
+  },
+  onFeePreviewImage(e) {
+    const src = e.currentTarget.dataset.src;
+    if (!src) return;
+    if (src.indexOf('cloud://') === 0) {
+      request.getTempFileURL([src]).then((map) => {
+        const url = map && map[src];
+        if (url) wx.previewImage({ urls: [url], current: url });
+      }).catch(() => util.toast('图片预览失败'));
+    } else {
+      wx.previewImage({ urls: [src], current: src });
+    }
+  },
+  onFeeSubmit() {
+    if (this.data.feeBusy) return;
+    const amount = Number(this.data.feeAmount);
+    if (!Number.isFinite(amount) || amount <= 0) { util.toast('请填写大于 0 的金额'); return; }
+    const localImgs = this.data.feeImages.slice();
+    this.setData({ feeBusy: true });
+    Promise.resolve()
+      .then(() => {
+        if (!localImgs.length) return [];
+        wx.showLoading({ title: '上传图片 0/' + localImgs.length, mask: true });
+        let done = 0;
+        return Promise.all(localImgs.map((p, i) =>
+          request.uploadFile('fee/' + Date.now() + '-' + i + '-' + Math.floor(Math.random() * 10000) + '.jpg', p)
+            .then((id) => { done++; wx.showLoading({ title: '上传图片 ' + done + '/' + localImgs.length, mask: true }); return id; })
+            .catch(() => { throw new Error('图片上传失败'); })
+        ));
+      })
+      .then((fileIds) => {
+        wx.hideLoading();
+        return api.feeAddExpense({ type: this.data.feeType, amount, note: this.data.feeNote.trim(), images: fileIds });
+      })
+      .then(() => {
+        wx.hideLoading();
+        util.toast('已登记消费');
+        // 提交成功回到列表视图 —— 用户要看到刚记的那条进明细了，停在表单会以为没成功
+        this.setData({ feeBusy: false, feeView: 'list', feeAmount: '', feeNote: '', feeImages: [] });
+        // force：刚写完必须立刻拉新值，不能被「2 秒内刚拉过」的去重吃掉
+        this._loadFee(true);
+      })
+      .catch(() => { wx.hideLoading(); this.setData({ feeBusy: false }); });
+  },
+  onFeeDeleteRecord(e) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    wx.showModal({
+      title: '删除记录',
+      content: '删除后余额会回退，且图片会一并删除，确定吗？',
+      confirmText: '删除', confirmColor: '#F53F3F',
+      success: (r) => {
+        if (!r.confirm) return;
+        api.feeDeleteRecord({ type: this.data.feeType, id })
+          .then(() => { util.toast('已删除'); this._loadFee(true); })
+          .catch(() => {});
+      }
+    });
   },
 
   noop() {}

@@ -15,6 +15,7 @@ const { BizError, ok, fail } = require('./common/resp');
 // ⚠️ 本文件内的 rollbackDutyMarkers / toDraftWeeks 仍被其它 12 处调课逻辑使用，
 //    所以**保留**它们；importTimetable 这条路径改走共用模块以保证两边规则一致。
 const timetableImport = require('./common/timetable-import');
+const { repointSessionRoom } = require('./common/repoint-room');
 // ⚠️ import-parse 惰性 require（2026-10-05）：它在模块顶层会 require xlsx（SheetJS，数 MB）。
 // 顶层直接 import ⇒ 连课表页日常的 listWeek 冷启动都得载整个 SheetJS，
 // 导入时更会「冷启+载库+下载+解析」叠加撞 timeout（前端表现为「网络异常，请稍后重试」）。
@@ -484,9 +485,10 @@ const routes = {
       let duties = [];
       try {
         const [d] = await pool.query(
-          `SELECT d.id, d.session_id, d.class_date, d.status, d.member_id,
+          `SELECT d.id, d.session_id, s.period AS period, d.class_date, d.status, d.member_id,
                   m.name AS memberName, m.group_tag, m.student_no AS memberNo
              FROM duty d JOIN member m ON m.id = d.member_id
+                          JOIN session s ON s.id = d.session_id
             WHERE d.week = ? AND d.class_id = ? ORDER BY d.id`, [wk, classId]
         );
         duties = d;
@@ -502,7 +504,7 @@ const routes = {
           name: d.memberName,
           groupTag: d.group_tag,
           seq: week.seqOf(d.memberNo),
-          status: week.effectiveStatus({ status: d.status, class_date: d.class_date, period: 0 }, periods),
+          status: week.effectiveStatus({ status: d.status, class_date: d.class_date, period: d.period || 0 }, periods),
           classDate: String(d.class_date).slice(0, 10)
         });
       });
@@ -587,7 +589,8 @@ const routes = {
       const classId = await guard.resolveClassId(pool, ctx, payload);
       const [rows] = await pool.query(
         `SELECT s.id, s.course_id, c.name, c.teacher, c.room,
-                s.day_of_week, s.period, s.group_scope, s.weeks, s.week_rule, s.note
+                s.day_of_week, s.period, s.group_scope, s.weeks, s.week_rule, s.note,
+                s.duty_count
            FROM session s JOIN course c ON c.id = s.course_id
           WHERE s.class_id = ?
           ORDER BY s.day_of_week, s.period, s.id`, [classId]
@@ -604,6 +607,9 @@ const routes = {
           group: r.group_scope || null,
           weeks: r.weeks || '',
           weekRule: r.week_rule || 'ALL',
+          // 🔴 必须回传 duty_count：不排值日的课（duty_count=0）在端上曾被写死成 2
+          //   （SQL 漏取该列 ⇒ 端上无从得知），点开课次会显示「2 人值日」（2026-10-14）。
+          dutyCount: r.duty_count == null ? 2 : Number(r.duty_count),
           note: r.note || ''
         }))
       };
@@ -1212,12 +1218,18 @@ const routes = {
       const weeksStr = weeks.join(',');
       const dayOfWeek = Number(c.dayOfWeek);
       const period = Number(c.period);
-      const dutyCount = Math.min(Math.max(Number(c.dutyCount) || 2, 1), 4);
+      // duty_count=0 = 不排值日（2026-10-14 书香校园口径）：0 是合法值。
+      // 旧写法 Number(c.dutyCount) || 2 把 0 误当「未填」⇒ 钳出 2，且 max(...,1) 更不让 0 落地。
+      const dcRaw = Number(c.dutyCount);
+      const dutyCount = Math.min(Math.max(Number.isFinite(dcRaw) ? dcRaw : 2, 0), 4);
       const groupScope = courseType === 'GROUP' ? (c.groupScope === 'B' ? 'B' : 'A') : null;
       if (!name) throw new BizError(41001, '请填写课程名');
       // 允许周六 / 周日：调休（周末补课）要能把课次直接排在周末
       if (!(dayOfWeek >= 1 && dayOfWeek <= 7)) throw new BizError(41001, '请选择上课时间');
-      if (!(period >= 1 && period <= 5)) throw new BizError(41001, '请选择节次');
+      // 大节数按**本班配置**（class.period_time）校验，不再写死 5：
+      // 某些班要加「书香校园」这类 45 分钟短课，得能排到第 6 节（2026-10-14）。
+      const nPeriods = week.periodCount(cfg);
+      if (!(period >= 1 && period <= nPeriods)) throw new BizError(41001, '请选择节次（1-' + nPeriods + '）');
 
       const auditRes = await audit.msgSecCheck(ctx.openid, [name, teacher, room].filter(Boolean).join(' '));
       if (!auditRes.pass) throw new BizError(43001, '课程内容包含违规信息，请修改后重试');
@@ -1254,10 +1266,13 @@ const routes = {
       if (sessionId) {
         const [ex] = await pool.query('SELECT course_id FROM session WHERE id = ? AND class_id = ?', [sessionId, classId]);
         if (!ex.length) throw new BizError(41001, '课次不存在');
-        await pool.query(
-          'UPDATE course SET name=?, teacher=?, room=?, course_type=?, duty_count=? WHERE id=?',
-          [name, teacher, room, courseType, dutyCount, ex[0].course_id]
-        );
+        // ⚠️ room 碰撞修复：改教室/课名/教师不能动共享课程行（否则同课名其它课次的
+        //   教室一起被改）。改用 repoint —— 把该课次改挂到 (name,teacher,room) 课程行，
+        //   没有就新建；旧课程行若已无人引用则清理。
+        await repointSessionRoom(pool, {
+          classId, sessionId, name, teacher, newRoom: room,
+          courseType, dutyCount, memberId: ctx.member.id
+        });
         await pool.query(
           'UPDATE session SET week_rule=?, weeks=?, day_of_week=?, period=?, group_scope=?, duty_count=? WHERE id=?',
           [weekRule, weeksStr, dayOfWeek, period, groupScope, dutyCount, sessionId]
@@ -1613,8 +1628,9 @@ const routes = {
       const period = Number(it.period);
       if (!name) throw new BizError(41001, '请填写课程名');
       if (!(dayOfWeek >= 1 && dayOfWeek <= 7)) throw new BizError(41001, '请选择星期（周一~周日）');
-      // 一天五大节（1-2 / 3-4 / 5-6 / 7-8 / 9-10 小节）；与前端网格 5 行、_build 的 p>5 过滤一致
-      if (!(period >= 1 && period <= 5)) throw new BizError(41001, '请选择节次');
+      // 大节数按本班配置校验（与 upsert 同口径，见上方 upsert 里的 nPeriods）
+      const nPeriods2 = week.periodCount(cfg);
+      if (!(period >= 1 && period <= nPeriods2)) throw new BizError(41001, '请选择节次（1-' + nPeriods2 + '）');
       const weekRule = ['ALL', 'ODD', 'EVEN'].includes(it.weekRule) ? it.weekRule : 'ALL';
       // 周次：数组 → 去重升序 → CSV（与 session.weeks 同口径）；空 = 每周
       const weeks = Array.isArray(it.weeks)
@@ -1682,6 +1698,127 @@ const routes = {
         [classId, member.id]
       );
       return { cleared: Number(r.affectedRows) || 0 };
+    }
+  },
+
+  /* ================================================================
+   * 个人选修课（2026-10-15）
+   * ------------------------------------------------------------
+   * 需求：课表页右下角加课按钮对**所有人**可见，但每人最多添加 2 门选修课；
+   * 添加的课**仅自己可见、仅自己可编辑**（每个人的选修课时间都不一样）。
+   *
+   * 为什么独立成 personal_course 表、而不是塞进 member_timetable / session：
+   *   · session 是全班课表，被课表页、值日生成、跨班隔离门禁等一大圈逻辑依赖；
+   *   · member_timetable 是「可发布到全班」的完整个人课表（kind=COURSE/CLEAN），
+   *     publishToClass 会按 kind='COURSE' 覆盖全班 session —— 若把选修课混进去，
+   *     发布流程会把 2 门选修课当全班课表发出去、清空全班课表。
+   *   独立表 + 独立 action，**所有查询都带 member_id = 当前登录人**，绝不采信
+   *   payload 里的 memberId/classId（否则可改他人选修课，越权）。
+   * ================================================================ */
+
+  /** 读「我」的选修课（服务端按 member_id 锁，天然仅本人可见） */
+  electiveList: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const member = guard.requireBind(ctx);
+      const classId = guard.classIdOf(ctx);
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT id, name, teacher, room, day_of_week, period, weeks, week_rule, created_at
+           FROM personal_course
+          WHERE class_id = ? AND member_id = ?
+          ORDER BY day_of_week, period, id`,
+        [classId, member.id]
+      );
+      return {
+        list: rows.map(r => ({
+          id: Number(r.id),
+          name: r.name,
+          teacher: r.teacher || '',
+          room: r.room || '',
+          dayOfWeek: Number(r.day_of_week),
+          period: Number(r.period),
+          weeks: r.weeks || '',
+          weekRule: r.week_rule || 'ALL'
+        }))
+      };
+    }
+  },
+
+  /**
+   * 新增 / 更新「我」的一门选修课。
+   * payload.item = { id?, name, teacher, room, dayOfWeek, period, weeks, weekRule }
+   * 带 id = 更新（且必须属于本人，否则 41001）；不带 = 新增（每人最多 2 门，服务端强制）。
+   * 与 member_timetable / session 完全隔离（独立表），不驱动值日、不影响全班课表。
+   */
+  electiveSave: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const member = guard.requireBind(ctx);
+      const classId = guard.classIdOf(ctx);
+      const pool = getPool();
+      const cfg = await week.getConfig(pool, classId);
+      const it = payload.item || {};
+      const name = String(it.name || '').trim();
+      const teacher = String(it.teacher || '').trim().slice(0, 32);
+      const room = String(it.room || '').trim().slice(0, 32);
+      const dayOfWeek = Number(it.dayOfWeek);
+      const period = Number(it.period);
+      if (!name) throw new BizError(41001, '请填写课程名');
+      if (!(dayOfWeek >= 1 && dayOfWeek <= 7)) throw new BizError(41001, '请选择星期（周一~周日）');
+      const nPeriods = week.periodCount(cfg);
+      if (!(period >= 1 && period <= nPeriods)) throw new BizError(41001, '请选择节次（1-' + nPeriods + '）');
+      const weekRule = ['ALL', 'ODD', 'EVEN'].includes(it.weekRule) ? it.weekRule : 'ALL';
+      const weeks = Array.isArray(it.weeks)
+        ? Array.from(new Set(it.weeks.map(Number)
+          .filter(n => Number.isInteger(n) && n >= 1 && n <= (cfg.totalWeeks || 18))))
+          .sort((a, b) => a - b)
+        : [];
+      const weeksStr = weeks.join(',');
+      const secRes = await audit.msgSecCheck(ctx.openid, [name, teacher, room].filter(Boolean).join(' '));
+      if (!secRes.pass) throw new BizError(43001, '课程内容包含违规信息，请修改后重试');
+
+      const id = Number(it.id) || 0;
+      if (id) {
+        // 更新必须命中「本人行」：用 member_id 兜住，绝不按 id 裸改
+        const [r] = await pool.query(
+          `UPDATE personal_course SET name=?, teacher=?, room=?, day_of_week=?, period=?,
+             weeks=?, week_rule=?, updated_at=NOW()
+           WHERE id=? AND member_id=? AND class_id=?`,
+          [name, teacher, room, dayOfWeek, period, weeksStr, weekRule, id, member.id, classId]
+        );
+        if (!r || !r.affectedRows) throw new BizError(41001, '选修课不存在或不属于你');
+        return { id: id, updated: true };
+      }
+      // 新增：每人最多 2 门（服务端强制，前端仅做友好提示）
+      const [cnt] = await pool.query(
+        'SELECT COUNT(*) AS n FROM personal_course WHERE class_id = ? AND member_id = ?',
+        [classId, member.id]
+      );
+      if (Number(cnt[0].n) >= 2) throw new BizError(41001, '每人最多添加 2 门选修课');
+      const [r] = await pool.query(
+        `INSERT INTO personal_course (class_id, member_id, name, teacher, room, day_of_week, period, weeks, week_rule)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        [classId, member.id, name, teacher, room, dayOfWeek, period, weeksStr, weekRule]
+      );
+      return { id: Number(r.insertId), updated: false };
+    }
+  },
+
+  /** 删除「我」的一门选修课（同款「必须属于本人」守卫） */
+  electiveDelete: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const member = guard.requireBind(ctx);
+      const classId = guard.classIdOf(ctx);
+      const id = Number(payload.id) || 0;
+      if (!id) throw new BizError(41001, '参数错误');
+      const [r] = await getPool().query(
+        'DELETE FROM personal_course WHERE id = ? AND member_id = ? AND class_id = ?',
+        [id, member.id, classId]
+      );
+      if (!r || !r.affectedRows) throw new BizError(41001, '选修课不存在或不属于你');
+      return { deleted: true };
     }
   },
 
@@ -1876,14 +2013,14 @@ const routes = {
           `DELETE FROM course WHERE class_id = ? AND id NOT IN (SELECT course_id FROM session WHERE class_id = ?)`,
           [classId, classId]
         );
-        // ④ 同名同教师复用 course 行，避免同门课重复建行（课表页会显示两门同名课）
+        // ④ 同名同教师同教室复用 course 行（room 是课程身份一部分，避免同课不同教室被压平）
         const courseIdByKey = new Map();
         for (const co of mine) {
-          const key = String(co.name) + ' ' + String(co.teacher || '');
+          const key = String(co.name) + ' ' + String(co.teacher || '') + ' ' + String(co.room || '');
           if (courseIdByKey.has(key)) continue;
           const [exist] = await conn.query(
-            'SELECT id FROM course WHERE class_id = ? AND name = ? AND teacher = ? LIMIT 1',
-            [classId, co.name, co.teacher || '']
+            'SELECT id FROM course WHERE class_id = ? AND name = ? AND teacher = ? AND room = ? LIMIT 1',
+            [classId, co.name, co.teacher || '', co.room || '']
           );
           if (exist.length) { courseIdByKey.set(key, Number(exist[0].id)); continue; }
           const [r1] = await conn.query(
@@ -1895,7 +2032,7 @@ const routes = {
         // ⑤ 写课次（duty_count 沿用课程默认值 2）
         let created = 0;
         for (const co of mine) {
-          const courseId = courseIdByKey.get(String(co.name) + ' ' + String(co.teacher || ''));
+          const courseId = courseIdByKey.get(String(co.name) + ' ' + String(co.teacher || '') + ' ' + String(co.room || ''));
           await conn.query(
             `INSERT INTO session (class_id, course_id, kind, week_rule, weeks, day_of_week, period, group_scope, duty_count)
              VALUES (?,?,?,?,?,?,?,NULL,2)`,

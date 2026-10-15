@@ -9,7 +9,62 @@
 
 ---
 
-## 【主线状态】 · 更新于 2026-10-13（**小程序 1.0.6.5 已就绪：值日卡视觉优化 + 首页请假按时段自动刷新**：值日卡合并行序号牌收小、姓名加粗放大、课次间灰色分割线、4 人保洁自动 2×2；首页「当前请假」按请假时段起止自动翻面、`onShow` 重拉；**纯前端改动，云函数无需重部署，前端待上传**；1.0.6.4 的备案展示 + 审核演示身份降权随本版一并携带）
+## 【主线状态】 · 更新于 2026-10-15（**小程序 1.0.6.9 已就绪：课表编辑 + 周次区间 + 行数自适应 + 值日页精简 + 班费模块**。本次**同时纳入工作区里一批已完成的功能**（班费/团费、课表编辑弹层、审核体验入口改为超管开关、部署脚本改造）与本轮三次修复（周次区间 `6-13` 端上后端同口径 / 课表行数随周次自适应 / 短课归位到时间重叠的大节），以及**课表页加载慢的量化诊断**（结论已出，**修复未实施**，线上已回滚）。门禁 86/86 全绿，云端已就绪，**只剩前端上传 + 送审**）
+
+**当前节点**：小程序主线已至 **对外 1.0.6.9**（内部 v0.7.42）。云端全部就绪，**只剩「前端上传 + 送审」这一件用户侧动作**。
+- **本版新增（工作区纳入）**：班费/团费模块（首页卡片看余额与明细、登记消费含金额/备注/最多 9 张凭证图、删记录；总额设置在「我的 → 更多 → 班/团费总额」用分段控件切换班费 ⇄ 团费后编辑）；课表页**直接编辑课次**（课程名/教师/教室/星期/大节/值日人数）；「我的 → 更多」收纳；审核体验入口改为**超管开关**（点「开启」由系统自动随机生成新口令，旧口令当场作废，不再手写 + 跑 SQL）。
+- **本版修复（我这三轮）**：①周次区间 `6-13` 端上/后端统一支持；②`allSessions` 回传 `duty_count`（不排值日的课不再显示成 2 人）；③课表行数 = `max(1, 配置节次数, 本周实际最高节次)`，无空行；④短课归位到时间重叠的大节（三班 5 条「书香校园」已改 + 三班 `period_time` 第6/7 行已删）；⑤值日页隐藏「+ 加值日生」（开关式，`showAddDutyBtn: false`，功能代码全保留）；⑥班费弹层移除重复的「仅查看」横幅；⑦**首页今日/明日课次并入本人选修课**（仅本人可见，`duty.home` 不含 `personal_course` ⇒ 端上并行拉 `electiveList` 合并；`sessionId:0` 不驱动值日，`onCourseTap` 有 `isPersonal` 守卫）；⑧**课表页加号一律「添加个人选修课」**（含超管，下线小程序内两个「新增全班课次」入口，2 门上限保留）；⑨**`wx:key` 改回 JS 预计算字段**（写 `{{ }}` 表达式会让渲染层报 `missing ) after argument list` + `FLOW_INITIAL_CREATION` 框架内部错误）。
+- **云端已生效**：`fee` 云函数已部署（`fn detail` 复核 VPC + 5 个 `DB_*` 环境变量）；`class_fund` / `class_fund_record` 两表已建；`class.main_room` 列已加；`course` / `admin-web` / `class` / `auth` / `common` 等 13 个函数已部署。
+- **门禁 86/86 全绿**；admin-web e2e 75/75；批跑仅 35s（`check-admin-web` 提速见效）。
+- **提审前必做**：**不再手写口令、不再跑 SQL** —— 超管在「我的 → 审核体验入口」点「开启」⇒ 系统自动生成新口令 ⇒ 复制进 mp 后台审核备注；审核通过后回同一行点「关闭」。SQL 兜底见 `outputs/v1.0.6.9-更新说明.md`。
+- **体验入口开关的安全口径**：`auth.reviewDemoStatus` / `reviewDemoSet` 都声明 `needSuper`；开启时**先清所有班的开关**再写自己班（`reviewDemoRow` 全表扫描取第一条开着的，别班残留 = 关不干净）；演示身份不得自己换口令（已进 `common/review-demo.js` 拒绝清单）。
+- **班费权限唯一真源** = `utils/util.js` 的 `feeRights()`（首页与「我的」页都调它，与后端 `fee/index.js` 的 `feeManager`/`feeTotalSetter` 逐字同口径）：班费管理 = 超管|班长兼团支书|副班长|生活委员；团费管理 = 超管|班长兼团支书；班费总额设置 = 超管|生活委员；团费总额设置 = 超管|班长兼团支书；普通成员只看班费、不可点开。
+- **余额不落库**：`余额 = 总额 − 已消费`，`getSummary` 运行时算。
+- ⚠️ **课表页「加载慢」尚未修复**：诊断已完成（端上计算 0.058ms/次、网络 25–31ms 均正常，推断主因是云函数包体积 `class` 11.77MB ⇒ 冷启动），**修复未实施** —— 唯一可行路径是 `npm-shrinkwrap` 固定依赖树（要重部署 12 个函数并逐个验接口）。详见 `outputs/课表页加载慢-诊断报告.md`。
+  🔴 **踩坑勿重试**：`tcb functions:deploy --install-dependency false` 会把 `node_modules` 一起丢掉（线上依赖全缺失、函数崩溃）。已实测并回滚。
+- ⚠️ **以后加短课的正确姿势**：不要新增第 N 行大节配置，直接把短课归到时间重叠的那个大节（一格显示两门课是**预期行为**）。
+- ⚠️ **排查教训**：查「课表上看不到某节课」必须查全 `period / day_of_week / group_scope / weeks / week_rule` 并与用户当时看的周次一起对 —— 我前两轮漏查 `weeks`，让用户白传两次前端。
+
+---
+
+## 【历史】 · 2026-10-15（1.0.6.8 已就绪：班费/团费 + 「我的 → 更多」收纳：①新增**班费 / 团费**模块（首页按权限显示班费卡、团费卡仅超管与班长兼团支书可见；可看余额/总额/已消费、登记消费（金额+备注+最多 9 张凭证图）、删记录；总额在「我的 → 更多 → 班/团费总额」用分段控件切换班费⇄团费后编辑）；②「我的」页新增「**更多**」入口（收纳切换测试账号 / 班级绑定入口 / AI 排班设置 / 手动排班）；③首页「成员与分组 / 发布通知」移到「本班请假」下方；④修复「设了总额首页余额刷新慢」；⑤首页课次行视觉（间距收紧、长名两行、靠上）。⚠️ **1.0.6.7 的前端此前从未上传**，本版一并携带其全部前端改动（值日下课 10 分钟标已值日 / 班级主教室 / 大节数跟随配置 + duty_count=0 / 周次区间 `6-13` / 值日人数真实显示 / 后台「第x节」不折行 / 值日页移除「+加值日生」）。**新增 `fee` 云函数已部署 + `class_fund`/`class_fund_record` 两表已建**，前端待上传）
+
+**当前节点**：小程序主线已至 **对外 1.0.6.8**（内部 v0.7.41）。云端全部就绪，**只剩「前端上传 + 送审」这一件用户侧动作**。
+- **云端已生效**：1.0.6.7 —— DDL `class.main_room` 已加（示例班级A 写 410）；重部署 **13 个函数**（admin-web / course / duty / adjust / schedule / cron-weekly / export / class / member / auth / poster / media / audit-receiver）。1.0.6.8 —— **新增 `fee` 云函数已部署**（`fn detail` 复核 VPC + 5 个 `DB_*` 环境变量 + Auto install dependencies=TRUE，`scripts/deploy-fee.js`）；**`class_fund` / `class_fund_record` 两张表已建**（`tcb db execute` 跑 `scripts/migrate-fee.sql` 后复核）。
+- **门禁 84/84 全绿**；admin-web e2e **75 项全绿**。
+- **提审前必做（本版起流程变了）**：**不再手写口令、不再跑 SQL**。超管在「我的 → 审核体验入口」点「开启」⇒ 系统**自动随机生成**一条新口令（旧口令当场作废）⇒ 弹层里复制 ⇒ 粘进 mp 后台审核备注。审核通过后回到同一行点「关闭」。**口令不固定**（每次开启都换），所以更新说明里不再写死口令。SQL 兜底仍留在 `outputs/v1.0.6.8-更新说明.md`。
+- **体验入口开关的安全口径**：`auth.reviewDemoStatus` / `auth.reviewDemoSet` 都声明 `needSuper`；开启时**先清所有班的开关**再写自己班（`reviewDemoRow` 是全表扫描取第一条开着的，别班残留 = 关不干净）；演示身份不得自己换口令（`auth.reviewDemoSet` 已进 `common/review-demo.js` 的拒绝清单）。仅超管可见。
+- **班费权限唯一真源** = `utils/util.js` 的 `feeRights()`（首页与「我的」页都调它，与后端 `fee/index.js` 的 `feeManager`/`feeTotalSetter` 逐字同口径）：班费管理 = 超管|班长兼团支书|副班长|生活委员；团费管理 = 超管|班长兼团支书；班费总额设置 = 超管|生活委员；团费总额设置 = 超管|班长兼团支书；普通成员只看班费、不可点开。
+- **余额不落库**：`余额 = 总额 − 已消费`，`getSummary` 运行时算。
+- **用户可见新能力怎么用**：①加 45 分钟短课 = 后台「配置 → 大节时间」加一行（如 `6 12:00-12:45`）→ 「课程表 → 添加课次」选第 6 节；②不排值日 = 值日人数填 **0**；③改主教室 = 后台「配置 → 主教室」填房间号，保洁课次名与房间自动同步、历史值日同步显示；④周次可写区间 `6-13`（后台落库前会自动展开）；⑤设总额 = 「我的 → 更多 → 班/团费总额」，分段切换后填值；⑥记消费 = 首页点班费卡 → 「增加消费」→ 金额/备注/凭证图 → 提交。
+- ⚠️ **浏览器端需 Ctrl+F5**：admin-web 本版多次修复涉及前端 JS，页面行为异常先强制刷新。
+- ⚠️ **排查教训（本轮三次真代码 bug 的共同点）**：用户报「课表上看不到某节课」时，必须查全 `period / day_of_week / group_scope / weeks / week_rule` **并与用户当时看的周次一起对**。前两轮我漏查 `weeks`，导致「结论不完整」让用户白传两次前端。已入 MEMORY 铁律。
+- 📌 **书香校园最终归属（2026-10-14 用户拍板）**：短课时间与既有大节**重叠**时，归到**时间重叠的那个节次**（不新增第6行）。三班 5 条已改并复核：2601 周二/周四 → 第1节（09:05-09:50 与第1节 08:10-09:50 重叠）、示例班级B 周四 → 第3节（15:35-16:20 与第3节 14:40-16:20 重叠）、示例班级B 周一 → 第1节、示例班级A 周四 → 第4节（16:30-17:15 与第4节 16:30-18:10 重叠）。
+  同批把三班 `period_time` 的**第6/7 行删掉**（已无课次使用，`JSON_LENGTH` 复核 = 5，`$[5].period` = NULL）⇒ 课表回到整齐 5 行、空行问题彻底消失。
+  ⚠️ **以后加短课的正确姿势**：不要再新增第 N 行大节配置然后让课次落在那一行；**直接把短课归到时间重叠的那个大节**（一格会显示两门课，这是预期的）。
+- 📌 **值日页「+ 加值日生」入口已隐藏**（2026-10-14 用户要求）：`pages/duty/index.js` data 加 `showAddDutyBtn: false`，`index.wxml` 的 `wx:if` 改为 `{{canSchedule && showAddDutyBtn}}`。**功能代码与后端接口全部保留**，要恢复把开关改回 `true` 即可。
+
+- ⚠️ **本轮（2026-10-15）新增未发版工作树（随下次「要上传更新版本了」一并 bump + 双仓同步）**：
+  ① **需求 B｜普通成员点班费卡片无反馈**：经核查 `pages/home/index.js` 的 `onFeeTap` 对 `!canManage` 已弹 `util.toast('班费仅班委可管理')` / `'团费仅班长兼团支书可管理')` 后 return，且 `.fee-card.readonly` 仅设 `opacity:1`、**不屏蔽点击** —— 已满足，无需重复实现。
+  ② **需求 C｜课程表个人选修课（人人可加、仅自己可见）**：独立 `personal_course` 表已建（12 列，服务端 `member_id` 强制隔离、每人限 2 门、内容安全校验、节次跟随班级 `periodCount`）；`course` 云函数 `electiveList`/`electiveSave`/`electiveDelete` 三 action **已部署**；前端 FAB 人人可见（辅导员除外）、网格合并个人课次（蓝框 + 「个」标）、点个人课次进编辑/删除、表单按 `formMode` 切全班/选修。
+  ③ **修 `deploy_all.sh` 漏部署 `course` 的缺口**：原 FNS 只有 11 个、漏了 `course`（导致选修课 action + common 同步永远上不了线），已补回 12/12（含 `course`）。
+  ④ 本次已在线执行：建表迁移 `scripts/migrate-personal-course.js`（幂等 + 自证列存在通过）、全量重部署 12 个函数（含 `course`，`部署成功=12 失败=`）、门禁 84/84 全绿、收尾体检 16/16 全绿。
+  ⑤ **本轮续（2026-10-15 同 session）· 班费/团费 view-only + 管理人补图**：班费/团费卡对**所有已绑定成员可点开查看消费明细**（仅查看，无增删权限）；`util.feeRights.showLeagueCard` 由 `canManageLeague` 改为**恒 `true`**（团费卡对所有人可见，非管理人 view-only）。明细全亮（金额/备注/操作人/时间/凭证图可预览 + 余额/总额/已消费）；卡片加「管理/查看」标识，弹层标题 view-only 显示「· 仅查看」、管理人「· 管理」，弹层内「增加消费/删除/追加图片」全部用 `feeCanManage` 守卫，view-only 底部加灰色「仅查看，无法修改或删除」提示。**新增管理人给已有记录补图**：`fee` 云函数新增 `feeAppendImages(type,id,images[])`（权限同 addExpense，校验记录属本班+type、当前图数<9、合并≤9、更新 images JSON），班费与团费都支持；前端每条记录（仅 `feeCanManage` 且 images<9）显示「追加图片」按钮，选图即追加。**后端 `getSummary` 本就对所有绑定成员返回，view-only 纯前端放开**；add/delete/append 最终拦截仍由后端 `feeManager` 保证。`fee` 已部署（`node scripts/deploy-fee.js`，`fn code download` 逐字比对线上=本地、`feeAppendImages` 已上线）、门禁 84/84 全绿、收尾体检 16/16 全绿。**未 bump 版本、未推双仓库**。
+
+**待办（按优先级）**：
+| # | 待办 | 说明 |
+|---|---|---|
+| 1 | **前端上传 + 提审** | 微信开发者工具打开**仓库根目录**（不是 `miniprogram/`），**上传前先点一次「编译」**（`project.private.config.json` 优先级高于 `project.config.json`，基础库曾被本地覆盖导致"改了没生效"）；提审用 `outputs/v1.0.6.8-更新说明.md` 的**版本 A**（覆盖范围 1.0.6.5 → 1.0.6.8，因 1.0.6.7 前端从未上传） |
+| 2 | **推私有仓 `class-task-manager-template`** | 现 **ahead 9**（room 修复 2 + 主教室 1 + 本轮 6），需 fine-grained PAT（Contents: Read&write，仅限这两个仓库）经 `GH_PAT` 临时注入，推完即去令牌 |
+| 3 | **同步公开脱敏仓 `class-task-manager`** | `scripts/publish-release.sh` 六步（私有 commit+tag+push → archive 排除 xlsx → scrub → 自检 → 公开 commit+push）。**旧 classic `ghp_` 令牌务必去 GitHub 撤销** |
+| 4 | **示例班级A A/B 线上重导** | ⛔ 卡在**超管口令不在任何 .env**（需 `ADMIN_PASS`）。代码已修复（course 身份含 room），工具 `_dbg_room/reimport-live.js`；也可用户在后台 UI 手动重导 |
+| 5 | 周二大扫除「重新一键生成」 | 上线 `migrate-tuesday-clean.sql` 后**必须**重新生成本周及未来各周（或等周日 20:00 cron）；迁移只改"应排几人"、不改已生成的值日表 |
+
+---
+
+## 【历史】 · 2026-10-14（**1.0.6.7**：值日状态口径 + 保洁主教室 + 课表节次放开 + 周次区间 —— ①值日课次**下课 10 分钟**即标「已值日」；②新增班级「**主教室**」配置，保洁按该房间走并自动同步课次名与房间（DDL `class.main_room`，示例班级A 写 410）；③**大节数跟随班级 `period_time`**（不再写死 5），可加 45 分钟短课，`duty_count=0` = 不排值日；④课次周次支持区间 `6-13`；⑤课表详情值日人数显示真实值、后台「第x节」不折行、值日页隐藏「+加值日生」。**13 个云函数已部署 + 1 条 DDL 已跑**，但**前端始终未上传**，故其内容随 **1.0.6.8** 一并发版；门禁 84/84）
+
+## 【历史】 · 2026-10-13（1.0.6.5 已就绪：值日卡视觉优化 + 首页请假按时段自动刷新：值日卡合并行序号牌收小、姓名加粗放大、课次间灰色分割线、4 人保洁自动 2×2；首页「当前请假」按请假时段起止自动翻面、`onShow` 重拉；**纯前端改动，云函数无需重部署，前端待上传**；1.0.6.4 的备案展示 + 审核演示身份降权随本版一并携带）
 
 **当前节点**：**admin-web（超管网页后台）已开发完成并部署上线，可直接使用**；小程序主线已至 **对外 1.0.6.4**（内部 v0.7.38）——本轮含两项：①**备案展示**（「我的 → 关于」新增 ICP 备案号，主色+下划线、点击复制工信部地址）；②**审核体验入口「演示身份降权」**（新增 `common/review-demo.js`，演示态拦截破坏性动作，但功能照常展示）。**云函数 `member`/`class`/`auth`/`media`/`course` 待重部署；`member` 表待加 `is_review_demo` 列；前端待用户上传**。1.0.6.4 仍需走审核 ⇒ 提审前需重新开启体验入口、换**新**口令、置演示标记（见 `outputs/v1.0.6.4-更新说明.md`），审核通过后须关闭后门。
 **另**：2026-10-12 修了 `cron-weekly` 的触发器 P0 漂移（本地 `config.json` 缺 `remindAM` + `weekly` 星期位写 `SUN`，因触发器是**整体覆盖**语义，下一次部署会把线上 07:00 提醒悄悄干掉），并把值日提醒从「每天 2 条」压到「每天 1 条」（订阅额度需求减半，`REMIND_MODE` 开关可切回）。门禁 **81/81 全绿**。
@@ -288,6 +343,42 @@ env `<YOUR_ENV_ID>`。多班：`class` 表 5 行（id 1/2/3/9/10，名册已全�
 - 版本归档 → `CHANGELOG.md`（用户视角）/ `CHANGELOG-DETAIL.md`（背景 · 根因 · 影响面 · 验证）
 - **更新说明（每版必备）** → `outputs/v<对外版本>-更新说明.md`：**版本 A 提审**（功能枚举）/ **版本 B 公告**（**只列标题**，纯文本、不带 Markdown）
 - 每日日志 → `.workbuddy/memory/YYYY-MM-DD.md`（append-only）
+
+---
+
+## 【本session】 · 2026-10-15（**需求 B/C 落地 + 部署收口**：课程表个人选修课功能上线、班费卡片反馈确认、修 course 部署缺口）
+
+**输入**：承接上轮尾（1.0.6.8 收尾 16/16 + 门禁 84/84 全绿、需求 A 审核体验入口已上线）。本 session 续做两条用户需求：B（普通成员点班费卡片无反馈）、C（课程表右下角按钮人人可见 + 个人选修课仅自己可见，最多 2 门）。
+
+**做了什么**：
+1. **需求 C｜个人选修课（全新功能）**：
+   - 新建 `personal_course` 表（`scripts/migrate-personal-course.js`，幂等 + 自证列存在）：`class_id`/`member_id`/`name`/`teacher`/`room`/`day_of_week`/`period`/`weeks`/`week_rule`/`created_at`/`updated_at`；索引 `idx_pc_member(class_id,member_id,day_of_week,period)`。与 `member_timetable`/`session` 完全隔离（不驱动值日、不影响全班课表）。
+   - `cloudfunctions/course/index.js` 新增 `electiveList`/`electiveSave`/`electiveDelete` 三 action：**所有查询强制 `member_id = ctx.member.id`**（绝不采信 payload 的 memberId/classId，无 IDOR）；`electiveSave` 校验课名非空、星期 1-7、节次 1-`periodCount(cfg)`、`weekRule` 枚举、`weeks` 截断到 `totalWeeks`、跑 `msgSecCheck`、更新必须命中本人行、新增每人限 2 门（服务端强制）。
+   - `miniprogram/utils/api.js` 加 `electiveList/electiveSave/electiveDelete`；`pages/timetable/index.{js,wxml,wxss}`：FAB 改为人人可见（辅导员 `!isCounselor` 仍守卫），`_showPersonal()`（辅导员/切班态超管关闭）、`_recomputeFab()`、`_personalToCell()`、`_mergePersonal()`、`_loadPersonal()`、`_openElectiveForm()`、`_saveElective()`（id 放进 `item`）、`onDeleteElective()`；`onCell` 个人课次点开即编辑、`onCellLongPress` 个人课次跳过、`onSave` 按 `formMode` 分流；WXML 加 `data-personal`/`data-pid`、`wx:key="key"`（避免与空格子 sid=0 撞）、个人课次蓝框 + 「个」标；删除按钮按 mode 显隐。
+2. **需求 B｜班费卡片反馈**：核查确认 `onFeeTap` 对 `!canManage` 已弹 toast 且 `.fee-card.readonly` 不屏蔽点击 —— **已满足，无需重复实现**，仅记录于【主线状态】。
+3. **修部署缺口**：`scripts/deploy_all.sh` 原 FNS 漏了 `course`（11/12），已补回 12/12（含 `course`），否则选修课 action + common 同步永远上不了线。
+4. **上线动作**：跑 `migrate-personal-course.js`（表建好 + 列自证通过）；全量重部署 12 个函数（`部署成功=12 失败=`）；门禁 84/84 全绿；收尾体检 16/16 全绿。
+
+**未决 / 待用户**：
+- 未 bump 版本、未推双仓库（用户未触发「要上传更新版本了」）。下次发版须：bump `APP_VERSION`、`CHANGELOG`/`CHANGELOG-DETAIL` 加节、`outputs/v*-更新说明.md` 补 需求 B/C（版本 A 覆盖范围要含 B/C）、再走双仓同步。
+- 真机验证：个人选修课增/改/删、网格合并显示、仅自己可见（换账号看不到他人课）需用户在真机过一遍。
+
+---
+
+## 【本session】 · 2026-10-15（续）（**班费/团费 view-only + 管理人给已有记录补图**，grill 定稿后一次做完）
+
+**输入**：grill 定稿 5 个分支（均选推荐项）：①范围=班费+团费都放开 view-only；②人群=所有「非该资金管理人」的已绑定成员（`!canManage<Type>`）；③明细全亮；④卡片全可点 + 「管理/查看」标识 + 弹层「· 仅查看/管理」+ add/delete/append 用 `feeCanManage` 守卫 + 灰色提示；⑤追加图范围=班费+团费都支持。中途补需求：「有班费添加消费权限的人，已添加的消费未满 9 张可继续加图片」。
+
+**关键发现（决定了改动量）**：后端 `fee.getSummary` **本就让所有已绑定成员可读**（只 `needBind`，不校验班费权限）——明细/余额早已下发，只是前端 `onFeeTap` 用 `if(!canManage){toast;return}` 挡住弹层。故 **view-only 纯前端**，仅「补图」需新增后端动作。
+
+**做了什么**：
+1. **后端** `cloudfunctions/fee/index.js` 新增 `feeAppendImages(type,id,images[])`：权限同 `addExpense`（`feeManager`）；校验记录属本班+type、当前图数 <9、合并 ≤9（`normImages`+`slice`），只更新 `images` JSON，不动金额/备注/操作人；班费+团费都支持。
+2. **前端** `utils/api.js` 加 `feeAppendImages`；`utils/util.js` 的 `feeRights.showLeagueCard` 由 `canManageLeague` 改**恒 `true`**（团费卡对所有人可见，非管理人 view-only）。
+3. **前端** `pages/home/index.js`：`onFeeTap` 去掉 toast 拦截、对所有人开弹层并按 `canManage` 设 `feeCanManage`；`onFeeAddOpen` 加 `feeCanManage` 守卫；新增 `onFeeAppendTap`（选图上限 `9-当前数`，仅 `feeCanManage` 且 <9 才显示）/`_uploadAndAppend`（复用 `request.uploadFile` + `api.feeAppendImages` + `_loadFee(true)` 刷新）。
+4. **前端** `pages/home/index.wxml`：卡片去 `readonly`、arrow 常显、加「管理/查看」徽标（用 `.fee-card-left` 包裹以保证 space-between 布局）；弹层标题加「· 仅查看/管理」；「增加消费」「删除」收进 `feeCanManage` 守卫的 `.fee-rec-ops`，新增「追加图片」按钮（`feeCanManage && images<9`）；view-only 底部加灰色「仅查看，无法修改或删除」提示。`pages/home/index.wxss` 配套样式（仅类选择器、禁 `~`）。
+5. **上线**：门禁 84/84 全绿；`node --check` ×4 通过；`fee` 经 `node scripts/deploy-fee.js` 部署（`cloudbaserc.json` 已还原）；`tcb fn code download fee` 逐字 diff 线上=本地、`feeAppendImages` 已上线。
+
+**未决 / 待用户**：未 bump 版本、未推双仓库（等「要上传更新版本了」）。真机待验：普通成员点开班费/团费为 view-only（无增删/无追加图按钮）、管理人补图、9 张上限。
 
 ---
 
@@ -671,3 +762,27 @@ env `<YOUR_ENV_ID>`。多班：`class` 表 5 行（id 1/2/3/9/10，名册已全�
   ⑦ 日期卡胶囊形 + 星期行 16rpx 间距观感是否合适；⑧ 「我的」页无通知入口后，首页入口 + 角标是否满足使用习惯。
 - **教职工账号 `status='LEAVE'`**：鉴权链不检查 status，不影响任何功能，保持原样；
   若这是误操作（她应算在职），在「成员与分组」把状态改回即可。
+
+---
+
+## 版本控制 / GitHub 同步约定（2026-10-13 建立）
+
+- **仓库（双轨）**：
+  - **内部 / 版本管理（私有）**：`https://github.com/LZXQ7/class-task-manager-template.git`，**Private**，默认分支 `main`。含全部真实数据/密钥/`.workbuddy/` 备份，**绝不外传**。
+  - **开源脱敏模板（公开）**：`https://github.com/LZXQ7/class-task-manager.git`，**Public**。从私有仓库导出的受跟踪文件树，经全量脱敏后推送（详见下方流程）。
+- **基线（私有）**：初始提交 `cd8829b`；标签 **`v1.0.6.5`**（`381535a`，= 已上传微信平台的对外版本）。`.gitignore` 已排除 `.workbuddy/`（246MB 生产 PII+密钥）、`project.private.config.json`、衍生物、`outputs/**`（仅留 `*.md`）。
+- 🔴 **标准发版约定（用户 2026-10-13 明确要求，每次必守）**：当用户说「**要上传更新版本了**」——
+  **必须同时更新两个仓库到 GitHub**：① **私有** `class-task-manager-template`（完整真实数据，含 tag）；
+  ② **公开** `class-task-manager`（**先跑脱敏清洗，再推**）。两步都做、缺一不可。
+- **每版本同步（私有，落地流程）**：发版 bump 后 ——
+  `git add -A` → `git commit -m "版本 x.y.z 说明"` → `git tag vx.y.z` → `git push origin main --tags`。
+  仅「已上传微信平台」的版本才打 tag；开发中未发布提交只进 `main`。
+- **开源脱敏发布流程（公开仓库）**（2026-10-13 实施，已跑通）：
+  1. 私有仓库根 `git archive --format=tar HEAD | tar -x` 导出受跟踪文件树到 `C:/Users/PC/WorkBuddy/class-task-manager-public/`（天然排除 `.workbuddy/`/`project.private.config.json`/`outputs/**`）。
+  2. 跑脱敏脚本 `_scrub_tmp/scrub.js`（**此脚本含原始令牌/姓名作搜索串，严禁进任何仓库**），把 envId→`<YOUR_ENV_ID>`、appid→`<YOUR_APPID>`、真实姓名→`示例成员NN`、真实学号→`2099…` 伪化、班级名→`示例班级A/B/C`、口令/邀请码→`<JOIN_TOKEN>`/`<INVITE_CODE>`、ICP→`<ICP_NO>`、品牌→`班级任务管理`、**任课教师姓名→`示例老师NN`**。
+  3. **二进制夹具手动处理**：`scripts/fixtures/*.xlsx` 是真实课表/名单（含学号+姓名+教师），脱敏脚本不处理二进制，必须 `git rm` 删除（代码引用的是 `make-*` 生成的 `timetable-示例班级A.xlsx`，不进库）。
+  4. 自检：`git grep` 全量 0 命中原始令牌/姓名/学号/班级名/教师名/ICP/品牌；确认无 `.xlsx` 残留。
+  5. `git init -b main` → `git add -A` → `git commit` → 首次/修订 `git push --force origin main`（**改写历史确保 PII 不进公开历史**）。
+  6. 公开 README 已改写 §9/§10：指向公开仓库、说明占位符替换步骤。
+- **凭据**：GitHub PAT（classic，`repo` 全权）**已用即弃**——两仓库 `.git/config` 的 remote URL 已去令牌化（tokenless）；**但此 PAT 尚未在 GitHub 上撤销**。⚠️ **请尽快到 GitHub 撤销/轮换该 classic PAT**（它仍对 `LZXQ7` 全部仓库有效），或换 fine-grained 仅限本仓库 Contents:RW。本机未装 Git Credential Manager。
+- **坑**：`git push --force-with-lease` 在从未 `fetch` 过远程分支时因无 remote-tracking 期望值会拒推（报 `stale info`）；清空重传用 `--force`。`outputs/.../data/aux/...` 因 Windows 保留设备名 `aux` 致 `git add` fatal ⇒ 已用 `outputs/**` + `!outputs/*.md` 化解。脱敏脚本漏扫二进制 + 教师姓名，首版发布后已补（见上方流程 3/教师映射）。

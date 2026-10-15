@@ -265,7 +265,7 @@
       </view>
       <view class="im-field">
         <view class="im-label">学号</view>
-        <input class="im-input" type="number" value="{{addNo}}" placeholder="完整学号，如 209901030358" placeholder-class="f-ph" bindinput="onAddNo" />
+        <input class="im-input" type="number" value="{{addNo}}" placeholder="完整学号，如 000000000158" placeholder-class="f-ph" bindinput="onAddNo" />
       </view>
       <text class="im-tip">学号尾号奇数为 A 组，偶数为 B 组（自动判定）</text>
       <view class="im-actions">
@@ -284,7 +284,7 @@
         <textarea
           class="im-area"
           value="{{importText}}"
-          placeholder="每行一条，顺序不限：&#10;张伟,20230101&#10;20230101,张伟&#10;小学教育示例班级B,209901030201,示例成员58,女"
+          placeholder="每行一条，顺序不限：&#10;张伟,20230101&#10;20230101,张伟&#10;小学教育示例班级B,000000000201,示例成员58,女"
           placeholder-class="f-ph"
           bindinput="onImportText"
           maxlength="-1"

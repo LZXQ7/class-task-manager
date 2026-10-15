@@ -16,6 +16,14 @@ module.exports = {
    *  凭审核口令一键绑定到 99 段测试超管，跳过「口令→选人→学号后 4 位」三步。
    *  口令由超管填进 mp 后台「审核备注」；入口是否显示由 login 下发的布尔位决定。 */
   reviewDemo: C('auth', 'reviewDemo'),
+  /**
+   * 审核体验入口 · 状态查询（仅超管，2026-10-15 · v1.0.6.8）：返回 `{ on, code }`。
+   * ⚠️ 与上面的 reviewDemo 不同 —— 那条面向**未绑定的审核员**、返回体绝不带口令；
+   *    这条要求超管身份，用来在「我的」页显示开关状态、以及开启期间**再看一次**口令。
+   */
+  reviewDemoStatus: C('auth', 'reviewDemoStatus'),
+  /** 审核体验入口 · 开关（仅超管）：`{ on:true }` = 后端自动生成新口令并回显；`{ on:false }` = 作废旧口令并踢下线 */
+  reviewDemoSet: C('auth', 'reviewDemoSet'),
   unbind: C('auth', 'unbind'),
   updateAvatar: C('auth', 'updateAvatar'),
   switchAccount: C('auth', 'switchAccount'),
@@ -94,6 +102,11 @@ module.exports = {
   myTimetablePublish: C('course', 'publishToClass'),
   /** 【一键同步】把本班课表整份拷成我的课表（覆盖式，人人可用） */
   myTimetableSync: C('course', 'syncFromClass'),
+
+  /* ---------- 个人选修课（2026-10-15）：人人可加，最多 2 门，仅自己可见/可编辑 ---------- */
+  electiveList: C('course', 'electiveList'),
+  electiveSave: C('course', 'electiveSave'),
+  electiveDelete: C('course', 'electiveDelete'),
 
   /* ---------- 校历：节假日 / 调休 / 调课 ---------- */
   calendarList: C('course', 'calendar'),
@@ -218,5 +231,13 @@ module.exports = {
   classUpdate: C('class', 'update'),
   classSetActive: C('class', 'setActive'),
   classRandomToken: C('class', 'randomToken'),
-  classDelete: C('class', 'delete')
+  classDelete: C('class', 'delete'),
+
+  /* ---------- 班费 / 团费（2026-10-14；view-only 放开 + 追加图 2026-10-15） ---------- */
+  feeSummary: C('fee', 'getSummary'),
+  feeSetTotal: C('fee', 'setTotal'),
+  feeAddExpense: C('fee', 'addExpense'),
+  feeDeleteRecord: C('fee', 'deleteRecord'),
+  /** 给已有记录补图（管理人；当前 <9 张时才能补；班费/团费都支持） */
+  feeAppendImages: C('fee', 'feeAppendImages')
 };

@@ -85,10 +85,10 @@
     </view>
   </block>
 
-  <!-- 加载 / 失败 -->
+  <!-- 加载 / 失败（骨架行数跟随本班节次数，2026-10-14 不再写死 5） -->
   <block wx:elif="{{loading}}">
     <view class="tt-grid">
-      <view class="tt-row" wx:for="{{[0,1,2,3,4]}}" wx:key="*this">
+      <view class="tt-row" wx:for="{{periods}}" wx:key="p">
         <view class="tt-time"></view>
         <view class="tt-cells">
           <skeleton type="grid" rows="{{5}}" height="{{136}}" />
@@ -164,12 +164,14 @@
                   wx:for="{{cell.courses}}"
                   wx:for-item="co"
                   wx:for-index="ci"
-                  wx:key="sessionId"
-                  class="tt-cell {{co.isHoliday ? 'holiday' : ''}} {{co.movedIn ? 'moved-in' : ''}}"
+                  wx:key="key"
+                  class="tt-cell {{co.isHoliday ? 'holiday' : ''}} {{co.movedIn ? 'moved-in' : ''}} {{co.personal ? 'personal' : ''}}"
                   style="background:{{co.bg}};{{co.flip}}"
                   data-r="{{r}}"
                   data-c="{{c}}"
                   data-sid="{{co.sessionId}}"
+                  data-personal="{{co.personal ? 1 : ''}}"
+                  data-pid="{{co.personal ? co.pid : ''}}"
                   hover-class="tt-cell-hover"
                   hover-start-time="0"
                   hover-stay-time="60"
@@ -177,6 +179,7 @@
                   bindlongpress="onCellLongPress"
                 >
                   <view wx:if="{{co.groupScope}}" class="tt-cell-tag">{{co.groupScope}} 组</view>
+                  <view wx:elif="{{co.personal}}" class="tt-cell-tag personal-tag">个</view>
                   <text class="tt-cell-name" style="color:{{co.fg}}">{{co.name}}</text>
                   <text class="tt-cell-room" style="color:{{co.fg}}">{{co.room}}</text>
                   <view wx:if="{{co.movedIn}}" class="tt-cell-shift in">自{{co.shiftFromText}}调入</view>
@@ -240,8 +243,9 @@
     </view>
   </view>
 
-  <!-- 新增课次 FAB（删除课次在课次详情弹层内） -->
-  <view wx:if="{{isAdmin && !loading && !isCounselor}}" class="fab" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFab">
+  <!-- 新增课次 FAB：人人可见，**一律是添加个人选修课**（仅自己可见，含超管 —— 2026-10-16 用户定口径）；
+       !isCounselor 保留在 wxml（辅导员只看不改，门禁 check-timetable-local 逐入口点名守卫） -->
+  <view wx:if="{{fabShow && !isCounselor}}" class="fab" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFab">
     <app-icon name="plus" variant="white" size="{{44}}" />
   </view>
 
@@ -282,8 +286,8 @@
     </view>
   </bottom-sheet>
 
-  <!-- 新增 / 编辑课次 P3.1 -->
-  <bottom-sheet show="{{formShow}}" title="{{form.sessionId ? '编辑课次' : '新增课次'}}" height="{{1080}}" bind:close="onFormClose">
+  <!-- 新增 / 编辑课次（管理员）或个人选修课（人人，最多 2 门） P3.1 -->
+  <bottom-sheet show="{{formShow}}" title="{{formMode === 'elective' ? (form.electiveId ? '编辑选修课' : '添加选修课') : (form.sessionId ? '编辑课次' : '新增课次')}}" height="{{1080}}" bind:close="onFormClose">
     <view wx:if="{{form}}" class="ds-form">
       <view class="f-row">
         <text class="f-label">课程名</text>
@@ -298,7 +302,7 @@
         <input class="f-input" value="{{form.room}}" placeholder="选填" placeholder-class="f-ph" data-field="room" bindinput="onFormInput" />
       </view>
 
-      <view class="f-row">
+      <view wx:if="{{formMode !== 'elective'}}" class="f-row">
         <text class="f-label">课程类型</text>
         <segmented
           items="{{[{key:'ALL',text:'全体课'},{key:'GROUP',text:'分组课'}]}}"
@@ -308,7 +312,7 @@
           data-field="courseType"
         />
       </view>
-      <view wx:if="{{form.courseType === 'GROUP'}}" class="f-row">
+      <view wx:if="{{formMode !== 'elective' && form.courseType === 'GROUP'}}" class="f-row">
         <text class="f-label">上课分组</text>
         <view class="f-chips">
           <view class="f-chip chip-motion {{form.groupScope === 'A' ? 'on' : ''}}" data-field="groupScope" data-value="A" bindtap="onFormChoose">A 组</view>
@@ -331,7 +335,7 @@
         </view>
         <view class="f-chips">
           <view
-            wx:for="{{[1,2,3,4,5]}}"
+            wx:for="{{periodChips}}"
             wx:key="*this"
             class="f-chip chip-motion {{form.period === item ? 'on' : ''}}"
             data-field="period"
@@ -339,7 +343,7 @@
             bindtap="onFormChoose"
           >第{{item}}节</view>
         </view>
-        <text class="f-tip">1-2 上午 · 3-4 下午 · 5 晚上</text>
+        <text class="f-tip">共 {{periodChips.length}} 个大节（按班级时间设置）</text>
       </view>
 
       <view class="f-block">
@@ -356,9 +360,13 @@
         </view>
       </view>
 
-      <view class="f-row">
+      <view wx:if="{{formMode !== 'elective'}}" class="f-row">
         <text class="f-label">每次需值日</text>
-        <stepper value="{{form.dutyCount}}" min="{{1}}" max="{{4}}" bind:change="onStepper" />
+        <stepper value="{{form.dutyCount}}" min="{{0}}" max="{{4}}" bind:change="onStepper" />
+      </view>
+
+      <view wx:if="{{formMode === 'elective' && form.electiveId}}" class="f-actions">
+        <view class="f-save danger {{saving ? 'off' : ''}}" bindtap="onDeleteElective">删除选修课</view>
       </view>
 
       <view class="f-actions">

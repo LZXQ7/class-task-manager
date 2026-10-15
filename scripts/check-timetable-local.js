@@ -246,22 +246,35 @@ check('自证：把「申请适配」入口加回页面会被抓到',
  *    正确做法：正则全局扫描**所有**节次守卫、取最大值，判据 = 「全部都是 5」。 */
 const courseJs = fs.readFileSync(path.join(ROOT, 'cloudfunctions/course/index.js'), 'utf8');
 const PERIOD_GUARD_SRC = "if (!(period >= 1 && period <= 5)) throw new BizError(41001, '请选择节次');";
-/** 扫出所有节次守卫里的上界并取最大（0 = 一个都没找到 ⇒ 锚点漂移） */
+/** 扫出所有节次守卫里的上界并取最大（0 = 一个都没找到 ⇒ 锚点漂移）
+ *  ⚠️ 报错文案可能带动态内容（如「请选择节次（1-7）」，上界回显给用户），
+ *     故只锚 `BizError(41001,` 起的调用形态，不锚文案字面量。 */
 function periodGuardMax(src) {
-  const re = /if \(!\(period >= 1 && period <= (\d)\)\) throw new BizError\(41001, '请选择节次'\)/g;
+  const re = /if \(!\(period >= 1 && period <= (\d)\)\) throw new BizError\(41001,/g;
   let max = 0, m;
   while ((m = re.exec(src))) max = Math.max(max, Number(m[1]));
   return max;
 }
-check('云端课次节次校验收口到 1-5（不放行第 6/7 节）',
-  periodGuardMax(courseJs) === 5, '守卫上界最大值 = ' + periodGuardMax(courseJs));
-/* 变异必须**真的改到文件**再判「被抓到」：先确认替换发生（否则锚点漂移会静默假绿） */
-const courseMutated = courseJs.split(PERIOD_GUARD_SRC)
-  .join("if (!(period >= 1 && period <= 7)) throw new BizError(41001, '请选择节次');");
-check('自证：云端守卫锚点存在（防漂移，否则下一项是假绿）',
-  courseMutated !== courseJs && courseJs.indexOf(PERIOD_GUARD_SRC) >= 0,
-  '锚点出现 ' + (courseJs.split(PERIOD_GUARD_SRC).length - 1) + ' 次');
-check('自证：云端校验放宽回 7 会被抓到', periodGuardMax(courseMutated) === 7);
+/* 🔴 口径变更（2026-10-14）：本日历曾把「节次校验收口 1-5」当铁律钉死，
+ *   为的是挡住第 6/7 节进课表。现在需求反过来了 ——
+ *   2601/示例班级B/示例班级A 要加一门「书香校园」（仅 45 分钟），必须能排到**第 6 个大节**。
+ *   ⇒ 校验收口改为「按本班 class.period_time」（week.periodCount，兜底 5 / 上限 10），
+ *   本组断言随之从「上界必须是 5」翻成「必须收口到 periodCount、且上界不再写死」。
+ *   节次数动态化的完整判据见 scripts/check-period-count.js。 */
+check('云端课次节次校验改为收口本班配置（periodCount），不再写死 5',
+  periodGuardMax(courseJs) === 0 && /week\.periodCount\(cfg\)/.test(courseJs),
+  '写死守卫上界 = ' + periodGuardMax(courseJs) + '，periodCount 引用 ' +
+  (courseJs.split('week.periodCount(cfg)').length - 1) + ' 处');
+/* 变异必须**真的改到文件**再判「被抓到」：把动态上界换回写死的 7，必须被抓到 */
+const PERIOD_DYN_GUARD_SRC = "if (!(period >= 1 && period <= nPeriods)) throw new BizError(41001, '请选择节次（1-' + nPeriods + '）');";
+const courseMutated = courseJs.split(PERIOD_DYN_GUARD_SRC)
+  .join("if (!(period >= 1 && period <= 7)) throw new BizError(41001, '请选择节次（1-7）');");
+check('自证：动态守卫锚点存在（防漂移，否则下一项是假绿）',
+  courseMutated !== courseJs && courseJs.indexOf(PERIOD_DYN_GUARD_SRC) >= 0,
+  '锚点出现 ' + (courseJs.split(PERIOD_DYN_GUARD_SRC).length - 1) + ' 次');
+check('自证：节次校验回退成写死 7 会被抓到',
+  periodGuardMax(courseMutated) === 7 && /week\.periodCount\(cfg\)/.test(courseMutated),
+  '变异后上界 = ' + periodGuardMax(courseMutated));
 
 console.log('\n' + (fail === 0 ? '全部通过 ✅' : fail + ' 项失败 ❌'));
 process.exit(fail === 0 ? 0 : 1);

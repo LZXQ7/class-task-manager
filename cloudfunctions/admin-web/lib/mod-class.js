@@ -9,6 +9,7 @@
 const { getPool } = require('../common/db');
 const { BizError } = require('../common/resp');
 const { logAction } = require('./audit');
+const { syncMainRoomCleaning } = require('./mod-course');
 
 function jsonSafe(v) {
   if (v === null || v === undefined) return null;
@@ -29,6 +30,7 @@ function maskClass(r) {
     bindOpen: Number(r.bind_open) !== 0,
     isActive: Number(r.is_active) !== 0,
     periodTime: jsonSafe(r.period_time) || [],
+    mainRoom: r.main_room || '',
     memberCount: Number(r.cnt || 0)
   };
 }
@@ -123,10 +125,29 @@ async function updateClass(id, patch, session, req) {
     }
     put('period_time', JSON.stringify(norm));
   }
+  if (patch.mainRoom !== undefined) {
+    const r = String(patch.mainRoom == null ? '' : patch.mainRoom).trim();
+    if (r.length > 32) throw new BizError(40001, '主教室名过长（≤32 字符）');
+    if (/[\r\n\t]/.test(r)) throw new BizError(40001, '主教室名不能含换行/制表符');
+    put('main_room', r || null);
+  }
   if (!sets.length) throw new BizError(40001, '没有要更新的字段');
 
   args.push(id);
   await pool.query('UPDATE `class` SET ' + sets.join(', ') + ' WHERE id = ?', args);
+
+  // 主教室改动 ⇒ 同步该班保洁课次名 + 房间（best-effort：同步失败不回滚已落字段，仅记录）
+  let mainRoomSync = null;
+  if (patch.mainRoom !== undefined &&
+      String(before.main_room || '') !== String(changed.main_room || '')) {
+    try {
+      mainRoomSync = await syncMainRoomCleaning(pool, id, changed.main_room);
+    } catch (e) {
+      console.error('[syncMainRoomCleaning]', (e && e.stack) || e);
+      mainRoomSync = { error: String((e && e.message) || e) };
+    }
+  }
+
   await logAction(session, {
     module: 'class',
     action: 'class.update',
@@ -134,7 +155,8 @@ async function updateClass(id, patch, session, req) {
     summary: '修改班级配置：' + Object.keys(changed).join('、'),
     detail: {
       before: maskClass(before),
-      after: changed
+      after: changed,
+      mainRoomSync: mainRoomSync
     }
   }, req);
   return classDetail(id);

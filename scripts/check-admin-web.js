@@ -315,6 +315,23 @@ t('改课次会把该班全部已发布周退回草稿（不是只退第 1 周�
 
 /* ---------------- 变异自证：改坏应当被抓 ---------------- */
 // 判据极性 = 变异后应变 false/失败
+/**
+ * 变异自证用的临时目录**在整轮结束时只删一次**（见 `cleanupMutDir`），
+ * 不在每次 mutateAndExpectFail 里删。
+ *
+ * 🔴 为什么要改（2026-10-14 实测）：宿主给 `fs.rmSync` 套了「安全删除」垫片（走回收站二进制），
+ *   **单次 rmSync 实测约 9 秒**。原来每个变异用例的 finally 都删一次 ⇒ 14 个用例累计 ~71s，
+ *   超过 `run_all_gates_bounded.sh` 的 `timeout 60` ⇒ 批跑把本门禁判成「卡死」，
+ *   而**单跑却是秒过**（因为单跑没有 60s 阈值）—— 极易误判成「我改坏了门禁」。
+ *   改为循环外统一清理后，本门禁回到亚秒级。
+ */
+let _mutDirCreated = false;
+function cleanupMutDir() {
+  if (!_mutDirCreated) return;
+  _mutDirCreated = false;
+  // 清临时目录只是善后，**失败不能让门禁挂掉**（垫片可能 ETIMEDOUT）。
+  try { fs.rmSync(path.join(__dirname, '_mut'), { recursive: true, force: true }); } catch (e) {}
+}
 function mutateAndExpectFail(label, file, find, replace, customMutate) {
   const p = path.join(ROOT, file);
   const src = fs.readFileSync(p, 'utf8');
@@ -337,19 +354,15 @@ function mutateAndExpectFail(label, file, find, replace, customMutate) {
   }
   const tmpDir = path.join(__dirname, '_mut');
   fs.mkdirSync(tmpDir, { recursive: true });
-  try {
-    const tmp = path.join(tmpDir, path.basename(file));
-    fs.writeFileSync(tmp, mutated);
-    // 用判据函数重跑：直接检查变异后的源码是否还满足约束
-    const ok = stillPasses(file, tmp);
-    if (ok) fails.push({ name: '变异未被抓到: ' + label, msg: '变异后判据仍通过（假绿）' });
-    else pass++;
-  } finally {
-    // 清临时目录只是善后，**失败不能让门禁挂掉**：
-    // 宿主给 fs.rmSync 套了「安全删除」垫片（走回收站二进制），
-    // 该二进制超时会抛 ETIMEDOUT —— 那是环境问题，不是被测代码的问题。
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) {}
-  }
+  _mutDirCreated = true;
+  // ⚠️ 这里**不再**逐个删临时目录（垫片 rmSync 单次 ~9s，14 个用例会累计超时）；
+  //    改由 cleanupMutDir() 在整轮结束时统一清一次。
+  const tmp = path.join(tmpDir, path.basename(file));
+  fs.writeFileSync(tmp, mutated);
+  // 用判据函数重跑：直接检查变异后的源码是否还满足约束
+  const ok = stillPasses(file, tmp);
+  if (ok) fails.push({ name: '变异未被抓到: ' + label, msg: '变异后判据仍通过（假绿）' });
+  else pass++;
 }
 function stillPasses(file, tmpPath) {
   if (file === 'lib/auth.js') {
@@ -401,7 +414,13 @@ function stillPasses(file, tmpPath) {
       && /id NOT IN \(SELECT course_id FROM session\)/.test(delBody)
       && /Array\.from\(\{ length: totalWeeks \}/.test(delBody)
       && /action: 'session\.delete'/.test(delBody);
-    return tableNameSafe && allWeeks && delOk;
+    // 判据四：主教室同步必须真的按两种命名形态改名，且只碰 CLEAN 课次
+    const syncAt = src.indexOf('async function syncMainRoomCleaning');
+    const syncOk = syncAt >= 0
+      && /if \(\/大扫除\/\.test\(c\.name\)\) next = room \+ '大扫除';/.test(src)
+      && /else if \(\/打扫\/\.test\(c\.name\)\) next = '打扫' \+ room;/.test(src)
+      && /kind\s*=\s*\\?'CLEAN\\?'/.test(src.slice(syncAt));
+    return tableNameSafe && allWeeks && delOk && syncOk;
   }
   if (file === 'lib/mod-member.js') {
     const src = fs.readFileSync(tmpPath, 'utf8');
@@ -561,6 +580,22 @@ mutateAndExpectFail(
   }
 );
 
+mutateAndExpectFail(
+  '主教室同步不改课次名（改了主教室，保洁仍显示旧房间）',
+  'lib/mod-course.js',
+  null,
+  null,
+  (src) => {
+    const at = src.indexOf('async function syncMainRoomCleaning');
+    if (at < 0) return null;
+    const seg = "    if (/大扫除/.test(c.name)) next = room + '大扫除';\n" +
+      "    else if (/打扫/.test(c.name)) next = '打扫' + room;";
+    const pos = src.indexOf(seg, at);
+    if (pos < 0) return null;
+    return src.slice(0, pos) + '    /* 变异：主教室同步不改名 */' + src.slice(pos + seg.length);
+  }
+);
+
 /* ---------------- 课表 HTML 解析的页面接入（浏览器侧） ---------------- */
 // 解析器本体由 check-html-parser.js 守；这里只守「挂上了没、接对了没」——
 // 脚本没引进 index.html ⇒ 浏览器端 window.TimetableHtml 恒空 ⇒ 导入页静默不可用，
@@ -707,7 +742,33 @@ t('绑定情况：概览含各班绑定数 + 前端绑定视图（2026-10-12 新
   assert.ok(/c\.boundCount/.test(js), '概览应展示各班已绑定人数');
 });
 
+t('主教室设置：main_room 字段 + 改时同步保洁课次名/房间（新增能力）', () => {
+  const cls = fs.readFileSync(path.join(ROOT, 'lib', 'mod-class.js'), 'utf8');
+  const crs = fs.readFileSync(path.join(ROOT, 'lib', 'mod-course.js'), 'utf8');
+  const js = readPub('app.js');
+  // 后端：字段读取 + 白名单更新 + 限长 + 仅变化才同步
+  assert.ok(/mainRoom:\s*r\.main_room/.test(cls), 'maskClass 应暴露 mainRoom');
+  assert.ok(/if \(patch\.mainRoom !== undefined\)/.test(cls), 'updateClass 应处理 patch.mainRoom');
+  assert.ok(/put\('main_room', r \|\| null\)/.test(cls), '主教室应落 main_room 列');
+  assert.ok(/r\.length > 32/.test(cls), '主教室应限长 32');
+  assert.ok(/syncMainRoomCleaning\(pool, id, changed\.main_room\)/.test(cls), '改主教室应触发 CLEAN 同步');
+  assert.ok(/before\.main_room \|\| ''\) !== String\(changed\.main_room/.test(cls), '仅当值变化才同步');
+  // 同步函数存在 + 两种命名形态都改 + 只碰 CLEAN + 已导出
+  assert.ok(/async function syncMainRoomCleaning/.test(crs), 'mod-course 缺 syncMainRoomCleaning');
+  assert.ok(/if \(\/大扫除\/\.test\(c\.name\)\) next = room \+ '大扫除';/.test(crs), '前缀式「{房间}大扫除」要改');
+  assert.ok(/else if \(\/打扫\/\.test\(c\.name\)\) next = '打扫' \+ room;/.test(crs), '后缀式「打扫{房间}」要改');
+  assert.ok(/kind\s*=\s*\\?'CLEAN\\?'/.test(crs), '同步只认 CLEAN 课次');
+  assert.ok(/module\.exports = \{[^}]*\bsyncMainRoomCleaning\b/.test(crs), 'syncMainRoomCleaning 未导出');
+  // 前端：配置弹窗有主教室输入 + 保存带上 + 列表展示
+  assert.ok(/id="c-room"/.test(js), '班级配置弹窗缺主教室输入框');
+  assert.ok(/mainRoom: \$\('#c-room', dlg\)\.value\.trim\(\)/.test(js), '保存未带 mainRoom');
+  assert.ok(/<th>主教室<\/th>/.test(js), '班级列表缺主教室列');
+  assert.ok(/c\.mainRoom \?/.test(js), '班级列表应展示主教室');
+});
+
 /* ================= 汇总 ================= */
+// 变异自证的临时目录统一在收尾清一次（垫片 rmSync 单次 ~9s，逐个删会累计超时）
+cleanupMutDir();
 console.log('');
 if (fails.length) {
   console.log('✗ 失败 ' + fails.length + ' 项：');

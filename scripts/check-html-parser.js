@@ -64,6 +64,12 @@ const REAL_HTML = fs.readFileSync(
 const PRINT_HTML = fs.readFileSync(
   path.join(ROOT, 'outputs', 'fixtures', 'timetable', 'kingosoft-class-print-sample.html'), 'utf8');
 
+// 真实样本（脱敏）：青果「我的课表」页 B 组版 —— 含「同一门课由两位老师分段上」
+// （微课设计与制作：示例老师02 1-8 周 + 示例老师04 9-16 周），页面「课程门数」仍记 12。
+// 用来锁「按课程名去重对账」：换老师不能误报「漏课」。
+const BGROUP_HTML = fs.readFileSync(
+  path.join(ROOT, 'outputs', 'fixtures', 'timetable', 'kingosoft-mykbt-sample-b.html'), 'utf8');
+
 /* ============ 夹具 ============ */
 
 // ① 网格式：行首「第1-2节」，单元格内含 font 课程名 + 教师 + 周次 + 地点
@@ -258,8 +264,13 @@ console.log('\n[11] 真实样本回归（outputs/fixtures/timetable/kingosoft-my
 {
   const r = T.parse(REAL_HTML);
   eq(r.layout, 'grid', '真实页识别为网格版面');
-  // 页面顶部写着「课程门数：12」，用它交叉校验解析出的课程数
-  eq(r.courses.length, 12, '课程数必须等于页面顶部「课程门数：12」，实际=' + r.courses.length);
+  // 页面顶部写着「课程门数：12」，用它交叉校验解析出的课程门数。
+  // ⚠️ 课程按 名称|教师|教室 去重（room 碰撞修复），course 行会比页面门数多
+  //   （同一门课分两个教室拆成两条）；对账按「去重到 名称+教师」的「门数」比对，
+  //   漏课仍能被抓到。
+  const distinctCourses = new Set(r.courses.map(c => c.name));
+  eq(distinctCourses.size, 12, '课程「门数」必须等于页面顶部「课程门数：12」（按课程名去重，与页面口径一致），实际=' + distinctCourses.size);
+  ok(r.courses.length >= 12, 'room 拆分后 course 行数 ≥ 门数（同一门课多教室会拆行），实际=' + r.courses.length);
   eq(r.sessions.length, 17, '课次数 17（同格叠两个 div 的按周次拆成两条），实际=' + r.sessions.length);
   eq(r.stats.dropped, { no_weeks: 0, no_sections: 0, no_day: 0 },
     '真实样本不该有任何被丢弃的课次（丢了就是漏课）');
@@ -297,6 +308,23 @@ console.log('\n[11] 真实样本回归（outputs/fixtures/timetable/kingosoft-my
   eq(wlw[0] && wlw[0].room, '线上教学', '线上课的地点也要带出来');
 }
 
+console.log('\n[11b] B组样本回归（同一门课两位老师分段上 ⇒ 不误报漏课，room 碰撞修复）');
+{
+  const r = T.parse(BGROUP_HTML);
+  eq(r.meta.declaredCourseCount, 12, 'B组页面顶部课程门数=12');
+  const names = new Set(r.courses.map(c => c.name));
+  eq(names.size, 12, '按课程名去重=12（微课设计与制作由两位老师分段上，页面只算 1 门），实际=' + names.size);
+  eq(r.warnings, [], '同一门课换老师 ⇒ 不得误报「可能漏课」');
+  // room 碰撞修复：数学 周二P2=305(1-4)、周三P2=二区305(5-16)，各自独立、不被压平
+  const math = r.sessions.filter(s => s.name === '小学数学课程与教学论');
+  const tue = math.filter(s => s.dayOfWeek === 2 && s.period === 2);
+  const wed = math.filter(s => s.dayOfWeek === 3 && s.period === 2);
+  eq(tue.length, 1, '周二P2 数学 1 条');
+  eq(tue[0] && tue[0].room, '3号教学楼305', '周二P2 数学教室=3号教学楼305');
+  eq(wed.length, 1, '周三P2 数学 1 条');
+  eq(wed[0] && wed[0].room, '综合实验楼二区305（蒙氏实训室）', '周三P2 数学教室=综合实验楼二区305（蒙氏实训室）');
+}
+
 console.log('\n[12] 青果网页特有的周次写法（第 ① 条规格的加强版）');
 eq(T.detectParity('5-12 双 [1-2]'), 'EVEN', '独立成词的「双」要识别（青果网页标准写法）');
 eq(T.detectParity('1,3,5 单 [5-6]'), 'ODD', '独立成词的「单」要识别');
@@ -309,7 +337,11 @@ console.log('\n[13] 打印版版面（全校课表按班级）—— 真实样�
 {
   const r = T.parse(PRINT_HTML);
   eq(r.layout, 'print', '识别为 print 版面（不能被网格版面抢走）');
-  eq(r.courses.length, 12, '课程 12 门（与「我的课表」页一致），实际=' + r.courses.length);
+  // ⚠️ 课程按 名称|教师|教室 去重（room 碰撞修复），course 行会比「门数」多；
+  //   对账按「去重到 名称+教师」的「门数」比对。
+  const distinctCourses13 = new Set(r.courses.map(c => c.name + '|' + (c.teacher || '')));
+  eq(distinctCourses13.size, 12, '课程「门数」=12（按名称+教师去重；打印版无「课程门数」声明，此处仅校验解析不丢课），实际=' + distinctCourses13.size);
+  ok(r.courses.length >= 12, 'room 拆分后 course 行数 ≥ 门数，实际=' + r.courses.length);
   eq(r.sessions.length, 25, '课次 25 条，实际=' + r.sessions.length);
   eq(r.stats.deduped, 3, '同一条课次被页面渲染两次 ⇒ 去重 3 条，实际=' + r.stats.deduped);
   eq(r.stats.dropped, { no_weeks: 0, no_sections: 0, no_day: 0 },
@@ -502,7 +534,7 @@ runMutated('丢弃计数',
 
 // M6：课程门数对账被删 —— 漏课会静悄悄通过（这是本门禁最值钱的一条防线）
 runMutated('课程门数对账',
-  "    if (meta.declaredCourseCount && courseList.length !== meta.declaredCourseCount) {",
+  "      if (distinctCourseCount !== meta.declaredCourseCount) {",
   "    if (false) {",
   (M) => {
     const doc = REAL_HTML.replace(

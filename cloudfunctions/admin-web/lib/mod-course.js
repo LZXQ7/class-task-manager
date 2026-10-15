@@ -13,8 +13,24 @@
 const { getPool } = require('../common/db');
 const { BizError } = require('../common/resp');
 const timetableImport = require('../common/timetable-import');
+const { repointSessionRoom } = require('../common/repoint-room');
 const timetableWeek = require('../common/week');
 const { logAction } = require('./audit');
+
+/**
+ * 取本班的学期/大节配置（供 week.periodCount 算节次数）。
+ * 查不到行时返回 {} —— periodCount 会兜底成 5，不阻断新增课次。
+ */
+async function classPeriodCfg(pool, classId) {
+  try {
+    const [rows] = await pool.query('SELECT period_time FROM `class` WHERE id = ? LIMIT 1', [Number(classId)]);
+    if (!rows || !rows.length) return {};
+    const raw = rows[0].period_time;
+    return { periodTime: typeof raw === 'string' ? JSON.parse(raw) : (raw || []) };
+  } catch (e) {
+    return {};
+  }
+}
 
 /**
  * 课表读取：一个班全部课次（COURSE + CLEAN 都给，CLEAN 是保洁别混掉）。
@@ -287,13 +303,48 @@ async function updateSession(id, patch, session, req) {
   }
   if (patch.period !== undefined) {
     const p = Number(patch.period);
-    if (!(p >= 1 && p <= 5)) throw new BizError(40001, '大节应为 1-5');
+    // ⚠️ 这里曾写死 `p <= 5`，而上游 addSession 已按本班 period_time 放行 ⇒
+    //   **编辑比新增更严**：课次加在第 6/7 节后想改星期，保存报「大节应为 1-5」，
+    //   只能删除重加（2026-10-14 用户实锤）。两处必须同口径。
+    //   容错：允许「课次原本就是这个大节」——配置后来被改小时仍可保存其它字段。
+    const nPeriods = timetableWeek.periodCount(await classPeriodCfg(pool, before.class_id));
+    if (!(p >= 1 && p <= Math.max(nPeriods, Number(before.period) || 1))) {
+      throw new BizError(40001, '大节应为 1-' + Math.max(nPeriods, Number(before.period) || 1));
+    }
     put('period', p);
   }
   if (patch.room !== undefined) {
     const r = String(patch.room).slice(0, 32);
-    // 教室挂在 course 上（不在 session，见项目 MEMORY「请假改造决议」）
-    await pool.query('UPDATE course SET room = ? WHERE id = ?', [r, before.course_id]);
+    // ⚠️ room 碰撞修复：教室挂在 course 上，但「改一节教室」绝不能动共享课程行
+    //   （否则同课名其它课次的教室会被一起改掉）。改为把该课次改挂到
+    //   (name,teacher,r) 课程行，没有就新建；旧课程行无人引用则清理（先备份）。
+    const [[cur]] = await pool.query(
+      'SELECT name, teacher, course_type, duty_count FROM course WHERE id = ?',
+      [before.course_id]
+    );
+    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    const { orphanDeleted } = await repointSessionRoom(pool, {
+      classId: before.class_id,
+      sessionId: id,
+      name: cur.name,
+      teacher: cur.teacher,
+      newRoom: r,
+      courseType: cur.course_type,
+      dutyCount: cur.duty_count,
+      memberId: session.memberId,
+      orphanHook: async (cid) => {
+        await pool.query('DELETE FROM `bak_admin_course` WHERE batch_no = ?', [stamp]);
+        await pool.query(
+          'INSERT INTO `bak_admin_course` (batch_no, course_id, name, teacher, room) ' +
+          "SELECT ?, c.id, c.name, IFNULL(c.teacher,''), IFNULL(c.room,'') FROM course c WHERE c.id = ?",
+          [stamp, cid]
+        );
+      }
+    });
+    if (orphanDeleted) {
+      // 备份批次号并入审计，便于回滚
+      changed.backupBatch = stamp;
+    }
     changed.room = r;
   }
   if (patch.note !== undefined) put('note', String(patch.note).slice(0, 64));
@@ -658,7 +709,9 @@ async function addSession(payload, session, req) {
   const dayOfWeek = Number(payload.dayOfWeek);
   if (!(dayOfWeek >= 1 && dayOfWeek <= 7)) throw new BizError(40001, '星期应为 1-7');
   const period = Number(payload.period);
-  if (!(period >= 1 && period <= 5)) throw new BizError(40001, '大节应为 1-5');
+  // 大节数按本班 period_time 校验（不再写死 5）：某些班要加 45 分钟短课得能排到第 6 节（2026-10-14）
+  const nPeriods = timetableWeek.periodCount(await classPeriodCfg(pool, classId));
+  if (!(period >= 1 && period <= nPeriods)) throw new BizError(40001, '大节应为 1-' + nPeriods);
   const grp = String(payload.groupScope || 'ALL').toUpperCase();
   if (grp !== 'A' && grp !== 'B' && grp !== 'ALL') throw new BizError(40001, '组别只能是 A / B / 全体');
   // 全体课在库里就是 group_scope = NULL（与前端标签/导入口径一致）
@@ -666,7 +719,11 @@ async function addSession(payload, session, req) {
   const courseType = grp === 'ALL' ? 'ALL' : 'GROUP';
   const weekRule = String(payload.weekRule || 'ALL').toUpperCase();
   if (!['ALL', 'ODD', 'EVEN'].includes(weekRule)) throw new BizError(40001, '周次规则无效');
-  const weeks = payload.weeks != null ? String(payload.weeks).slice(0, 64) : '';
+  // 🔴 周次必须归一化：用户在「具体周次」框里可以直接写 `6-13`，
+  //   而下游（端上 matchesWeeks / 后端 parseWeeks）按展开后的 `6,7,...,13` 解释。
+  //   早前这里原样入库，`6-13` 会被 parseInt 截成 `6` ⇒ 7~13 周静默丢课
+  //   （2026-10-14 用户实锤：书香校园第 6 周起只剩第 6 周）。此处展开后落库，两端口径一致。
+  const weeks = timetableWeek.parseWeeks(payload.weeks == null ? '' : String(payload.weeks)).join(',');
   const dutyCount = payload.dutyCount !== undefined ? Number(payload.dutyCount) : 2;
   if (!(dutyCount >= 0 && dutyCount <= 20)) throw new BizError(40001, '每节值日人数应在 0-20');
   const note = payload.note != null ? String(payload.note).slice(0, 64) : '';
@@ -678,10 +735,12 @@ async function addSession(payload, session, req) {
   const className = crows[0].name;
   const totalWeeks = Number(crows[0].total_weeks) || 16;
 
-  // ① 课程行：本班同名复用，否则新建
+  // ① 课程行：本班 同名+同教师+同教室 复用，否则新建（room 是课程身份的一部分，
+  //    同课不同教室 = 两条 course 行，避免新增一节把已有的同课名教室覆盖掉）
   let courseId;
   const [ex] = await pool.query(
-    'SELECT id FROM course WHERE class_id = ? AND name = ? LIMIT 1', [classId, courseName]
+    'SELECT id FROM course WHERE class_id = ? AND name = ? AND teacher = ? AND room = ? LIMIT 1',
+    [classId, courseName, teacher, room]
   );
   if (ex[0]) {
     courseId = Number(ex[0].id);
@@ -725,4 +784,38 @@ async function addSession(payload, session, req) {
   return { ok: true, sessionId, courseId, groupScope: grp, resetPublish };
 }
 
-module.exports = { listTimetable, dryRunImport, commitImport, updateSession, deleteSession, clearTimetable, addSession };
+/**
+ * 把某班的「主教室保洁」CLEAN 课程按新主教室同步：改名 + 改 course.room。
+ *
+ * 现行保洁把房间号**写死在课次名里**，且有两种形态（都要照顾）：
+ *   - 后缀式：打扫410     → 打扫{newRoom}
+ *   - 前缀式：410大扫除    → {newRoom}大扫除
+ * 只认「本班 kind='CLEAN' 课次引用的 course」且名里含「大扫除」或「打扫」，
+ * 普通课次一条不碰；course.room 同步成 newRoom。
+ * 值日/通知都靠 session→course 的 name/room **运行时读取**，故改名后历史值日显示自动跟上，
+ * 不需要重排、不需要退草稿。幂等：房间没变时改出来还是原名，无副作用。
+ * @returns {{renamed:number, courses:Array<{id:number,from:string,to:string,room:string}>}}
+ */
+async function syncMainRoomCleaning(pool, classId, newRoom) {
+  const room = String(newRoom == null ? '' : newRoom).trim();
+  if (!room) return { renamed: 0, courses: [] };
+  const cid = Number(classId);
+  const [rows] = await pool.query(
+    "SELECT DISTINCT c.id, c.name, c.room FROM session s JOIN course c ON c.id = s.course_id " +
+    'WHERE s.class_id = ? AND s.kind = \'CLEAN\'', [cid]
+  );
+  const changed = [];
+  for (const c of rows) {
+    // 「大扫除」是前缀式（房间在前），「打扫」是后缀式（房间在后）；两者互斥
+    let next = null;
+    if (/大扫除/.test(c.name)) next = room + '大扫除';
+    else if (/打扫/.test(c.name)) next = '打扫' + room;
+    if (!next) continue;                                        // 非主教室保洁课次，跳过
+    if (next === c.name && (c.room || '') === room) continue;   // 已是目标，跳过（幂等）
+    await pool.query('UPDATE course SET name = ?, room = ? WHERE id = ?', [next, room, c.id]);
+    changed.push({ id: c.id, from: c.name, to: next, room });
+  }
+  return { renamed: changed.length, courses: changed };
+}
+
+module.exports = { listTimetable, dryRunImport, commitImport, updateSession, deleteSession, clearTimetable, addSession, syncMainRoomCleaning };

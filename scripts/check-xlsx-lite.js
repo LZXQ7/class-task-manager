@@ -25,7 +25,7 @@ if (!fs.existsSync(fixture)) {
   const rows = sheets[0].rows;
   ok(rows.length === 5, '共 5 行（实际 ' + rows.length + '）');
   ok(rows[0].join(',') === '专业班级,学号,姓名,性别,指导员', '表头正确：' + rows[0].join(','));
-  ok(rows[1][1] === '209901030301' && rows[1][2] === '示例成员60', '第 2 行学号/姓名正确（t="s" 共享字符串）');
+  ok(rows[1][1] === '000000000101' && rows[1][2] === '示例成员60', '第 2 行学号/姓名正确（t="s" 共享字符串）');
   ok(rows[3][2] === '内联姓名', '第 4 行取到 inlineStr 文本');
   const text = sheetToText(sheets[0]);
   ok(text.split('\n').length === 5, 'sheetToText 输出 5 行');

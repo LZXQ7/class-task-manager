@@ -142,10 +142,29 @@ else bad('越界分组被静默丢弃（用户会以为导入成功）');
 console.log('\n── ④ 前端入口按能力位显隐');
 has(DUTY_W, /wx:if="\{\{canSchedule\}\}" class="dt-admin /, '值日页排班操作区按 canSchedule 显示');
 has(DUTY_W, /btn-text="\{\{canSchedule \? '去发布' : ''\}\}"/, '未发布提示的「去发布」按 canSchedule');
-eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 6,
-  '值日页排班入口全部改按 canSchedule（6 处：含 #27 合并行 / 合并行成员弹层的「调整›」入口）');
+/**
+ * ⚠️ 口径更新（2026-10-14）：原先硬数 `wx:if="{{canSchedule}}"` 出现 **6** 次。
+ *   用户要求隐藏值日页每天下方的「+ 加值日生」入口 ⇒ 该处改成
+ *   `wx:if="{{canSchedule && showAddDutyBtn}}"`（**开关式隐藏，功能代码全保留**），
+ *   于是「纯 canSchedule」变成 5 处、「canSchedule && showAddDutyBtn」1 处，合计仍是 6。
+ *   💡 判据要同时接受两种形态，否则以后再开关任何一个入口都会假红；
+ *      但**总数 6 仍是硬要求** —— 那才是「一处漏改」的信号。
+ */
+eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 6,
+  '值日页排班入口全部改按 canSchedule（6 处：含 #27 合并行 / 合并行成员弹层的「调整›」；「+加值日生」为开关式隐藏 canSchedule && showAddDutyBtn）');
+/** 开关本身必须在：它是「暂时隐藏入口」的唯一恢复手段，删了就只能翻 git。 */
+ok('「+ 加值日生」用开关式隐藏（data.showAddDutyBtn 存在且当前为 false）',
+  /showAddDutyBtn:\s*false/.test(read('miniprogram/pages/duty/index.js')),
+  '找不到 showAddDutyBtn: false —— 入口要么被真删了、要么开关被误设 true');
 eq(count(DUTY_W, /isSuper/g), 0, '值日页不再用 isSuper 判排班权');
-has(MINE_W, /wx:if="\{\{canSchedule\}\}"[^>]*bindtap="goManual"/, '「手动排班」入口按 canSchedule 显示');
+/**
+ * ⚠️ 口径更新（2026-10-15）：「手动排班」入口从「我的」页管理卡**平铺行**移进「更多」弹层
+ *   （2026-10-14 需求①，同批收纳切换测试账号 / 班级绑定入口 / AI 排班设置）。
+ *   因在弹层里要先关弹层再跳页，handler 由 `goManual` 改为 `onMoreManual`（内部仍调 goManual）。
+ *   ⇒ 判据只钉「入口仍由 canSchedule 显隐」这条真意图，handler 名两种形态都接受，
+ *     否则以后再收纳/挪动任何入口都会假红。权限位（canSchedule）是硬要求，不变。
+ */
+has(MINE_W, /wx:if="\{\{canSchedule\}\}"[^>]*bindtap="(goManual|onMoreManual)"/, '「手动排班」入口按 canSchedule 显示');
 has(MINE_W, /wx:if="\{\{canSchedule && pendingSwaps\.length\}\}"/, '「待确认换班」按 canSchedule 显示');
 has(ROS_W, /wx:if="\{\{canRosterEdit\}\}"/, '名册「添加 / 导入」入口按 canRosterEdit 显示');
 has(ROS_W, /&& canRosterEdit/, '名册「调组」入口按 canRosterEdit 显示');
