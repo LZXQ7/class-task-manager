@@ -41,6 +41,14 @@ Page({
     paReady: false,
     loading: true,
     profile: null,
+    /** 头像图加载失败的 src（cloud:// 被清 / 网络问题）：记下**失败的那个** src，
+        渲染时 `avatarUrl !== avatarErrSrc` 才显示图片，否则回落姓氏色块。
+        换头像后 src 一变条件自动不成立 —— 不用在每个 setData profile 的地方补重置。 */
+    avatarErrSrc: '',
+    /** 头像回落字符（无头像 / 图片加载失败时显示）：有姓名取首字、无姓名「?」、未登录「我」。
+        ⚠️ WXML 表达式不支持方法调用（slice 会静默失效，见 scripts/check-wxml.js），
+           所以必须在 JS 算好再绑 —— 每个 setData profile 的地方都要同步带上它。 */
+    avatarChar: '我',
     isAdmin: false,
     isSuper: false,
     /**
@@ -202,6 +210,7 @@ Page({
     const p = app.globalData.profile || null;
     this.setData(Object.assign({
       profile: p,
+      avatarChar: this._avatarChar(p),
       isAdmin: !!(app && app.isAdmin && app.isAdmin()),
       isSuper: isSuperNow,
       canSchedule: canScheduleNow,
@@ -231,6 +240,7 @@ Page({
         const p2 = app.globalData.profile || null;
         this.setData(Object.assign({
           profile: p2,
+          avatarChar: this._avatarChar(p2),
           isAdmin: !!(app.isAdmin && app.isAdmin()),
           isSuper: s,
           canSchedule: cs,
@@ -257,6 +267,7 @@ Page({
         const p3 = app.globalData.profile || null;
         this.setData(Object.assign({
           profile: p3,
+          avatarChar: this._avatarChar(p3),
           isAdmin: !!(app.isAdmin && app.isAdmin()),
           isSuper: !!(app.isSuper && app.isSuper()),
           canSchedule: !!(app.canSchedule && app.canSchedule()),
@@ -281,6 +292,13 @@ Page({
       position: p ? p.position : ''
     });
     return rt || { text: '', tier: '' };
+  },
+
+  /** 头像回落字符：有姓名取首字、无姓名「?」、未登录「我」（与 avatar-tag 组件的 firstChar 口径一致）。
+      WXML 不支持方法调用，故在 JS 算好绑 avatarChar；profile 为 null 时给「我」。 */
+  _avatarChar(p) {
+    const n = (p && p.name) ? String(p.name).trim() : '';
+    return n ? n.slice(0, 1) : (p ? '?' : '我');
   },
 
   load(force) {
@@ -469,6 +487,7 @@ Page({
     app.refreshAuth().then(() => {
       this.setData(Object.assign({
         profile: app.globalData.profile,
+        avatarChar: this._avatarChar(app.globalData.profile),
         isAdmin: !!(app.isAdmin && app.isAdmin()),
         isSuper: !!(app.isSuper && app.isSuper()),
         /* 切换账号后权限整体变了（含排班域），canSchedule 必须一起补，
@@ -627,6 +646,16 @@ Page({
     util.toast('打开头像选择失败，请稍后再试');
   },
 
+  /**
+   * 头像图片加载失败（cloud:// 失效 / 网络问题）：回落成姓氏色块。
+   * 记下**失败的那个 src**（此刻就是 profile.avatarUrl）—— 换头像后 avatarUrl 变化，
+   * `avatarUrl !== avatarErrSrc` 自动恢复显示图片，无需在各处补重置。
+   * （2026-10-18：button 内改用内置 <image> 后接管原 avatar-tag 组件的 binderror 回落。）
+   */
+  onAvatarImgError() {
+    this.setData({ avatarErrSrc: (this.data.profile && this.data.profile.avatarUrl) || '' });
+  },
+
   onChooseAvatar(e) {
     const tempPath = e && e.detail && e.detail.avatarUrl;
     if (!tempPath) { util.toast('未获取到头像'); return; }
@@ -645,7 +674,7 @@ Page({
           .then(() => app.refreshAuth())
           .then(() => {
             wx.hideLoading();
-            this.setData({ profile: app.globalData.profile });
+            this.setData({ profile: app.globalData.profile, avatarChar: this._avatarChar(app.globalData.profile) });
             util.toast('头像已更新');
           })
           .catch(() => { wx.hideLoading(); });

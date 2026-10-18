@@ -86,25 +86,65 @@
   color: #0AA5A8;
   background: #E8FFFB;
 }
-/* 头像点击层：整个头像块即 chooseAvatar 按钮（2026-10-16 重构）。
-   旧实现是「透明 button 绝对铺在 avatar-tag 上 + z-index 抬层」——自定义组件与
-   原生 button 的层级在真机上仍偶发错位，导致点头像没反应。现改为 button 直接包裹
-   avatar-tag，点击区域就是按钮本身，无叠层歧义。button 默认 padding / 边框 / 背景
-   全部重置为 80rpx 圆形容器，内部 avatar-tag 居中铺满。 */
-.avatar-btn {
+/* 头像位（2026-10-18 第二次修正：button 退出文档流）。
+   🔴 真机两次实测：<button open-type="chooseAvatar"> **只要参与布局**，就会被撑成
+      「内容宽 + 默认 padding」≈121rpx 的空框，并把头像顶到框外右侧（用户报「头像占位太大」）。
+      2026-10-16 的「button 直接包裹头像」与 2026-10-18 的「button 内只放内置 image」都治不了：
+      框的宽度由 button 自身的盒模型决定，与里面放什么无关。
+   ✅ 现结构：.avatar-slot（定宽 relative）+ 正常流里的头像图/回落块 + **留空**的
+      absolute button。button 不占文档流 ⇒ 撑不大也推不动兄弟元素。
+   ✅ 2026-10-18(3) 用户要求「大一点、上端齐姓名、下端齐学号、圆形」：信息区高度 =
+      姓名 line-height 56 + 学号 margin-top 6 + line-height 34 = 96rpx，故头像定 96rpx 圆，
+      与 .mn-user（align-items:center）等高 ⇒ 上下自然对齐。 */
+.avatar-slot {
+  position: relative;
   flex-shrink: 0;
+  width: 96rpx;
+  height: 96rpx;
+  margin: 0;
+  padding: 0;
+}
+/* 圆形头像图（与 avatar-tag 组件的 .avatar-img 同规格：96rpx 圆 + 灰底） */
+.avatar-slot .avatar-img {
+  display: block;
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #F2F3F5;
+}
+/* 无头像 / 头像加载失败：姓氏色块（底 #F0F5FF、字 #3370FF；无姓名时显示「?」，
+   与组件 firstChar 一致；96rpx 圆下字号取 38rpx 居中） */
+.avatar-slot .avatar-fallback {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #F0F5FF;
+  color: #3370FF;
+  font-size: 38rpx;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 80rpx;
-  height: 80rpx;
+  overflow: hidden;
+}
+/* 空的透明按钮：绝对铺满槽位，只当 chooseAvatar 点击层（不参与布局 ⇒ 不会撑大占位）。
+   🔴 必须 position:absolute + 显式 0/0 + 96rpx：一旦回到文档流，121rpx 空框立刻复现。 */
+.avatar-btn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  width: 96rpx;
+  height: 96rpx;
   margin: 0;
   padding: 0;
   background: transparent;
   border: none;
   border-radius: 50%;
+  font-size: 0;
   line-height: 1;
   overflow: hidden;
+  box-sizing: border-box;
 }
 .avatar-btn::after {
   border: none;

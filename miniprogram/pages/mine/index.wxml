@@ -28,12 +28,27 @@
 
   <!-- 用户信息 -->
   <view class="mn-user st-item st-1">
-    <!-- 整个头像块即 chooseAvatar 按钮（2026-10-16 重构：button 直接包裹 avatar-tag，
-         消除「透明按钮叠在自定义组件上」的层级歧义——此前 z-index 加固仍偶发失效）。
-         button 默认样式在 wxss 里全部重置为 80rpx 圆形容器。 -->
-    <button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar" binderror="onAvatarError">
-      <avatar-tag name="{{profile ? profile.name : '我'}}" src="{{profile ? profile.avatarUrl : ''}}" size="{{80}}" />
-    </button>
+    <!-- 头像位（2026-10-18 第二次修正：button 彻底退出文档流）。
+         🔴 两次真机实测结论：<button open-type="chooseAvatar"> **只要参与布局**，真机就会按
+            「内容宽 + 默认 padding」撑出约 121rpx 的空框 —— 内放 avatar-tag 时头像还被渲染到
+            按钮右侧外面（右移约 87px）；换成内置 <image> 后空框依旧在，头像仍被顶到框右边。
+            表现就是用户说的「头像占位太大 / 头像要往左」。
+         ✅ 根治结构：.avatar-slot 是 80rpx 定宽槽位（relative），头像图与姓氏回落块作为**普通子节点**
+            贴左渲染；<button> **留空** + absolute 铺满槽位，只当点击层。按钮不占文档流 ⇒
+            撑不大、推不动任何兄弟元素，头像必然贴左，信息区紧邻其后。 -->
+    <view class="avatar-slot">
+      <image
+        wx:if="{{profile && profile.avatarUrl && profile.avatarUrl !== avatarErrSrc}}"
+        class="avatar-img"
+        src="{{profile.avatarUrl}}"
+        mode="aspectFill"
+        lazy-load="{{true}}"
+        binderror="onAvatarImgError"
+      />
+      <view wx:else class="avatar-fallback">{{avatarChar}}</view>
+      <!-- 空按钮（必须留空，任何子节点都会把按钮重新撑大）：只负责唤起 chooseAvatar 面板 -->
+      <button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar" binderror="onAvatarError"></button>
+    </view>
     <view class="mn-user-info">
       <view class="mn-user-line">
         <text class="mn-user-name">{{profile ? profile.name : '未绑定'}}</text>

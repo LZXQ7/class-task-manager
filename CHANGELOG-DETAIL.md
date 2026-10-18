@@ -17,9 +17,17 @@
 - **改动**：删 WXML/WXSS/JS 全链路（含 `legal.js` 的微信能力说明）；后端 `remind_block` / `remind_reopen` 字段**保留**（删列风险大于收益），门禁 `check-clean-label.js` 改为看守这两个字段而非 UI 文案。
 - **影响**：纯前端删除，无数据面变化。
 
-### ② 「我的」头像可更换
+### ② 「我的」头像可更换（2026-10-18 二次修正：button 退出文档流）
 - **问题**：原实现是「透明 `<button>` 叠在自定义头像组件上 + z-index 抬层」，真机偶发收不到点击。
-- **改动**：`miniprogram/pages/mine/index.wxml` 改为 `<button open-type="chooseAvatar">` 直接包裹头像组件；`binderror` 兜底隐私拒绝（不再红屏）。`check-tap-layer-zindex.js` 把新结构钉成门禁（含禁止回退旧模式的变异）。
+- **改动**：`miniprogram/pages/mine/index.wxml` 改用 `<button open-type="chooseAvatar">` 触发换头像；`binderror` 兜底隐私拒绝（不再红屏）。
+- **第一次修正（`c010544`，用户报「头像占位太大了」）**：初版把 `<avatar-tag>` **自定义组件**放进了按钮内，真机上它被渲染到按钮**右侧外面**、按钮按「内容宽 + 默认 padding」撑大、头像右移。改为按钮内只放**内置组件**（`<image class="avatar-img">` 80rpx 圆 + `<view class="avatar-fallback">` 姓氏色块），头像回到 80rpx 圆内。回落字符由 JS `_avatarChar()` 预计算（WXML 不支持方法调用，`slice()` 会静默失效，`check-wxml.js` 抓出），5 处 setData profile 同步带 `avatarChar`；图片加载失败记 `avatarErrSrc` 回落色块，换头像后 src 变化自动恢复。
+- **第二次修正（2026-10-18 晚，用户复报「占位还是太大、头像要往左，不是只变小」）**：截图二次量化（464×937，卡宽 686rpx ≈ 376px ⇒ **1rpx≈0.548px**）——
+  - 卡片左边缘 x=51，内容左边界（+32rpx padding）x≈68.5；
+  - **头像左边界 x=137**，即两者之间有 **68.5px ≈ 125rpx 纯空区**；该空区 7000+ 像素里 46 种颜色全为 `#e8f3ff` 系（卡片底色），**没有按钮底色也没有描边** ⇒ 空框不是「看得见的框」，而是按钮占掉的布局宽度；
+  - 姓名被顶到 x≈268（≈365rpx），`示例成员01` 因此折成两行。
+  - **结论：`button` 只要参与布局就必然被撑宽（≈80rpx 内容 + 微信默认 14px×2 padding），与里面放自定义组件还是内置 `<image>` 无关。** 所以第二次改成**按钮彻底离开文档流**：`.avatar-slot`（80rpx 定宽 + `position:relative`）里放正常流的头像图/回落色块，`<button class="avatar-btn">` **留空**、`position:absolute; left:0; top:0; width/height:80rpx`、`padding:0`、`box-sizing:border-box`，只当点击层。按钮不占布局 ⇒ 撑不大、推不动兄弟元素，头像必然贴左、姓名回归一行。
+  - 门禁 `check-tap-layer-zindex.js` **整份重写**：判据从「button 内必须有 image」翻转为「button 必须留空 + 必须 absolute + 槽位必须 relative + padding 归零」，并抽成「共享判据 + 变异自证」结构（真跑与变异走同一份 `checks()`，避免判据漂移）；变异 6 组：M1 去 `open-type`、M2 去 `bind:chooseavatar`、M3 去 `binderror`、M4 去掉 `position:absolute`（回文档流 ⇒ 空框复现）、M5 往空按钮塞 `<image>`、M6 去掉槽位 `position:relative`。**6/6 全抓**，全量门禁 **87/87**。
+  - 渲染验证：Chrome 无头 harness 先注入**微信 button 默认样式**（padding 14px / `::after` 描边 / line-height 2.55）再叠页面 wxss，三场景（有头像 / 「宋」/ 「我」）**18 条断言全过**：槽位贴内容左边界、头像贴槽位左上、按钮与槽位零偏移且 40px 不膨胀、无描边、信息区紧邻 12px。⚠️ Chrome 无法复现微信真机的按钮膨胀（层叠行为不同），故 harness 只能作「新结构正确」的证据，不能当「旧结构会变红」的负对照 —— 旧结构的红由门禁变异 M4/M5 保证。
 
 ### ③ 后台使用统计（新增，含 2026-10-18 四轮修复）
 - **新增**：小程序端 `utils/track.js`（内存队列 + 防抖 1.5s + 批量上限 30 条，失败静默丢弃）+ `app.js` 挂 `getApp().track`；各页 `onShow` 调 `pageView`，首页班费/团费/通知/班级/名册/请假与「我的」关于/切换账号入口调 `action`（一律 `if (getApp().track)` 防御，防 mock 环境崩页面）。云函数 `stat` 的 `track` action 批量落 `usage_event(openid,class_id,kind,event,ref,ts)`；建表 SQL = `scripts/migrate-usage.sql`。后台 admin-web 新增 `lib/mod-usage.js`（`/api/usage`：按 event 聚合 PV/UV + 每日趋势 + 成员明细）、`index.html` 「使用统计」页签、`public/app.js` `renderUsage`、`admin.css` 柱状样式。
