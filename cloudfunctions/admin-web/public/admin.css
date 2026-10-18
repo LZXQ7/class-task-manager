@@ -47,6 +47,41 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   background: linear-gradient(160deg, #eef2ff 0%, #f5f6f8 55%);
   padding: 24px;
 }
+/* 加载态：刷新时先显示它（见 index.html 注释）——视觉与登录页同源，
+   避免「先闪登录页」；只在 /api/me 出结果前存在一瞬 */
+.boot-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #eef2ff 0%, #f5f6f8 55%);
+  padding: 24px;
+}
+.boot-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 40px;
+  background: var(--panel);
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(31, 41, 55, 0.08);
+}
+.boot-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #dbe3f5;
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: boot-spin 0.8s linear infinite;
+}
+@keyframes boot-spin {
+  to { transform: rotate(360deg); }
+}
+.boot-text {
+  font-size: 14px;
+  color: var(--text-3);
+}
 .login-card {
   width: 100%;
   max-width: 360px;
@@ -219,6 +254,15 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   font-weight: 500;
   font-size: 14px;
 }
+/* 卡片头下的摘要行（绑定页「本班共 N 人…」）：
+   ⚠️ 左侧 padding 必须与 .card-hd 一致（16px），否则两行文字左边对不齐
+   （2026-10-18 用户反馈「绑定页文字没有对齐」——根因就是此类无样式、
+   padding 为 0，而 card-hd 有 13px 16px） */
+.summary {
+  padding: 10px 16px 12px;
+  color: var(--text-2);
+  font-size: 13px;
+}
 .muted-note {
   padding: 12px 16px;
   color: var(--text-2);
@@ -298,6 +342,124 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 }
 .toolbar-right { display: flex; gap: 8px; }
 .input-search { max-width: 260px; }
+/* 使用统计工具栏：时间范围（左）+ 班级范围（右）同一行，窄屏才换行 */
+.toolbar-usage { flex-wrap: wrap; row-gap: 8px; }
+.usage-range, .usage-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.tb-label { color: var(--text-2); font-size: 13px; }
+
+/* 使用统计（2026-10-16）：PV 行内迷你条 + 每日活跃柱状 */
+.pv-bar {
+  display: inline-block;
+  height: 8px;
+  background: var(--brand);
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-left: 10px;
+  min-width: 2px;
+}
+
+/* 事件名：中文主名 + 英文 key 小字（便于技术对照排查） */
+.ev-name { color: var(--text); }
+.ev-key {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+/* 每日活跃：连续时间轴。无数据日期也占位（is-zero），保证横轴等距、不塌成一根。
+   左右 16px 内边距与卡片标题对齐，首/末柱与日期不再贴边（2026-10-18 用户反馈）。 */
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 140px;
+  padding: 12px 16px 0;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  overflow: visible;
+  /* 天数少时柱子不要拉满整行（2026-10-18 用户反馈「近七天不要这么宽」） */
+  max-width: 760px;
+  margin: 0 auto;
+}
+.bar-col {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 36px;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  position: relative;
+}
+.bar-v {
+  width: 100%;
+  background: var(--brand);
+  border-radius: 2px 2px 0 0;
+  opacity: .85;
+  transition: opacity .15s;
+}
+.bar-col:hover .bar-v { opacity: 1; }
+
+/* 即时气泡：原生 title 有约 1 秒系统延迟，改 data-tip + CSS 悬停立刻显示 */
+.bar-col::before {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(3px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(31, 35, 41, .92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+  z-index: 20;
+}
+.bar-col:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+/* 首/末柱气泡贴边对齐，防止溢出卡片 */
+.bar-col:first-child::before { left: 0; transform: translateY(3px); }
+.bar-col:first-child:hover::before { transform: translateY(0); }
+.bar-col:last-child::before { left: auto; right: 0; transform: translateY(3px); }
+.bar-col:last-child:hover::before { transform: translateY(0); }
+
+/* 零值日期：常显一条淡底线（悬停变蓝）。否则只有 1 天有数据时，
+   整张图看起来是空的——底线让 30 天的时间轴连续可读。 */
+.bar-col.is-zero::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  background: var(--line);
+  opacity: 1;
+  transition: background .15s, opacity .15s;
+}
+.bar-col.is-zero:hover::after { background: var(--brand); opacity: .55; }
+
+.bars-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--text-3);
+  max-width: 760px;
+  margin: 8px auto 0;
+}
+.bars-axis-mid { color: var(--text-3); }
+
+/* 成员明细：用过哪些功能（中文名列表） */
+.ev-list { color: var(--text-2); font-size: 13px; line-height: 1.6; }
+
+/* 柱状图卡片允许气泡溢出：.card 默认 overflow:hidden 会把 tooltip 裁掉 */
+.card-usage { overflow: visible; }
 
 .seg {
   display: inline-flex;

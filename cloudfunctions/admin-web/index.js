@@ -21,6 +21,7 @@ const modMember = require('./lib/mod-member');
 const modCourse = require('./lib/mod-course');
 const modConfig = require('./lib/mod-config');
 const modLeave = require('./lib/mod-leave');
+const modUsage = require('./lib/mod-usage');
 
 const app = express();
 app.disable('x-powered-by');
@@ -150,6 +151,9 @@ function handle(res, fn) {
 app.get('/api/overview', (req, res) => handle(res, () => modConfig.overview()));
 
 app.get('/api/audit', (req, res) => handle(res, () => modConfig.listAudit(req.query)));
+
+/* ---------------- 使用统计（2026-10-16） ---------------- */
+app.get('/api/usage', (req, res) => handle(res, () => modUsage.usage(req.query)));
 
 app.get('/api/admin-users', (req, res) => handle(res, () => modConfig.listAdminUsers()));
 

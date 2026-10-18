@@ -94,7 +94,7 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   本版云函数已部署生效（course / admin-web / common 等），**前端需重新上传**。
  * 注意：对外版本号与 CHANGELOG 的内部迭代号（v0.7.x）是两套口径。
  */
-const APP_VERSION = '1.0.6.9';
+const APP_VERSION = '1.0.7.0';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

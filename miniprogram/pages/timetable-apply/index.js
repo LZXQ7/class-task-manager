@@ -37,6 +37,7 @@ Page({
 
   onShow() {
     const app = getApp();
+    if (app.track) app.track.pageView('timetable_apply');
     const isSuper = !!(app && app.isSuper && app.isSuper());
     this.setData({ paReady: true, isSuper });
     if (typeof app.recheckAuth === 'function') {

@@ -355,7 +355,8 @@ console.log('\n── ④ 底栏占位联动');
 
   // 4 处 wxss 让位值：占位 + 固定余量
   const RPX_SPOTS = [
-    ['pages/home/index.wxss',            /\.remind-fab\s*\{[\s\S]*?bottom:\s*calc\((\d+)rpx/,        24,  'home .remind-fab'],
+    // 2026-10-16：首页 .remind-fab（系统日历/值日微信提醒悬浮胶囊）整体下线（需求①），
+    //   首页已无底部 fixed 元素需让位，故移除该项断言（否则正则失配恒红）。
     ['pages/timetable/index.wxss',       /\.fab\s*\{[\s\S]*?bottom:\s*calc\((\d+)rpx/,               40,  'timetable .fab'],
     ['pages/timetable/index.wxss',       /\.fab-menu\s*\{[\s\S]*?bottom:\s*calc\((\d+)rpx/,         46,  'timetable .fab-menu'],
     ['components/duty-sheet/index.wxss', /\.ds-foot\s*\{[\s\S]*?padding-bottom:\s*calc\((\d+)rpx/,   16,  'duty-sheet .ds-foot']
@@ -429,7 +430,7 @@ console.log('\n── ⑤ 无安全区兜底留白（安卓底栏贴底修复）
   } else bad('app.js sheetMetrics().tabbarPx 没有叠加无安全区的 lift —— 弹层内容会被抬高后的胶囊压住');
 
   const LIFT_SPOTS = [
-    ['pages/home/index.wxss', /\.remind-fab\s*\{[\s\S]*?\}/, 'home .remind-fab'],
+    // 2026-10-16：.remind-fab 已随需求①整体移除，对应 LIFT_SPOTS 断言同步下线。
     ['pages/timetable/index.wxss', /\.fab\s*\{[\s\S]*?\}/, 'timetable .fab'],
     ['pages/timetable/index.wxss', /\.fab-menu\s*\{[\s\S]*?\}/, 'timetable .fab-menu'],
     ['components/duty-sheet/index.wxss', /\.ds-foot\s*\{[\s\S]*?\}/, 'duty-sheet .ds-foot']

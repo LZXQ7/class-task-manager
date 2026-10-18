@@ -20,6 +20,8 @@
     classes: [],
     classId: null,
     view: 'overview',
+    // 使用统计：默认「全部班级」总览（2026-10-18 用户要求直接看全部账号）
+    usageAll: true,
     // 课表导入：解析结果暂存，确认时才提交
     importDraft: null,
     memberPage: 1,
@@ -120,11 +122,24 @@
     config:    { title: '系统配置', render: renderConfig },
     audit:     { title: '操作审计', render: renderAudit },
     leave:     { title: '请假',     render: renderLeave },
-    binding:   { title: '绑定',     render: renderBinding }
+    binding:   { title: '绑定',     render: renderBinding },
+    usage:     { title: '使用统计', render: renderUsage }
   };
+
+  /* ---------------- 刷新后恢复现场（2026-10-18 用户要求） ----------------
+   * F5 刷新后不要跳回概览、也不要每次重置到第 1 个班：把当前 view / classId /
+   * 统计范围落 localStorage，下次启动读回来。
+   * 包 try/catch：门禁 mock 环境没有 localStorage，隐私模式下 setItem 会抛。 */
+  var LS_VIEW = 'admin.web.view';
+  var LS_CLASS = 'admin.web.classId';
+  var LS_USAGE_ALL = 'admin.web.usageAll';
+  var LS_USAGE_DAYS = 'admin.web.usageDays';
+  function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* 忽略：不影响功能 */ } }
 
   function go(view) {
     state.view = view;
+    lsSet(LS_VIEW, view);
     $$('.nav-item').forEach(function (b) {
       b.classList.toggle('active', b.dataset.view === view);
     });
@@ -1369,9 +1384,198 @@
     return '<div class="card empty">' + esc(d.errMsg || '加载失败') + '</div>';
   }
 
+  /* ---------------- 使用统计（2026-10-16） ---------------- */
+  // event → 中文名：页面类来自各页 onShow(pageView)，入口类来自 track.action(key)
+  var EVENT_LABEL = {
+    home: '首页', mine: '我的', duty: '值日', manual: '手动排班',
+    timetable: '课程表', timetable_apply: '调课申请', classes: '班级',
+    roster: '名册', notice: '通知', bind: '班级绑定', webview: '网页', doc: '文档',
+    fee_open: '班费/团费', notice_open: '打开通知', notice_publish: '发布通知',
+    class_open: '打开班级', roster_open: '打开名册', leave_open: '打开请假',
+    about: '关于', switch_account: '切换账号'
+  };
+  /** 事件显示名：fee_open 再按 ref（class|league）细分「班费」「团费」 */
+  function eventLabel(r) {
+    if (r.event === 'fee_open') {
+      if (r.ref === 'league') return '团费';
+      if (r.ref === 'class') return '班费';
+      return '班费/团费';
+    }
+    return EVENT_LABEL[r.event] || r.event;
+  }
+  /** 把后端 GROUP_CONCAT 的 "event/ref" 串转成中文名列表（如「首页、班费」） */
+  function labelEvents(csv) {
+    if (!csv) return '—';
+    var keys = String(csv).split(',');
+    var names = keys.map(function (k) {
+      var i = k.indexOf('/');
+      if (i > 0) return eventLabel({ event: k.slice(0, i), ref: k.slice(i + 1) });
+      return eventLabel({ event: k });
+    });
+    return esc(names.join('、'));
+  }
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  function ymd(dt) { return dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()); }
+
+  /**
+   * 把「只有有数据的日期」补齐成连续时间轴。
+   * 数据库只返回有记录的日期，新站点常只有 1 天数据 ⇒ 柱状图会塌成孤零零一根
+   * （2026-10-18 用户反馈「每日活跃总览显示有问题」）。这里按选定范围逐日补 0。
+   */
+  function buildDailyAxis(days, daily) {
+    var map = {};
+    (daily || []).forEach(function (x) { map[String(x.d).slice(0, 10)] = x.pv; });
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var start;
+    if (days > 0) {
+      start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (days - 1));
+    } else {
+      var keys = Object.keys(map).sort();
+      if (!keys.length) return [];
+      start = new Date(keys[0] + 'T00:00:00');
+      if (isNaN(start.getTime())) start = new Date(keys[0]);
+      // 「全部」也要有上限，否则跨度一年会挤成一条线
+      var span = Math.round((today - start) / 86400000) + 1;
+      if (span > 120) start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 119);
+    }
+    var out = [];
+    var cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    while (cur.getTime() <= today.getTime()) {
+      var k = ymd(cur);
+      out.push({ d: k, pv: map[k] || 0 });
+      cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1);
+    }
+    return out;
+  }
+
+  function renderUsage(host) {
+    // 统计范围刷新后保留；默认「全部班级」（不分班总览，2026-10-18 用户要求）
+    var savedAll = lsGet(LS_USAGE_ALL);
+    if (savedAll !== null) state.usageAll = savedAll === '1';
+    // 时间范围也持久化（0=全部）。⚠️ 不能用 `!state.usageDays` 判默认值：
+    // 0 是 falsy，会把用户点的「全部」当场改回 30（2026-10-18 实反馈：
+    // 「点击全部没用，蓝色还在近 30 天上面」）
+    var savedDays = lsGet(LS_USAGE_DAYS);
+    if (savedDays !== null && savedDays !== '') state.usageDays = Number(savedDays);
+    if (typeof state.usageDays !== 'number' || isNaN(state.usageDays)) state.usageDays = 30;
+    var days = state.usageDays;
+    var classPart = state.usageAll ? '' : '&classId=' + state.classId;
+    api('/api/usage?days=' + days + classPart).then(function (d) {
+      if (!d.ok) { host.innerHTML = errHtml(d); return; }
+      var o = d.data || {};
+      var rows = o.rows || [];
+      var maxPv = rows.reduce(function (m, r) { return Math.max(m, r.pv); }, 1);
+      var kindLabel = { page_view: '页面浏览', action: '功能点击' };
+
+      var rangeBtns = [
+        { d: 7, t: '近 7 天' }, { d: 30, t: '近 30 天' }, { d: 0, t: '全部' }
+      ].map(function (x) {
+        return '<button class="btn' + (days === x.d ? ' btn-primary' : '') +
+          '" data-rg="' + x.d + '">' + x.t + '</button>';
+      }).join(' ');
+
+      var totalHtml = '<div class="stat-row">' +
+        stat('总浏览/点击', o.total ? o.total.pv : 0, '累计次数') +
+        stat('总使用人数', o.total ? o.total.uv : 0, '去重成员') +
+        '</div>';
+
+      var tbl = '<div class="card"><div class="card-hd">功能使用情况排行（按次数）</div>' +
+        '<table class="tbl"><thead><tr>' +
+        '<th>功能 / 页面</th><th>类型</th><th>次数 (PV)</th><th>人数 (UV)</th><th>最近活跃</th>' +
+        '</tr></thead><tbody>' +
+        (rows.length ? rows.map(function (r) {
+          var pct = Math.max(2, Math.round(r.pv / maxPv * 100));
+          return '<tr>' +
+            '<td><span class="ev-name">' + esc(eventLabel(r)) + '</span>' +
+              '<span class="ev-key">' + esc(r.event) + (r.ref ? '/' + esc(r.ref) : '') + '</span></td>' +
+            '<td>' + (kindLabel[r.kind] || esc(r.kind)) + '</td>' +
+            '<td class="td-no">' + r.pv + '<span class="pv-bar" style="width:' + pct + '%"></span></td>' +
+            '<td class="td-no">' + r.uv + '</td>' +
+            '<td class="td-no">' + esc(r.lastTs || '—') + '</td>' +
+            '</tr>';
+        }).join('') : '<tr><td colspan="5" class="empty">暂无使用记录</td></tr>') +
+        '</tbody></table></div>';
+
+      var axis = buildDailyAxis(days, (o.trend && o.trend.daily) || []);
+      var maxDaily = axis.reduce(function (m, x) { return Math.max(m, x.pv); }, 1);
+      // 轴说明：days=0（全部）时不能说「近 30 天」——后端 trend.days 也只是回显值
+      var axisNote = days
+        ? '横轴：日期（近 ' + days + ' 天，每日总次数）'
+        : '横轴：日期（全部，每日总次数）';
+      var dailyHtml = '<div class="card card-usage"><div class="card-hd">每日活跃总览（点击/浏览总次数）</div>' +
+        (axis.length
+          ? '<div class="bars">' + axis.map(function (x) {
+              var pct = x.pv > 0 ? Math.max(4, Math.round(x.pv / maxDaily * 100)) : 0;
+              // data-tip 走 CSS 气泡即时显示；原生 title 有约 1 秒系统延迟，已弃用
+              return '<div class="bar-col' + (x.pv > 0 ? '' : ' is-zero') + '" data-tip="' + esc(x.d) + ' · ' + x.pv + ' 次">' +
+                (x.pv > 0 ? '<div class="bar-v" style="height:' + pct + '%"></div>' : '') + '</div>';
+            }).join('') + '</div>' +
+            '<div class="bars-axis"><span>' + esc(axis[0].d) + '</span>' +
+              '<span class="bars-axis-mid">共 ' + axis.length + ' 天</span>' +
+              '<span>' + esc(axis[axis.length - 1].d) + '</span></div>' +
+            '<div class="muted-note">' + axisNote + '</div>'
+          : '<div class="empty">暂无数据</div>') +
+        '</div>';
+
+      // 成员使用明细：「总使用人数」具体到账号（后端已排除测试账号）
+      var members = o.members || [];
+      var memTbl = '<div class="card"><div class="card-hd">成员使用明细（按人，已排除测试账号）</div>' +
+        '<table class="tbl"><thead><tr>' +
+        '<th>成员</th><th>班级</th><th>次数 (PV)</th><th>活跃天数</th><th>用过哪些功能</th><th>最近活跃</th>' +
+        '</tr></thead><tbody>' +
+        (members.length ? members.map(function (r) {
+          return '<tr>' +
+            '<td>' + esc(r.memberName) + (r.studentNo ? '<span class="ev-key">' + esc(r.studentNo) + '</span>' : '') + '</td>' +
+            '<td>' + esc(r.className) + '</td>' +
+            '<td class="td-no">' + r.pv + '</td>' +
+            '<td class="td-no">' + r.activeDays + '</td>' +
+            '<td class="ev-list">' + labelEvents(r.events) + '</td>' +
+            '<td class="td-no">' + esc(r.lastTs || '—') + '</td>' +
+            '</tr>';
+        }).join('') : '<tr><td colspan="6" class="empty">暂无使用记录</td></tr>') +
+        '</tbody></table></div>';
+
+      // 班级范围：全部班级 / 仅当前班级（与右上角班级选择器解耦，刷新后保留）
+      // ⚠️ 标签不缀具体班名——右上角选择器已经显示当前班，再写一遍是冗余（2026-10-18 用户要求）
+      var scopeBtns =
+        '<button class="btn' + (state.usageAll ? ' btn-primary' : '') + '" data-ua="1">全部班级</button>' +
+        '<button class="btn' + (state.usageAll ? '' : ' btn-primary') + '" data-ua="0">仅当前班级</button>';
+      // 左右布局：时间范围在左、班级范围在右（同一行，窄屏才换行）
+      var toolbar = '<div class="toolbar toolbar-usage">' +
+        '<div class="usage-range"><span class="tb-label">时间范围</span>' + rangeBtns + '</div>' +
+        '<div class="usage-scope"><span class="tb-label">班级范围</span>' + scopeBtns + '</div>' +
+        '</div>';
+      host.innerHTML = toolbar + totalHtml + tbl + memTbl + dailyHtml;
+
+      $$('[data-rg]', host).forEach(function (b) {
+        b.onclick = function () {
+          state.usageDays = Number(b.dataset.rg);
+          lsSet(LS_USAGE_DAYS, String(state.usageDays));
+          reload();
+        };
+      });
+      $$('[data-ua]', host).forEach(function (b) {
+        b.onclick = function () {
+          state.usageAll = b.dataset.ua === '1';
+          lsSet(LS_USAGE_ALL, state.usageAll ? '1' : '0');
+          reload();
+        };
+      });
+    });
+  }
+
   /* ---------------- 登录 / 启动 ---------------- */
+  // 加载态只在「还没决定显示登录页还是主界面」时存在；
+  // 两个分流函数都必须撤掉它，否则刷新后会停在「正在加载…」
+  function hideBoot() {
+    var b = $('#bootstrap');
+    if (b) b.hidden = true;
+  }
+
   function showLogin() {
     state.user = null;
+    hideBoot();
     $('#login-view').hidden = false;
     $('#main-view').hidden = true;
     $('#login-password').value = '';
@@ -1380,6 +1584,11 @@
   function showMain(me) {
     state.user = me.user;
     state.classes = me.classes || [];
+    // 刷新后恢复上次选中的班级；该班已不在可选列表（换账号 / 班级停用）则回退第 1 个
+    var savedClass = Number(lsGet(LS_CLASS));
+    if (savedClass && state.classes.some(function (c) { return c.id === savedClass; })) {
+      state.classId = savedClass;
+    }
     if (!state.classId || !currentClass()) {
       state.classId = state.classes.length ? state.classes[0].id : null;
     }
@@ -1390,6 +1599,7 @@
     }).join('');
     sel.onchange = function () {
       state.classId = Number(sel.value);
+      lsSet(LS_CLASS, sel.value);
       // 两个分页游标都要回到第 1 页：新班可能没那么多页，留着旧页码会翻到空页
       state.memberPage = 1;
       state.auditPage = 1;
@@ -1405,12 +1615,19 @@
       if (cls) toast('已切换到「' + cls.name + '」');
     };
     $('#who').textContent = me.user.memberName + '（' + me.user.username + '）';
+    hideBoot();
     $('#login-view').hidden = true;
     $('#main-view').hidden = false;
-    go('overview');
+    // 刷新后留在上次所在的页，而不是一律跳回概览
+    var savedView = lsGet(LS_VIEW);
+    go(savedView && VIEWS[savedView] ? savedView : 'overview');
   }
 
   function boot() {
+    // app.js 能跑到这里，说明脚本本身是好的 ⇒ 撤掉 index.html 里的 5s 兜底定时器
+    // （不清的话，极端慢网下它会突然把登录页放出来，盖住正在加载的主界面）
+    if (window.__bootTimer) { clearTimeout(window.__bootTimer); window.__bootTimer = null; }
+
     $('#login-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var btn = $('#login-btn');

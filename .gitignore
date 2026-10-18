@@ -59,3 +59,18 @@ p2check.png
 
 # 本地调试夹具（含用户真实课表 HTML，含教师名；非源码，勿入库）
 _dbg_room/
+
+# 本机 AI 工具配置与缓存（2026-10-18 补：.env-* 覆盖不到 .env.local，
+# 漏一个就会把工具配置/乱名空文件吞进版本库；publish-release.sh 第 1 步是 git add -A）
+.env.local
+.agents/
+.cloudbase/
+.codebuddy/
+.lingma/
+.roo/
+.rules/
+rules/
+codebuddy-plugin/
+.mcp.json
+CODEBUDDY.md
+1）——

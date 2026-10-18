@@ -102,10 +102,6 @@ Page({
     /** 班级绑定入口开关（仅超管可见可操作，防爆破自动锁死后在这里开回） */
     bindOpen: true,
     stats: null,
-    remindOn: false,
-    /** 微信提醒额度耗尽（后端 remind_block，cron 发送 43101 时置 1）→ 行尾换成「重新开启」 */
-    remindBlock: false,
-    calendarOn: false,
 
     appShow: false,
     apps: [],
@@ -195,6 +191,7 @@ Page({
 
   onShow() {
     const app = getApp();
+    if (app.track) app.track.pageView('mine');
     app.setTabBar(3);
     // v0.7.31：不再立即播 —— 等「身份(app.ready) + 首屏数据(loading=false)」就绪、或 READY_MS 兜底超时再统一开播
     pageAnim.playReady(this, getApp());
@@ -212,9 +209,6 @@ Page({
       switched: !!(app.globalData.switched),
       impersonateBanner: impersonate.bannerText(),
       bindOpen: !!(app.globalData.config && app.globalData.config.bindOpen !== false),
-      remindOn: !!wx.getStorageSync('remindOn'),
-      remindBlock: !!(p && p.remindBlock),
-      calendarOn: !!wx.getStorageSync('calendarOn'),
       selfTag: this._selfRoleTag().text,
       selfTier: this._selfRoleTag().tier
     }, this._feeFlags()));
@@ -378,6 +372,7 @@ Page({
   },
 
   onSwitchAccount() {
+    if (getApp().track) getApp().track.action('switch_account');
     // 已预取 → 立即弹；没预取到（首次进入 / 预取失败）→ 现拉一次再弹，并回填缓存
     if (this._testAccounts) { this._showSwitchSheet(this._testAccounts); return; }
     api.testAccountList({}, { toast: false })
@@ -662,80 +657,6 @@ Page({
     });
   },
 
-  /**
-   * 值日微信提醒。订阅消息授权必须由点击触发，所以要分两种状态：
-   *  · 未开启 → 首次授权（拿到第 1 条额度）；
-   *  · 已开启 → **再攒 1 条额度**。
-   *
-   * ⚠️ v0.7.15 改口径（旧行为是 bug 级的不匹配）：提醒从「一天一条」变成
-   *   「一天两条」（前一晚 21:00 预告 + 当天 07:00 再提醒），而一次性订阅是
-   *   「用户同意一次 = 服务端 1 条额度」——旧实现在已开启后把本行改成「测试提醒」，
-   *   每点一次反而**消耗**一条额度，一天两条的额度永远攒不起来。
-   *   现在已开启后的每一次点击都再要一次授权（勾了「总是保持以上选择」后静默累积）。
-   */
-  onRemind() {
-    if (this.data.remindBlock) {
-      // 额度耗尽 → 重新授权并清掉后端标记（行尾橙字「额度已用完 · 点此重新开启」）
-      if (!subscribe.ready()) { util.toast('微信提醒待模板上线'); return; }
-      subscribe.request().then((r) => {
-        if (!r.ok) { util.toast('未授权成功，可稍后重试'); return; }
-        api.remindReopen().catch(() => {}).then(() => {
-          const p = getApp().globalData.profile;
-          if (p) p.remindBlock = false;
-          this.setData({ remindBlock: false });
-          util.toast('已重新开启微信提醒');
-        });
-      });
-      return;
-    }
-    if (this.data.remindOn) {
-      if (!subscribe.ready()) { util.toast('微信提醒待模板上线'); return; }
-      subscribe.request().then((r) => {
-        util.toast(r.ok ? '已再攒 1 条提醒额度' : '未授权成功，可稍后重试');
-      });
-      return;
-    }
-    if (!subscribe.ready()) {
-      wx.setStorageSync('remindOn', 1);
-      this.setData({ remindOn: true });
-      util.toast('已开启（微信提醒待模板上线）');
-      return;
-    }
-    subscribe.request().then((r) => {
-      if (!r.ok) { util.toast('未授权订阅消息，可稍后重试'); return; }
-      wx.setStorageSync('remindOn', 1);
-      this.setData({ remindOn: true });
-      util.toast('已开启微信提醒');
-    });
-  },
-
-  /** 测试提醒（v0.7.15 独立成行）：向自己发一条模板消息验证链路。
-   *  ⚠️ 会**消耗** 1 条订阅额度，所以不挂在「攒额度」的主点击上。 */
-  onTestRemind() {
-    if (!this.data.remindOn) return;
-    subscribe.runTest(() => api.testRemind());
-  },
-
-  onCalendar() {
-    if (this.data.calendarOn) { util.toast('已添加到日历'); return; }
-    if (!wx.addPhoneRepeatCalendar) { util.toast('当前微信版本不支持'); return; }
-    const start = Math.floor(Date.now() / 1000) + 86400;
-    wx.addPhoneRepeatCalendar({
-      title: '查看本周班级值日安排',
-      startTime: start,
-      endTime: start + 600,
-      repeatInterval: 'week',
-      repeatCount: 18,
-      alarmOffset: 1800,
-      success: () => {
-        wx.setStorageSync('calendarOn', 1);
-        this.setData({ calendarOn: true });
-        util.toast('已加入日历提醒');
-      },
-      fail: () => util.toast('未添加到日历，请允许日历权限')
-    });
-  },
-
   /* ---------------- 我的申请 ---------------- */
   openApps() {
     this.setData({ appShow: true });
@@ -858,7 +779,7 @@ Page({
   },
 
   /* ---------------- 关于 ---------------- */
-  onAbout() { this.setData({ aboutShow: true }); },
+  onAbout() { if (getApp().track) getApp().track.action('about'); this.setData({ aboutShow: true }); },
   onAboutClose() { this.setData({ aboutShow: false }); },
   /* 备案号（2026-10-12）：小程序不能用 web-view 打开工信部域名（非自有域名、无法配业务域名），
      所以「可点击」= 把工信部查询地址复制到剪贴板，用户可自行粘贴到浏览器核对。 */

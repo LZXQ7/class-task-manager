@@ -33,6 +33,20 @@
         "vpcId": "vpc-c4ga6fms",
         "subnetId": "subnet-a5mkrg1l"
       }
+    },
+    {
+      "name": "stat",
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "timeout": 20,
+      "memorySize": 256,
+      "installDependency": true,
+      "dir": "./cloudfunctions/stat",
+      "description": "使用埋点：track 批量写入 usage_event",
+      "vpc": {
+        "vpcId": "vpc-c4ga6fms",
+        "subnetId": "subnet-a5mkrg1l"
+      }
     }
   ],
   "gateway": {
@@ -45,5 +59,14 @@
         "enableAuth": false
       }
     ]
+  },
+  "functionRoot": "./functions",
+  "ai": {
+    "defaultAgent": "{{env.AI_DEFAULT_AGENT}}",
+    "agents": {
+      "codebuddy": {
+        "type": "none"
+      }
+    }
   }
 }

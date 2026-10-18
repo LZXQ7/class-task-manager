@@ -17,8 +17,8 @@ cd "$(dirname "$0")/.." || exit 1
 
 export PATH="/c/Program Files/Git/usr/bin:/c/Program Files/Git/bin:$PATH"
 
-REL="1.0.6.9"
-MIN="v0.7.42"
+REL="1.0.7.0"
+MIN="v0.7.44"
 NOTE="outputs/v${REL}-更新说明.md"
 
 PASS=0; FAIL=0

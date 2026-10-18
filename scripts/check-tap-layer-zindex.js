@@ -1,27 +1,28 @@
 #!/usr/bin/env node
 /**
- * 第 73 个门禁：透明点击层不能被兄弟节点盖住
+ * 第 73 个门禁：头像点击层（chooseAvatar）
  * =================================================================
- * 2026-10-09 用户报「点击头像更换微信头像好像失效了」。
+ * 2026-10-09 用户报「点击头像更换微信头像失效」：旧实现是「透明 button 绝对铺在
+ *   avatar-tag 上 + z-index 抬层」，自定义组件与原生 button 的层级在真机仍偶发错位
+ *   ⇒ 透明按钮收不到点击 ⇒ 点头像没反应。
+ * 2026-10-16 重构：改为「<button open-type=chooseAvatar> 直接包裹 avatar-tag」，
+ *   点击区域就是 button 本身，无叠层歧义。本门禁同步改判据，锁死新结构。
  *
- * 🔴 根因：`.avatar-wrap` 里的 `avatar-tag` **组件**与那个透明 `<button open-type="chooseAvatar">`
- *    是**同级兄弟**（组件无定位、页面 wxss 全文**一处 z-index 都没有**）
- *    ⇒ 同 z-index 时**后渲染的节点盖在前面之上** ⇒ 透明按钮收不到点击 ⇒ 点头像没反应。
- *
- * ⚠️ **这类 bug 最阴的地方：`check-wxss-compile` 真编译全绿**（语法完全合法），
- *   门禁也看不出来 —— 只能靠"点击行为"发现。
- *   ⇒ 本门禁把「透明点击层必须显式抬层」钉成静态判据，防止回退。
- *
- * 🔴 通用规律（不止头像这一处）：
- *   「绝对定位的透明点击层」+「同级视觉节点」⇒ 必须给点击层显式 `z-index`。
- *   父级要有 `position: relative`（否则 z-index 不生效 —— 相对定位才是定位上下文）。
- *   **不要**靠调 opacity / 尺寸 / 层级顺序去绕，那类改动治标不治本且容易连带破坏布局。
+ * 新结构不变量：
+ *   ① 结构：button(class=avatar-btn, open-type=chooseAvatar) 内含 avatar-tag（父子，非兄弟）；
+ *           必须绑 bind:chooseavatar + binderror。
+ *   ② 样式：.avatar-btn 重置为 80rpx 圆形 flex 容器（display:flex / width:80rpx /
+ *           height:80rpx / border-radius:50% / background:transparent / border:none /
+ *           ::after border:none）；**禁止** position:absolute + z-index（那是旧坏模式，
+ *           回退到它就会被 M4 抓到）。
+ *   ③ 链路：onChooseAvatar 从 e.detail.avatarUrl 取临时路径 → 上传云存储 →
+ *           api.updateAvatar 存库 → refreshAuth + setData 刷新页面。
  *
  * 变异自证（4 组）：
- *   M1 去掉 z-index（本 bug 本身：点击层被盖住）
- *   M2 去掉父级的 position:relative（z-index 随之失效）
- *   M3 去掉 width/height 铺满（点击区缩水）
- *   M4 去掉 open-type="chooseAvatar"（面板压根不会弹）
+ *   M1 去掉 open-type="chooseAvatar"（面板压根不会弹）
+ *   M2 去掉 bind:chooseavatar（选了也不存）
+ *   M3 去掉 binderror（隐私拦截时红屏）
+ *   M4 回退旧坏模式：给 .avatar-btn 加 position:absolute + z-index（被"禁止 absolute/z-index"抓到）
  *
  * 退出码 0 = 过；非 0 = 有问题。
  */
@@ -45,49 +46,43 @@ const wxml = read(WXML);
 const js = read(JS);
 
 /* ------------------------------------------------------------------ */
-console.log('── ① 结构：透明 button 盖在头像上');
+console.log('── ① 结构：button 直接包裹 avatar-tag（父子，非兄弟叠层）');
 
-chk(/<view class="avatar-wrap">/.test(wxml), '有 .avatar-wrap 容器');
 chk(/<button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar"/.test(wxml),
-  '🔴⚠️⚠️ 用 <button open-type="chooseAvatar">（getUserProfile 已被微信回收，只能走这个）');
+  '🔴⚠️⚠️ 用 <button open-type="chooseAvatar"> 包裹头像（getUserProfile 已被微信回收，只能走这个）');
 chk(/<button class="avatar-btn"[^>]*binderror="onAvatarError"/.test(wxml),
   'avatar-btn 必须绑 binderror 兜底（隐私接口检查在微信侧，失败到不了 onChooseAvatar，不兜底就是红屏）');
-chk(/class="avatar-wrap">[\s\S]*?<avatar-tag[\s\S]*?\/>/.test(wxml) ||
-  /<avatar-tag[^>]*\/>[\s\S]*?class="avatar-btn"/.test(wxml),
-  'avatar-tag 与 avatar-btn 同在 .avatar-wrap 内（**兄弟关系** ⇒ 才需要 z-index 抬层）');
+// avatar-tag 必须位于 button 内部（button 开标签 → avatar-tag → </button>）
+chk(/<button class="avatar-btn"[^>]*>[\s\S]*?<avatar-tag[\s\S]*?<\/button>/.test(wxml),
+  '🔴 avatar-tag 必须位于 button **内部**（父子关系 ⇒ 点击区就是按钮本身，无叠层歧义）');
+chk(!/<view class="avatar-wrap">/.test(wxml),
+  '⚠️ 不再用「透明按钮叠在 avatar-wrap 上」的旧结构（真机偶发失效，已废弃）');
 
 /* ------------------------------------------------------------------ */
 console.log('');
-console.log('── ② 样式：点击层必须显式抬层（本 bug 的核心）');
-
-const wrapRule = /\.avatar-wrap\s*\{([^}]*)\}/.exec(wxss);
-chk(!!wrapRule, 'wxss 有 .avatar-wrap 规则');
-if (wrapRule) {
-  chk(/position:\s*relative/.test(wrapRule[1]),
-    '🔴⚠️⚠️ .avatar-wrap 有 `position: relative`'
-    + '（**z-index 的前提**：没有相对定位，点击层就找不到定位上下文，z-index 写了也不生效）');
-}
+console.log('── ② 样式：button 重置为 80rpx 圆形 flex 容器，且不许回退到 absolute 叠层');
 
 const btnRule = /\.avatar-btn\s*\{([^}]*)\}/.exec(wxss);
 chk(!!btnRule, 'wxss 有 .avatar-btn 规则');
 if (btnRule) {
   const b = btnRule[1];
-  chk(/position:\s*absolute/.test(b), '🔴 .avatar-btn 是 absolute（脱离文档流、脱离 avatar-tag 的绘制顺序）');
-  chk(/z-index:\s*[1-9]/.test(b),
-    '🔴⚠️⚠️🔴 .avatar-btn 有**显式 z-index ≥ 1**（本 bug 的正解：'
-    + '无 z-index 时后渲染的 avatar-tag 组件会盖在透明按钮上 ⇒ 点头像没反应；'
-    + '⚠️ WXSS 真编译不会报错，只能靠本判据防回退）');
-  chk(/width:\s*100%/.test(b) && /height:\s*100%/.test(b),
-    '⚠️ 点击层**铺满** .avatar-wrap（否则点击区缩水、边缘点不到）');
-  chk(/background:\s*transparent/.test(b), '按钮背景透明（视觉归 avatar-tag）');
+  chk(/display:\s*flex/.test(b), '🔴 .avatar-btn 是 flex 容器（内部 avatar-tag 居中铺满）');
+  chk(/width:\s*80rpx/.test(b) && /height:\s*80rpx/.test(b),
+    '🔴 .avatar-btn 固定 80rpx（点击区 = 头像尺寸，不缩水）');
+  chk(/border-radius:\s*50%/.test(b), '圆形（与头像一致）');
+  chk(/background:\s*transparent/.test(b), '按钮背景透明');
   chk(/border:\s*none/.test(b), '去掉 button 默认边框');
+  chk(/\.avatar-btn::after\s*\{[^}]*border:\s*none/.test(wxss),
+    '⚠️ 去掉 button::after 默认边框（否则可见描边）');
+  chk(!/position:\s*absolute/.test(b),
+    '🔴⚠️⚠️ 禁止 position:absolute（那是旧坏模式：透明层叠在组件上，真机偶发收不到点击）');
+  chk(!/z-index/.test(b),
+    '🔴⚠️⚠️ 禁止 z-index（新结构靠父子包裹，不靠层级抬升；回退到旧模式必被变异 M4 抓到）');
 }
-chk(/\.avatar-btn::after\s*\{[^}]*border:\s*none/.test(wxss),
-  '⚠️ 去掉 button::after 的默认边框（否则会有一圈可见描边）');
 
 /* ------------------------------------------------------------------ */
 console.log('');
-console.log('── ③ 处理链路完整（点了要有反应，不能只修样式）');
+console.log('── ③ 处理链路完整（点了要有反应，不能只修结构）');
 
 chk(/onChooseAvatar\(e\)\s*\{/.test(js), 'js 有 onChooseAvatar');
 const h = /onChooseAvatar\(e\)\s*\{([\s\S]*?)\n {2}\},/.exec(js);
@@ -99,11 +94,10 @@ if (h) {
   chk(/api\.updateAvatar\(\{ avatarUrl: fileID \}/.test(b),
     '🔴⚠️ 调 api.updateAvatar 存库（字段名 avatarUrl，与后端 auth.updateAvatar 对齐）');
   chk(/app\.refreshAuth\(\)/.test(b),
-    '⚠️ 保存成功后 `refreshAuth()` —— 否则 profile 还是旧头像，看着像"没生效"');
+    '⚠️ 保存成功后 refreshAuth()（否则 profile 还是旧头像，看着像"没生效"）');
   chk(/this\.setData\(\{ profile: app\.globalData\.profile \}/.test(b),
     '⚠️ 用 globalData.profile 刷新页面 profile（不刷则 UI 停在旧头像）');
 }
-// 后端 action 存在
 const auth = read('cloudfunctions/auth/index.js');
 chk(/updateAvatar:\s*\{/.test(auth), '🔴 后端 auth.updateAvatar action 存在（api 打到 auth 函数）');
 chk(/UPDATE member SET avatar_url = \? WHERE id = \?/.test(auth), '后端真的写库');
@@ -121,50 +115,44 @@ function judge(o) {
   let n = 0;
   const push = (x) => { if (!x) n += 1; };
 
-  const w = /\.avatar-wrap\s*\{([^}]*)\}/.exec(vX);
-  push(!!w);
-  if (w) push(/position:\s*relative/.test(w[1]));
+  push(/<button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar"/.test(vM));
+  push(/<button class="avatar-btn"[^>]*binderror="onAvatarError"/.test(vM));
+  push(/<button class="avatar-btn"[^>]*>[\s\S]*?<avatar-tag[\s\S]*?<\/button>/.test(vM));
+  push(!/<view class="avatar-wrap">/.test(vM));
+
   const b = /\.avatar-btn\s*\{([^}]*)\}/.exec(vX);
   push(!!b);
   if (b) {
-    push(/position:\s*absolute/.test(b[1]));
-    push(/z-index:\s*[1-9]/.test(b[1]));
-    push(/width:\s*100%/.test(b[1]) && /height:\s*100%/.test(b[1]));
+    push(/display:\s*flex/.test(b[1]));
+    push(/width:\s*80rpx/.test(b[1]) && /height:\s*80rpx/.test(b[1]));
+    push(/border-radius:\s*50%/.test(b[1]));
     push(/background:\s*transparent/.test(b[1]));
     push(/border:\s*none/.test(b[1]));
+    push(!/position:\s*absolute/.test(b[1]));
+    push(!/z-index/.test(b[1]));
   }
   push(/\.avatar-btn::after\s*\{[^}]*border:\s*none/.test(vX));
-  push(/<button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar"/.test(vM));
-  push(/<button class="avatar-btn"[^>]*binderror="onAvatarError"/.test(vM));
   return n;
 }
 
 const MUT = [
   {
-    name: 'M1 去掉 z-index（**本 bug 本身**：点击层被 avatar-tag 盖住 ⇒ 点头像没反应）',
-    apply: () => ({ wxss: wxss.replace(/  z-index: 2;\n/, '') })
+    name: 'M1 去掉 open-type="chooseAvatar"（面板压根不会弹）',
+    apply: () => ({ wxml: wxml.replace(' open-type="chooseAvatar"', '') })
   },
   {
-    name: 'M2 去掉父级的 position:relative（z-index 随之失效 —— 找不到定位上下文）',
-    apply: () => ({ wxss: wxss.replace('.avatar-wrap {\n  position: relative;', '.avatar-wrap {') })
+    name: 'M2 去掉 bind:chooseavatar（选了头像也不存库）',
+    apply: () => ({ wxml: wxml.replace(' bind:chooseavatar="onChooseAvatar"', '') })
   },
   {
-    name: 'M3 点击层不铺满（width/height 去掉 ⇒ 点击区缩水、边缘点不到）',
+    name: 'M3 去掉 binderror 兜底（隐私拦截时 MiniProgramError 红屏）',
+    apply: () => ({ wxml: wxml.replace(' binderror="onAvatarError"', '') })
+  },
+  {
+    name: 'M4 回退旧坏模式：给 .avatar-btn 加 position:absolute + z-index（叠层偶发失效）',
     apply: () => ({
-      wxss: wxss.replace('  width: 100%;\n  height: 100%;\n  /* 🔴🔴 必须显式抬层', '  /* 🔴🔴 必须显式抬层')
-    })
-  },
-  {
-    name: 'M4 去掉 open-type="chooseAvatar"（面板压根不会弹）',
-    apply: () => ({
-      wxml: wxml.replace('<button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar" binderror="onAvatarError"></button>',
-        '<button class="avatar-btn" bind:chooseavatar="onChooseAvatar" binderror="onAvatarError"></button>')
-    })
-  },
-  {
-    name: 'M5 去掉 binderror 兜底（2026-10-09 实拍红屏：chooseAvatar:fail api scope is not declared in the privacy agreement —— 隐私检查在微信侧，失败走 binderror，不兜底就是 MiniProgramError 红屏）',
-    apply: () => ({
-      wxml: wxml.replace(' binderror="onAvatarError"></button>', '></button>')
+      wxss: wxss.replace('  line-height: 1;\n  overflow: hidden;\n}',
+        '  line-height: 1;\n  overflow: hidden;\n  position: absolute;\n  top: 0;\n  left: 0;\n  z-index: 2;\n}')
     })
   }
 ];
@@ -206,4 +194,4 @@ if (bad) {
   console.log('[FAIL] ' + bad + ' 项未通过');
   process.exit(1);
 }
-console.log('[PASS] 透明点击层体检通过');
+console.log('[PASS] 头像点击层体检通过');

@@ -64,6 +64,7 @@ Page({
 
   onLoad() {
     const app = getApp();
+    if (app.track) app.track.pageView('bind');
     theme.mount(this);   // 深色模式（C-4）：挂 t-light / t-dark 到本页根节点
     this.setData({
       statusBarHeight: app.globalData.statusBarHeight || 20,

@@ -410,19 +410,7 @@
     </view>
   </block>
 
-  <!-- 值日提醒：右下角悬浮胶囊。三种形态（§43 需求③ + v0.7.15 额度失效提醒）：
-       ① 未开启 → 「打开微信通知」（首次授权，拿第 1 条额度）；
-       ② 已开启但额度耗尽（后端 remindBlock）→ 「微信提醒已失效，点此重新开启」——
-          一次性订阅没有长期通道，额度用尽后发送是静默失败的，学生完全无感知，
-          必须主动把人拉回来再授权，否则「当天早上 07:00」那条永远发不出去；
-       ③ 已开启且额度正常 → 隐藏（攒额度去「我的」，保持首页干净）。
-       仅正文正常渲染时出现（骨架 / 失败 / 未绑定态都不显示）。 -->
   </spring-scroll>
-
-  <view wx:if="{{!isCounselor && !unbound && !loading && !failed && (!remindOn || remindBlock)}}" class="remind-fab" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onRemind">
-    <app-icon name="bell" variant="{{remindBlock ? 'orange' : 'brand'}}" size="{{32}}" />
-    <text>{{remindBlock ? '微信提醒已失效，点此重新开启' : '打开微信通知'}}</text>
-  </view>
 
   <duty-sheet
     show="{{sheetShow}}"
@@ -755,6 +743,18 @@
        ⚠️ 仅能班费/团费管理者能点开（普通成员卡片仅展示），故表单恒属于有权限者。 -->
   <bottom-sheet show="{{feeShow}}" title="{{feeActiveName}}{{feeCanManage ? ' · 管理' : ' · 仅查看'}}" bind:close="onFeeClose">
     <view class="np">
+      <!-- 班费/团费跨班查看（v0.7.43）：**仅辅导员**且负责多于 1 个班时，在弹层内切换查看的班级 -->
+      <view wx:if="{{isCounselor && feeClassList.length > 1}}" class="fee-cls-switch">
+        <text class="fee-cls-label">查看班级</text>
+        <view class="fee-cls-chips">
+          <view wx:for="{{feeClassList}}" wx:key="id"
+                class="fee-cls-chip {{feeViewClassId === item.id ? 'on' : ''}}"
+                data-id="{{item.id}}" bindtap="onFeeClassPick"
+                hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+            {{item.name}}
+          </view>
+        </view>
+      </view>
       <!-- 余额（两个视图都显示：填金额时要看得见还剩多少） -->
       <view class="fee-bal-block">
         <text class="fee-bal-label">当前余额</text>
@@ -777,7 +777,7 @@
             <text class="fee-rec-time">{{item.createdAt}}</text>
           </view>
           <view class="fee-rec-imgs" wx:if="{{item.images.length}}">
-            <view wx:for="{{item.images}}" wx:for-item="img" wx:key="*this" class="fee-rec-img" data-src="{{img}}" bindtap="onFeePreviewImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+            <view wx:for="{{item.images}}" wx:for-item="img" wx:for-index="imgIdx" wx:key="*this" class="fee-rec-img" data-id="{{item.id}}" data-idx="{{imgIdx}}" data-src="{{img}}" bindtap="onFeePreviewImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
               <image class="fee-rec-img-pic" src="{{img}}" mode="aspectFill" />
             </view>
           </view>

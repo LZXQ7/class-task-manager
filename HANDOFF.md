@@ -9,13 +9,41 @@
 
 ---
 
-## 【主线状态】 · 更新于 2026-10-15（**小程序 1.0.6.9 已就绪：课表编辑 + 周次区间 + 行数自适应 + 值日页精简 + 班费模块**。本次**同时纳入工作区里一批已完成的功能**（班费/团费、课表编辑弹层、审核体验入口改为超管开关、部署脚本改造）与本轮三次修复（周次区间 `6-13` 端上后端同口径 / 课表行数随周次自适应 / 短课归位到时间重叠的大节），以及**课表页加载慢的量化诊断**（结论已出，**修复未实施**，线上已回滚）。门禁 86/86 全绿，云端已就绪，**只剩前端上传 + 送审**）
+## 【主线状态】 · 更新于 2026-10-18（**小程序 1.0.7.0 已就绪：移除失效提醒入口 + 「我的」头像可换 + 后台使用统计（v0.7.44）**。门禁 87/87 全绿；前端埋点/统计页/头像重构均已完成；**云端发布步骤①②③已上线（2026-10-18）：建 `usage_event` 表 + 部署 `stat` + 重部署 `admin-web`（新增 `/api/usage` + 「使用统计」页）**；同日又迭代三轮后台修复（成员明细 1052 / 刷新恢复现场 / 刷新闪登录页）均已部署验证；**仍待**：④ 微信端上传 1.0.7.0 前端 + 送审；⑤ 双仓库提交并打 tag `v1.0.7.0` + 脱敏同步）
+
+**当前节点**：小程序主线已至 **对外 1.0.7.0**（内部 v0.7.44）。代码改动全部就位，**仅差发布动作**（DDL + 部署 + 上传 + 双仓）。
+
+- **本版三块（工作区已完成，未提交/未推/未部署）**：
+  ① **移除失效提醒入口**：删掉「添加值日到系统日历」「值日微信提醒」入口与首页「打开微信通知页」悬浮胶囊（WXML/WXSS/JS 全清，含 `legal.js` 的微信能力说明；后端 `remind_block`/`remind_reopen` 字段保留、门禁继续看守）。门禁 `check-clean-label.js` 已改为看守这两条字段而非 UI 文案。
+  ② **头像可更换**：`mine/index.wxml` 头像块由「透明 `<button>` 叠 `<avatar-tag>` + z-index」改为「`<button open-type="chooseAvatar">` 直接包裹 `<avatar-tag>`」；`binderror` 兜底隐私拒绝（不再红屏）。`check-tap-layer-zindex.js` 把新结构钉成门禁（含禁止回退旧模式的变异）。
+  ③ **后台使用统计**：
+     - 前端埋点：`utils/track.js`（内存队列 + 防抖批量上报，失败静默丢弃）+ `app.js` 暴露 `getApp().track`；各页 `onShow` 调 `pageView`、首页班费/团费/通知/班级/名册/请假与「我的」关于/切换账号等入口调 `action`。所有调用已做 `if (getApp().track)` 防御（track 缺失不崩页面）。
+     - 云函数：新增 `stat`（`track` 落 `usage_event` 表，common 已同步）；`usage_event` 表建表 SQL = `scripts/migrate-usage.sql`。
+     - 后台页：admin-web 新增 `lib/mod-usage.js`（`/api/usage`，按 event 聚合 PV/UV + 每日趋势）、`index.html` 加「使用统计」页签、`public/app.js` 加 `renderUsage`、`admin.css` 加柱状样式。
+- **门禁 87/87 全绿**（本轮修过 3 处回归：① mine 移除 `st-3` 提醒卡后把后续块重编号为 st-3/st-4/st-5，并同步 `check-dark-mode.js` 锚点 `st-5→st-4`；② `check-tabbar-liquid.js` 移除已删的 `.remind-fab` 两项断言；③ `check-pages-runtime.js` 的 mock 下 `getApp().track` 为 undefined，埋点调用已全量加防御。另新增第 87 个门禁 `check-require-paths.js`）。
+- ✅ **云端发布步骤①②③已完成（2026-10-18）**：`usage_event` 表已在生产库执行 CREATE（`DESCRIBE` 复核 7 字段：id/openid/class_id/kind/event/ref/ts，kind 为 ENUM('page_view','action')）；`stat` 云函数已部署；`admin-web` 已重部署。**🔴 期间踩过一次上线即崩**：`lib/mod-usage.js` 把 `require('../common/db')` 写成 `./common/db` ⇒ 函数启动 MODULE_NOT_FOUND ⇒ SCF 返 443 ⇒ 后台整站打不开。已改回并重部署，线上验证 `GET /admin`=**200**、`/admin/api/usage` 未登录=**401**、HTML 含「使用统计」页签。**新增门禁 `scripts/check-require-paths.js`（87/87）防复发**，变异自证可拦。⚠️ 443 的正确判读见 MEMORY：`x-cloudbase-upstream-type: Tencent-SCF_HTTP` + upstream 443 = 函数崩溃，不是「网关拦工具」。
+- ✅ **使用统计页显示优化（2026-10-18）**：① 表格 event 加中文映射（首页/课程表/班费/团费…，`fee_open` 按 ref 细分），英文 key 降为小字；② 「每日活跃总览」改为**连续时间轴**（前端 `buildDailyAxis` 逐日补 0 + 首/中/尾刻度），修复「只有一根柱」；③ 后端日期 `DATE_FORMAT` 出字符串（修时区偏一天）、`GROUP BY` 同步表达式（修 `only_full_group_by` 1055 → 接口 500）。已重部署并验证：`/admin`=200、`/api/usage`=401、线上 app.js 含 `buildDailyAxis`/`EVENT_LABEL`、css 含 `bars-axis`/`ev-key`。
+- ✅ **后台同日三轮迭代（均已部署验证，2026-10-18）**：① **成员使用明细**：`usage()` 加 `members[]`（JOIN member/class + NOT_TEST 铁律排测试账号 + `GROUP_CONCAT` 事件串），前端表格展示；⚠️ 修复过 **Error 1052**（JOIN 后裸列名 `class_id` 二义 ⇒ 选班级即 500，根因是上轮只验了 classId=0）——members 查询自建 `e.` 前缀条件，`tcb db execute` 两种形态复验通过。② **刷新恢复现场**：localStorage 三键（view/classId/usageAll），harness 实测「切页→切班→reload→恢复」。③ **刷新闪登录页**：`#login-view` 默认改 `hidden` + 新增 `#bootstrap` 加载态 + 5s 兜底定时器；harness 探针先红（initialLoginVisible:true）后绿（false），线上 `/admin`=200、Code size 2232788、Modification time 11:50:13、日志无 `[api-error]`。
+- ✅ **后台第四轮：绑定页对齐 + 统计布局/「全部」失效（2026-10-18 12:09 部署）**：① 绑定页「本班共 N 人」与卡片头左缘差 16px——根因 `admin.css` **没有 `.summary` 规则**，已补（`padding:10px 16px 12px`）；② 「全部」按钮点了没用——根因 `if (!state.usageDays)` 把 **0 当 falsy** 改回 30，已改 typeof 判断，并同步修后端 `trendDays = days || 30` 的回显撒谎、前端轴说明「全部」时显示「全部」；③ 统计工具栏两行 → **一行左右布局**（时间范围左 / 班级范围右），「仅当前班级」去掉班名后缀（右上角已有），时间范围持久化 `admin.web.usageDays`。harness 12 项断言先红后绿；`days=0` 新路径 `tcb db execute` 四连验全过；线上 Code size 2233618、Modification time 12:09:53、`/api/usage?days=0`=401、日志干净。
+- ⏳ **仍待发布**：④ 微信端上传 1.0.7.0 前端 + 送审（微信端动作，我无法感知）；⑤ 双仓库提交并打 tag `v1.0.7.0` + 脱敏同步（需 bypass 沙箱跑 git/tcb，或由你授权）。**这些动作在你说「要上传更新版本了」时由我执行**。
+- ⚠️ 工作区改动待提交（含 `cloudbaserc.json` 的 `envId` 由 `{{env.ENV_ID}}` 改为真实值 `<YOUR_ENV_ID>`——非机密、`deploy_all.sh` 已硬编码同款；新增 `scripts/deploy-stat.js`；`deploy-admin-web.js` 改 `tcb deploy --only functions --yes`；prior 源码/文档）。双仓提交时一并纳入。
+- ⚠️ 1.0.6.9 的**前端此前从未上传**；本版 1.0.7.0 直接携带其全部前端改动（含班费跨班查看 v0.7.43）一并上传，不再单独发 1.0.6.9。
+
+---
+
+## 【主线状态】 · 更新于 2026-10-16（**小程序 1.0.6.9 已就绪：课表编辑 + 周次区间 + 行数自适应 + 值日页精简 + 班费模块 + 班费/团费跨班查看（v0.7.43）**。本次**同时纳入工作区里一批已完成的功能**（班费/团费、课表编辑弹层、审核体验入口改为超管开关、部署脚本改造）与本轮三次修复（周次区间 `6-13` 端上后端同口径 / 课表行数随周次自适应 / 短课归位到时间重叠的大节），以及**课表页加载慢的量化诊断**（结论已出，**修复未实施**，线上已回滚）。门禁 86/86 全绿，云端已就绪，**只剩前端上传 + 送审**（`fee` 云函数已于 2026-10-16 20:46 重部署生效））
 
 **当前节点**：小程序主线已至 **对外 1.0.6.9**（内部 v0.7.42）。云端全部就绪，**只剩「前端上传 + 送审」这一件用户侧动作**。
 - **本版新增（工作区纳入）**：班费/团费模块（首页卡片看余额与明细、登记消费含金额/备注/最多 9 张凭证图、删记录；总额设置在「我的 → 更多 → 班/团费总额」用分段控件切换班费 ⇄ 团费后编辑）；课表页**直接编辑课次**（课程名/教师/教室/星期/大节/值日人数）；「我的 → 更多」收纳；审核体验入口改为**超管开关**（点「开启」由系统自动随机生成新口令，旧口令当场作废，不再手写 + 跑 SQL）。
 - **本版修复（我这三轮）**：①周次区间 `6-13` 端上/后端统一支持；②`allSessions` 回传 `duty_count`（不排值日的课不再显示成 2 人）；③课表行数 = `max(1, 配置节次数, 本周实际最高节次)`，无空行；④短课归位到时间重叠的大节（三班 5 条「书香校园」已改 + 三班 `period_time` 第6/7 行已删）；⑤值日页隐藏「+ 加值日生」（开关式，`showAddDutyBtn: false`，功能代码全保留）；⑥班费弹层移除重复的「仅查看」横幅；⑦**首页今日/明日课次并入本人选修课**（仅本人可见，`duty.home` 不含 `personal_course` ⇒ 端上并行拉 `electiveList` 合并；`sessionId:0` 不驱动值日，`onCourseTap` 有 `isPersonal` 守卫）；⑧**课表页加号一律「添加个人选修课」**（含超管，下线小程序内两个「新增全班课次」入口，2 门上限保留）；⑨**`wx:key` 改回 JS 预计算字段**（写 `{{ }}` 表达式会让渲染层报 `missing ) after argument list` + `FLOW_INITIAL_CREATION` 框架内部错误）。
-- **云端已生效**：`fee` 云函数已部署（`fn detail` 复核 VPC + 5 个 `DB_*` 环境变量）；`class_fund` / `class_fund_record` 两表已建；`class.main_room` 列已加；`course` / `admin-web` / `class` / `auth` / `common` 等 13 个函数已部署。
+- **v0.7.43（2026-10-16，并入 1.0.6.9，未提交/未部署/未上传）｜班费/团费跨班查看**：辅导员（含多班绑定）首页班费卡上方出现「查看班级」切换条，可切到其负责的其他班级查看该班余额与消费明细（辅导员无管理人身份 ⇒ **仅查看**，无法增删/补图）；超管可切到任意活动班级并保有管理权（登记/删/设总额作用于所选班）。后端 `fee/index.js` 5 处 `classIdOf` 改为 `resolveClassId`（认传入 `classId`、按 `staffClassIds` / 超管收口越权，越权/非法自动回退或拒绝）；前端 `_loadFee` 携带 `feeViewClassId`、新增 `_loadFeeClassList` 拉 `classList({all:true})` 取可看班级、默认停本人主班。**同批修复**：班费/团费消费明细的凭证图改为**整条记录的全部图片一起进原生预览器**（点任意一张即可左右滑动查看，之前只传单张 ⇒ 看完要退出再点下一张）——`onFeePreviewImage` 从 `feeActive.records` 取该记录 images、`getTempFileURL` 批量换链后 `wx.previewImage({urls, current})`，wxml 图片项补 `data-id`/`data-idx`（**2026-10-16 二次收紧**：`onFeePreviewImage` 改为以被点击图的 `data-src` 在整条记录图片里 `indexOf` 反查下标、`current` 用换算后链接在 `urls` 中定位，不再依赖嵌套 `wx:for` 的 `data-idx` ⇒ 根治「点第 3 张却从第 1 张滑过去」）。改动文件：`cloudfunctions/fee/index.js`、`miniprogram/pages/home/index.{js,wxml,wxss}`、`CHANGELOG.md`、`MEMORY.md`。✅ **`fee` 云函数已重部署（2026-10-16 20:46）**：线上已 `resolveClassId`，辅导员切班已生效。⚠️ 重部署必须 **bypass 沙箱**，否则 tcb 读不到 `~/.config/.cloudbase/global.json`、脚本中断还原会把注入口令留在 `cloudbaserc.json`（本轮踩过，已还原为干净版）。
+- **云端已生效**：`fee` 云函数已部署、并于 **2026-10-16 20:46 重部署为含 `resolveClassId` 的版本**（`fn detail` 复核：线上 5×`resolveClassId` / 0×`classIdOf`，Modification time 2026-10-16 20:46:34，VPC + 5 个 `DB_*` 环境变量齐备）；`class_fund` / `class_fund_record` 两表已建；`class.main_room` 列已加；`course` / `admin-web` / `class` / `auth` / `common` 等 13 个函数已部署。
 - **门禁 86/86 全绿**；admin-web e2e 75/75；批跑仅 35s（`check-admin-web` 提速见效）。
+- ✅ **双仓库已推送（2026-10-16）**：私有 `class-task-manager-template` 推至 `fc9ffe5` 并打 tag **`v1.0.6.9`**；公开 `class-task-manager` 脱敏后推至 `75f415d`（自检 **0 命中 PII / 0 个 12 位学号 / 0 个 .xlsx**）。两个 remote 均已去令牌（凭据走本机 GCM，无需 `GH_PAT`）。
+  🔴 **本轮发版被自检拦了两次**（都是脱敏规则缺口，推送前中止，未泄漏）：①`publish-release.sh` 自己的 PII 词表里写了**裸词** `示例专业` / `示例专业简称`，而 scrub 只有带班号的长串规则 ⇒ 补「裸专业名 / 班级简称」规则；②门禁夹具里 `209903020102`、`209999990101` 等**同形状的其它学号**逐条补不完 ⇒ 改成按**形状**统一伪化（12 位且 260 开头 ⇒ `2099` + 后 8 位，与既有 `209903020101→209903020101` 同口径）。
+  ⚠️ 规则都加在 **`C:/Users/PC/WorkBuddy/_scrub_tmp/scrub.js`（仓库外）**，不进任何仓库；若该文件丢失需按上两条重写。
+- ⏳ **仍待用户侧**：**小程序前端上传 + 提审**（微信端动作，我无法感知）。上传后请告知，我再更新本文件【主线状态】。
+- ⏳ **v0.7.43 改动仍在本地工作区（未提交 / 未推双仓库；`fee` 云函数已于 2026-10-16 20:46 重部署）**：`git status` 现含 `cloudfunctions/fee/index.js` 与首页三件套（`pages/home/index.{js,wxml,wxss}`）。下次说「要上传更新版本了」时我会：①提交这批改动并随 **1.0.6.9**（含 v0.7.43）打 tag 前移、推私有仓；②`publish-release.sh` 同步公开脱敏仓；③~~重新部署 `fee` 云函数~~ **已完成（2026-10-16 20:46，线上已是 `resolveClassId` 版）**。
 - **提审前必做**：**不再手写口令、不再跑 SQL** —— 超管在「我的 → 审核体验入口」点「开启」⇒ 系统自动生成新口令 ⇒ 复制进 mp 后台审核备注；审核通过后回同一行点「关闭」。SQL 兜底见 `outputs/v1.0.6.9-更新说明.md`。
 - **体验入口开关的安全口径**：`auth.reviewDemoStatus` / `reviewDemoSet` 都声明 `needSuper`；开启时**先清所有班的开关**再写自己班（`reviewDemoRow` 全表扫描取第一条开着的，别班残留 = 关不干净）；演示身份不得自己换口令（已进 `common/review-demo.js` 拒绝清单）。
 - **班费权限唯一真源** = `utils/util.js` 的 `feeRights()`（首页与「我的」页都调它，与后端 `fee/index.js` 的 `feeManager`/`feeTotalSetter` 逐字同口径）：班费管理 = 超管|班长兼团支书|副班长|生活委员；团费管理 = 超管|班长兼团支书；班费总额设置 = 超管|生活委员；团费总额设置 = 超管|班长兼团支书；普通成员只看班费、不可点开。

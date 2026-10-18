@@ -337,6 +337,7 @@ Page({
   },
 
   onShow() {
+    if (getApp().track) getApp().track.pageView('roster');
     // 从详情回来时实时刷新统计
     this._loadStats();
     this._loadLeaveBoard();

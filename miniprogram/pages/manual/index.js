@@ -67,6 +67,7 @@ Page({
 
   onShow() {
     const app = getApp();
+    if (app.track) app.track.pageView('manual');
     // 登录是异步的：首屏可能还没拿到身份。等就绪后再拉，避免被 40001 打回。
     // 只在 onShow 里拉一次（onLoad 不拉），否则冷启动会重复请求。
     const run = () => this.load();

@@ -582,45 +582,6 @@
 .np-chip.on { color: #FFFFFF; background: #3370FF; padding: 0 32rpx; }
 .np-pos-tip { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: #86909C; }
 
-/* ---------- 值日提醒 · 底部悬浮胶囊（§43 需求③） ----------
- * 原「提醒卡」占一整张卡片，位置在首页中部；改为悬浮在底部 tabBar 之上，
- * 不占正文高度。right 对齐页面 32rpx；bottom 让开自定义 tabBar（悬浮胶囊
- * 占位 98rpx）+ 安全区。 */
-.remind-fab {
-  position: fixed;
-  right: 32rpx;
-  /* 让开底部悬浮胶囊 tabBar（占位 98rpx）+ 安全区；无安全区机型（安卓）兜底 32px，
-     与 iPhone 的底部留白观感一致（见 custom-tab-bar/index.js 的 TABBAR_LIFT_PX）。
-     ⚠️ 必须保留前一行做回退：引擎不认 max() 时整条声明会被丢弃 → bottom 退回 auto。 */
-  bottom: calc(122rpx + env(safe-area-inset-bottom));
-  bottom: calc(122rpx + max(env(safe-area-inset-bottom), 32px));
-  z-index: 20;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  height: 72rpx;
-  padding: 0 26rpx;
-  /* 悬浮胶囊 = 玻璃材质（v0.7.17）：原来是纯白实心 + 淡蓝描边，
-     现在换成半透明底 + 背景模糊 + 亮边 —— 它浮在正文之上，背后有内容可模糊。 */
-  background: rgba(255, 255, 255, 0.50);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
-  border: 1rpx solid rgba(255, 255, 255, 0.7);
-  border-radius: var(--r-pill, 999rpx);
-  box-shadow: 0 6rpx 22rpx rgba(51,112,255,.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .remind-fab { background: rgba(255, 255, 255, 0.93); }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .remind-fab {
-    background: #FFFFFF;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-}
-.remind-fab text { margin-left: 10rpx; font-size: 26rpx; font-weight: 600; color: #3370FF; }
-
 /* ---------- 关注的学生（v0.7.17 需求⑥，仅辅导员 / 超管） ----------
  * 一行一位学生：头像 + （姓名 + 班级）+ 最新备注摘要 + 备注条数。
  * 备注摘要限一行省略号 —— 首页是「一眼找到人」，不是读备注的地方，
@@ -892,6 +853,20 @@
 /* ============ 班费 / 团费（2026-10-14） ============ */
 /* 卡片区块：一行两卡的弹性布局；小卡片本身复用全局 .card 玻璃材质（深色自适应） */
 .fee-block { padding: 0; background: transparent; border: none; box-shadow: none; overflow: visible; }
+/* 班费/团费跨班查看切换条（v0.7.43）：超管/辅导员切班看其他班的钱 */
+.fee-cls-switch { display: flex; flex-direction: row; align-items: center; margin-bottom: 16rpx; }
+.fee-cls-label { font-size: 22rpx; color: var(--text-3); margin-right: 16rpx; flex-shrink: 0; }
+.fee-cls-chips { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
+.fee-cls-chip {
+  font-size: 24rpx;
+  line-height: 36rpx;
+  padding: 6rpx 20rpx;
+  border-radius: 18rpx;
+  color: var(--text-2);
+  background: var(--bg-fill);
+  border: 1rpx solid transparent;
+}
+.fee-cls-chip.on { color: #3370FF; background: rgba(51,112,255,0.12); border-color: rgba(51,112,255,0.4); font-weight: 600; }
 .fee-row { display: flex; flex-direction: row; gap: 16rpx; }
 .fee-card {
   flex: 1;

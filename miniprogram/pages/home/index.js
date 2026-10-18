@@ -63,6 +63,10 @@ Page({
     adminTier: '',
     /** 是否可查看班级（超管 / 辅导员，多班级 §43） */
     canViewClass: false,
+    /** 班费/团费跨班查看：**仅辅导员**的可查看班级列表（=staffClassIds）；其余身份恒空 */
+    feeClassList: [],
+    /** 当前选中的查看班级（0=本人/主班；辅导员/超管切班查看其他班时填该班 id） */
+    feeViewClassId: 0,
     /** 教职工（辅导员）视角：隐藏学生功能块（v0.7.16 需求⑥⑨） */
     isCounselor: false,
     /** 「关注的学生」卡可见（v0.7.17 需求⑥）：与成员详情的「固定到主页」按钮同口径 */
@@ -84,11 +88,6 @@ Page({
     sheetDutyId: 0,
 
     playing: false,
-    remindOn: false,
-    /** 微信提醒额度耗尽（后端 remind_block，cron 发送 43101 时置 1）→ 首页弹「重新开启」 */
-    remindBlock: false,
-    /** 测试提醒发送中（防连点） */
-    remindBusy: false,
     /** 查看通知入口角标 = 待确认数（同步读缓存，不阻塞首屏） */
     noticeUnacked: 0,
 
@@ -245,7 +244,7 @@ Page({
 
   onShow() {
     const app = getApp();
-    this.setData({ remindOn: !!wx.getStorageSync('remindOn') });
+    if (app.track) app.track.pageView('home');
     app.setTabBar(0);
     // v0.7.31：不再立即播 —— 等「身份(app.ready) + 首屏数据(loading=false)」就绪、或 READY_MS 兜底超时再统一开播
     pageAnim.playReady(this, getApp());
@@ -395,6 +394,9 @@ Page({
     this.setData(patch);
     if (showPins) this._loadPins();
     if (showLeaveHome) this._loadLeaveHome();
+    // 班费/团费跨班查看（v0.7.43）：**仅辅导员**可切班看其负责班级的钱（超管走班级管理，不在此列）。
+    // 仅首次拉班级列表（切班态本人保留，不重置）；列表回来后若未选班则默认本人主班/第一班并强制拉一次。
+    if (isCounselor && !this.data.feeClassList.length) this._loadFeeClassList();
     // 模拟态护栏（v1.0.5）：每次套用身份都同步一次顶部横幅，登录晚到时也能补上
     impersonate.sync(this);
     return p;
@@ -585,6 +587,7 @@ Page({
    *  v0.7.32 问题②：过去「先请求 leaveBoard、回来才开弹层」→ 点一下要等一段时间才弹。
    *  走已部署的 leaveBoard（不依赖 leaveSummary）；失败可见（主动动作）。 */
   onLeaveHomeOpen() {
+    if (getApp().track) getApp().track.action('leave_open');
     this.setData({
       leaveHomeShow: true,
       leaveHomeViewTitle: (this.data.leaveHomeClassName || '本班') + '请假',
@@ -1048,7 +1051,6 @@ Page({
           // 所以只能由首页首屏这个本来就在调的接口带回来。
           classFullName: r.className || this.data.classFullName || '',
           member: r.member || null,
-          remindBlock: !!(r.member && r.member.remindBlock),
           currentWeek: r.currentWeek || 1,
           weekText: '第 ' + (r.currentWeek || 1) + ' 周'
         });
@@ -1460,13 +1462,14 @@ Page({
   goMine() { wx.switchTab({ url: '/pages/mine/index' }); },
 
   /** 成员与分组（管理员入口）：独立页，从「我的」迁出 */
-  goRoster() { wx.navigateTo({ url: '/pages/roster/index' }); },
+  goRoster() { if (getApp().track) getApp().track.action('roster_open'); wx.navigateTo({ url: '/pages/roster/index' }); },
 
   /** 查看班级（超管 / 辅导员，多班级 §43 需求⑤） */
-  goClasses() { wx.navigateTo({ url: '/pages/classes/index' }); },
+  goClasses() { if (getApp().track) getApp().track.action('class_open'); wx.navigateTo({ url: '/pages/classes/index' }); },
 
   /** 查看通知（§41 需求⑦）：首页快捷入口，全员可见，避免绕到「我的」 */
   goNotice() {
+    if (getApp().track) getApp().track.action('notice_open');
     wx.navigateTo({
       url: '/pages/notice/index',
       fail: () => wx.switchTab({ url: '/pages/mine/index' })
@@ -1481,6 +1484,7 @@ Page({
     //   · 辅导员：可「班级发送」或「仅发班委」或「按职位」（可跨班），不开放任意 PICK
     //   · 超管：全体成员 / 指定成员 / 仅发班委 / 按职位（可跨班）
     const app = getApp();
+    if (app.track) app.track.action('notice_publish');
     const p = (app.globalData && app.globalData.profile) || null;
     const isSuper = !!(app && app.isSuper && app.isSuper());
     const isCounselor = !!(p && p.groupTag === 'X');
@@ -1828,70 +1832,6 @@ Page({
       .catch(() => { wx.hideLoading(); this.setData({ noticeBusy: false }); });
   },
 
-  /* ---------------- 提醒 ---------------- */
-  /**
-   * 微信通知：先要「订阅消息」授权（必须由点击触发），再顺手加手机日历。
-   * 模板 ID 未配置（utils/config.js 为空）时只加日历，并如实提示。
-   *
-   * v0.7.15：悬浮胶囊有三种形态（见 index.wxml）——
-   *   未开启 / 已开启但额度耗尽（remindBlock）/ 已开启且额度正常（隐藏）。
-   * 「额度耗尽」分支走 `request()` 重新授权，成功后调 `remindReopen` 清掉后端标记。
-   */
-  onRemind() {
-    if (this.data.remindBlock) {
-      if (!subscribe.ready()) { util.toast('微信提醒待模板上线'); return; }
-      subscribe.request().then((r) => {
-        if (!r.ok) { util.toast('未授权成功，可稍后重试'); return; }
-        api.remindReopen().catch(() => {}).then(() => {
-          this.setData({ remindBlock: false });
-          util.toast('已重新开启微信提醒');
-        });
-      });
-      return;
-    }
-    if (this.data.remindOn) { util.toast('微信通知已打开'); return; }
-    if (!subscribe.ready()) { this._enableRemind(true); return; }
-    subscribe.request().then((r) => {
-      if (!r.ok) { util.toast('未授权订阅消息，可在「我的」再试一次'); return; }
-      this._enableRemind(false);
-    });
-  },
-
-  /** 落地「已打开」：写 storage + 加手机重复日历（可选能力） */
-  _enableRemind(noTemplate) {
-    const hint = noTemplate ? '（微信提醒待模板上线）' : '';
-    const done = (msg) => {
-      wx.setStorageSync('remindOn', 1);
-      this.setData({ remindOn: true });
-      util.toast(msg + hint);
-    };
-    if (wx.addPhoneRepeatCalendar) {
-      const start = Math.floor(Date.now() / 1000) + 86400;
-      wx.addPhoneRepeatCalendar({
-        title: '查看本周班级值日安排',
-        startTime: start,
-        endTime: start + 600,
-        repeatInterval: 'week',
-        repeatCount: 18,
-        alarmOffset: 1800,
-        success: () => done('已打开微信通知，并加入日历'),
-        fail: () => done('已打开微信通知')
-      });
-    } else {
-      done('已打开微信通知');
-    }
-  },
-
-  /**
-   * 测试提醒：向本人发一条值日提醒模板消息，弹窗回访「收到没」；
-   * 没收到 / 发送失败则引导重新授权（详见 utils/subscribe.js runTest）。
-   */
-  onTestRemind() {
-    if (this.data.remindBusy) return;
-    this.setData({ remindBusy: true });
-    subscribe.runTest(() => api.testRemind()).then(() => this.setData({ remindBusy: false }));
-  },
-
   /* ---------------- 班费 / 团费（2026-10-14） ----------------
    * 卡片：班费全员可见；团费仅超管 / 班长兼团支书可见（首页左右一排两卡）。
    * 权限：班费管理 = 班长兼团支书 / 副班长 / 生活委员 / 超管；团费管理 = 班长兼团支书 / 超管。
@@ -1943,7 +1883,10 @@ Page({
     }
     this._feeLoading = true;
     this._feeLoadedAt = now;
-    api.feeSummary({}, { toast: false })
+    // 跨班查看：把当前选中的查看班级带给后端（0/空=本人主班，resolveClassId 回退）
+    const viewCid = Number(this.data.feeViewClassId) || 0;
+    const arg = viewCid ? { classId: viewCid } : {};
+    api.feeSummary(arg, { toast: false })
       .then((r) => {
         const feeClass = this._fmtFund(r && r.class);
         const feeLeague = this._fmtFund(r && r.league);
@@ -1955,8 +1898,40 @@ Page({
       .catch(() => {})
       .then(() => { this._feeLoading = false; });
   },
+  /**
+   * 班费/团费跨班查看（v0.7.43）：拉「可查看班级」列表 —— **仅辅导员**（=staffClassIds）。
+   * 仅 _applyIdentity 首次触发；选中班级本人保留不重置。
+   * 默认选中：若当前 feeViewClassId 不在列表内（含初始 0），优先本人主班，否则第一班并强制重拉一次费用。
+   */
+  _loadFeeClassList() {
+    api.classList({ all: true }, { toast: false })
+      .then((list) => {
+        const arr = Array.isArray(list) ? list : [];
+        const ids = arr.map(c => Number(c.id));
+        const oldSel = Number(this.data.feeViewClassId) || 0;
+        let sel = oldSel;
+        if (!ids.includes(sel)) {
+          // 默认停在本人主班（若主班在可看范围内），否则落到第一班
+          const own = Number((getApp() && getApp().globalData && getApp().globalData.profile || {}).classId) || 0;
+          sel = ids.includes(own) ? own : (arr.length ? ids[0] : 0);
+        }
+        const patch = { feeClassList: arr, feeViewClassId: sel };
+        this.setData(patch);
+        // 默认班与更新前不一致（如从 0 落到第一班/主班）时，强制拉一次该班的钱
+        if (sel && sel !== oldSel) this._loadFee(true);
+      })
+      .catch(() => {});
+  },
+  /** 班费/团费切班：选中某个可查看班级后立即重拉该班的钱 */
+  onFeeClassPick(e) {
+    const id = Number(e.currentTarget.dataset.id) || 0;
+    if (!id || id === Number(this.data.feeViewClassId)) return;
+    this.setData({ feeViewClassId: id });
+    this._loadFee(true);
+  },
   onFeeTap(e) {
     const type = e.currentTarget.dataset.type; // 'class' | 'league'
+    if (getApp().track) getApp().track.action('fee_open', type);
     const canManage = !!(type === 'class' ? this.data.feeCanManageClass : this.data.feeCanManageLeague);
     // 2026-10-15：班费/团费卡对所有已绑定成员可点。管理人 = 管理（可增删/补图）；
     // 其余成员 = view-only（仅查看，无法修改）。后端 getSummary 本就对所有成员返回，这里只是放开入口。
@@ -2043,17 +2018,47 @@ Page({
     const arr = this.data.feeImages.slice();
     if (i >= 0 && i < arr.length) { arr.splice(i, 1); this.setData({ feeImages: arr }); }
   },
+  /**
+   * 预览消费凭证图（v0.7.43）：取**该条记录的全部图片**一起进原生预览器，
+   * 点任意一张即**直接打开该张**，并可左右滑动查看其余图片（无需退出重开）。
+   *
+   * 🔴 定位口径（2026-10-16 收紧，替代「靠 wx:for-index 下标」的旧写法）：
+   *    **以被点击图片自身（data-src）为准**，在整条记录的图片数组里 `indexOf` 反查下标。
+   *    data-src 是逐项绑定的（每张缩略图各自持有自己的图），不受嵌套 `wx:for` 下标命名影响；
+   *    嵌套 `wx:for` 内外两层默认都叫 `index`，一旦取错就永远定位到第一张
+   *    ——用户看到的正是「明明点第 3 张，却从第 1 张滑过去」。用图片自身反查可彻底规避。
+   *    `data-idx` 仅作兜底（反查不到时才用）。
+   * 🔴 `wx.previewImage` 的 `current` 是**图片链接字符串（不是下标）**，且必须命中 `urls`
+   *    里的某个元素，否则会静默回退到第一张。这里用「目标图换算后的链接」在 urls 里
+   *    indexOf 定位，保证 current 一定命中。
+   */
   onFeePreviewImage(e) {
-    const src = e.currentTarget.dataset.src;
-    if (!src) return;
-    if (src.indexOf('cloud://') === 0) {
-      request.getTempFileURL([src]).then((map) => {
-        const url = map && map[src];
-        if (url) wx.previewImage({ urls: [url], current: url });
-      }).catch(() => util.toast('图片预览失败'));
-    } else {
-      wx.previewImage({ urls: [src], current: src });
+    const ds = e.currentTarget.dataset;
+    const recId = Number(ds.id);
+    const tapped = ds.src || '';
+    const rec = ((this.data.feeActive && this.data.feeActive.records) || [])
+      .find(r => Number(r.id) === recId);
+    const imgs = (rec && rec.images && rec.images.length) ? rec.images.slice()
+      : (tapped ? [tapped] : []);
+    if (!imgs.length) return;
+    // 目标下标：优先用被点击图片在整条记录里的真实位置；查不到才退回 data-idx
+    let idx = tapped ? imgs.indexOf(tapped) : -1;
+    if (idx < 0) idx = Math.max(0, Number(ds.idx) || 0);
+    if (idx >= imgs.length) idx = imgs.length - 1;
+    const needCloud = imgs.some(u => typeof u === 'string' && u.indexOf('cloud://') === 0);
+    if (!needCloud) {
+      wx.previewImage({ urls: imgs, current: imgs[idx] });
+      return;
     }
+    request.getTempFileURL(imgs).then((map) => {
+      const resolved = imgs.map(u => (map && map[u]) || '');
+      const urls = resolved.filter(Boolean);
+      if (!urls.length) { util.toast('图片预览失败'); return; }
+      // current 必须命中 urls：用目标图链接定位，失败再按下标夹取
+      let i = urls.indexOf(resolved[idx]);
+      if (i < 0) i = Math.min(idx, urls.length - 1);
+      wx.previewImage({ urls, current: urls[i] });
+    }).catch(() => util.toast('图片预览失败'));
   },
   onFeeSubmit() {
     if (this.data.feeBusy) return;

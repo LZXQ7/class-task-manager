@@ -193,6 +193,7 @@ Page({
 
   onShow() {
     const app = getApp();
+    if (app.track) app.track.pageView('timetable');
     app.setTabBar(1);
     // v0.7.31：不再立即播 —— 等「身份(app.ready) + 首屏数据(loading=false)」就绪、或 READY_MS 兜底超时再统一开播
     pageAnim.playReady(this, getApp());

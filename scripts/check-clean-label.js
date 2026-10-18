@@ -182,14 +182,9 @@ if (/remindBlock/.test(read('cloudfunctions/duty/index.js'))) ok('duty.today 回
 else bad('duty.today 没回传 remindBlock（首页拿不到失效状态）');
 if (/remindBlock/.test(read('cloudfunctions/auth/index.js'))) ok('auth.login 回传 member.remindBlock（「我的」页读取通道）');
 else bad('auth.login 没回传 remindBlock（「我的」页拿不到失效状态）');
-{
-  const homeWxml = read('miniprogram/pages/home/index.wxml');
-  const mineWxml = read('miniprogram/pages/mine/index.wxml');
-  if (/remindBlock/.test(homeWxml) && /重新开启/.test(homeWxml)) ok('首页悬浮胶囊有「微信提醒已失效，点此重新开启」形态');
-  else bad('首页没有「提醒已失效 → 重新开启」入口（额度耗尽后学生无从挽回）');
-  if (/remindBlock/.test(mineWxml) && /额度已用完/.test(mineWxml)) ok('「我的」提醒行有「额度已用完」提示');
-  else bad('「我的」提醒行没有「额度已用完」提示');
-}
+/* 2026-10-16：系统日历 + 值日微信提醒 + 首页通知入口已整体下线（用户反馈从未生效）。
+ * 后端 member.remind_block / remindReopen 字段与云函数逻辑暂留（死数据，零迁移风险），
+ * 由上方 duty.today / auth.login 的 remindBlock 静态断言 + member.remindReopen 变异自证继续看守。 */
 
 /*
  * 运行时自证：桩化 require 后**真跑 exports.main**。

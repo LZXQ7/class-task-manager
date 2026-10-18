@@ -6,6 +6,8 @@ const api = require('./utils/api');
 const mem = require('./utils/mem');
 const notice = require('./utils/notice');
 const theme = require('./utils/theme');
+/** 使用埋点（2026-10-16）：页面浏览 / 功能入口点击上报。页面经 getApp().track 调用。 */
+const track = require('./utils/track');
 
 const ENV_ID = '<YOUR_ENV_ID>';
 
@@ -41,6 +43,9 @@ function writeCachedAuth(profile, switched) {
 }
 
 App({
+  /** 埋点助手：getApp().track.pageView(page) / getApp().track.action(key, ref) */
+  track,
+
   globalData: {
     envId: ENV_ID,
     /* 布局常量（px） */

@@ -145,7 +145,11 @@ console.log('\n已临时注入 envVariables，开始部署…');
  */
 function runDeploy() {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [TCB, 'deploy', '--only', 'functions'], {
+    // 必须用 `tcb deploy --only functions`（读 cloudbaserc 完整配置，含 admin-web 的
+    // HTTP 类型 / gatewayPath），不能用单函数 `tcb fn deploy admin-web`（不带 HTTP 配置，
+    // 会报 ProtocolType 取值不符）。--yes 跳过全部 Overwrite 确认。会连 fee/stat 一起
+    // 重发，但 fn detail 已复核它们云上的 DB_* 仍在，重发不会清空。
+    const child = spawn(process.execPath, [TCB, 'deploy', '--only', 'functions', '--yes'], {
       cwd: ROOT,
       stdio: ['pipe', 'inherit', 'inherit'],
       shell: false
@@ -155,9 +159,9 @@ function runDeploy() {
       failed = true;
       console.error('spawn 失败：' + e.message);
     });
-    // 一次性喂足够多的 y，够 tcb 全程多次确认（函数覆盖 / 网关重复路由确认）
+    // 一次性喂足够多的 y，覆盖全部函数（admin-web / fee / stat）的 Overwrite 确认
     child.stdin.on('error', () => { /* 子进程提前退出时忽略 EPIPE */ });
-    child.stdin.end('y\ny\ny\ny\ny\ny\ny\ny\n');
+    child.stdin.end('y\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\ny\n');
     child.on('close', (status, signal) => {
       if (signal) console.error('子进程被信号 ' + signal + ' 终止');
       resolve(failed || signal ? 2 : (typeof status === 'number' ? status : 1));

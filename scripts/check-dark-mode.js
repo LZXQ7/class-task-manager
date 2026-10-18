@@ -646,7 +646,7 @@ console.log('\n── ⑦「我的」页外观设置项（二级页没有左上�
   chk(/selectComponent\('#mnNav'\)/.test(js), 'mine 用 selectComponent 拿 nav-bar 实例');
   chk(/data-k="\{\{item\.key\}\}"/.test(wxml), '三态选项带 data-k');
   // 总开关闭合时整卡不渲染（与 nav-bar 按钮同一开关，不能只藏一处）
-  chk(/<view wx:if="\{\{themeEnabled\}\}" class="card mn-card st-item st-5">/.test(wxml),
+  chk(/<view wx:if="\{\{themeEnabled\}\}" class="card mn-card st-item st-4">/.test(wxml),
     '外观卡 wx:if="{{themeEnabled}}" 受同一开关控制（开关关闭时不渲染）');
   chk(/themeEnabled:\s*config\.DARK_MODE_ENABLED/.test(js),
     'mine 的 themeEnabled 取 config.DARK_MODE_ENABLED（与 nav-bar 同源）');

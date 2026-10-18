@@ -28,12 +28,12 @@
 
   <!-- 用户信息 -->
   <view class="mn-user st-item st-1">
-    <!-- 点头像 → 微信官方选头像面板（chooseAvatar；getUserProfile 已被微信回收，只能拿灰头像）。
-         button 仅作透明点击层绝对铺在头像上：视觉归 avatar-tag，样式与 button 默认值完全隔离。 -->
-    <view class="avatar-wrap">
+    <!-- 整个头像块即 chooseAvatar 按钮（2026-10-16 重构：button 直接包裹 avatar-tag，
+         消除「透明按钮叠在自定义组件上」的层级歧义——此前 z-index 加固仍偶发失效）。
+         button 默认样式在 wxss 里全部重置为 80rpx 圆形容器。 -->
+    <button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar" binderror="onAvatarError">
       <avatar-tag name="{{profile ? profile.name : '我'}}" src="{{profile ? profile.avatarUrl : ''}}" size="{{80}}" />
-      <button class="avatar-btn" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar" binderror="onAvatarError"></button>
-    </view>
+    </button>
     <view class="mn-user-info">
       <view class="mn-user-line">
         <text class="mn-user-name">{{profile ? profile.name : '未绑定'}}</text>
@@ -66,38 +66,11 @@
     </view>
   </view>
 
-  <!-- 提醒（整块都是「学生自己的值日」相关 → 辅导员不渲染，避免留一个空卡片） -->
-  <view wx:if="{{!isCounselor}}" class="card mn-card st-item st-3">
-    <view class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onCalendar">
-      <app-icon name="calendar" variant="brand" size="{{40}}" />
-      <text class="mn-row-text">添加值日到系统日历</text>
-      <text wx:if="{{calendarOn}}" class="mn-row-done">已添加</text>
-      <view wx:else class="mn-mini-btn" catchtap="onCalendar">添加</view>
-    </view>
-    <!-- 值日微信提醒（v0.7.15）：
-         一天两条 —— 值日前一晚 21:00 预告 + 当天早上 07:00 再提醒（含课次与教室），
-         而一次性订阅是「同意一次 = 1 条额度」→ **开启之后每一次点击主行都是再攒 1 条**。
-         用户勾了弹窗里的「总是保持以上选择，不再询问」后不再弹窗、静默累积，连点几下即可攒够。
-         ⚠️ 「测试」必须独立成一行：发测试会**消耗** 1 条额度，不能挂在主点击上。 -->
-    <view class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onRemind">
-      <app-icon name="bell" variant="{{remindBlock ? 'orange' : 'brand'}}" size="{{40}}" />
-      <text class="mn-row-text">值日微信提醒</text>
-      <text wx:if="{{remindBlock}}" class="mn-row-done mn-row-warn">额度已用完 · 点此重新开启</text>
-      <text wx:elif="{{remindOn}}" class="mn-row-done">已开启 · 点此攒额度</text>
-      <view wx:else class="mn-mini-btn" catchtap="onRemind">开启</view>
-    </view>
-    <view wx:if="{{remindOn}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onTestRemind">
-      <app-icon name="refresh" variant="brand" size="{{40}}" />
-      <text class="mn-row-text">测试微信提醒</text>
-      <app-icon name="arrow-right" variant="gray" size="{{32}}" />
-    </view>
-  </view>
-
   <!-- 通知入口（v0.7.22 需求④）：只保留首页一处，「我的」页不再有通知栏
        （角标 / 列表缓存的拉取也随之下线，缓存由首页继续写入） -->
 
   <!-- 管理 -->
-  <view wx:if="{{isAdmin || switched}}" class="card mn-card st-item st-4">
+  <view wx:if="{{isAdmin || switched}}" class="card mn-card st-item st-3">
     <!-- 换班确认权在生活委员：成员提交的申请都在这里拍板 -->
     <view wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="openApps">
       <app-icon name="bell" variant="brand" size="{{40}}" />
@@ -141,12 +114,12 @@
   <!-- 外观（深色模式 C-4）：二级页没有 nav-bar 左上角的切换按钮（那里是返回键的地盘），
        所以「我的」页给一份完整的三态入口 —— 按钮只能循环，看不出当前是哪一档，
        也无法直接回到「跟随系统」。切换走 nav-bar 的 applyTheme（圆形揭示动效与按钮完全一致）。
-       ⚠️ 本卡是 st-5，「关于」顺延到 st-6；st-item 档位必须从 st-1 连续，check-tab-enter 会验。
+       ⚠️ 本卡是 st-4，「关于」顺延到 st-5；st-item 档位必须从 st-1 连续，check-tab-enter 会验。
        ⚠️ 2026-10-07：`wx:if="{{themeEnabled}}"` —— 深色模式总开关关闭时整卡不渲染。
-           档位号**保持 st-5 不变**（不重新编号）：check-tab-enter 是源码静态扫描，
-           隐藏后 st-1..st-6 照样连续；代价是运行时「关于」会晚一档入场（一个 ST_STEP_MS，
+           档位号**保持 st-4 不变**（不重新编号）：check-tab-enter 是源码静态扫描，
+           隐藏后 st-1..st-5 照样连续；代价是运行时「关于」会晚一档入场（一个 ST_STEP_MS，
            约 60ms），只在开关关闭期间存在，可接受 —— 重新编号会让恢复开关时布局顺序跳变。 -->
-  <view wx:if="{{themeEnabled}}" class="card mn-card st-item st-5">
+  <view wx:if="{{themeEnabled}}" class="card mn-card st-item st-4">
     <view
       wx:for="{{themeOpts}}"
       wx:key="key"
@@ -166,7 +139,7 @@
   </view>
 
   <!-- 关于 -->
-  <view class="card mn-card st-item st-6">
+  <view class="card mn-card st-item st-5">
     <view class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onAbout">
       <app-icon name="info" variant="brand" size="{{40}}" />
       <text class="mn-row-text">关于</text>

@@ -7,6 +7,32 @@
 
 ---
 
+## v0.7.44 · 2026-10-16（后台修复 2026-10-18 收官） · 对外 1.0.7.0
+**主题：移除失效提醒入口 + 头像可更换 + 后台使用统计**
+
+> 口径：三块小程序端改动（提醒入口移除 / 头像可换 / 埋点+统计页）+ 后端新增 `stat` 云函数与 `usage_event` 表。2026-10-18 当天对统计功能做了四轮修复并全部部署验证，一并纳入本版。门禁 **87/87 全绿**。
+
+### ① 移除失效提醒入口
+- **问题**：「添加值日到系统日历」「值日微信提醒」两个入口从未生效（订阅消息链路未打通），首页还有「打开微信通知页」悬浮胶囊，留着会造成误导。
+- **改动**：删 WXML/WXSS/JS 全链路（含 `legal.js` 的微信能力说明）；后端 `remind_block` / `remind_reopen` 字段**保留**（删列风险大于收益），门禁 `check-clean-label.js` 改为看守这两个字段而非 UI 文案。
+- **影响**：纯前端删除，无数据面变化。
+
+### ② 「我的」头像可更换
+- **问题**：原实现是「透明 `<button>` 叠在自定义头像组件上 + z-index 抬层」，真机偶发收不到点击。
+- **改动**：`miniprogram/pages/mine/index.wxml` 改为 `<button open-type="chooseAvatar">` 直接包裹头像组件；`binderror` 兜底隐私拒绝（不再红屏）。`check-tap-layer-zindex.js` 把新结构钉成门禁（含禁止回退旧模式的变异）。
+
+### ③ 后台使用统计（新增，含 2026-10-18 四轮修复）
+- **新增**：小程序端 `utils/track.js`（内存队列 + 防抖 1.5s + 批量上限 30 条，失败静默丢弃）+ `app.js` 挂 `getApp().track`；各页 `onShow` 调 `pageView`，首页班费/团费/通知/班级/名册/请假与「我的」关于/切换账号入口调 `action`（一律 `if (getApp().track)` 防御，防 mock 环境崩页面）。云函数 `stat` 的 `track` action 批量落 `usage_event(openid,class_id,kind,event,ref,ts)`；建表 SQL = `scripts/migrate-usage.sql`。后台 admin-web 新增 `lib/mod-usage.js`（`/api/usage`：按 event 聚合 PV/UV + 每日趋势 + 成员明细）、`index.html` 「使用统计」页签、`public/app.js` `renderUsage`、`admin.css` 柱状样式。
+- **四轮修复（2026-10-18，均只影响网页后台）**：
+  1. **Error 1052（选班级即 500）**：members 查询 `LEFT JOIN member` 后裸列名 `class_id` 二义（member 也有该列）——自建带 `e.` 前缀条件；根因是首轮只验了 `classId=0`（无该条件不触发）。
+  2. **刷新不保留现场**：localStorage 键 `admin.web.view` / `admin.web.classId` / `admin.web.usageAll` / `admin.web.usageDays`；`showMain` 读回（班级不在列表回退第 1 个、view 不在 `VIEWS` 回退 overview）。
+  3. **刷新闪现登录页**：`index.html` 的 `#login-view` 默认可见 + `boot()` 才异步分流 ⇒ 接口返回前一直挂登录页。改为登录页默认 `hidden` + 新增 `#bootstrap` 加载态（与登录页同渐变）+ 内联 5s 兜底定时器（app.js 挂了放行登录页，不卡死）；`boot()` 清定时器，`showLogin`/`showMain` 两个分流出口都撤加载态。
+  4. **绑定页文字不对齐 + 统计布局/「全部」失效**：`.summary` 类在 `admin.css` 里没有规则（card-hd 有 16px 左距、summary 为 0）⇒ 补样式对齐；统计工具栏两行改一行左右布局（时间范围左 / 班级范围右），「仅当前班级」去班名后缀（右上角已有）；「全部」按钮失效根因是 `if (!state.usageDays)` 把 **0 当 falsy** 改回 30 ⇒ 改 typeof 判断，后端 `trendDays = days || 30` 的回显撒谎同批修。
+- **验证**：`node --check` + 门禁 87/87；无头 harness（真实 app.js + 复刻 DOM + mock fetch）12 项断言先红后绿；`days=0` 新路径 `tcb db execute` 等价 SQL 四连验（total/rows/members/daily）全过；线上 `/admin`=200、`/api/usage?days=0`=401（未登录）、Code size 2233618、Modification time 2026-10-18 12:09:53、日志无 `[api-error]`。
+- **部署状态**：`usage_event` 表已建（生产库）；`stat` / `admin-web` 已部署（`fee` 同批重部署，无改动）。
+
+---
+
 ## v0.7.42 · 2026-10-15 · 对外 1.0.6.9
 **主题：课表编辑与周次细节 + 值日页精简**
 

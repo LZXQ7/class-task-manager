@@ -15,6 +15,7 @@ Page({
 
   onLoad(options) {
     theme.mount(this);   // 深色模式（C-4）：挂 t-light / t-dark 到本页根节点
+    if (getApp().track) getApp().track.pageView('webview');
     const raw = String((options && options.url) || '');
     let url = '';
     try { url = decodeURIComponent(raw); } catch (e) { url = raw; }

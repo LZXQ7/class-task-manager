@@ -103,7 +103,7 @@ Page({
     theme.unmount(this);   // 深色模式（C-4）：摘掉主题订阅
   },
 
-  onShow() { this._syncRole(); },
+  onShow() { if (getApp().track) getApp().track.pageView('classes'); this._syncRole(); },
 
   /**
    * 同步身份。

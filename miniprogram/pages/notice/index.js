@@ -91,6 +91,7 @@ Page({
     theme.mount(this);   // 深色模式（C-4）：挂 t-light / t-dark 到本页根节点
     this._refreshSubTip();
     const app = getApp();
+    if (app.track) app.track.pageView('notice');
     const p = (app.globalData && app.globalData.profile) || {};
     const s = !!(app && app.isSuper && app.isSuper());
     this.setData({ isSuper: s, canClear: !!(s && p.test) });

@@ -86,36 +86,23 @@
   color: #0AA5A8;
   background: #E8FFFB;
 }
-/* 头像点击层：包一层 80x80 相对定位容器，button 透明绝对铺满其上。
-   button 与视觉完全隔离（默认 width≈184px / 背景 / 边框全都不再影响布局），
-   点击仍落在 button 上触发 chooseAvatar 面板。 */
-.avatar-wrap {
-  position: relative;
+/* 头像点击层：整个头像块即 chooseAvatar 按钮（2026-10-16 重构）。
+   旧实现是「透明 button 绝对铺在 avatar-tag 上 + z-index 抬层」——自定义组件与
+   原生 button 的层级在真机上仍偶发错位，导致点头像没反应。现改为 button 直接包裹
+   avatar-tag，点击区域就是按钮本身，无叠层歧义。button 默认 padding / 边框 / 背景
+   全部重置为 80rpx 圆形容器，内部 avatar-tag 居中铺满。 */
+.avatar-btn {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 80rpx;
   height: 80rpx;
-}
-.avatar-btn {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  /* 🔴🔴 必须显式抬层（2026-10-09 用户报「点击头像更换微信头像失效」）：
-   * 本文件**原本一处 z-index 都没有**，而 `.avatar-wrap` 里的 `avatar-tag` 组件
-   * 与这个 button 是**同级**（无定位、无 z-index）⇒ **同z-index 时后渲染的组件
-   * 视觉元素盖在 button 之上** ⇒ 透明按钮接收不到点击 ⇒ 点头像没反应。
-   * ⚠️ WXSS 真编译**不会报错**（语法完全合法），只能靠点击行为发现 ——
-   *这类「透明点击层被兄弟节点盖住」的坑，一律靠 z-index 解决，不要去调 opacity/尺寸。
-   * ⚠️ 写 `z-index` 的前提是父级 `.avatar-wrap` 已有 `position: relative`（本文件已有）
-   *    —— 否则 z-index 不生效（相对定位才是定位元素的定位上下文）。 */
-  z-index: 2;
   margin: 0;
   padding: 0;
   background: transparent;
   border: none;
   border-radius: 50%;
-  font-size: 0;
   line-height: 1;
   overflow: hidden;
 }

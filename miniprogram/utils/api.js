@@ -30,6 +30,9 @@ module.exports = {
   setBindOpen: C('auth', 'setBindOpen'),
   resolveScene: C('auth', 'resolveScene'),
 
+  /* ---------- stat（2026-10-16）：使用埋点上报 ---------- */
+  track: C('stat', 'track'),
+
   /* ---------- member ---------- */
   memberList: C('member', 'list'),
   memberStats: C('member', 'stats'),

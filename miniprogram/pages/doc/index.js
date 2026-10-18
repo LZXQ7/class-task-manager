@@ -34,6 +34,7 @@ Page({
 
   onLoad(q) {
     theme.mount(this);   // 深色模式（C-4）：挂 t-light / t-dark 到本页根节点
+    if (getApp().track) getApp().track.pageView('doc');
     const type = (q && q.type === 'privacy') ? 'privacy' : 'agreement';
     const src = DOCS[type] || DOCS.agreement;
     this.setData({

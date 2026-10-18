@@ -29,8 +29,9 @@
   换句话说：这不是「没做 amis」，而是「先把数据通路做对，渲染层后补」。
 -->
 <div id="app" class="app">
-  <!-- 登录 -->
-  <div id="login-view" class="login-wrap">
+  <!-- 登录（默认隐藏：刷新时先走「加载态」，由 app.js 按 /api/me 结果再分流，
+       否则登录页会在会话有效时闪现一下——用户反馈「点刷新会跳一下登录页」） -->
+  <div id="login-view" class="login-wrap" hidden>
     <form class="login-card" id="login-form" autocomplete="on">
       <div class="login-brand">
         <div class="login-title">班级任务管理</div>
@@ -66,6 +67,7 @@
         <button class="nav-item" data-view="audit">操作审计</button>
         <button class="nav-item" data-view="leave">请假</button>
         <button class="nav-item" data-view="binding">绑定</button>
+        <button class="nav-item" data-view="usage">使用统计</button>
       </nav>
       <div class="side-foot">
         <div class="who" id="who"></div>
@@ -86,7 +88,26 @@
       <section class="view" id="view"></section>
     </main>
   </div>
+
+  <!-- 加载态：页面一打开就显示它，替掉「先闪一下登录页」。
+       app.js 的 boot() 会清掉兜底定时器并按 /api/me 结果切到主界面或登录页。 -->
+  <div id="bootstrap" class="boot-wrap">
+    <div class="boot-card">
+      <div class="boot-spinner" aria-hidden="true"></div>
+      <div class="boot-text">正在加载…</div>
+    </div>
+  </div>
 </div>
+<script>
+// 兜底：app.js 加载失败或执行抛异常时，5s 后放行登录页，
+// 避免页面永远停在「正在加载…」且无任何可操作入口（比登录页闪现更糟的死局）。
+window.__bootTimer = setTimeout(function () {
+  var b = document.getElementById('bootstrap');
+  var l = document.getElementById('login-view');
+  if (b) b.hidden = true;
+  if (l) l.hidden = false;
+}, 5000);
+</script>
 <div id="toast" class="toast" hidden></div>
 <!-- SheetJS：课表 xlsx 解析在**浏览器侧**做（后端不引它，避免云函数包膨胀 + 冷启动变慢）。
      ⚠️ 走 CDN 意味着内网无外网时导入功能不可用 —— 其余功能（课程表/成员/班级/配置/审计）不受影响。

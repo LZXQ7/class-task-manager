@@ -90,7 +90,7 @@ const routes = {
     auth: { needBind: true },
     handler: async (payload, ctx) => {
       const me = guard.requireBind(ctx);
-      const classId = guard.classIdOf(ctx);
+      const classId = await guard.resolveClassId(getPool(), ctx, payload);
       const pool = getPool();
       const cls = await loadFund(pool, classId, 'class');
       const league = await loadFund(pool, classId, 'league');
@@ -106,7 +106,7 @@ const routes = {
     auth: { needBind: true },
     handler: async (payload, ctx) => {
       const me = guard.requireBind(ctx);
-      const classId = guard.classIdOf(ctx);
+      const classId = await guard.resolveClassId(getPool(), ctx, payload);
       const type = TYPES.indexOf(payload.type) >= 0 ? payload.type : null;
       if (!type) throw new BizError(41001, '参数错误');
       if (!feeTotalSetter(type, me)) {
@@ -130,7 +130,7 @@ const routes = {
     auth: { needBind: true },
     handler: async (payload, ctx) => {
       const me = guard.requireBind(ctx);
-      const classId = guard.classIdOf(ctx);
+      const classId = await guard.resolveClassId(getPool(), ctx, payload);
       const type = TYPES.indexOf(payload.type) >= 0 ? payload.type : null;
       if (!type) throw new BizError(41001, '参数错误');
       if (!feeManager(type, me)) {
@@ -160,7 +160,7 @@ const routes = {
     auth: { needBind: true },
     handler: async (payload, ctx) => {
       const me = guard.requireBind(ctx);
-      const classId = guard.classIdOf(ctx);
+      const classId = await guard.resolveClassId(getPool(), ctx, payload);
       const type = TYPES.indexOf(payload.type) >= 0 ? payload.type : null;
       if (!type) throw new BizError(41001, '参数错误');
       if (!feeManager(type, me)) {
@@ -196,7 +196,7 @@ const routes = {
     auth: { needBind: true },
     handler: async (payload, ctx) => {
       const me = guard.requireBind(ctx);
-      const classId = guard.classIdOf(ctx);
+      const classId = await guard.resolveClassId(getPool(), ctx, payload);
       const type = TYPES.indexOf(payload.type) >= 0 ? payload.type : null;
       if (!type) throw new BizError(41001, '参数错误');
       if (!feeManager(type, me)) {
