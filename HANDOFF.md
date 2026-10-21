@@ -32,6 +32,25 @@
 
 ---
 
+## 【本session】 · 2026-10-21（**1.0.7.0 收尾：值日页去切换 + 手动排版放开重复排班【三入口】 + 双轨再同步**）
+
+**输入**：用户要求「小程序值日去掉按人和按日切换，仅保留按日」；「值日手动排版，当天或当周已有值日的人员也可再次被安排」；并确认「每次更新版本都会同步 github」。后实测反馈「现在还是当天已有值日，不可安排」⇒ 补漏。
+
+**做了什么**：
+1. **值日页去按人/按日切换**：`pages/duty/` 删「按人」视图 + `segmented` 切换（onMode/_flipMode/_toPersons/onExpand、list-transition 依赖、纯按人样式、json 组件声明）；「已结束」入口 `wx:if` 改 `pastDays.length`。门禁 `check-duty-ended`/`check-count-align`/`check-permission-delegate` 同步改写转绿。
+2. **手动排版放开重复排班（三入口全放开）**：
+   - P5「我的→手动排版」：`schedule.addManual`/`reassign` 移除同天 `busy` 硬拦截；前端 `manual/index.js` 的 `sameDay` 置灰与「当天已有值日」badge 移除，`disabled` 仅剩 `inThis||onLeave||groupBad`；`manual/index.wxml` 文案「/ 当天已有值日」删除。
+   - 值日页「加值日生」：走 `schedule.addManual`，本就不挡同天，随云函数放开一并允许。
+   - 值日页/值日详情弹层「选人换班/换人/添加」（`components/duty-sheet` → `adjust.swapCandidates`）：原 `cloudfunctions/adjust/index.js` 的 `swapCandidates` 用 `busySet` 把当天已排的人从候选剔除，是用户实测仍报「不可安排」的遗漏路径；已移除该 `busy` 查询与 `busySet` 过滤，候选仅保留「请假（onLeave）」剔除。该组件 SWAP/REASSIGN/ADD 三动作均取 `swapCandidates` ⇒ 改这一处即三动作都能选到当天已排的人（执行侧 `applySwap`/`confirm`/`reassign`/`addManual` 均无同天拦截，同课次同周由 `uq_duty` 兜底）。
+3. **文档**：`CHANGELOG.md`/`CHANGELOG-DETAIL.md` v0.7.44 节补「值日页去切换」「手动排版放开（三入口）」；`outputs/v1.0.7.0-更新说明.md` 版本A/B 各补两条，并在备注补「`schedule`+`adjust` 云函数须重新部署、前端须重新上传」强制提示（根因：此前改动从未部署，线上仍跑旧逻辑）。
+4. **双轨同步**：`bash scripts/publish-release.sh v1.0.7.0` 跑通 —— 私有 `29a6836..888baab` 已推、公开脱敏 `8c4761b..861b3c2` 已推，PII 自检 0 命中。tag `v1.0.7.0` 仍锚在 `7edb067`（不 bump）。
+
+**闭环**：`node --check` 三文件（adjust/schedule/manual/index.js）通过；全仓 grep 无残留同天硬拦截；11 个相关门禁（`check-committee`/`check-duty-columns`/`check-duty-ended`/`check-duty-marker-symmetry`/`check-duty-rotation`/`check-duty-stats-source`/`check-duty-week-sync`/`check-round-robin`/`check-schedule-generate-runtime`/`check-session-shift`/`check-shift-move`）全绿。
+
+**🔴 未决（必须用户侧操作，本机无云凭据）**：**重部署云函数 `schedule` + `adjust`**（含三入口放开的全部逻辑），并**重新上传微信小程序前端**（开发者工具打开仓库根目录、先点「编译」再上传）。否则线上仍走旧云函数，用户继续看到「当天已有值日，不可安排」。提审：超管「我的→审核体验入口」重新开启换新口令；通过后跑 `review_demo_on=0` 关闭 SQL。
+
+---
+
 ## 【本session】 · 2026-10-19（**admin-web 成员使用明细增强：每人各功能点次细分**）
 
 **输入**：用户要求「网页后台使用统计增加细分，每个成员哪些功能点了多少次（如示例成员01点了课程表5次、值日2次、团费8次）」。原成员明细只列「用过哪些功能」去重串，无次数。
