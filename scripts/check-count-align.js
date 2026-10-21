@@ -221,7 +221,7 @@ console.log('\n── ② 「值日 N 次」= 值日 + 定宽数字 + 次');
 /* [wxml, 期望的「值日 + 数字」段数, 期望的「本周 + 数字」段数, 对应 wxss]
    ⚠️ 2026-09-26：成员与分组已从「我的」页迁到 pages/roster，展示位置随之搬家。 */
 const COUNT_SITES = [
-  ['pages/duty/index.wxml', 1, 1, 'pages/duty/index.wxss'],
+  ['pages/duty/index.wxml', 0, 0, 'pages/duty/index.wxss'],  // 2026-10-XX：去掉「按人」视图后按日页不再有「值日/本周 N 次」三段
   ['pages/roster/index.wxml', 2, 0, 'pages/roster/index.wxss'],
   ['components/duty-sheet/index.wxml', 1, 0, 'components/duty-sheet/index.wxss']
 ];
@@ -243,20 +243,23 @@ COUNT_SITES.forEach(([wxml, nDuty, nWeek, wxss]) => {
   eq(onText, nDuty + nWeek, wxml + ' 定宽数字槽都写在 <text> 上');
 
   const css = readM(wxss);
-  const rule = /\.cnt-num\s*\{([^}]*)\}/.exec(css);
-  assertTrue(!!rule, wxss + ' 定义了 .cnt-num');
-  if (rule) {
-    const b = rule[1];
-    assertTrue(/display\s*:\s*inline-block/.test(b), wxss + ' .cnt-num 是 inline-block');
-    assertTrue(/text-align\s*:\s*center/.test(b), wxss + ' .cnt-num 数字居中');
-    const w = /min-width\s*:\s*(\d+)rpx/.exec(b);
-    assertTrue(!!w && Number(w[1]) >= 40, wxss + ' .cnt-num 定宽 ≥40rpx（够放两位数字）',
-      w ? w[1] + 'rpx' : '没有 min-width');
+  // 2026-10-XX：去掉「按人」视图后，按日页（pages/duty）不再有「值日/本周 N 次」三段，
+  // 其 wxss 也不再定义 .cnt-num；其余页仍用，故仅当本页确有 cnt-num 时才校验样式。
+  if (nDuty + nWeek > 0) {
+    const rule = /\.cnt-num\s*\{([^}]*)\}/.exec(css);
+    assertTrue(!!rule, wxss + ' 定义了 .cnt-num');
+    if (rule) {
+      const b = rule[1];
+      assertTrue(/display\s*:\s*inline-block/.test(b), wxss + ' .cnt-num 是 inline-block');
+      assertTrue(/text-align\s*:\s*center/.test(b), wxss + ' .cnt-num 数字居中');
+      const w = /min-width\s*:\s*(\d+)rpx/.exec(b);
+      assertTrue(!!w && Number(w[1]) >= 40, wxss + ' .cnt-num 定宽 ≥40rpx（够放两位数字）',
+        w ? w[1] + 'rpx' : '没有 min-width');
+    }
   }
 });
 
-assertTrue(/\.dt-progress\s*\{[^}]*min-width\s*:\s*\d+rpx/.test(readM('pages/duty/index.wxss')),
-  'pages/duty .dt-progress 有固定 min-width（否则点数变化把尾部计数顶得左右漂移）');
+// 2026-10-XX：.dt-progress（按人视图的本周值日进度点）随「按人」视图移除，相应断言删除。
 
 /* ============================================================
  * ③ 成员绑定状态 + 成员详情权限

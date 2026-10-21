@@ -23,8 +23,6 @@
   .card { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .dt-daycard { margin: 0 32rpx 24rpx; }
-/* 按人视图整卡：与按日视图同宽（v0.7.19 需求②） */
-.dt-personcard { margin: 0 32rpx 24rpx; }
 .dt-dayhead {
   height: 80rpx;
   padding: 0 32rpx;
@@ -73,8 +71,6 @@
 .dt-row-name { font-size: 30rpx; color: #1D2129; }
 .dt-row.mine .dt-row-name { font-weight: 600; }
 .dt-row-sub { font-size: 24rpx; color: #86909C; display: block; margin-top: 4rpx; }
-/* 「值日 N 次」三段对齐：中间数字占固定宽度并居中，单位数↔双位数不改变两侧文字的位置 */
-.cnt-num { display: inline-block; min-width: 46rpx; text-align: center; }
 /* 保洁角标 + 姓名行（让「保洁」紧贴姓名后，不挤占副标题） */
 .dt-row-namerow { display: flex; align-items: center; }
 .dt-clean-tag {
@@ -88,26 +84,6 @@
   flex-shrink: 0;
 }
 
-.dt-person {
-  min-height: 128rpx;
-  padding: 16rpx 32rpx;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  border-bottom: 2rpx solid #F2F3F5;
-}
-.dt-person.mine { background: #F7F8FA; }
-.dt-person-count { font-size: 26rpx; color: #4E5969; margin-right: 16rpx; }
-/* 进度点个数随本周值日次数变化，宽度不定会把右侧「本周 N 次」顶得左右漂移；
-   固定一个够用的宽度（5 个点 = 90rpx，实际每人每周 0~2 次）让尾部计数对齐。 */
-.dt-progress { display: flex; flex-direction: row; margin-right: 12rpx; min-width: 90rpx; }
-.dt-block {
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 2rpx;
-  background: #E5E6EB;
-  margin-right: 6rpx;
-}
 
 .dt-admin {
   display: flex;
@@ -518,8 +494,8 @@
 
 /* ---------- 「已结束」入口 + 弹层（2026-10-04 需求） ----------
  * 本周早于今天的日子不进「按日」主列表，收进「已结束」弹层。 */
-/* 按日/按人 同一行：左 segmented、右入口（仅按日且本周有已结束日子时渲染） */
-.dt-modebar { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+/* 「已结束」入口容器：仅本周有已结束日子时渲染，入口右对齐 */
+.dt-modebar { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; }
 .dt-ended {
   display: flex;
   flex-direction: row;

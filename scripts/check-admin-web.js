@@ -429,16 +429,29 @@ function stillPasses(file, tmpPath) {
   }
   if (file === 'public/app.js') {
     const src = fs.readFileSync(tmpPath, 'utf8');
-    // 判据：右上角切班必须**就地刷新**，且要把状态清干净。
+    // 判据一：右上角切班必须**就地刷新**，且要把状态清干净。
     //   ⚠️ 只查「有没有 reload()」是不够的 —— 同时出现 reload() 和 go('overview')
     //   仍然会跳走（reload 先跑一遍再被跳走）⇒ 必须**互斥**地判。
     const m = /sel\.onchange = function \(\) \{([\s\S]*?)\n    \};/.exec(src);
     if (!m) return false;
     const b = m[1];
-    return /reload\(\)/.test(b)
+    const pickerOk = /reload\(\)/.test(b)
       && !/go\(\s*'overview'\s*\)/.test(b)
       && /memberPage = 1/.test(b) && /auditPage = 1/.test(b)
       && /\.dlg-mask/.test(b);
+    // 判据二：成员功能点次必须渲染成 ev-count（中文标签 × 次数）
+    const evOk = /ev-count/.test(src) && /memberEventCounts/.test(src);
+    return pickerOk && evOk;
+  }
+  if (file === 'lib/mod-usage.js') {
+    const src = fs.readFileSync(tmpPath, 'utf8');
+    // 判据：成员功能点次必须真的按 event/ref 细分（GROUP BY 含 e.event, e.ref），
+    //   且聚合出 COUNT(*) AS cnt、把结果装进 eventsBreakdown。
+    //   ⚠️ 只查 eventsBreakdown 字样不够 —— 变异若把 GROUP BY 塌成只按 openid，
+    //   聚合虽还在但每个成员只会有一行（次数之和），细分信息全丢。
+    return /GROUP BY e\.openid, e\.event, e\.ref/.test(src)
+      && /COUNT\(\*\) AS cnt/.test(src)
+      && /eventsBreakdown/.test(src);
   }
   return true;
 }
@@ -765,6 +778,34 @@ t('主教室设置：main_room 字段 + 改时同步保洁课次名/房间（新
   assert.ok(/<th>主教室<\/th>/.test(js), '班级列表缺主教室列');
   assert.ok(/c\.mainRoom \?/.test(js), '班级列表应展示主教室');
 });
+
+/* ---------------- 使用统计：成员各功能点次细分 ---------------- */
+t('使用统计：成员明细按 (openid,event,ref) 聚合次数', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'lib', 'mod-usage.js'), 'utf8');
+  assert.ok(/GROUP BY e\.openid, e\.event, e\.ref/.test(src),
+    'mod-usage.js 必须按 (openid,event,ref) 聚合成员功能次数');
+  assert.ok(/COUNT\(\*\) AS cnt/.test(src), '聚合必须有 COUNT(*) AS cnt');
+  assert.ok(/eventsBreakdown/.test(src), '成员数据必须带 eventsBreakdown');
+});
+t('使用统计：前端渲染成员各功能次数（中文标签 ×N）', () => {
+  const js = readPub('app.js');
+  assert.ok(/memberEventCounts/.test(js), 'app.js 缺 memberEventCounts 渲染函数');
+  assert.ok(/r\.eventsBreakdown/.test(js), '成员表未读取 eventsBreakdown');
+  assert.ok(/ev-count/.test(js), '渲染未输出 ev-count 标签');
+});
+
+mutateAndExpectFail(
+  '成员功能点次不按功能细分（塌成每人才一行）',
+  'lib/mod-usage.js',
+  'GROUP BY e.openid, e.event, e.ref',
+  'GROUP BY e.openid'
+);
+mutateAndExpectFail(
+  '成员功能点次不渲染次数标签（只显示名字）',
+  'public/app.js',
+  "return '<span class=\"ev-count\"><b>' + esc(it.label) + '</b> ×' + esc(it.cnt) + '</span>';",
+  "return '<span>' + esc(it.label) + '</span>';"
+);
 
 /* ================= 汇总 ================= */
 // 变异自证的临时目录统一在收尾清一次（垫片 rmSync 单次 ~9s，逐个删会累计超时）

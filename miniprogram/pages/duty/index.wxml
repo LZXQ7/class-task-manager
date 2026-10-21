@@ -45,15 +45,9 @@
   />
 
   <view class="dt-wrap st-item st-2 dt-modebar">
-    <segmented
-      items="{{[{key:'day',text:'按日'},{key:'person',text:'按人'}]}}"
-      value="{{mode}}"
-      width="{{320}}"
-      bind:change="onMode"
-    />
     <!-- 「已结束」（2026-10-04 需求）：本周早于今天的日子收进弹层，不再占主列表 -->
     <view
-      wx:if="{{mode === 'day' && pastDays.length}}"
+      wx:if="{{pastDays.length}}"
       class="dt-ended"
       bindtap="onEndedOpen"
       hover-class="press-dim"
@@ -141,8 +135,8 @@
       />
     </view>
 
-    <!-- 按日 -->
-    <block wx:if="{{mode === 'day'}}">
+    <!-- 按日（唯一视图） -->
+    <block>
       <!-- 渲染源是 activeDays（本周 = 今天及以后；历史周 = 全部）。
            早于今天的日子不在这里，收进上面的「已结束」弹层（2026-10-04 需求）。 -->
       <view wx:for="{{activeDays}}" wx:key="date" class="dt-daycard card">
@@ -197,62 +191,6 @@
       <view wx:if="{{!activeDays.length}}" class="dt-ended-empty">今天起没有值日安排{{pastDays.length ? '，过去的日子在顶部「已结束」里' : ''}}</view>
     </block>
 
-    <!-- 按人 -->
-    <block wx:else>
-      <view class="dt-personcard card">
-        <block wx:for="{{persons}}" wx:key="memberId">
-          <view
-            class="dt-person {{item.isMine ? 'mine' : ''}}"
-            data-id="{{item.memberId}}"
-            style="{{item.ghFlip}}"
-            bindtap="onExpand"
-          >
-            <avatar-tag name="{{item.name}}" text="{{item.seqText}}" no-fallback="{{true}}" size="{{56}}" />
-            <view class="dt-row-info">
-              <text class="dt-row-name">{{item.name}}</text>
-              <!-- 「值日 / 数字 / 次」三段：数字占固定宽度居中，1 位↔2 位时「次」不跳动 -->
-              <view class="dt-row-sub"><text>{{item.groupTag}} 组 · 值日</text><text class="cnt-num">{{item.weekCount}}</text><text>次</text></view>
-            </view>
-            <view class="dt-person-count"><text>本周</text><text class="cnt-num">{{item.weekCount}}</text><text>次</text></view>
-            <view class="dt-progress">
-              <view
-                wx:for="{{item.list}}"
-                wx:for-item="z"
-                wx:for-index="zi"
-                wx:key="zi"
-                class="dt-block"
-              ></view>
-            </view>
-            <app-icon name="{{expandId === item.memberId ? 'chevron-up' : 'chevron-down'}}" variant="gray" size="{{32}}" />
-          </view>
-          <block wx:if="{{expandId === item.memberId}}">
-            <view
-              wx:for="{{item.list}}"
-              wx:for-item="z"
-              wx:key="id"
-              class="dt-row sub"
-              hover-class="tap-hover"
-              hover-start-time="0"
-              hover-stay-time="60"
-              data-id="{{z.id}}"
-              style="{{z.flip}}"
-              bindtap="onRow"
-            >
-              <avatar-tag name="{{z.name}}" text="{{z.seqText}}" no-fallback="{{true}}" size="{{64}}" />
-              <view class="dt-row-info">
-                <view class="dt-row-namerow">
-                  <text class="dt-row-name">{{z.classDate}} {{z.whenText}}</text>
-                  <text wx:if="{{z.isClean}}" class="dt-clean-tag">410</text>
-                </view>
-                <text class="dt-row-sub">{{z.courseName}} · {{z.room || '未填教室'}}</text>
-              </view>
-              <status-pill status="{{z.status}}" />
-              <text wx:if="{{canSchedule}}" class="dt-row-edit">调整›</text>
-            </view>
-          </block>
-        </block>
-      </view>
-    </block>
 
     <view class="dt-foot"></view>
   </block>

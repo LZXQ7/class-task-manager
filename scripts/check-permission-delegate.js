@@ -149,9 +149,11 @@ has(DUTY_W, /btn-text="\{\{canSchedule \? '去发布' : ''\}\}"/, '未发布提�
  *   于是「纯 canSchedule」变成 5 处、「canSchedule && showAddDutyBtn」1 处，合计仍是 6。
  *   💡 判据要同时接受两种形态，否则以后再开关任何一个入口都会假红；
  *      但**总数 6 仍是硬要求** —— 那才是「一处漏改」的信号。
+ *   2026-10-XX：去掉「按人」视图后，按人子行的「调整›」（1 处纯 canSchedule）随之消失，
+ *      合计降为 **5** 处（4 纯 canSchedule + 1 `canSchedule && showAddDutyBtn`）。
  */
-eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 6,
-  '值日页排班入口全部改按 canSchedule（6 处：含 #27 合并行 / 合并行成员弹层的「调整›」；「+加值日生」为开关式隐藏 canSchedule && showAddDutyBtn）');
+eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 5,
+  '值日页排班入口全部改按 canSchedule（5 处：4 处纯 canSchedule + 1 处开关式隐藏「+加值日生」canSchedule && showAddDutyBtn；按人子行的「调整›」已随按人视图移除）');
 /** 开关本身必须在：它是「暂时隐藏入口」的唯一恢复手段，删了就只能翻 git。 */
 ok('「+ 加值日生」用开关式隐藏（data.showAddDutyBtn 存在且当前为 false）',
   /showAddDutyBtn:\s*false/.test(read('miniprogram/pages/duty/index.js')),

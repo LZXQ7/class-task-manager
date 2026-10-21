@@ -39,6 +39,18 @@
 - **验证**：`node --check` + 门禁 87/87；无头 harness（真实 app.js + 复刻 DOM + mock fetch）12 项断言先红后绿；`days=0` 新路径 `tcb db execute` 等价 SQL 四连验（total/rows/members/daily）全过；线上 `/admin`=200、`/api/usage?days=0`=401（未登录）、Code size 2233618、Modification time 2026-10-18 12:09:53、日志无 `[api-error]`。
 - **部署状态**：`usage_event` 表已建（生产库）；`stat` / `admin-web` 已部署（`fee` 同批重部署，无改动）。
 
+### ④ 值日页去掉按日 / 按人切换，仅留按日（收尾，随 1.0.7.0 前端上传一并生效）
+- **问题**：值日页原先有「按日 / 按人」两种视图切换（segmented 控件），按人视图长期无人使用、且增加维护与门禁成本。
+- **改动**：`miniprogram/pages/duty/index.wxml` 删除 segmented 切换控件、按人视图整块（dt-personcard / dt-person / expandId / onExpand / cnt-num / dt-progress / dt-block）、`mode`/`persons`/`expandId` 数据与 `onMode`/`_flipMode`/`_toPersons`/`onExpand` 方法；`index.json` 移除 `segmented` 组件声明；`index.wxss` 清除纯按人样式、`.dt-modebar` 改 `justify-content:flex-end`（仅剩「已结束」pill 右对齐）；`index.js` 移除 `listTransition` 依赖。
+- **门禁**：`check-duty-ended.js`（A 节改全文件 `wx:for="{{activeDays}}"` 且无 `wx:for="{{days}}"` 断言、A3 去按人符号、B1 改判「不再带 mode==='day'」、G 删整周取数随按人视图移除的判据）、`check-count-align.js`（duty 的 COUNT_SITES 由 `[1,1]` 改 `[0,0]`、`.cnt-num` 校验包进 `if (nDuty+nWeek>0)`）、`check-permission-delegate.js`（canSchedule 入口期望 6 → 5）同步改写；三者及 duty 相关 16+ 门禁全绿。
+
+### ⑤ 手动排版放开重复排班（2026-10-21）
+- **问题**：手动排班（P5）时，当天或当周已有值日的人员被硬拦截，无法再次被安排——超管想灵活补排时被卡。
+- **根因**：`cloudfunctions/schedule/index.js` 的 `addManual` 与 `reassign` 各有一段 `busy` 查询（按 `class_date` + `member_id` 查当天已有值日）并 `throw BizError(41001, '该同学当天已有…值日')`；前端 `miniprogram/pages/manual/index.js` 的 `_openPicker` 用 `busyIds` 算 `sameDay` 把这些人置灰、标「当天已有值日」。
+- **改动**：云函数两处 `busy` 查询 + 同天 throw 整段移除（保留「同一课次同一周不重复」的 `existing`/`uq_duty` 判据、分组课分组、请假三条硬规则）；前端移除 `busyIds`/`outgoing`/`sameDay` 计算与「当天已有值日」badge，`disabled` 仅剩 `inThis || onLeave || groupBad`。`duty` 页「加值日生」入口（`onAddPickMember`）原本只挡同课次、不挡同天，随云函数放开一并允许。
+- **影响**：`duty` 表唯一键为 `uq_duty(session_id, week, member_id)`（非 `(class_date, member_id)`），移除后同一人同天不同课次可共存，无唯一键冲突；`duty_count` 仍按手动 +1（轮转位置由自动排班决定，事后手动补排不回滚，与既有口径一致）。
+- **验证**：`node --check` 两文件通过；全仓 grep 无残留 `sameDay`/`该同学当天已有值日`/`同一天不能重复安排`；`check-round-robin` / `check-schedule-generate-runtime` / `check-duty-rotation` / `check-shift-move` / `check-duty-marker-symmetry` / `check-committee` 6 个相关门禁全绿。
+
 ---
 
 ## v0.7.42 · 2026-10-15 · 对外 1.0.6.9

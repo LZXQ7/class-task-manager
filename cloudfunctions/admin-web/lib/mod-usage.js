@@ -103,7 +103,6 @@ async function usage(query) {
   // 成员使用明细（按人聚合）：「总使用人数」要能看到具体是谁在用。
   //  · requireBind 已保证上报者必是已绑定成员，LEFT JOIN 仍保留兜底（防历史脏数据）。
   //  · 🔴 NOT_TEST 铁律：测试账号（学号 99 段）一律不展示；m.id IS NULL 是未绑定兜底。
-  //  · events 用 GROUP_CONCAT 汇成 "event/ref" 串，前端再映射中文名。
   //  · 🔴 本查询 JOIN 了 member / class，而 **member 也有 class_id 列** ⇒ 不能复用
   //    buildFilter 的裸列名条件（`class_id = ?`），否则报 Error 1052 二义。
   //    必须自建带 `e.` 前缀的条件（2026-10-18 实踩：classId=0 时不触发，一选班级就 500）。
@@ -120,8 +119,7 @@ async function usage(query) {
             COALESCE(c.name, '—') AS className,
             COUNT(*) AS pv,
             COUNT(DISTINCT DATE(e.ts)) AS activeDays,
-            DATE_FORMAT(MAX(e.ts), '%Y-%m-%d %H:%i') AS lastTs,
-            GROUP_CONCAT(DISTINCT CONCAT(e.event, IF(e.ref = '' OR e.ref IS NULL, '', '/'), e.ref)) AS events
+            DATE_FORMAT(MAX(e.ts), '%Y-%m-%d %H:%i') AS lastTs
      FROM usage_event e
      LEFT JOIN member m ON m.openid = e.openid
      LEFT JOIN class c ON c.id = e.class_id
@@ -131,6 +129,35 @@ async function usage(query) {
      LIMIT 200`,
     memberArgs
   );
+
+  // 成员功能点次细分（每个成员各功能点了多少次）：
+  //   把上面 top 200 成员的 (openid, event, ref) 各自 COUNT(*) 出来，
+  //   前端据此渲染「课程表 ×5 · 值日 ×2 · 团费 ×8」。
+  //  · 同样带 `e.` 前缀条件 + NOT_TEST（openid 已被 top 列表过滤，这里只是兜底）。
+  //  · 🔴 仍受 only_full_group_by 约束：GROUP BY 必须覆盖 SELECT 全部非聚合列
+  //    （e.openid, e.event, e.ref 全在）。
+  const topOpenids = mem.map((r) => r.openid);
+  let eventsBreakdown = {};
+  if (topOpenids.length) {
+    const bc = ['e.openid IN (?)'];
+    const ba = [topOpenids];
+    if (classId) { bc.push('e.class_id = ?'); ba.push(classId); }
+    if (days) { bc.push('e.ts >= DATE_SUB(NOW(), INTERVAL ? DAY)'); ba.push(days); }
+    bc.push('(m.id IS NULL OR ' + NOT_TEST('m') + ')');
+    const [bcRows] = await pool.query(
+      `SELECT e.openid, e.event, e.ref, COUNT(*) AS cnt
+       FROM usage_event e
+       LEFT JOIN member m ON m.openid = e.openid
+       WHERE ${bc.join(' AND ')}
+       GROUP BY e.openid, e.event, e.ref`,
+      ba
+    );
+    bcRows.forEach((r) => {
+      const bucket = (eventsBreakdown[r.openid] = eventsBreakdown[r.openid] || {});
+      const key = (r.ref && r.ref !== '') ? r.event + '/' + r.ref : r.event;
+      bucket[key] = r.cnt;
+    });
+  }
 
   return {
     total: tot[0] || { pv: 0, uv: 0 },
@@ -152,7 +179,7 @@ async function usage(query) {
       pv: r.pv,
       activeDays: r.activeDays,
       lastTs: r.lastTs || '',
-      events: r.events || ''
+      eventsBreakdown: eventsBreakdown[r.openid] || {}
     }))
   };
 }

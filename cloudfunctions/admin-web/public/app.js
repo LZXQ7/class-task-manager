@@ -1403,16 +1403,20 @@
     }
     return EVENT_LABEL[r.event] || r.event;
   }
-  /** 把后端 GROUP_CONCAT 的 "event/ref" 串转成中文名列表（如「首页、班费」） */
-  function labelEvents(csv) {
-    if (!csv) return '—';
-    var keys = String(csv).split(',');
-    var names = keys.map(function (k) {
+  /** 把后端给的「成员各功能点次」对象渲染成中文标签 + 次数（如「课程表 ×5 · 值日 ×2 · 团费 ×8」） */
+  function memberEventCounts(bd) {
+    if (!bd || typeof bd !== 'object') return '—';
+    var keys = Object.keys(bd);
+    if (!keys.length) return '—';
+    var items = keys.map(function (k) {
       var i = k.indexOf('/');
-      if (i > 0) return eventLabel({ event: k.slice(0, i), ref: k.slice(i + 1) });
-      return eventLabel({ event: k });
+      var r = i > 0 ? { event: k.slice(0, i), ref: k.slice(i + 1) } : { event: k };
+      return { label: eventLabel(r), cnt: bd[k] };
     });
-    return esc(names.join('、'));
+    items.sort(function (a, b) { return b.cnt - a.cnt; });
+    return items.map(function (it) {
+      return '<span class="ev-count"><b>' + esc(it.label) + '</b> ×' + esc(it.cnt) + '</span>';
+    }).join('');
   }
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
   function ymd(dt) { return dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate()); }
@@ -1522,7 +1526,7 @@
       var members = o.members || [];
       var memTbl = '<div class="card"><div class="card-hd">成员使用明细（按人，已排除测试账号）</div>' +
         '<table class="tbl"><thead><tr>' +
-        '<th>成员</th><th>班级</th><th>次数 (PV)</th><th>活跃天数</th><th>用过哪些功能</th><th>最近活跃</th>' +
+        '<th>成员</th><th>班级</th><th>次数 (PV)</th><th>活跃天数</th><th>使用功能（次数）</th><th>最近活跃</th>' +
         '</tr></thead><tbody>' +
         (members.length ? members.map(function (r) {
           return '<tr>' +
@@ -1530,7 +1534,7 @@
             '<td>' + esc(r.className) + '</td>' +
             '<td class="td-no">' + r.pv + '</td>' +
             '<td class="td-no">' + r.activeDays + '</td>' +
-            '<td class="ev-list">' + labelEvents(r.events) + '</td>' +
+            '<td class="ev-list">' + memberEventCounts(r.eventsBreakdown) + '</td>' +
             '<td class="td-no">' + esc(r.lastTs || '—') + '</td>' +
             '</tr>';
         }).join('') : '<tr><td colspan="6" class="empty">暂无使用记录</td></tr>') +

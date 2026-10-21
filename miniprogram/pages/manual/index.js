@@ -196,31 +196,22 @@ Page({
     const session = (day.sessions || []).find(s => s.sessionId === sessionId);
     if (!session) return;
 
-    const busyIds = day.busyIds || [];
     const leaveIds = day.leaveIds || [];
     const inSession = {};
     (session.members || []).forEach(m => { inSession[m.memberId] = true; });
 
-    // 换人时，原值日生即将被换出：不再算「已在此课次 / 当日占用」
-    let outgoing = 0;
-    if (mode === 'REASSIGN') {
-      const cur = (session.members || []).find(m => m.dutyId === dutyId);
-      outgoing = cur ? cur.memberId : 0;
-    }
-
     const all = this.data.roster.map(r => {
-      // 已在本课次的（含原值日生，换人时不能换成他自己）→ 不可选
+      // 已在本课次的 → 不可选（换人时也不会把原值日生换回他自己）
       const inThis = !!inSession[r.id];
       const onLeave = leaveIds.indexOf(r.id) >= 0;
       const groupBad = !!(session.groupScope && r.groupTag !== session.groupScope);
-      // 当天已有别的值日的（原值日生即将被换出，不再算占用）
-      const sameDay = busyIds.indexOf(r.id) >= 0 && r.id !== outgoing;
-      const disabled = inThis || onLeave || groupBad || sameDay;
+      // 注：手动排版放开重复排班（2026-10-21）—— 当天/当周已有值日的人也可再次被安排，不再前置置灰。
+      //     仅保留「已在本课次 / 已请假 / 分组不符」三种不可选。
+      const disabled = inThis || onLeave || groupBad;
       let badge = '';
       if (inThis) badge = '已在此课次';
       else if (onLeave) badge = '已请假';
       else if (groupBad) badge = '限 ' + session.groupScope + ' 组';
-      else if (sameDay) badge = '当天已有值日';
       return Object.assign({}, r, {
         seqText: r.seq ? String(r.seq) : '·',
         disabled,

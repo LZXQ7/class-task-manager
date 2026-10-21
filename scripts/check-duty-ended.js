@@ -1,5 +1,5 @@
 /**
- * check-duty-ended.js ——「本周值日 · 已结束折叠」门禁（#55，2026-10-04）
+ * check-duty-ended.js ——「本周值日 · 已结束折叠」门禁（#55，2026-10-04；2026-10-XX 去掉「按人」视图）
  *
  * 需求（2026-10-04）：本周值日的「按日」列表里，**早于今天**的日子收进顶部「已结束」弹层，
  *   不占主列表。今天是 9/29 → 9/28 及以前进「已结束」。
@@ -9,26 +9,28 @@
  *     ① 渲染源被改回 `days`（主列表就又把整周画出来，已结束形同虚设）；
  *     ② `String(d.date) < today` 被写成 `<=` 或去掉等号那一侧（**今天被折走**，当天的值日要看还得进弹层）；
  *     ③ `isCurrentWeek ? … : …` 被揉平（切到历史周时被抽成空列表 —— 历史周本就是回顾，不该被折叠）。
- *   另外 `_toPersons(days)` 必须用**整周** days：按人视图的规矩是「整周不变」，
- *   若手滑喂了 activeDays，周初那几天的人会从按人视图里凭空消失。
+ *
+ * 2026-10-XX 变更：值日页去掉「按日 / 按人」切换，仅保留「按日」单一视图。
+ *   因此原「按人」视图相关判据（`_toPersons` 整周取数、入口带 mode === 'day'）已移除；
+ *   入口条件简化为仅 `pastDays.length`。
  *
  * 判据：
- *   A（结构）「按日」区块的渲染源是 activeDays，且其中不得出现 wx:for="{{days}}"；
- *   B（结构）「已结束」入口：同一节点上同时挂着 bindtap="onEndedOpen" 与
- *           含 mode === 'day' 和 pastDays.length 的 wx:if（写在 JS 里的互斥条件不许缺）；
+ *   A（结构）「按日」主列表区域的渲染源是 activeDays，且其中不得出现 wx:for="{{days}}"；
+ *            另断言全页不再含「按人」视图（dt-personcard / wx:for persons 都消失）；
+ *   B（结构）「已结束」入口：节点挂 bindtap="onEndedOpen" 且带 pastDays.length 的 wx:if，
+ *           且不再带 mode === 'day' 条件（按日是唯一视图）；
  *   C（结构）弹层内的 pastDays 卡不含「加值日生」（过去的日子不再补排）；
  *   D（结构）JS 侧有 onEndedOpen / onEndedClose，且空列表时直接 return（不弹空层）；
  *   E～G（**行为级**，把真实 `_paint` 源码抽出来在内存里跑）：
  *     E 本周 → 早于今天进 pastDays、今天及以后进 activeDays（今天必须留在主列表）；
  *     F 非本周 → pastDays 为空、activeDays 为整周；
- *     G `_toPersons` 在两种情况下都收到**整周** days，且 setData 仍下发整周 days。
+ *     G setData 仍下发**整周** days（各处 handler 依赖它）。
  *
  * 变异自证（全部在内存里重写源码字符串，**绝不落盘**）：
  *   `< today` → `<= today`（今天被折走）            → E 翻红
  *   三元 folds 成无条件过滤（历史周也被折）         → F 翻红
- *   `_toPersons(days)` → `_toPersons(activeDays)`   → G 翻红
  *   主列表 `wx:for="{{activeDays}}"` → `{{days}}`    → A 翻红
- *   入口去掉 mode === 'day' 条件                     → B 翻红
+ *   入口去掉 pastDays.length 条件（渲染空入口）     → B 翻红
  *   弹层里塞回 onAddOpen                             → C 翻红
  *   onEndedOpen 去掉空列表 guard                     → D 翻红
  */
@@ -84,18 +86,26 @@ function between(text, from, to) {
 }
 
 /* ============================ A. 主列表渲染源 ============================ */
-const dayBlock = between(wxml, '<block wx:if="{{mode === \'day\'}}">', '<block wx:else>');
+/* 2026-10-XX：去掉「按人」视图，仅保留「按日」。原 A0 依赖 <block wx:if mode==='day'>…<block wx:else>，
+ * 现直接断言「按日」主列表渲染源是 activeDays，且页面已无「按人」视图（dt-personcard / wx:for persons 都消失）。 */
+/* wxml 已 stripComments，注释锚点不可用；直接对全文件断言「按日」主列表用 activeDays、且无整周 days 渲染源 */
+const dayActive = /wx:for\s*=\s*"\{\{activeDays\}\}"/.test(wxml);
+const dayWhole = /wx:for\s*=\s*"\{\{days\}\}"/.test(wxml);
 assertTrue(
-  dayBlock.length > 0,
-  'A0 找到「按日」区块（<block wx:if="{{mode === \'day\'}}"> … <block wx:else>）'
+  dayActive,
+  'A0 找到「按日」主列表（wx:for="{{activeDays}}"）'
 );
 assertTrue(
-  /wx:for\s*=\s*"\{\{activeDays\}\}"/.test(dayBlock),
+  dayActive && !dayWhole,
   'A1 「按日」主列表的渲染源是 activeDays（不是整周 days）'
 );
 assertTrue(
-  !/wx:for\s*=\s*"\{\{days\}\}"/.test(dayBlock),
-  'A2 「按日」区块里没有再用整周 days 做渲染源（否则过去的日子会重新占位）'
+  !dayWhole,
+  'A2 全页没有再用整周 days 做渲染源（否则过去的日子会重新占位）'
+);
+assertTrue(
+  !/dt-personcard/.test(wxml) && !/wx:for\s*=\s*"\{\{persons\}\}"/.test(wxml),
+  'A3 「按人」视图已移除（dt-personcard 与 wx:for persons 都应消失）'
 );
 
 /* ============================ B. 已结束入口 ============================ */
@@ -111,9 +121,8 @@ const entryTags = tagsWith(wxml, /bindtap\s*=\s*"onEndedOpen"/);
 assertTrue(entryTags.length === 1, 'B0 页面上恰好一个「已结束」入口（实得 ' + entryTags.length + ' 个）');
 const entryTag = entryTags[0] || '';
 assertTrue(
-  /wx:if\s*=\s*"[^"]*mode\s*===\s*'day'[^"]*"/.test(entryTag)
-  || /wx:if\s*=\s*"[^"]*mode === \\?'day\\?'[^"]*"/.test(entryTag),
-  "B1 入口有 mode === 'day' 条件（「按人」视图不显示这个入口）"
+  !/mode\s*===\s*'day'/.test(entryTag),
+  "B1 入口不再带 mode === 'day' 条件（已去掉「按人」视图，按日是唯一视图）"
 );
 assertTrue(
   /wx:if\s*=\s*"[^"]*pastDays\.length[^"]*"/.test(entryTag),
@@ -211,12 +220,7 @@ assertTrue(
   'F2 历史周：整周都进主列表'
 );
 
-/* G：两种情况下 _toPersons 都拿整周，且 setData 仍下发整周 days */
-assertTrue(
-  JSON.stringify((cur.personsArg || []).map(d => d.date)) === JSON.stringify(WEEK_DAYS)
-  && JSON.stringify((hist.personsArg || []).map(d => d.date)) === JSON.stringify(WEEK_DAYS),
-  'G1 按人视图用**整周** days 取数（本周与历史周一致，不可喂 activeDays）'
-);
+/* G：setData 仍下发整周 days（各处 handler 依赖它；「按人」视图已去掉，原 G1 整周取数判据随之移除） */
 assertTrue(
   JSON.stringify((cur.patch.days || []).map(d => d.date)) === JSON.stringify(WEEK_DAYS)
   && JSON.stringify((hist.patch.days || []).map(d => d.date)) === JSON.stringify(WEEK_DAYS),
@@ -259,14 +263,7 @@ proveBehavioral(
   (s) => runPaint(s, { week: 3, current: 5, days: mkDays() }).patch.pastDays.length === 0
 );
 
-proveBehavioral(
-  '按人视图被喂 activeDays（喂不该截断的数据）',
-  (s) => s.replace('persons: this._toPersons(days)', 'persons: this._toPersons(activeDays)'),
-  (s) => {
-    const r = runPaint(s, { week: 5, current: 5, days: mkDays() });
-    return JSON.stringify((r.personsArg || []).map(d => d.date)) === JSON.stringify(WEEK_DAYS);
-  }
-);
+// （原「按人视图被喂 activeDays」变异判据已随「按人」视图移除而删除）
 
 /** 结构级变异：改 WXML 重判，断言必须翻红 */
 function proveStructural(label, mutate, predicate) {
@@ -283,18 +280,17 @@ proveStructural(
   (t) => t.replace('wx:for="{{activeDays}}" wx:key="date" class="dt-daycard card"',
     'wx:for="{{days}}" wx:key="date" class="dt-daycard card"'),
   (t) => {
-    const blk = between(t, '<block wx:if="{{mode === \'day\'}}">', '<block wx:else>');
-    return /wx:for\s*=\s*"\{\{activeDays\}\}"/.test(blk) && !/wx:for\s*=\s*"\{\{days\}\}"/.test(blk);
+    return /wx:for\s*=\s*"\{\{activeDays\}\}"/.test(t) && !/wx:for\s*=\s*"\{\{days\}\}"/.test(t);
   }
 );
 
 proveStructural(
-  "入口去掉 mode === 'day' 条件",
-  (t) => t.replace('wx:if="{{mode === \'day\' && pastDays.length}}"', 'wx:if="{{pastDays.length}}"'),
+  "入口去掉 pastDays.length 条件（会渲染空入口）",
+  (t) => t.replace('wx:if="{{pastDays.length}}"', 'wx:if="{{true}}"'),
   (t) => {
     const tags = tagsWith(t, /bindtap\s*=\s*"onEndedOpen"/);
     const tag = tags[0] || '';
-    return (/\bmode\s*===\s*'day'/.test(tag)) && /pastDays\.length/.test(tag);
+    return /pastDays\.length/.test(tag) && !/mode\s*===\s*'day'/.test(tag);
   }
 );
 
@@ -311,7 +307,7 @@ proveStructural(
   }
 );
 
-/* 上面 4 条 proveBehavioral / 3 条 proveStructural 覆盖了 A~C 与 E~G。
+/* 上面 3 条 proveBehavioral / 3 条 proveStructural 覆盖了 A~C 与 E~G（G1 随「按人」视图移除已删）。
    D 的 guard 在 JS 里，结构性变异套路不适用，单列一段： */
 (function proveGuard() {
   const before = /pastDays\.length/.test(openSrc);

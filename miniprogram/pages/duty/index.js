@@ -1,6 +1,6 @@
 /**
  * P4 · 本周值日表（Tab 3）
- * 同学：按日 / 按人查看本周安排；管理员（超管）：生成 / 发布 / 换人 / 导出
+ * 同学：按日查看本周安排；管理员（超管）：生成 / 发布 / 换人 / 导出
  * 手动排班（P5）的入口在「我的」页，本页不再提供。
  * 注意：本工具只做值日提醒，不做打卡与照片凭证。
  */
@@ -9,8 +9,6 @@ const util = require('../../utils/util');
 const pageAnim = require('../../utils/page-anim');
 const mem = require('../../utils/mem');
 const swipe = require('../../utils/swipe');
-/** 列表过渡（按日 ⇄ 按人）：机制/时长/可打断全在该模块，与 roster / timetable 共用一份 */
-const listTransition = require('../../utils/list-transition');
 const impersonate = require('../../utils/impersonate');
 const theme = require('../../utils/theme');
 
@@ -69,21 +67,18 @@ Page({
     current: 1,
     termStart: '',
 
-    mode: 'day',              // day | person
     status: 'DRAFT',
     unpublished: false,
     archived: false,
     days: [],
     /** 「按日」实际渲染的日子（本周 = 今天及以后；其它周 = 全部）。
-     *  ⚠️ 底层 `days` **保持整周**：`_toPersons` 与各处 handler 都按它取数，
+     *  ⚠️ 底层 `days` **保持整周**：各处 handler 都按它取数，
      *  「已结束」只是把它从**按日列表**里挪进弹层，不是删除数据。 */
     activeDays: [],
     /** 本周里「早于今天」的日子（仅在查看本周时非空）；进「已结束」弹层 */
     pastDays: [],
     /** 「已结束」弹层开关（2026-10-04 需求）：必须同步进 page-meta 的锁滚动表达式 */
     endedSheetShow: false,
-    persons: [],
-    expandId: 0,
 
     /** 左右滑动切周的方向性动画 class：由 utils/swipe.js 下发，写进数据区容器 */
     swipeCls: '',
@@ -435,8 +430,7 @@ Page({
       archived: !!(r && r.archived),
       days,
       activeDays,
-      pastDays,
-      persons: this._toPersons(days)
+      pastDays
     }, () => { this._resizeMain(); });
   },
 
@@ -504,24 +498,7 @@ Page({
     });
   },
 
-  _toPersons(days) {
-    const map = {};
-    days.forEach(d => {
-      (d.duties || []).forEach(x => {
-        if (!map[x.memberId]) {
-          map[x.memberId] = {
-            memberId: x.memberId, name: x.name, groupTag: x.groupTag, seqText: x.seqText || '',
-            list: [], weekCount: 0, isMine: !!x.isMine, ghFlip: '' // 按人视图分组标题 crossfade 初值
-          };
-        }
-        map[x.memberId].list.push(x);
-        map[x.memberId].weekCount += 1;
-      });
-    });
-    return Object.keys(map).map(k => map[k]);
-  },
-
-  /* ---------------- 周 / 模式 ---------------- */
+  /* ---------------- 周 ---------------- */
   onWeekChange(e) {
     const wk = Number(e.detail.week);
     if (wk < 1 || wk > this.data.totalWeeks) return;
@@ -539,7 +516,7 @@ Page({
   /** 真正换周（动画 out 段结束后才被回调） */
   _applyWeek(wk) {
     this._weekManual = true;   // 用户主动切周：此后 onShow 不再强行把 week 拉回当前周
-    this.setData({ week: wk, expandId: 0 });
+    this.setData({ week: wk });
     // 换周 = 换一份数据：屏幕上那份已经不是这一周的了，必须让骨架回来，
     // 否则会拿上周的名单冒充本周（静默刷新只对「同一周重进页面」成立）
     this._hasData = false;
@@ -565,77 +542,6 @@ Page({
     if (sc && typeof sc.resize === 'function') sc.resize();
   },
 
-  onMode(e) {
-    const next = e.detail.key;
-    if (next === this.data.mode) return;
-    // 系统开了「减弱动态效果」：直接切换，不做 FLIP
-    // （list-transition 内部还会再兜一次，这里判一次是为了连「先钉成不可见」都不做）
-    if (listTransition.reduced()) { this.setData({ mode: next }); this._resizeMain(); return; }
-    this._flipMode(next);
-  },
-
-  /** 按日 ⇄ 按人 的过渡（v0.7.21 需求⑤：收敛到 utils/list-transition.js）
-   * ============================================================
-   * 页面自己写的那版（v0.7.19）有三处留给公共模块解决：
-   *  ① 时长散在三个地方（.18s / .16s / 60ms 各写一遍），改一处不知道会牵动谁；
-   *  ② **不可打断** —— 上一轮的 setTimeout 链还没跑完，下一轮已经进来，
-   *     两轮的收尾 setData 会互相把对方的样式清掉，观感就是「点了没反应」；
-   *  ③ 新增项从**上方** -8px 淡入，与「从下方飞上来」的规格相反。
-   * 现在：duty 行（两视图共享同一份对象引用，见 _toPersons 直接把 days 里的 x 塞进 person.list）
-   * 走 FLIP；新出现的分组标题（日期头 / 学生名）用 onInvert 搭车在同一拍淡入；
-   * 主段 220ms + 落位沉降 70ms（行程 ≥24px 才补），全部落在 200~300ms。
-   *
-   * ⚠️ 为什么**不再**先让旧分组标题淡出 60ms 再切视图：
-   *   `mode` 一换，旧视图整块就被 wx:if 卸载 —— 那 60ms 的淡出根本播不到（节点已不在 DOM），
-   *   只是白白让切换晚 60ms 才开始。新标题跟着 FLIP 同拍淡入，反而更连续、也不出预算。
-   */
-  _flipMode(next) {
-    const lt = listTransition;
-    // 打断令牌：开始新一轮就把令牌自增，上一轮 setTimeout 醒来发现令牌变了会自己退出
-    const tk = (this._flipToken = (this._flipToken || 0) + 1);
-
-    // 目标视图的分组标题先钉成「不可见」（不带 transition），
-    // 由 flip 的第一拍 setData 把 days/persons 一起下发时把它们渲染进去 —— 同一次数据，不会闪。
-    const target = next === 'day' ? this.data.days : this.data.persons;
-    target.forEach(it => { it.ghFlip = 'opacity:0;transform:translateY(-8px)'; });
-
-    lt.flip(this, {
-      sel: '.dt-row[data-id]', key: 'id', field: 'flip',
-      guard: () => this._flipToken === tk,
-      // 只列 days 这一份：person.list 里装的是同一批对象引用，写一次 flip 两个视图都生效
-      rows: () => {
-        const out = [];
-        if (next === 'day') {
-          // 合并行模式下，被快照的是每个课次的合并对象（带 flip 字段）
-          this.data.days.forEach(d => ((d.mergedDuties || d.duties) || []).forEach(g => out.push(g)));
-        } else {
-          // 按人视图：扁平 duty 行（与 person.list 同一批对象引用）
-          this.data.days.forEach(d => (d.duties || []).forEach(x => out.push(x)));
-        }
-        return out;
-      },
-      patch: () => ({ mode: next, days: this.data.days, persons: this.data.persons }),
-      onInvert: () => {
-        // 与新位置同一拍：新视图的分组标题淡入（自带 transition，模块不管它的曲线）
-        target.forEach(it => {
-          it.ghFlip = 'opacity:1;transform:translateY(0);transition:opacity ' + lt.MS.IN + 'ms ease-out'
-            + ',transform ' + lt.MS.IN + 'ms ease-out';
-        });
-      },
-      after: () => {
-        if (this._flipToken !== tk) return;
-        // 收尾：ghFlip 松回空串（与「已就位」同一视觉，不会跳）
-        this.data.days.forEach(d => { d.ghFlip = ''; });
-        this.data.persons.forEach(p => { p.ghFlip = ''; });
-        this.setData({ days: this.data.days, persons: this.data.persons });
-        this._resizeMain();
-      }
-    });
-  },
-  onExpand(e) {
-    const id = Number(e.currentTarget.dataset.id);
-    this.setData({ expandId: this.data.expandId === id ? 0 : id });
-  },
 
   onRow(e) {
     const id = e.currentTarget.dataset.id;

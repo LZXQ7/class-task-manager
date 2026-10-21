@@ -455,8 +455,10 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 }
 .bars-axis-mid { color: var(--text-3); }
 
-/* 成员明细：用过哪些功能（中文名列表） */
-.ev-list { color: var(--text-2); font-size: 13px; line-height: 1.6; }
+/* 成员明细：各功能使用次数（中文标签 + 次数小标签） */
+.ev-list { color: var(--text-2); font-size: 13px; line-height: 1.6; display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.ev-count { display: inline-flex; align-items: baseline; background: #f4f5f7; border: 1px solid var(--line); border-radius: var(--radius); padding: 1px 7px; font-size: 12px; white-space: nowrap; }
+.ev-count b { font-weight: 600; color: var(--text-1); }
 
 /* 柱状图卡片允许气泡溢出：.card 默认 overflow:hidden 会把 tooltip 裁掉 */
 .card-usage { overflow: visible; }

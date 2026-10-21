@@ -2103,10 +2103,8 @@ const routes = {
       if (!target || (target.status !== 'ACTIVE' && !isTestNo(target.student_no))) throw new BizError(41001, '替补不可用');
       if (duty.group_scope && target.group_tag !== duty.group_scope) throw new BizError(41001, '替补与该课次分组不符');
       const classDate = String(duty.class_date).slice(0, 10);
-      const [busy] = await pool.query(
-        "SELECT id FROM duty WHERE class_id = ? AND class_date = ? AND member_id = ? AND status != 'SWAPPED_OUT'", [classId, classDate, toMemberId]
-      );
-      if (busy.length) throw new BizError(41001, '该同学当天已有值日');
+      // 手动排版放开重复排班（2026-10-21）：不再拦截「当天已有值日」的替补。
+      // 仅保留「同一课次同一周不重复」（下面 UPDATE 撞 uq_duty 后抛错提示）。
       const [leaves] = await pool.query(
         "SELECT id FROM leave_request WHERE class_id = ? AND member_id = ? AND status = 'APPROVED' AND start_date <= ? AND end_date >= ?",
         [classId, toMemberId, classDate, classDate]
@@ -2195,8 +2193,10 @@ const routes = {
 
   /**
    * 空槽手动添加（超级管理员）：把某成员安排到某节课值日。
-   * 与 reassign 共用同一套硬规则——分组课只在对应组内、同一天不重复、请假不排，
-   * 否则手动排班就成了绕过规则的漏洞（自动生成与 AI 排班都会遵守这些规则）。
+   * 与 reassign 共用「分组课只在对应组内、请假不排」两条硬规则；
+   * 「同一天/同一周不重复」已由手动排版放开（2026-10-21，见本函数内 busy 判据移除注释），
+   * 仅保留「同一课次同一周不重复」避免同一格出现两条记录撞 uq_duty。
+   * 注：自动生成与 AI 排班仍各自遵守轮转规则，手动排班是人工兜底、允许灵活补排。
    */
   addManual: {
     auth: { scheduleAuth: true },
@@ -2236,11 +2236,9 @@ const routes = {
         throw new BizError(41001, '该同学本周已在此课次值日');
       }
 
-      const [busy] = await pool.query(
-        "SELECT id FROM duty WHERE class_id = ? AND class_date = ? AND member_id = ? AND status != 'SWAPPED_OUT'",
-        [classId, classDate, memberId]
-      );
-      if (busy.length) throw new BizError(41001, '该同学当天已有其他值日，同一天不能重复安排');
+      // 手动排版放开重复排班（2026-10-21）：不再拦截「当天已有其他值日」。
+      // 仅保留「同一课次同一周不重复」（上面 existing 判据），避免同一格出现两条记录撞 uq_duty。
+      // 分组课分组 / 请假 两条硬规则不变（见下方 leaves 判据）。
 
       const [leaves] = await pool.query(
         "SELECT id FROM leave_request WHERE class_id = ? AND member_id = ? AND status = 'APPROVED' AND start_date <= ? AND end_date >= ?",
