@@ -145,7 +145,7 @@ async function loadSwap(pool, swapId) {
 }
 
 const routes = {
-  /** 候选：同组 ACTIVE、当日无值日、未请假，按 duty_count 升序 */
+  /** 候选：同组 ACTIVE、未请假（放开重复排班：当天已有值日也可被选入其他课次），按 duty_count 升序 */
   swapCandidates: {
     auth: { needBind: true },
     handler: async (payload, ctx) => {
@@ -170,12 +170,10 @@ const routes = {
         [classId, classDate, classDate]
       );
       const onLeave = new Set(leaves.map(l => l.member_id));
-      const [busy] = await pool.query(
-        "SELECT DISTINCT member_id FROM duty WHERE class_id = ? AND class_date = ? AND status != 'SWAPPED_OUT'", [classId, classDate]
-      );
-      const busySet = new Set(busy.map(b => b.member_id));
+      // 放开重复排班（2026-10-21）：候选不再剔除「当天已有值日」的人，使其可被安排到其他课次的值日。
+      // 仅保留请假（onLeave）剔除 —— 请假的人不该被排值日；同课次同周去重由执行侧 uq_duty 兜底。
       return members
-        .filter(m => !onLeave.has(m.id) && !busySet.has(m.id))
+        .filter(m => !onLeave.has(m.id))
         .map(m => ({ id: m.id, name: m.name, groupTag: m.group_tag, seq: week.seqOf(m.student_no), dutyCount: m.duty_count || 0, lastDutyAt: m.last_duty_at || null }));
     }
   },

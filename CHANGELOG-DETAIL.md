@@ -48,8 +48,9 @@
 - **问题**：手动排班（P5）时，当天或当周已有值日的人员被硬拦截，无法再次被安排——超管想灵活补排时被卡。
 - **根因**：`cloudfunctions/schedule/index.js` 的 `addManual` 与 `reassign` 各有一段 `busy` 查询（按 `class_date` + `member_id` 查当天已有值日）并 `throw BizError(41001, '该同学当天已有…值日')`；前端 `miniprogram/pages/manual/index.js` 的 `_openPicker` 用 `busyIds` 算 `sameDay` 把这些人置灰、标「当天已有值日」。
 - **改动**：云函数两处 `busy` 查询 + 同天 throw 整段移除（保留「同一课次同一周不重复」的 `existing`/`uq_duty` 判据、分组课分组、请假三条硬规则）；前端移除 `busyIds`/`outgoing`/`sameDay` 计算与「当天已有值日」badge，`disabled` 仅剩 `inThis || onLeave || groupBad`。`duty` 页「加值日生」入口（`onAddPickMember`）原本只挡同课次、不挡同天，随云函数放开一并允许。
+- **补（2026-10-21 用户实测仍报「不可安排」，遗漏路径）**：值日页 / 值日详情弹层「选人换班 / 换人 / 添加」走 `components/duty-sheet` → `adjust.swapCandidates` 取候选，原 `cloudfunctions/adjust/index.js` 的 `swapCandidates` 用 `busySet`（查当天已有值日）把这些人从候选列表剔除，导致弹层根本选不到当天已排的人。已移除该 `busy` 查询与 `busySet` 过滤，候选仅保留「请假（onLeave）」剔除；`miniprogram/pages/manual/index.wxml` 文案「/ 当天已有值日」一并删除。该组件对 SWAP/REASSIGN/ADD 三种动作均取 `swapCandidates`，故改这一处即让三个动作都能选到当天已排的人（执行侧 `applySwap`/`confirm`/`reassign`/`addManual` 均无同天拦截，同课次同周由 `uq_duty` 兜底）。
 - **影响**：`duty` 表唯一键为 `uq_duty(session_id, week, member_id)`（非 `(class_date, member_id)`），移除后同一人同天不同课次可共存，无唯一键冲突；`duty_count` 仍按手动 +1（轮转位置由自动排班决定，事后手动补排不回滚，与既有口径一致）。
-- **验证**：`node --check` 两文件通过；全仓 grep 无残留 `sameDay`/`该同学当天已有值日`/`同一天不能重复安排`；`check-round-robin` / `check-schedule-generate-runtime` / `check-duty-rotation` / `check-shift-move` / `check-duty-marker-symmetry` / `check-committee` 6 个相关门禁全绿。
+- **验证**：`node --check` 三文件（`adjust`/`schedule`/`manual/index.js`）通过；全仓 grep 无残留同天硬拦截；`check-committee` / `check-duty-columns` / `check-duty-ended` / `check-duty-marker-symmetry` / `check-duty-rotation` / `check-duty-stats-source` / `check-duty-week-sync` / `check-round-robin` / `check-schedule-generate-runtime` / `check-session-shift` / `check-shift-move` 11 个相关门禁全绿。
 
 ---
 

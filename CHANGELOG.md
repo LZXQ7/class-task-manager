@@ -44,7 +44,7 @@
 
 ### 调整
 - **值日页去掉按日 / 按人切换，仅留按日**：移除 segmented 切换控件、按人视图（dt-personcard 等）与对应 wxss 样式、json 组件声明；相关门禁 check-duty-ended / check-count-align / check-permission-delegate 同步改写并转绿。
-- **手动排版放开重复排班**：P5 手动排班（`addManual` / `reassign`）与选人弹层不再拦截「当天或当周已有值日」的人员；云函数移除同天 busy 硬判据，前端 `sameDay` 置灰与「当天已有值日」badge 移除，仅保留「同课次同周不重复 / 分组课分组 / 请假」三条硬规则（`uq_duty` 仍防同格两条记录）。
+- **手动排版放开重复排班（三个入口全部放开）**：当天或当周已有值日的人亦可再次被安排到其他课次的值日。覆盖三处入口 —— ① P5「我的 → 手动排版」（`addManual` / `reassign`）；② 值日页「加值日生」（走 `schedule.addManual`，原本只挡同课次）；③ 值日页 / 值日详情弹层「选人换班 / 换人 / 添加」（`components/duty-sheet` 走 `adjust.swapCandidates`）。云函数侧：`schedule.addManual`/`reassign` 移除同天 busy 硬判据，`adjust.swapCandidates` 候选列表不再剔除「当天已有值日」的人（仅保留请假剔除）；前端 `manual/index.js` 的 `sameDay` 置灰与「当天已有值日」badge、以及 `manual/index.wxml` 文案中的「/ 当天已有值日」一并移除。仍保留「同课次同周不重复 / 分组课分组 / 请假」三条硬规则（`uq_duty` 仍防同格两条记录）。
 
 ### 修复
 - 无。

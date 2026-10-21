@@ -143,7 +143,7 @@
       </view>
 
       <view class="pk-gap">
-        <text class="pk-gap-text">共 {{pickerCount}} 人，灰色为不可选（已在此课次 / 请假 / 分组不符 / 当天已有值日）；带「测试」标记的是测试账号，可手动排入，用来验证换班通知。</text>
+        <text class="pk-gap-text">共 {{pickerCount}} 人，灰色为不可选（已在此课次 / 请假 / 分组不符）；带「测试」标记的是测试账号，可手动排入，用来验证换班通知。</text>
       </view>
 
       <view
