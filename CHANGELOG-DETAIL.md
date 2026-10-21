@@ -7,6 +7,30 @@
 
 ---
 
+## v0.7.45 · 2026-10-21 · 对外 1.0.7.1
+
+**主题：值日页去切换视图 + 手动排版放开重复排班（实测落地版）**
+
+本版是 1.0.7.0 框架内两项「已提交但未真上线」改动的落地：值日页去按日/按人切换、手动排版放开重复排班（三入口），并补做云函数 `schedule`/`adjust` 重部署 + 前端上传。`schedule`/`adjust` 已于 2026-10-21 22:08/22:09 重部署生效。
+
+### ① 值日页去按日/按人切换（2026-10-21）
+- `miniprogram/pages/duty/` 删「按人」视图与 `segmented` 切换（`onMode`/`_flipMode`/`_toPersons`/`onExpand`、`utils/list-transition` 依赖、纯按人样式、json 组件声明）；「已结束」入口 `wx:if` 改 `pastDays.length`。
+- 门禁 `check-duty-ended`/`check-count-align`/`check-permission-delegate` 同步改写转绿。
+
+### ② 手动排版放开重复排班（三入口全放开，2026-10-21 + 2026-10-21 晚补漏）
+- P5「我的 → 手动排版」：`schedule.addManual`/`reassign` 移除同天 `busy` 硬拦截；前端 `manual/index.js` 的 `sameDay` 置灰与「当天已有值日」badge 移除，`disabled` 仅剩 `inThis||onLeave||groupBad`；`manual/index.wxml` 文案「/ 当天已有值日」删除。
+- 值日页「加值日生」：走 `schedule.addManual`，本就不挡同天，随云函数放开一并允许。
+- 值日页/值日详情弹层「选人换班/换人/添加」（`components/duty-sheet` → `adjust.swapCandidates`）：原 `busySet` 把当天已排的人从候选剔除，是用户实测仍报「不可安排」的遗漏路径；已移除该 `busy` 查询与 `busySet` 过滤（候选仅留请假剔除）。该组件 SWAP/REASSIGN/ADD 三动作均取 `swapCandidates` ⇒ 改这一处即三动作都能选到当天已排的人（`applySwap`/`confirm`/`reassign`/`addManual` 执行侧均无同天拦截，同课次同周由 `uq_duty` 兜底）。
+
+### ③ 配置对齐（2026-10-21）
+- `cloudfunctions/schedule/config.json` 的 `timeout` 30→60（线上本就 60；AI 排班单次约 55s，30s 会超时），随重部署生效。
+
+### 验证
+- `node --check` 三文件（adjust/schedule/manual/index.js）通过；全仓 grep 无残留同天硬拦截；11 个相关门禁（`check-committee`/`check-duty-columns`/`check-duty-ended`/`check-duty-marker-symmetry`/`check-duty-rotation`/`check-duty-stats-source`/`check-duty-week-sync`/`check-round-robin`/`check-schedule-generate-runtime`/`check-session-shift`/`check-shift-move`）全绿。
+- 部署核验（本机 `tcb`）：`schedule` 源码旧 throw「同一天不能重复安排」0 命中、`adjust` 旧 `DISTINCT … class_date` busy 查询 0 命中；运行时 18.15 / timeout 60&20 / 内存 256 / 全部环境变量 均保留。
+
+---
+
 ## v0.7.44 · 2026-10-16（后台修复 2026-10-18 收官） · 对外 1.0.7.0
 **主题：移除失效提醒入口 + 头像可更换 + 后台使用统计**
 
