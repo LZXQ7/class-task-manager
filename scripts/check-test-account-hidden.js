@@ -59,6 +59,16 @@ const WHITELIST = [
       '注意别写成 role 任意 —— 必须锁死 is_super = 1，否则会把测试成员/测试管理员也当成演示身份。'
   },
   {
+    fn: 'auth',
+    find: 'SELECT openid FROM member WHERE is_review_demo = 1',
+    reason: '「关闭体验入口踢演示身份」（auth.reviewDemoSet → kickDemo，2026-10-22）：' +
+      '踢人前必须先按 is_review_demo = 1 反查出演示 openid（清空后就找不回来了），' +
+      '顺带 DELETE 其 usage_event 埋点——否则踢完 member 留下 JOIN 不到人的「（未绑定）」' +
+      '孤儿行污染使用统计（实锤：审核员 4 条浏览成了孤儿）。' +
+      '与上一条 reviewDemo 绑定反查同性质：取的是「要踢的那个测试账号」本身，' +
+      '不是给用户看的**人员列表** ⇒ 不违反铁律；也不该加 NOT_TEST（演示身份就是测试账号，加了就永远踢不到）。'
+  },
+  {
     fn: 'schedule',
     find: "TEST_NO_PREFIX + '%')",
     reason: '超管手动排班的名册需要能看到测试账号（需求④：把测试账号排进课次后登进去换班，' +

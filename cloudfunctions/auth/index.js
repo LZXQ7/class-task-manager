@@ -497,8 +497,19 @@ const routes = {
     auth: { needSuper: true },
     handler: async (payload, ctx) => {
       const pool = getPool();
-      const kickDemo = () =>
-        pool.query('UPDATE member SET openid = NULL, is_review_demo = 0 WHERE is_review_demo = 1');
+      const kickDemo = async () => {
+        // 先取要踢的演示 openid——UPDATE 清空后就再也找不回来了。
+        // 顺带删掉演示期间的埋点：只清 member 会让 usage_event 变成 JOIN 不到人的
+        // 「（未绑定）」孤儿行，污染使用统计（2026-10-22 实锤：审核员 4 条浏览成了孤儿）。
+        const [demo] = await pool.query(
+          "SELECT openid FROM member WHERE is_review_demo = 1 AND openid IS NOT NULL AND openid <> ''"
+        );
+        const openids = demo.map((r) => r.openid);
+        await pool.query('UPDATE member SET openid = NULL, is_review_demo = 0 WHERE is_review_demo = 1');
+        if (openids.length) {
+          await pool.query('DELETE FROM usage_event WHERE openid IN (?)', [openids]);
+        }
+      };
       const closeAll = () =>
         pool.query("UPDATE `class` SET review_demo_on = 0, review_demo_code = ''");
 

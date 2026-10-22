@@ -47,6 +47,20 @@
         "vpcId": "vpc-c4ga6fms",
         "subnetId": "subnet-a5mkrg1l"
       }
+    },
+    {
+      "name": "auth",
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "timeout": 20,
+      "memorySize": 256,
+      "installDependency": true,
+      "dir": "./cloudfunctions/auth",
+      "description": "认证/绑定/换绑/审核体验入口（与线上 2026-10-15 配置一致，首次入库登记）",
+      "vpc": {
+        "vpcId": "vpc-c4ga6fms",
+        "subnetId": "subnet-a5mkrg1l"
+      }
     }
   ],
   "gateway": {
