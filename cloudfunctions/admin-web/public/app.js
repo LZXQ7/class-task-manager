@@ -1562,10 +1562,12 @@
         '<div class="usage-range"><span class="tb-label">时间范围</span>' + rangeBtns + '</div>' +
         '<div class="usage-scope"><span class="tb-label">班级范围</span>' + scopeBtns + '</div>' +
         '</div>';
-      // 手机端（≤900px）把概览 / 两张数据表 / 每日图 收进 .usage-grid 的 2 列网格（见 admin.css），
-      // 页面大幅变短；柱状图占满整行（半宽读不清），属合理例外。
+      // 手机端（≤900px）布局（见 admin.css）：上面统一「功能/页面」——概览 stat-row +
+      // 功能排行 tbl + 每日活跃图 card-usage 全宽堆叠；下面「成员明细」单独成块、成员卡两列并排
+      // （left-right）。不再把功能排行与成员明细放在同一行左右并排（2026-10-23 用户要求）。
       host.innerHTML = toolbar +
-        '<div class="usage-grid">' + totalHtml + tbl + memTbl + dailyHtml + '</div>';
+        '<div class="usage-top">' + totalHtml + tbl + dailyHtml + '</div>' +
+        '<div class="usage-members">' + memTbl + '</div>';
 
       $$('[data-rg]', host).forEach(function (b) {
         b.onclick = function () {
