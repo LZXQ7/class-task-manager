@@ -22,6 +22,8 @@
     view: 'overview',
     // 使用统计：默认「全部班级」总览（2026-10-18 用户要求直接看全部账号）
     usageAll: true,
+    // 成员明细排序：默认按次数降序（2026-10-23 用户要求）
+    memSort: { key: 'pv', dir: 'desc' },
     // 课表导入：解析结果暂存，确认时才提交
     importDraft: null,
     memberPage: 1,
@@ -141,6 +143,7 @@
   var LS_CLASS = 'admin.web.classId';
   var LS_USAGE_ALL = 'admin.web.usageAll';
   var LS_USAGE_DAYS = 'admin.web.usageDays';
+  var LS_MEM_SORT = 'admin.web.memSort';
   function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* 忽略：不影响功能 */ } }
 
@@ -1470,6 +1473,15 @@
     var savedDays = lsGet(LS_USAGE_DAYS);
     if (savedDays !== null && savedDays !== '') state.usageDays = Number(savedDays);
     if (typeof state.usageDays !== 'number' || isNaN(state.usageDays)) state.usageDays = 30;
+    // 成员排序状态恢复（白名单校验，脏数据回退默认）
+    var savedSort = lsGet(LS_MEM_SORT);
+    if (savedSort) {
+      try {
+        var s0 = JSON.parse(savedSort);
+        if (s0 && (s0.key === 'pv' || s0.key === 'activeDays' || s0.key === 'lastTs') &&
+            (s0.dir === 'asc' || s0.dir === 'desc')) state.memSort = s0;
+      } catch (e) { /* 脏数据回退默认 */ }
+    }
     var days = state.usageDays;
     var classPart = state.usageAll ? '' : '&classId=' + state.classId;
     api('/api/usage?days=' + days + classPart).then(function (d) {
@@ -1532,24 +1544,58 @@
           : '<div class="empty">暂无数据</div>') +
         '</div>';
 
-      // 成员使用明细：「总使用人数」具体到账号（后端已排除测试账号）
+      // 成员使用明细：「总使用人数」具体到账号（后端已排除测试账号）。
+      // 排序（2026-10-23）：次数/活跃天数/最近活跃三列可排，点击正序、再点倒序，
+      // 默认按次数降序；状态持久化（LS_MEM_SORT）。空值（'—'/空）无论方向恒垫底，
+      // 方向只翻转非空比较。排序是纯前端本地重绘（数据已全量在客户端，不重拉 API）。
       var members = o.members || [];
+      function memIsEmpty(v) { return v == null || v === '' || v === '—'; }
+      function memCmpVal(a, b) {
+        if (typeof a === 'number' && typeof b === 'number') return a - b;
+        a = String(a); b = String(b);
+        return a < b ? -1 : (a > b ? 1 : 0);
+      }
+      function sortMembers(list) {
+        var key = state.memSort.key, dir = state.memSort.dir;
+        return list.slice().sort(function (x, y) {
+          var ex = memIsEmpty(x[key]), ey = memIsEmpty(y[key]);
+          if (ex && ey) return 0;
+          if (ex) return 1;            // 空值恒垫底
+          if (ey) return -1;
+          var c = memCmpVal(x[key], y[key]);
+          return dir === 'asc' ? c : -c;
+        });
+      }
+      function memRowHtml(r) {
+        return '<tr>' +
+          '<td>' + esc(r.memberName) + (r.studentNo ? '<span class="ev-key">' + esc(r.studentNo) + '</span>' : '') + '</td>' +
+          '<td>' + esc(shortClassName(r.className)) + '</td>' +
+          '<td class="td-no">' + r.pv + '</td>' +
+          '<td class="td-no">' + r.activeDays + '</td>' +
+          // ⚠️ .ev-list 是 display:flex，不能直接挂在 <td> 上（flex 覆盖 table-cell
+          //    会让该格脱离表格行列对齐，整行错位，2026-10-22 用户反馈），必须包内层 div
+          '<td><div class="ev-list">' + memberEventCounts(r.eventsBreakdown) + '</div></td>' +
+          '<td class="td-no">' + esc(r.lastTs || '—') + '</td>' +
+          '</tr>';
+      }
+      // 可排序列头：label 用 .th-txt 包裹（applyTableLabels 取它做手机端 data-label，
+      // 箭头字符不能混进标签）；箭头只在当前排序列显示 ↑/↓
+      function sortTh(key, label) {
+        var on = state.memSort.key === key;
+        return '<th class="th-sort' + (on ? ' th-sort-on' : '') + '" data-sk="' + key + '">' +
+          '<span class="th-txt">' + label + '</span>' +
+          '<span class="sort-ind">' + (on ? (state.memSort.dir === 'asc' ? '↑' : '↓') : '') + '</span></th>';
+      }
       var memTbl = '<div class="card"><div class="card-hd">成员使用明细（按人，已排除测试账号）</div>' +
         '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>成员</th><th>班级</th><th>次数 (PV)</th><th>活跃天数</th><th>使用功能（次数）</th><th>最近活跃</th>' +
-        '</tr></thead><tbody>' +
-        (members.length ? members.map(function (r) {
-          return '<tr>' +
-            '<td>' + esc(r.memberName) + (r.studentNo ? '<span class="ev-key">' + esc(r.studentNo) + '</span>' : '') + '</td>' +
-            '<td>' + esc(shortClassName(r.className)) + '</td>' +
-            '<td class="td-no">' + r.pv + '</td>' +
-            '<td class="td-no">' + r.activeDays + '</td>' +
-            // ⚠️ .ev-list 是 display:flex，不能直接挂在 <td> 上（flex 覆盖 table-cell
-            //    会让该格脱离表格行列对齐，整行错位，2026-10-22 用户反馈），必须包内层 div
-            '<td><div class="ev-list">' + memberEventCounts(r.eventsBreakdown) + '</div></td>' +
-            '<td class="td-no">' + esc(r.lastTs || '—') + '</td>' +
-            '</tr>';
-        }).join('') : '<tr><td colspan="6" class="empty">暂无使用记录</td></tr>') +
+        '<th>成员</th><th>班级</th>' +
+        sortTh('pv', '次数 (PV)') +
+        sortTh('activeDays', '活跃天数') +
+        '<th>使用功能（次数）</th>' +
+        sortTh('lastTs', '最近活跃') +
+        '</tr></thead><tbody data-mem-tbody>' +
+        (members.length ? sortMembers(members).map(memRowHtml).join('')
+          : '<tr><td colspan="6" class="empty">暂无使用记录</td></tr>') +
         '</tbody></table></div></div>';
 
       // 班级范围：全部班级 / 仅当前班级（与右上角班级选择器解耦，刷新后保留）
@@ -1581,6 +1627,41 @@
           state.usageAll = b.dataset.ua === '1';
           lsSet(LS_USAGE_ALL, state.usageAll ? '1' : '0');
           reload();
+        };
+      });
+      // 排序点击 → 本地重绘 tbody（不重拉 API）。重绘出的新行必须重新注入
+      // data-label：applyTableLabels 用 labelsDone 守卫跳过已处理的表，
+      // 不清掉的话桌面排序后缩窗到手机端，卡片标签会全部丢失。
+      var memTbody = $('[data-mem-tbody]', host);
+      function redrawMemRows() {
+        if (!memTbody) return;
+        memTbody.innerHTML = members.length
+          ? sortMembers(members).map(memRowHtml).join('')
+          : '<tr><td colspan="6" class="empty">暂无使用记录</td></tr>';
+        $$('[data-sk]', host).forEach(function (th) {
+          var on = th.getAttribute('data-sk') === state.memSort.key;
+          th.classList.toggle('th-sort-on', on);
+          var ind = $('.sort-ind', th);
+          if (ind) ind.textContent = on ? (state.memSort.dir === 'asc' ? '↑' : '↓') : '';
+        });
+        var memTable = memTbody.closest('.tbl');
+        if (memTable && memTable.dataset.labelsDone) {
+          delete memTable.dataset.labelsDone;
+          applyTableLabels($('#view'));
+        }
+      }
+      $$('[data-sk]', host).forEach(function (th) {
+        th.onclick = function () {
+          var k = th.getAttribute('data-sk');
+          if (state.memSort.key === k) {
+            // 同列再点：正序 ↔ 倒序
+            state.memSort.dir = state.memSort.dir === 'asc' ? 'desc' : 'asc';
+          } else {
+            // 换列：先正序
+            state.memSort = { key: k, dir: 'asc' };
+          }
+          lsSet(LS_MEM_SORT, JSON.stringify(state.memSort));
+          redrawMemRows();
         };
       });
     });
@@ -1724,7 +1805,7 @@
             if (td.hasAttribute('colspan')) return;          // 跳过「暂无记录」等合并单元格
             var th = ths[col];
             if (!th) return;
-            td.setAttribute('data-label', (th.textContent || '').trim());
+            td.setAttribute('data-label', ((th.querySelector('.th-txt') || th).textContent || '').trim());
             if (td.querySelector('.ev-list')) td.classList.add('ev-cell');
           });
         });

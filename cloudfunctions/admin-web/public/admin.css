@@ -484,6 +484,16 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 /* 柱状图卡片允许气泡溢出：.card 默认 overflow:hidden 会把 tooltip 裁掉 */
 .card-usage { overflow: visible; }
 
+/* 成员明细表头排序（2026-10-23）：桌面点击排序；≤900px thead 隐藏，
+   成员卡跟随当前排序状态展示（默认次数降序），箭头只标当前排序列 */
+.th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.th-sort:hover .th-txt { color: var(--brand); }
+.th-sort .sort-ind {
+  display: inline-block; min-width: 1em; margin-left: 4px;
+  font-size: 12px; color: var(--text-3);
+}
+.th-sort-on .sort-ind { color: var(--brand); font-weight: 700; }
+
 .seg {
   display: inline-flex;
   background: #fff;
