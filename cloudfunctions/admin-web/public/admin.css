@@ -227,7 +227,24 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   border-bottom: 1px solid var(--line);
 }
 .page-title { font-size: 17px; font-weight: 600; margin: 0; }
-.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.topbar-left { display: flex; align-items: center; min-width: 0; }
+
+/* 汉堡按钮：桌面端隐藏，手机端(≤900px)才显示（见下方媒体查询） */
+.menu-btn {
+  display: none;            /* 桌面默认隐藏，避免挤占顶栏 */
+  flex: none;
+  width: 44px; height: 44px;
+  margin-right: 6px;
+  padding: 0;
+  border: none; background: none; cursor: pointer;
+  align-items: center; justify-content: center; flex-direction: column; gap: 4px;
+}
+.menu-btn .menu-bar { display: block; width: 20px; height: 2px; background: var(--text); border-radius: 2px; }
+
+/* 抽屉遮罩（手机端）：默认不占布局(display:none)，.show 时盖满全屏 */
+.side-backdrop { display: none; }
+.side-backdrop.show { display: block; }
 .class-picker { display: flex; align-items: center; gap: 8px; }
 .picker-label { font-size: 13px; color: var(--text-2); }
 .class-picker select {
@@ -289,6 +306,10 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .stat-hint { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
 /* ---------------- 表格 ---------------- */
+/* 窄屏自适应：表格包一层横向滚动容器（卡片本身 overflow:hidden 不能滚），
+   min-width 保证列不被挤到错行——手机上横向滑动查看（2026-10-22） */
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tbl-wrap .tbl { min-width: 640px; }
 .tbl { width: 100%; border-collapse: collapse; }
 .tbl th, .tbl td {
   padding: 10px 16px;
@@ -305,7 +326,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 }
 .tbl tbody tr:last-child td { border-bottom: none; }
 .tbl tbody tr:hover { background: #fafbfc; }
-.td-no { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+.td-no { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; white-space: nowrap; }
 .td-day, .td-day td { background: #fafbfc; }
 .td-day { font-weight: 500; }
 .td-weeks { max-width: 200px; font-size: 12px; color: var(--text-2); word-break: break-all; }
@@ -458,7 +479,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 /* 成员明细：各功能使用次数（中文标签 + 次数小标签） */
 .ev-list { color: var(--text-2); font-size: 13px; line-height: 1.6; display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .ev-count { display: inline-flex; align-items: baseline; background: #f4f5f7; border: 1px solid var(--line); border-radius: var(--radius); padding: 1px 7px; font-size: 12px; white-space: nowrap; }
-.ev-count b { font-weight: 600; color: var(--text-1); }
+.ev-count b { font-weight: 600; color: var(--text); }
 
 /* 柱状图卡片允许气泡溢出：.card 默认 overflow:hidden 会把 tooltip 裁掉 */
 .card-usage { overflow: visible; }
@@ -577,9 +598,98 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .src-tab.active:hover:not(:disabled) { background: var(--brand); border-color: var(--brand); }
 
 @media (max-width: 900px) {
-  .side { width: 64px; padding: 16px 8px; }
-  .side-brand, .who, .nav-item { font-size: 0; }
-  .nav-item { text-align: center; padding: 10px 0; }
-  .nav-item::first-letter { font-size: 14px; }
-  .view { padding: 14px; }
+  /* ⚠️ 手机端：侧栏改为离屏抽屉，靠 .open 滑入（不再压成 64px 图标条——
+     那种做法把所有文字用 font-size:0 藏掉，手机上几乎不可用，2026-10-22 改） */
+  .side {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    width: 260px; max-width: 82vw;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    overflow-y: auto;
+    padding: 16px 12px;
+    padding-top: calc(16px + env(safe-area-inset-top));   /* 刘海屏安全区 */
+  }
+  .side.open { transform: translateX(0); }
+  .side-backdrop.show { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.40); }
+
+  /* 汉堡按钮显示；顶栏左组把按钮和标题并排 */
+  .menu-btn { display: inline-flex; }
+
+  /* 滚动模型改到整页（body），顶栏吸顶常驻 */
+  .view { overflow: visible; padding: 14px 14px calc(28px + env(safe-area-inset-bottom)); }
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    padding: calc(14px + env(safe-area-inset-top)) 14px 14px;
+  }
+
+  /* 触控目标 ≥44px（手指好点）；导航项放大并竖向居中 */
+  .nav-item { min-height: 44px; display: flex; align-items: center; font-size: 15px; }
+  .btn { min-height: 44px; }
+
+  /* 班级选择器在窄屏别撑爆：允许收缩、限宽 */
+  .class-picker { min-width: 0; }
+  .class-picker select { min-width: 0; max-width: 42vw; }
+
+  /* ⚠️ 手机版表格：从「横向滚动」彻底改为「每行一张卡片」。
+     桌面表格硬塞手机必然拥挤/截断（用户 2026-10-22 反馈成员使用明细显示不全），
+     卡片化后「字段名在左、值在右」，chips 单独整行，彻底可读。
+     data-label 由 app.js 的 MutationObserver 按 <th> 文本自动注入。 */
+  .tbl-wrap { overflow: visible; }
+  .tbl-wrap .tbl { min-width: 0; }
+  .tbl thead { display: none; }
+  .tbl, .tbl tbody, .tbl tr, .tbl td { display: block; width: auto; }
+  .tbl tr {
+    border: none;                 /* 🔴 细边框在白底上会让两张卡之间的间隙
+                                     「闭合成一个空矩形」（2026-10-22 用户截图圈出），
+                                     改用投影与 .stat 卡一致，卡片立体可分 */
+    border-radius: 10px;
+    margin-bottom: 14px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .tbl tbody tr:last-child { margin-bottom: 0; }
+  .tbl tbody tr:hover { background: var(--panel); }
+  .tbl td {
+    border-bottom: 1px solid var(--line);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: right;
+  }
+  .tbl td:last-child { border-bottom: none; }
+  .tbl td::before {
+    content: attr(data-label);
+    flex: none;
+    margin-right: auto;     /* 把值推到右侧 */
+    font-size: 13px; font-weight: 500; color: var(--text-2);
+    text-align: left;
+  }
+  /* 含功能 chips 的单元格：标签在上、chips 整行换行，不挤成一行 */
+  .tbl td.ev-cell { display: block; text-align: left; }
+  .tbl td.ev-cell::before { display: block; margin-bottom: 6px; }
+  .ev-cell .ev-list { justify-content: flex-start; }
+  /* 卡片态下隐藏 PV 行内迷你条，避免挤压数值 */
+  .tbl td .pv-bar { display: none; }
+
+  /* 表格所在的外层卡（.card-tbl，由 app.js 注入）在手机上退化为纯标题区：
+     白底 → 透明。否则「白卡叠白卡」，卡片间隙里露出的是外层卡的白底，
+     上下边框 + 圆角在 12px 间隙里闭合成一个「空矩形」（用户截图圈出），
+     卡片完全看不出是分开的。退化后白卡行直接浮在灰底（--bg）上。 */
+  .card.card-tbl { background: transparent; box-shadow: none; overflow: visible; }
+
+  /* 概览统计卡：手机上 2 列紧凑、字号略缩 */
+  .stat-row { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .stat { padding: 14px; }
+  .stat-value { font-size: 22px; }
+
+  /* 表单两列并排在手机上堆叠，不被压扁 */
+  .field-row { flex-direction: column; }
+  /* 工具栏允许换行，按钮不被挤掉 */
+  .toolbar { flex-wrap: wrap; }
+  /* 弹层在小屏少留白，利用宽度 */
+  .dlg-mask { padding: 16px; }
 }

@@ -53,7 +53,7 @@
 
   <!-- 主界面 -->
   <div id="main-view" class="main-wrap" hidden>
-    <aside class="side">
+    <aside class="side" id="side">
       <div class="side-brand">
         <div class="side-title">班级任务管理</div>
         <div class="side-sub">管理后台</div>
@@ -74,10 +74,21 @@
         <button class="btn btn-ghost btn-block" id="logout-btn">退出登录</button>
       </div>
     </aside>
+    <!-- 抽屉遮罩：手机端滑出菜单时盖住内容区，点它收起。
+         ⚠️ 不能加 hidden 属性——[hidden]{display:none!important} 会压过
+         .side-backdrop.show 的 display，导致遮罩永远出不来（2026-10-22 实踩）；
+         显隐完全由 .show 类控制（基础 .side-backdrop{display:none}）。 -->
+    <div class="side-backdrop" id="side-backdrop"></div>
 
     <main class="content">
       <header class="topbar">
-        <h1 class="page-title" id="page-title">概览</h1>
+        <div class="topbar-left">
+          <!-- 汉堡按钮：仅手机端(≤900px)显示，桌面端隐藏；点开左侧抽屉菜单 -->
+          <button class="menu-btn" id="menu-btn" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="side">
+            <span class="menu-bar"></span><span class="menu-bar"></span><span class="menu-bar"></span>
+          </button>
+          <h1 class="page-title" id="page-title">概览</h1>
+        </div>
         <div class="topbar-right">
           <label class="class-picker" id="class-picker-wrap">
             <span class="picker-label">当前班级</span>

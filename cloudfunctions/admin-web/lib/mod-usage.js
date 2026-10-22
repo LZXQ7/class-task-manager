@@ -7,7 +7,7 @@
  * 仅超管可用（admin-web 全局已拦登录态；这里不再二次鉴权，调用方已确保 isSuper）。
  */
 const { getPool } = require('../common/db');
-// 🔴 铁律：所有人员列表一律不展示测试账号（学号 0000000000xx 段），NOT_TEST 是唯一真源
+// 🔴 铁律：所有人员列表一律不展示测试账号（学号 2608057499xx 段），NOT_TEST 是唯一真源
 const { NOT_TEST } = require('../common/test-account');
 
 /** 解析时间范围：<=0 表示不限；上限 365 天防止误传超大值 */
@@ -17,6 +17,20 @@ function parseDays(v) {
   return Math.min(n, 365);
 }
 
+/**
+ * 时间范围条件（col 带表别名前缀，如 'ts' / 'e.ts'）。
+ *  · days <= 0：不限；
+ *  · days === 1：今天（本地时区当天 0 点起，DATE(col)=CURDATE()），
+ *    而非 INTERVAL 1 DAY（那是「近 24h」，会把昨天同时段也算进来，与「今天」语义不符）；
+ *  · 其它：col >= NOW() - days 天，与前端「近 N 天」连续轴一致。
+ * 上限 365 由 parseDays 保证。
+ */
+function daysCond(days, col) {
+  if (days === 1) return { sql: 'DATE(' + col + ') = CURDATE()', args: [] };
+  if (days) return { sql: col + ' >= DATE_SUB(NOW(), INTERVAL ? DAY)', args: [days] };
+  return { sql: '', args: [] };
+}
+
 /** 构造 WHERE 与参数（classId=0 表示全部班级） */
 function buildFilter(query) {
   const days = parseDays(query && query.days);
@@ -24,7 +38,8 @@ function buildFilter(query) {
   const where = [];
   const args = [];
   if (classId) { where.push('class_id = ?'); args.push(classId); }
-  if (days) { where.push('ts >= DATE_SUB(NOW(), INTERVAL ? DAY)'); args.push(days); }
+  const dc = daysCond(days, 'ts');
+  if (dc.sql) { where.push(dc.sql); args.push(...dc.args); }
   return { days, classId, where, args };
 }
 
@@ -109,7 +124,8 @@ async function usage(query) {
   const memberConds = [];
   const memberArgs = [];
   if (classId) { memberConds.push('e.class_id = ?'); memberArgs.push(classId); }
-  if (days) { memberConds.push('e.ts >= DATE_SUB(NOW(), INTERVAL ? DAY)'); memberArgs.push(days); }
+  const dcM = daysCond(days, 'e.ts');
+  if (dcM.sql) { memberConds.push(dcM.sql); memberArgs.push(...dcM.args); }
   memberConds.push('(m.id IS NULL OR ' + NOT_TEST('m') + ')');
   const memberWhere = 'WHERE ' + memberConds.join(' AND ');
   const [mem] = await pool.query(
@@ -142,7 +158,8 @@ async function usage(query) {
     const bc = ['e.openid IN (?)'];
     const ba = [topOpenids];
     if (classId) { bc.push('e.class_id = ?'); ba.push(classId); }
-    if (days) { bc.push('e.ts >= DATE_SUB(NOW(), INTERVAL ? DAY)'); ba.push(days); }
+    const dcB = daysCond(days, 'e.ts');
+    if (dcB.sql) { bc.push(dcB.sql); ba.push(...dcB.args); }
     bc.push('(m.id IS NULL OR ' + NOT_TEST('m') + ')');
     const [bcRows] = await pool.query(
       `SELECT e.openid, e.event, e.ref, COUNT(*) AS cnt

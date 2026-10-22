@@ -1473,7 +1473,7 @@
       var kindLabel = { page_view: '页面浏览', action: '功能点击' };
 
       var rangeBtns = [
-        { d: 7, t: '近 7 天' }, { d: 30, t: '近 30 天' }, { d: 0, t: '全部' }
+        { d: 1, t: '今天' }, { d: 7, t: '近 7 天' }, { d: 30, t: '近 30 天' }, { d: 0, t: '全部' }
       ].map(function (x) {
         return '<button class="btn' + (days === x.d ? ' btn-primary' : '') +
           '" data-rg="' + x.d + '">' + x.t + '</button>';
@@ -1485,7 +1485,7 @@
         '</div>';
 
       var tbl = '<div class="card"><div class="card-hd">功能使用情况排行（按次数）</div>' +
-        '<table class="tbl"><thead><tr>' +
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
         '<th>功能 / 页面</th><th>类型</th><th>次数 (PV)</th><th>人数 (UV)</th><th>最近活跃</th>' +
         '</tr></thead><tbody>' +
         (rows.length ? rows.map(function (r) {
@@ -1499,14 +1499,17 @@
             '<td class="td-no">' + esc(r.lastTs || '—') + '</td>' +
             '</tr>';
         }).join('') : '<tr><td colspan="5" class="empty">暂无使用记录</td></tr>') +
-        '</tbody></table></div>';
+        '</tbody></table></div></div>';
 
       var axis = buildDailyAxis(days, (o.trend && o.trend.daily) || []);
       var maxDaily = axis.reduce(function (m, x) { return Math.max(m, x.pv); }, 1);
       // 轴说明：days=0（全部）时不能说「近 30 天」——后端 trend.days 也只是回显值
-      var axisNote = days
-        ? '横轴：日期（近 ' + days + ' 天，每日总次数）'
-        : '横轴：日期（全部，每日总次数）';
+      // days=1 是「今天」，单独措辞，避免「近 1 天」的别扭说法
+      var axisNote = days === 1
+        ? '横轴：日期（今天，每日总次数）'
+        : (days
+          ? '横轴：日期（近 ' + days + ' 天，每日总次数）'
+          : '横轴：日期（全部，每日总次数）');
       var dailyHtml = '<div class="card card-usage"><div class="card-hd">每日活跃总览（点击/浏览总次数）</div>' +
         (axis.length
           ? '<div class="bars">' + axis.map(function (x) {
@@ -1525,7 +1528,7 @@
       // 成员使用明细：「总使用人数」具体到账号（后端已排除测试账号）
       var members = o.members || [];
       var memTbl = '<div class="card"><div class="card-hd">成员使用明细（按人，已排除测试账号）</div>' +
-        '<table class="tbl"><thead><tr>' +
+        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
         '<th>成员</th><th>班级</th><th>次数 (PV)</th><th>活跃天数</th><th>使用功能（次数）</th><th>最近活跃</th>' +
         '</tr></thead><tbody>' +
         (members.length ? members.map(function (r) {
@@ -1534,11 +1537,13 @@
             '<td>' + esc(r.className) + '</td>' +
             '<td class="td-no">' + r.pv + '</td>' +
             '<td class="td-no">' + r.activeDays + '</td>' +
-            '<td class="ev-list">' + memberEventCounts(r.eventsBreakdown) + '</td>' +
+            // ⚠️ .ev-list 是 display:flex，不能直接挂在 <td> 上（flex 覆盖 table-cell
+            //    会让该格脱离表格行列对齐，整行错位，2026-10-22 用户反馈），必须包内层 div
+            '<td><div class="ev-list">' + memberEventCounts(r.eventsBreakdown) + '</div></td>' +
             '<td class="td-no">' + esc(r.lastTs || '—') + '</td>' +
             '</tr>';
         }).join('') : '<tr><td colspan="6" class="empty">暂无使用记录</td></tr>') +
-        '</tbody></table></div>';
+        '</tbody></table></div></div>';
 
       // 班级范围：全部班级 / 仅当前班级（与右上角班级选择器解耦，刷新后保留）
       // ⚠️ 标签不缀具体班名——右上角选择器已经显示当前班，再写一遍是冗余（2026-10-18 用户要求）
@@ -1661,10 +1666,65 @@
       api('/api/auth/logout', { method: 'POST' }).then(showLogin);
     });
 
+    // 手机端抽屉菜单（≤900px）：汉堡按钮开/关，遮罩点击关，切到桌面尺寸自动关
+    var sideEl = $('#side');
+    var backdropEl = $('#side-backdrop');
+    var menuBtn = $('#menu-btn');
+    function closeDrawer() {
+      sideEl.classList.remove('open');
+      backdropEl.classList.remove('show');
+      menuBtn.setAttribute('aria-expanded', 'false');
+    }
+    function openDrawer() {
+      sideEl.classList.add('open');
+      backdropEl.classList.add('show');
+      menuBtn.setAttribute('aria-expanded', 'true');
+    }
+    menuBtn.addEventListener('click', function () {
+      sideEl.classList.contains('open') ? closeDrawer() : openDrawer();
+    });
+    backdropEl.addEventListener('click', closeDrawer);
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 900) closeDrawer();
+    });
+
     $('#nav').addEventListener('click', function (e) {
       var b = e.target.closest('.nav-item');
-      if (b) go(b.dataset.view);
+      if (b) { go(b.dataset.view); closeDrawer(); }
     });
+
+    // 手机版表格卡片化：自动给每个 <td> 注入 data-label（取对应 <th> 文本），
+    // 配合 ≤900px 的 CSS 把表格渲染成「每行一张卡片」。用 MutationObserver 覆盖所有
+    // 异步渲染的表格，无需逐个视图改模板（2026-10-22 重设计）。
+    function applyTableLabels(root) {
+      $$('.tbl', root).forEach(function (tbl) {
+        if (tbl.dataset.labelsDone) return;
+        // 给表格的外层 .card 补 card-tbl：手机端（≤900px）该卡退化为透明标题区，
+        // 否则白卡叠白卡在 12px 间隙里闭合成「空矩形」，卡片看不出分开（2026-10-22 修）
+        var card = tbl.closest('.card');
+        if (card) card.classList.add('card-tbl');
+        var ths = tbl.querySelectorAll('thead th');
+        // 🔴 必须按行遍历、行内按列号对位——querySelectorAll('tbody td') 是跨行
+        //    连续编号，直接用全局下标会让第 2 行起 ths[i] 越界、标签全部丢失
+        //    （2026-10-22 无头渲染实测抓到）。
+        tbl.querySelectorAll('tbody tr').forEach(function (tr) {
+          Array.prototype.forEach.call(tr.children, function (td, col) {
+            if (td.hasAttribute('colspan')) return;          // 跳过「暂无记录」等合并单元格
+            var th = ths[col];
+            if (!th) return;
+            td.setAttribute('data-label', (th.textContent || '').trim());
+            if (td.querySelector('.ev-list')) td.classList.add('ev-cell');
+          });
+        });
+        tbl.dataset.labelsDone = '1';
+      });
+    }
+    var viewEl = $('#view');
+    if (viewEl && 'MutationObserver' in window) {
+      new MutationObserver(function () { applyTableLabels(viewEl); })
+        .observe(viewEl, { childList: true, subtree: true });
+    }
+    applyTableLabels(viewEl);
 
     // 已有会话就直接进（刷新页面不该要求重登）
     api('/api/me').then(function (me) {
