@@ -681,6 +681,16 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
      卡片完全看不出是分开的。退化后白卡行直接浮在灰底（--bg）上。 */
   .card.card-tbl { background: transparent; box-shadow: none; overflow: visible; }
 
+  /* ⚠️ 手机版「左右双卡片」：概览 / 两张数据表 / 每日图 收进 2 列网格，页面大幅变短。
+     两张数据表（功能排行 + 成员明细）左右并排；概览 stat-row 与每日活跃图各自占满整行
+     （柱状图在半宽下读不清，强行两列反而更挤，故全宽，2026-10-23）。 */
+  .usage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .usage-grid > .stat-row,
+  .usage-grid > .card-usage { grid-column: 1 / -1; }
+  /* 双列下窄列的行卡：label 改到值上方（不再左右挤压），保证窄列可读（2026-10-23） */
+  .usage-grid .tbl td { display: block; text-align: left; }
+  .usage-grid .tbl td::before { display: block; margin: 0 0 4px; }
+
   /* 概览统计卡：手机上 2 列紧凑、字号略缩 */
   .stat-row { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
   .stat { padding: 14px; }
@@ -693,3 +703,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   /* 弹层在小屏少留白，利用宽度 */
   .dlg-mask { padding: 16px; }
 }
+
+/* ⚠️ 手机版两列适用范围：≤900px 全程两列（含 375/390 等常见手机宽度），
+   窄列可读性靠上面 .usage-grid .tbl td 的「label 置顶」堆叠布局保证，故不再退化单列。
+   若后续反馈极小屏（≤360px）仍偏挤，再在此加 @media(max-width:360px){.usage-grid{grid-template-columns:1fr}}（2026-10-23）。 */

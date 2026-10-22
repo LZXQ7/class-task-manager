@@ -7,7 +7,7 @@
  * 仅超管可用（admin-web 全局已拦登录态；这里不再二次鉴权，调用方已确保 isSuper）。
  */
 const { getPool } = require('../common/db');
-// 🔴 铁律：所有人员列表一律不展示测试账号（学号 2608057499xx 段），NOT_TEST 是唯一真源
+// 🔴 铁律：所有人员列表一律不展示测试账号（学号 0000000000xx 段），NOT_TEST 是唯一真源
 const { NOT_TEST } = require('../common/test-account');
 
 /** 解析时间范围：<=0 表示不限；上限 365 天防止误传超大值 */

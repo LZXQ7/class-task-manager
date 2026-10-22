@@ -43,6 +43,13 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  // 班级名显示层缩写：示例专业→ 小教（专升本）。
+  // ⚠️ 仅影响展示文案，不动数据库 / 小程序 util.js majorRank / 排课 / PII 词表（均依赖全名）。
+  function shortClassName(name) {
+    if (name === null || name === undefined) return name;
+    return String(name).replace(/小学教育/g, '小教');
+  }
+
   function toast(msg, type) {
     var el = $('#toast');
     el.textContent = msg;
@@ -199,7 +206,7 @@
         '</tr></thead><tbody>' +
         o.classes.map(function (c) {
           return '<tr>' +
-            '<td>' + esc(c.name) + '</td>' +
+            '<td>' + esc(shortClassName(c.name)) + '</td>' +
             '<td>' + c.memberCount + '</td>' +
             '<td>' + c.boundCount + ' / ' + c.memberCount + '</td>' +
             '<td>' + c.sessionCount + '</td>' +
@@ -1208,7 +1215,7 @@
         '</tr></thead><tbody>' +
         rows.map(function (c) {
           return '<tr>' +
-            '<td>' + esc(c.name) + '</td>' +
+            '<td>' + esc(shortClassName(c.name)) + '</td>' +
             '<td>' + c.memberCount + '</td>' +
             '<td>' + (c.mainRoom ? esc(c.mainRoom) : '<span class="muted-note">未设</span>') + '</td>' +
             '<td>' + esc(c.termStart) + '</td>' +
@@ -1534,7 +1541,7 @@
         (members.length ? members.map(function (r) {
           return '<tr>' +
             '<td>' + esc(r.memberName) + (r.studentNo ? '<span class="ev-key">' + esc(r.studentNo) + '</span>' : '') + '</td>' +
-            '<td>' + esc(r.className) + '</td>' +
+            '<td>' + esc(shortClassName(r.className)) + '</td>' +
             '<td class="td-no">' + r.pv + '</td>' +
             '<td class="td-no">' + r.activeDays + '</td>' +
             // ⚠️ .ev-list 是 display:flex，不能直接挂在 <td> 上（flex 覆盖 table-cell
@@ -1555,7 +1562,10 @@
         '<div class="usage-range"><span class="tb-label">时间范围</span>' + rangeBtns + '</div>' +
         '<div class="usage-scope"><span class="tb-label">班级范围</span>' + scopeBtns + '</div>' +
         '</div>';
-      host.innerHTML = toolbar + totalHtml + tbl + memTbl + dailyHtml;
+      // 手机端（≤900px）把概览 / 两张数据表 / 每日图 收进 .usage-grid 的 2 列网格（见 admin.css），
+      // 页面大幅变短；柱状图占满整行（半宽读不清），属合理例外。
+      host.innerHTML = toolbar +
+        '<div class="usage-grid">' + totalHtml + tbl + memTbl + dailyHtml + '</div>';
 
       $$('[data-rg]', host).forEach(function (b) {
         b.onclick = function () {
@@ -1604,7 +1614,7 @@
     var sel = $('#class-picker');
     sel.innerHTML = state.classes.map(function (c) {
       return '<option value="' + c.id + '"' + (c.id === state.classId ? ' selected' : '') + '>' +
-        esc(c.name) + (c.isActive ? '' : '（停用）') + '</option>';
+        esc(shortClassName(c.name)) + (c.isActive ? '' : '（停用）') + '</option>';
     }).join('');
     sel.onchange = function () {
       state.classId = Number(sel.value);
