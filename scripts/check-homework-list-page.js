@@ -200,6 +200,33 @@ function touch(x, y) { return { touches: [{ clientX: x, clientY: y }] }; }
     const pl = p4._payload({ homeworkId: 1 });
     check('L4.1 _payload 带 classId', !!pl && pl.classId === 9 && pl.homeworkId === 1, JSON.stringify(pl));
 
+    /* ---------- L5 布局结构（wxml/wxss 静态断言，2026-10-24 拥挤反馈） ---------- */
+    // 用户反馈「标题/标签/截止/分组/要求全挤在一行」。根因：.hw-card 是 row flex，
+    // head/brief/meta 是它的直接子元素 ⇒ 横向排开。修复：三者包进竖向 .hw-main，
+    // 右移箭头降为兄弟节点。这里锁住结构，防回归成一行。
+    const fsx = require('fs');
+    const wxml = fsx.readFileSync(path.resolve(__dirname, '../miniprogram/pages/homework/index.wxml'), 'utf8');
+    const iMain = wxml.indexOf('class="hw-main"');
+    const iHead = wxml.indexOf('class="hw-head"');
+    const iMeta = wxml.indexOf('class="hw-meta"');
+    const iArrow = wxml.indexOf('name="arrow-right"');
+    const iMetaClose = wxml.indexOf('</view>', iMeta);          // 闭合 .hw-meta
+    const iMainClose = wxml.indexOf('</view>', iMetaClose + 1); // 闭合 .hw-main
+    check('L5.1 卡片内容包进 .hw-main（head/brief/meta 竖向堆叠，不再挤一行）',
+      iMain >= 0 && iHead > iMain && iMeta > iHead && iMainClose > iMeta,
+      'main=' + iMain + ' head=' + iHead + ' meta=' + iMeta + ' mainClose=' + iMainClose);
+    check('L5.2 右移箭头是 .hw-main 兄弟节点（在竖栏闭合之后，不被包进去）',
+      iArrow > iMainClose && iMainClose > 0, 'arrow=' + iArrow + ' mainClose=' + iMainClose);
+
+    const wxss = fsx.readFileSync(path.resolve(__dirname, '../miniprogram/pages/homework/index.wxss'), 'utf8');
+    const metaBlock = wxss.slice(wxss.indexOf('.hw-meta {'), wxss.indexOf('}', wxss.indexOf('.hw-meta {')));
+    check('L5.3 .hw-meta 允许窄屏换行（flex-wrap: wrap，长说明不再横向挤爆）',
+      /flex-wrap:\s*wrap/.test(metaBlock), metaBlock.replace(/\s+/g, ' ').slice(0, 120));
+    const pubBlock = wxss.slice(wxss.indexOf('.hw-publish .btn {'), wxss.indexOf('}', wxss.indexOf('.hw-publish .btn {')));
+    check('L5.4 发布按钮去蓝紫粉高饱和渐变、改主题品牌蓝 var(--brand)',
+      /background:\s*var\(--brand\)/.test(pubBlock) && !/linear-gradient/.test(pubBlock),
+      pubBlock.replace(/\s+/g, ' ').slice(0, 160));
+
     /* ---------- 汇总 ---------- */
     console.log('\n==============================');
     console.log('作业列表页页面逻辑门禁 通过=' + pass + ' 失败=' + fail);

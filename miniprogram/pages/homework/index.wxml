@@ -38,17 +38,21 @@
       bindtouchend="onSwipeEnd"
       bindtouchcancel="onSwipeEnd"
     >
-      <view class="hw-head">
-        <text class="hw-title">{{item.title}}</text>
-        <view class="hw-tag {{item.statusTone}}">{{item.statusText}}</view>
-      </view>
-      <view wx:if="{{item.brief}}" class="hw-brief">{{item.brief}}</view>
-      <view class="hw-meta">
-        <text>截止 {{item.dueDate}}</text>
-        <text class="hw-dot">·</text>
-        <text>{{item.groupText}}</text>
-        <text wx:if="{{item.requireText}}" class="hw-dot">·</text>
-        <text wx:if="{{item.requireText}}" class="hw-req">需{{item.requireText}}</text>
+      <!-- 左栏（.hw-main 竖向堆叠）：标题+状态标签 / 摘要 / 截止·分组·要求 各自一行，
+           不再挤在卡片的一行 flex 里；箭头右置为兄弟节点，min-width:0 防标题挤爆 -->
+      <view class="hw-main">
+        <view class="hw-head">
+          <text class="hw-title">{{item.title}}</text>
+          <view class="hw-tag {{item.statusTone}}">{{item.statusText}}</view>
+        </view>
+        <view wx:if="{{item.brief}}" class="hw-brief">{{item.brief}}</view>
+        <view class="hw-meta">
+          <text>截止 {{item.dueDate}}</text>
+          <text class="hw-dot">·</text>
+          <text>{{item.groupText}}</text>
+          <text wx:if="{{item.requireText}}" class="hw-dot">·</text>
+          <text wx:if="{{item.requireText}}" class="hw-req">需{{item.requireText}}</text>
+        </view>
       </view>
       <app-icon name="arrow-right" variant="gray" size="{{32}}" />
     </view>

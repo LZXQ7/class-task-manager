@@ -39,12 +39,15 @@
 }
 
 .hw-title {
+  flex: 1;
+  min-width: 0;
   font-size: 30rpx;
   font-weight: 600;
   color: #1D2129;
 }
 
 .hw-tag {
+  flex-shrink: 0;
   margin-left: 12rpx;
   padding: 4rpx 14rpx;
   border-radius: 999rpx;
@@ -84,6 +87,7 @@
 .hw-meta {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   margin-top: 12rpx;
   font-size: 24rpx;
@@ -152,8 +156,16 @@
   animation: hwPubIn .2s ease both;
 }
 
+/* 主题化主按钮（与 detail 页同口径）：全局 .btn 是蓝→紫→粉高饱和渐变，与作业主题
+   品牌蓝 --brand 不符。页面级作用域覆盖成纯色，按下态走 --brand-press。
+    specificity：.hw-publish .btn(0,2,0) 压过全局 .btn-hover(0,1,0)，两态都要显式覆盖。 */
 .hw-publish .btn {
   width: 100%;
+  background: var(--brand);
+}
+
+.hw-publish .btn.btn-hover {
+  background: var(--brand-press);
 }
 
 .hw-pub-ico {
