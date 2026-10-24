@@ -10,7 +10,10 @@
     "pages/notice/index",
     "pages/webview/index",
     "pages/roster/index",
-    "pages/classes/index"
+    "pages/classes/index",
+    "pages/homework/index",
+    "pages/homework/detail",
+    "pages/homework/publish"
   ],
   "window": {
     "navigationStyle": "custom",

@@ -1,0 +1,383 @@
+/* P7 · 作业详情（2026-10-24）
+   ⚠️ wxss 硬约定：只用**类选择器**，禁用 `~` 兄弟选择器（真机 fatal）。
+   🔴 WXSS 是**页面级作用域**（2026-10-24 事故教训）：名单行 .mb-row 家族并不是
+      app.wxss 全局类，只定义在 roster/index.wxss —— 本页必须自己定义，
+      否则头像/姓名/学号/状态各占一行、整块竖排堆叠（用户实测截图）。
+      app.wxss 全局类只有：.f-actions / .btn / .btn-ghost / .f-ph / .chip-motion /
+      .tap-hover 等；**跨页借类一律按「没定义」处理**，check-wxss ② 段已全量扫描。 */
+
+.hw {
+  padding-bottom: 160rpx;
+}
+
+/* 作业信息卡 */
+.hd-card {
+  margin: 20rpx 24rpx;
+  padding: 28rpx 28rpx;
+  border-radius: 20rpx;
+  background: #FFFFFF;
+}
+
+.hd-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+
+.hd-brief {
+  margin-top: 14rpx;
+  font-size: 26rpx;
+  line-height: 40rpx;
+  color: #4E5969;
+}
+
+.hd-meta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 18rpx;
+  font-size: 24rpx;
+  color: #86909C;
+}
+
+.hd-dot {
+  margin: 0 10rpx;
+}
+
+.hd-purged {
+  margin-top: 16rpx;
+  padding: 10rpx 16rpx;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: #873800;
+  background: #FFF7E8;
+}
+
+/* 统计行 */
+.st-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin: 0 24rpx 20rpx;
+  border-radius: 20rpx;
+  background: #FFFFFF;
+}
+
+.st-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 22rpx 0;
+}
+
+.st-num {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+
+.st-num.ok {
+  color: #00B42A;
+}
+
+.st-num.warn {
+  color: #FF7D00;
+}
+
+.st-num.bad {
+  color: #F53F3F;
+}
+
+.st-lab {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #86909C;
+}
+
+/* 筛选 chip 行 */
+.fl-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 24rpx 20rpx;
+}
+
+.fl-chip {
+  padding: 8rpx 24rpx;
+  margin-right: 16rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  line-height: 40rpx;
+  color: #4E5969;
+  background: #F2F3F5;
+}
+
+.fl-chip.on {
+  padding: 8rpx 34rpx;
+  color: #FFFFFF;
+  background: #3370FF;
+}
+
+/* 提交名单行（2026-10-24 修复：.mb-row 家族此前只在 roster/index.wxss 定义，
+   页面级作用域 ⇒ 本页等于没样式，名单竖排堆叠。规格与 roster 页逐字对齐，
+   状态标签色与本页统计行同口径：已交=绿 / 待批阅=橙 / 已完成=绿 / 有问题=红 / 未交=灰）
+   ⚠️ `.mb-row + .mb-row::before` 用相邻兄弟 `+`（roster 线上验证可用）；
+      绝不能用通用兄弟 `~`（WXSS 不支持，真机 fatal）。 */
+.mb-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 32rpx;
+  position: relative;
+}
+
+.mb-row + .mb-row::before {
+  content: '';
+  position: absolute;
+  left: 32rpx;
+  right: 0;
+  top: 0;
+  height: 2rpx;
+  background: #F2F3F5;
+}
+
+.mb-info {
+  flex: 1;
+  min-width: 0;
+  margin-left: 20rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.mb-nameline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.mb-name {
+  font-size: 30rpx;
+  line-height: 44rpx;
+  font-weight: 500;
+  color: #1D2129;
+}
+
+.mb-sub {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #86909C;
+}
+
+.mb-tag {
+  flex-shrink: 0;
+  margin-left: 8rpx;
+  padding: 0 12rpx;
+  height: 40rpx;
+  line-height: 40rpx;
+  font-size: 22rpx;
+  color: #4E5969;
+  background: #F2F3F5;
+  border-radius: 16rpx;
+}
+
+/* 提交状态色（statusTone = status || 'none'；none 走上面的灰底基准） */
+.mb-tag.PENDING { color: #FF7D00; background: #FFF7E8; }
+.mb-tag.DONE    { color: #00B42A; background: #E8FFEA; }
+.mb-tag.REJECT  { color: #F53F3F; background: #FFECE8; }
+
+/* 筛选无结果（与作业列表页同规格） */
+.hw-empty {
+  padding: 120rpx 32rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #86909C;
+}
+
+/* 批阅多选：行尾小方框 */
+.pk-box {
+  width: 36rpx;
+  height: 36rpx;
+  margin-left: 16rpx;
+  border-radius: 10rpx;
+  border: 2rpx solid #C9CDD4;
+  background: #FFFFFF;
+}
+
+.pk-box.on {
+  border-color: #3370FF;
+  background: #3370FF;
+}
+
+.pk-dot {
+  width: 28rpx;
+  height: 28rpx;
+  margin-left: 8rpx;
+  border-radius: 999rpx;
+  font-size: 18rpx;
+  line-height: 28rpx;
+  text-align: center;
+  color: #FFFFFF;
+  background: #C9CDD4;
+}
+
+.pk-dot.on {
+  background: #00B42A;
+}
+
+/* 批阅弹层 */
+.rv-wrap {
+  padding: 8rpx 8rpx 0;
+}
+
+.rv-tip {
+  font-size: 26rpx;
+  line-height: 40rpx;
+  color: #4E5969;
+}
+
+.rv-input {
+  width: 100%;
+  height: 180rpx;
+  margin-top: 20rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  line-height: 40rpx;
+  background: #F7F8FA;
+}
+
+/* 提交要求提示 */
+.hd-req {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #3370FF;
+}
+
+/* 作业附件（发布时上传，详情页回显） */
+/* 作业附件区：整体弱化为「灰色注释」层级（2026-10-24 用户反馈「不要贴边，改成灰色注释类型」）
+ * · .hd-attach 左右各 8rpx 外边距：附件行不贴卡片边缘
+ * · 文件名 / 大小统一灰色小字：与「截止 · 仅自己」「提交要求」等辅助文字同级，
+ *   不再用深色主文字样式（附件是补充信息，不该抢标题的视觉层级） */
+.hd-attach {
+  margin: 16rpx 8rpx 0;
+}
+
+.hd-attach-lab {
+  margin-bottom: 4rpx;
+  font-size: 24rpx;
+  color: #86909C;
+}
+
+.sb-req {
+  font-size: 26rpx;
+  line-height: 40rpx;
+  color: #4E5969;
+}
+
+/* 提交弹层内的文件选择（复用发布页同名结构，样式在此页独立定义） */
+.fm-acts {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 12rpx;
+}
+
+.fm-act {
+  flex: 1;
+  height: 72rpx;
+  margin-right: 16rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  line-height: 72rpx;
+  text-align: center;
+  color: #3370FF;
+  background: #E8F0FF;
+}
+
+.fm-act:last-child {
+  margin-right: 0;
+}
+
+.fm-file {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 12rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  background: #F7F8FA;
+}
+
+/* 图片缩略图 + 文件名正文（2026-10-24：图片显示缩略图、文件显示文件名，用户反馈；
+   2026-10-24 晚：附件/已选文件统一灰色注释样式，弱化为补充信息） */
+.fm-file-thumb {
+  width: 88rpx;
+  height: 88rpx;
+  margin-right: 16rpx;
+  border-radius: 8rpx;
+  background: #E5E6EB;
+  flex-shrink: 0;
+}
+
+.fm-file-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fm-file-name {
+  font-size: 24rpx;
+  color: #86909C;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fm-file-size {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #C9CDD4;
+}
+
+.fm-file-del {
+  width: 40rpx;
+  margin-left: 16rpx;
+  font-size: 32rpx;
+  line-height: 36rpx;
+  text-align: center;
+  color: #86909C;
+}
+
+.hw-empty-sm {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #C9CDD4;
+  text-align: center;
+}
+
+/* 底部操作栏：左右排布，与屏幕边框留 24rpx 间距（不贴边） */
+.f-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+}
+
+.f-actions .btn {
+  flex: 1;
+  margin: 0;
+}
+
+.f-actions .btn:first-child {
+  margin-right: 16rpx;
+}
+
+/* .f-cancel / .f-save 是底部按钮的**语义类**（次按钮 / 主按钮）：
+   视觉全部由 .btn / .btn-ghost（app.wxss）提供，这里只声明等分伸缩，
+   与 .f-actions .btn 等效 —— 保留类名是为了与 timetable 等页同一套命名。
+   ⚠️ 别把它挪进 app.wxss：timetable / timetable-apply 的 .f-save 是页面级
+      定义（含自己的高度/底色），全局加规则会踩坏它们的布局。 */
+.f-cancel, .f-save { flex: 1; }

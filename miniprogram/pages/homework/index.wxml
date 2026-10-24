@@ -1,0 +1,70 @@
+<view class="page hw page-fade {{tClass}}">
+
+  <nav-bar title="作业" show-back="{{true}}" custom-back="{{true}}" bind:back="onBack"></nav-bar>
+
+  <!-- 加载骨架（Req 3）：首屏异步拉取期间显示，避免「暂无作业」闪现 -->
+  <skeleton wx:if="{{!loaded}}" type="list" rows="{{5}}" />
+
+  <!-- 作业卡片：左滑露出删除区（与通知页同交互；仅发布者/超管有删除区，见 canDelete） -->
+  <view
+    wx:for="{{list}}"
+    wx:key="id"
+    class="hw-wrap fade-item"
+  >
+    <view
+      wx:if="{{item.canDelete}}"
+      class="hw-del-zone {{item.offset ? 'on' : ''}}"
+      data-id="{{item.id}}"
+      data-index="{{index}}"
+      bindtap="onDelete"
+      hover-class="hw-del-hover"
+      hover-stay-time="60"
+    >
+      <app-icon name="trash" variant="red" size="{{34}}" />
+      <text class="hw-deltxt">删除</text>
+    </view>
+
+    <view
+      class="hw-card"
+      style="transform: translateX({{item.offset || 0}}px); transition: {{item.swiping ? 'none' : 'transform .2s ease'}};"
+      data-id="{{item.id}}"
+      data-index="{{index}}"
+      hover-class="tap-hover"
+      hover-start-time="0"
+      hover-stay-time="60"
+      bindtap="onOpen"
+      bindtouchstart="onSwipeStart"
+      bindtouchmove="onSwipeMove"
+      bindtouchend="onSwipeEnd"
+      bindtouchcancel="onSwipeEnd"
+    >
+      <view class="hw-head">
+        <text class="hw-title">{{item.title}}</text>
+        <view class="hw-tag {{item.statusTone}}">{{item.statusText}}</view>
+      </view>
+      <view wx:if="{{item.brief}}" class="hw-brief">{{item.brief}}</view>
+      <view class="hw-meta">
+        <text>截止 {{item.dueDate}}</text>
+        <text class="hw-dot">·</text>
+        <text>{{item.groupText}}</text>
+        <text wx:if="{{item.requireText}}" class="hw-dot">·</text>
+        <text wx:if="{{item.requireText}}" class="hw-req">需{{item.requireText}}</text>
+      </view>
+      <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+    </view>
+  </view>
+
+  <view wx:if="{{loaded && !list.length}}" class="hw-empty">
+    <text>暂无作业</text>
+  </view>
+
+  <view style="height:40rpx"></view>
+
+  <!-- 底部「发布作业」入口（仅班委/超管 canReview 可见；固定悬浮，列表留白已避让，见 index.js onPublish） -->
+  <view class="hw-publish" wx:if="{{canReview}}">
+    <view class="btn" hover-class="btn-hover" bindtap="onPublish">
+      <app-icon class="hw-pub-ico" name="plus" variant="white" size="{{32}}" />
+      <text>发布作业</text>
+    </view>
+  </view>
+</view>

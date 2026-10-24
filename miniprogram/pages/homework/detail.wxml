@@ -1,0 +1,153 @@
+<!-- 弹层打开时锁住页面滚动（防滚动穿透）。
+     ⚠️ 新增任何 bottom-sheet 时，必须把它的 show 标志加进下面这个表达式，
+        否则门禁 scripts/check-scroll-lock.js 会直接报错。 -->
+<page-meta page-style="{{(reviewShow || submitShow) ? 'overflow:hidden' : ''}}"></page-meta>
+
+<view class="page hw page-fade {{tClass}}">
+
+  <nav-bar title="作业详情" show-back="{{true}}" custom-back="{{true}}"
+    sheet-open="{{reviewShow || submitShow}}" bind:back="onBack" />
+
+  <skeleton wx:if="{{!loaded}}" type="list" rows="{{6}}" />
+
+  <block wx:if="{{loaded && homework}}">
+    <!-- 作业信息 -->
+    <view class="hd-card">
+      <view class="hd-title">{{homework.title}}</view>
+      <view wx:if="{{homework.brief}}" class="hd-brief">{{homework.brief}}</view>
+      <view class="hd-meta">
+        <text>截止 {{homework.dueDate}}</text>
+        <text class="hd-dot">·</text>
+        <text>{{homework.groupText}}</text>
+      </view>
+      <view wx:if="{{homework.requireText}}" class="hd-req">提交要求：需上传 {{homework.requireText}}</view>
+      <view wx:if="{{homework.purged}}" class="hd-purged">文件已按策略清除（保留提交记录）</view>
+      <!-- 作业附件（发布时上传）：图片缩略图 + 文件名；fileId 云文件 ID 可直接渲染 -->
+      <view wx:if="{{attaches.length}}" class="hd-attach">
+        <view class="hd-attach-lab">作业附件</view>
+        <view
+          wx:for="{{attaches}}"
+          wx:key="id"
+          class="fm-file"
+        >
+          <image wx:if="{{item.isImage}}" class="fm-file-thumb" src="{{item.fileId}}" mode="aspectFill" />
+          <view class="fm-file-body">
+            <text class="fm-file-name">{{item.name}}</text>
+            <text class="fm-file-size">{{item.sizeText}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 统计 + 筛选 -->
+    <view class="st-row">
+      <view class="st-cell"><text class="st-num">{{stats.total}}</text><text class="st-lab">应交</text></view>
+      <view class="st-cell"><text class="st-num ok">{{stats.submitted}}</text><text class="st-lab">已交</text></view>
+      <view class="st-cell"><text class="st-num warn">{{stats.pending}}</text><text class="st-lab">未交</text></view>
+      <view class="st-cell"><text class="st-num ok">{{stats.done}}</text><text class="st-lab">已完成</text></view>
+      <view class="st-cell"><text class="st-num bad">{{stats.reject}}</text><text class="st-lab">有问题</text></view>
+    </view>
+
+    <view class="fl-row">
+      <view
+        wx:for="{{filters}}"
+        wx:key="key"
+        class="fl-chip chip-motion {{filter === item.key ? 'on' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="onFilter"
+      >{{item.label}}</view>
+    </view>
+
+    <!-- 提交名单 -->
+    <view
+      wx:for="{{list}}"
+      wx:key="id"
+      class="mb-row"
+      data-id="{{item.id}}"
+      hover-class="tap-hover"
+      hover-start-time="0"
+      hover-stay-time="60"
+      bindtap="onTogglePick"
+    >
+      <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{64}}" disabled="{{false}}" />
+      <view class="mb-info">
+        <view class="mb-nameline">
+          <text class="mb-name">{{item.name}}</text>
+          <view wx:if="{{canReview && item.status}}" class="pk-dot on">✓</view>
+        </view>
+        <view class="mb-sub"><text>{{item.studentNo}}</text></view>
+      </view>
+      <view class="mb-tag {{item.statusTone}}">{{item.statusText}}</view>
+      <view wx:if="{{canReview && item.status}}" class="pk-box {{picked[item.id] ? 'on' : ''}}"></view>
+    </view>
+
+    <view wx:if="{{!list.length}}" class="hw-empty"><text>该筛选下没有成员</text></view>
+  </block>
+
+  <view style="height:40rpx"></view>
+
+  <!-- 底部操作：班委 = 批量批阅；成员 = 提交 / 重新提交；
+       本人也需交（iAmSubmitter：仅自己自测 / 班委本人也在目标分组）时，提交行排在批阅行上方 -->
+  <view wx:if="{{loaded && homework && canReview && iAmSubmitter}}" class="f-actions">
+    <view class="btn f-save" bindtap="onOpenSubmit">提交作业</view>
+  </view>
+  <view wx:if="{{loaded && homework}}" class="f-actions">
+    <block wx:if="{{canReview}}">
+      <view class="btn btn-ghost f-cancel" bindtap="onReviewOpen" data-status="REJECT">标记有问题</view>
+      <view class="btn f-save" bindtap="onReviewOpen" data-status="DONE">标记已完成</view>
+    </block>
+    <block wx:else>
+      <view class="btn f-save" bindtap="onOpenSubmit">提交作业</view>
+    </block>
+  </view>
+
+  <!-- 批阅确认弹层 -->
+  <bottom-sheet show="{{reviewShow}}" title="{{reviewStatus === 'DONE' ? '标记已完成' : '打回作业'}}" bind:close="onReviewClose" footer="{{true}}">
+    <view class="rv-wrap">
+      <view class="rv-tip">
+        {{reviewStatus === 'DONE' ? '将所选成员的作业标记为「已完成」。' : '将所选成员的作业标记为「有问题」并打回，对应成员可重新提交（覆盖原记录）。'}}
+      </view>
+      <textarea
+        class="rv-input"
+        value="{{reviewText}}"
+        placeholder="批语（可选，打回时建议填写原因）"
+        placeholder-class="f-ph"
+        maxlength="200"
+        bindinput="onReviewRemark"
+      ></textarea>
+    </view>
+    <view slot="footer" class="f-actions">
+      <view class="btn btn-ghost f-cancel" bindtap="onReviewClose">取消</view>
+      <view class="btn f-save" bindtap="onReviewConfirm">确定</view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 学生提交弹层（选图 / 选文件 / 提交） -->
+  <bottom-sheet show="{{submitShow}}" title="提交作业" bind:close="onSubmitClose" footer="{{true}}">
+    <view class="rv-wrap">
+      <view wx:if="{{homework.requireText}}" class="sb-req">本作业要求上传：{{homework.requireText}}</view>
+      <view class="fm-acts">
+        <view class="fm-act" bindtap="onChooseFile">+ 图片</view>
+        <view class="fm-act" bindtap="onChooseDoc">+ 文件</view>
+      </view>
+      <view
+        wx:for="{{files}}"
+        wx:key="index"
+        class="fm-file"
+      >
+        <!-- 图片：缩略图（本地 tempFilePath 可直接渲染）；文件：文件名+后缀 -->
+        <image wx:if="{{item.kind === 'IMAGE'}}" class="fm-file-thumb" src="{{item.path}}" mode="aspectFill" />
+        <view class="fm-file-body">
+          <text class="fm-file-name">{{item.name}}</text>
+          <text class="fm-file-size">{{item.sizeText}}</text>
+        </view>
+        <view class="fm-file-del" data-idx="{{index}}" bindtap="onRemoveFile">×</view>
+      </view>
+      <view wx:if="{{!files.length}}" class="hw-empty-sm">尚未选择文件</view>
+    </view>
+    <view slot="footer" class="f-actions">
+      <view class="btn btn-ghost f-cancel" bindtap="onSubmitClose">取消</view>
+      <view class="btn f-save" bindtap="onSubmit">提交</view>
+    </view>
+  </bottom-sheet>
+</view>

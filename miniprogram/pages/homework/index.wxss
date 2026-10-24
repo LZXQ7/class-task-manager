@@ -1,0 +1,170 @@
+/* P7 · 作业列表（2026-10-24）
+   ⚠️ wxss 硬约定：只用**类选择器**，禁用 `~` 兄弟选择器（真机 fatal）。 */
+
+.page {
+  min-height: 100vh;
+  background: #F5F6F8;
+}
+
+.hw {
+  padding-bottom: 160rpx;
+}
+
+/* 卡片外层容器：承担外边距 + 删除区定位锚点（删除区与卡片保持间距，不贴边） */
+.hw-wrap {
+  position: relative;
+  margin: 20rpx 24rpx;
+}
+
+.hw-card {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 24rpx 28rpx;
+  border-radius: 20rpx;
+  background: #FFFFFF;
+}
+
+.hw-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.hw-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.hw-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+
+.hw-tag {
+  margin-left: 12rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  line-height: 32rpx;
+  color: #4E5969;
+  background: #F2F3F5;
+}
+
+/* 提交状态色：未交灰 / 待批蓝 / 已完成绿 / 有问题红 */
+.hw-tag.none {
+  color: #86909C;
+  background: #F2F3F5;
+}
+
+.hw-tag.PENDING {
+  color: #3370FF;
+  background: #E8F0FF;
+}
+
+.hw-tag.DONE {
+  color: #00B42A;
+  background: #E8FFEA;
+}
+
+.hw-tag.REJECT {
+  color: #F53F3F;
+  background: #FFECE8;
+}
+
+.hw-brief {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #86909C;
+}
+
+.hw-meta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #86909C;
+}
+
+.hw-dot {
+  margin: 0 10rpx;
+}
+
+.hw-req {
+  color: #3370FF;
+}
+
+/* 左滑露出的删除区（与通知页 notice 同规格：粉底圆角、与卡片保持间距不贴边）
+ * ⚠️ opacity 由「是否已左滑」驱动：卡片是不透明白，静止时天然盖住删除区；
+ *    但为与 notice 页行为完全一致（防玻璃化改造后透色），仍按 offset 显隐。
+ * 尺寸口径与 notice 逐字一致：72px 宽 + right 8px ⇒ JS 侧 DEL_WIDTH = 80px。 */
+.hw-del-zone {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: 72px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #FFECE8;
+  color: #F53F3F;
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity .16s ease;
+}
+
+.hw-del-zone.on { opacity: 1; }
+
+.hw-del-zone.hw-del-hover { opacity: 0.65; }
+
+.hw-deltxt {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 32rpx;
+}
+
+.hw-empty {
+  padding: 120rpx 32rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #86909C;
+}
+
+/* 底部「发布作业」入口（仅班委 canReview 可见，固定悬浮，见 index.js onPublish）
+   · 悬浮透明容器：position:fixed 贴底，左右内缩 24rpx，底部加安全区避让 Home 条
+   · 列表 .hw 已预留 160rpx 底部留白，最后一张卡片不会被按钮压住
+   · canReview 加载完成变 true 时做 200ms 淡入 + 上滑 8rpx 轻动效 */
+.hw-publish {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  animation: hwPubIn .2s ease both;
+}
+
+.hw-publish .btn {
+  width: 100%;
+}
+
+.hw-pub-ico {
+  margin-right: 10rpx;
+}
+
+@keyframes hwPubIn {
+  from { opacity: 0; transform: translateY(8rpx); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hw-publish { animation: none; }
+}

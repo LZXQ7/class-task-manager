@@ -1,0 +1,202 @@
+/* P7 · 发布作业表单（2026-10-24）
+   ⚠️ wxss 硬约定：只用**类选择器**，禁用 `~` 兄弟选择器（真机 fatal）。 */
+
+.hw {
+  padding-bottom: 160rpx;
+}
+
+.fm-card {
+  margin: 20rpx 24rpx;
+  padding: 24rpx 28rpx;
+  border-radius: 20rpx;
+  background: #FFFFFF;
+}
+
+.fm-label {
+  font-size: 26rpx;
+  color: #4E5969;
+}
+
+.fm-req {
+  color: #F53F3F;
+}
+
+.fm-input {
+  width: 100%;
+  height: 72rpx;
+  margin-top: 14rpx;
+  padding: 0 16rpx;
+  box-sizing: border-box;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  background: #F7F8FA;
+}
+
+.fm-area {
+  width: 100%;
+  height: 160rpx;
+  margin-top: 14rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  line-height: 44rpx;
+  background: #F7F8FA;
+}
+
+.fm-pick {
+  height: 72rpx;
+  margin-top: 14rpx;
+  padding: 0 16rpx;
+  box-sizing: border-box;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  line-height: 72rpx;
+  color: #1D2129;
+  background: #F7F8FA;
+}
+
+.fm-hint {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #86909C;
+}
+
+/* 分组多选 chip：复用全局 .chip-motion 过渡 */
+.fm-chips {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 14rpx;
+}
+
+.fm-chip {
+  padding: 8rpx 24rpx;
+  margin-right: 16rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  line-height: 40rpx;
+  color: #4E5969;
+  background: #F2F3F5;
+}
+
+.fm-chip.on {
+  padding: 8rpx 34rpx;
+  color: #FFFFFF;
+  background: #3370FF;
+}
+
+.fm-acts {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 14rpx;
+}
+
+.fm-act {
+  flex: 1;
+  height: 72rpx;
+  margin-right: 16rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  line-height: 72rpx;
+  text-align: center;
+  color: #3370FF;
+  background: #E8F0FF;
+}
+
+.fm-file {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 12rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  background: #F7F8FA;
+}
+
+/* 图片附件缩略图（2026-10-24：图片显示缩略图、文件显示文件名，用户反馈） */
+.fm-file-thumb {
+  width: 88rpx;
+  height: 88rpx;
+  margin-right: 16rpx;
+  border-radius: 8rpx;
+  background: #E5E6EB;
+  flex-shrink: 0;
+}
+
+.fm-file-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fm-file-name {
+  font-size: 26rpx;
+  color: #1D2129;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fm-file-size {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #86909C;
+}
+
+.fm-file-del {
+  width: 40rpx;
+  margin-left: 16rpx;
+  font-size: 32rpx;
+  line-height: 36rpx;
+  text-align: center;
+  color: #86909C;
+}
+
+/* 占位提示统一为灰色（与 mine/timetable 等页一致，避免继承深色） */
+.f-ph {
+  color: #C9CDD4;
+}
+
+/* 截止：日期 + 时间 两列并排 */
+.fm-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 14rpx;
+}
+
+.fm-pick-half {
+  flex: 1;
+  min-width: 0;
+}
+
+.fm-pick-half:first-child {
+  margin-right: 16rpx;
+}
+
+/* 底部操作栏：取消 / 发布 左右排布，且与屏幕边框留 24rpx 间距（不贴边）；
+   ⚠️ 全局约定：所有按钮都不要贴手机边框（2026-10-24） */
+.f-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+}
+
+.f-actions .btn {
+  flex: 1;
+  margin: 0;
+}
+
+.f-actions .btn:first-child {
+  margin-right: 16rpx;
+}
+
+/* .f-cancel / .f-save 是底部按钮的语义类（次按钮 / 主按钮）：
+   视觉由 .btn / .btn-ghost（app.wxss）提供，这里只声明等分伸缩，
+   与 .f-actions .btn 等效。timetable 等页的 .f-save 是各自的页面级定义，
+   互不影响 —— 详见 detail.wxss 同处的说明。 */
+.f-cancel, .f-save { flex: 1; }

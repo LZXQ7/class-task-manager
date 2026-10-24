@@ -313,6 +313,36 @@ t('改课次会把该班全部已发布周退回草稿（不是只退第 1 周�
     '只退第 1 周是错的：课次是全周共用的一行');
 });
 
+/* ---------------- 成员明细排序（2026-10-23） ---------------- */
+t('成员明细：三个可排序列头（次数/活跃天数/最近活跃）', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
+  // 实现是动态拼接 data-sk="' + key + '"，字面量只有 sortTh 调用点 —— 锚点必须贴真实形态
+  ["sortTh('pv', '次数 (PV)')", "sortTh('activeDays', '活跃天数')", "sortTh('lastTs', '最近活跃')"]
+    .forEach((s) => assert.ok(src.includes(s), '缺少排序列调用 ' + s));
+  assert.ok(/data-sk="' \+ key \+ '">/.test(src), 'data-sk 动态拼接缺失');
+});
+t('成员明细：默认按次数降序 + 排序状态持久化', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
+  assert.ok(src.includes("memSort: { key: 'pv', dir: 'desc' }"), 'state.memSort 默认值缺失');
+  assert.ok(src.includes("var LS_MEM_SORT = 'admin.web.memSort';"), 'LS_MEM_SORT 缺失');
+});
+t('成员明细：排序为本地重绘（redrawMemRows），点击不得重拉 API', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
+  // ⚠️ $$('[data-sk]', host) 出现两次（redrawMemRows 内更新箭头 + 绑定处），
+  //    必须取**最后一个**（绑定处），取首个会切进重绘函数体误判
+  const at = src.lastIndexOf("$$('[data-sk]', host)");
+  assert.ok(at > 0, '缺少排序点击绑定');
+  const seg = src.slice(at, at + 600);
+  assert.ok(/onclick/.test(seg), '绑定处应有 onclick');
+  assert.ok(/redrawMemRows\(\)/.test(seg), '点击应走本地重绘');
+  assert.ok(!/reload\(\)/.test(seg), '排序点击不得重拉 API（数据已在客户端）');
+});
+t('成员明细：data-label 注入兼容排序列（.th-txt 包裹文本，箭头不进手机卡片标签）', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
+  assert.ok(src.includes("th.querySelector('.th-txt') || th"),
+    'applyTableLabels 未做 .th-txt 回退，排序箭头会混进手机端 data-label');
+});
+
 /* ---------------- 变异自证：改坏应当被抓 ---------------- */
 // 判据极性 = 变异后应变 false/失败
 /**
@@ -441,7 +471,16 @@ function stillPasses(file, tmpPath) {
       && /\.dlg-mask/.test(b);
     // 判据二：成员功能点次必须渲染成 ev-count（中文标签 × 次数）
     const evOk = /ev-count/.test(src) && /memberEventCounts/.test(src);
-    return pickerOk && evOk;
+    // 判据三（2026-10-23）：成员明细三列可排序 + 默认次数降序 + 本地重绘不重拉 API。
+    //   排序是交互逻辑，跑不了带库全链路，靠源码形态锚点守住：删掉任一列头 /
+    //   改掉默认序 / 把重绘换成 reload 都必须翻脸。
+    const sortOk = /sortTh\('pv'/.test(src)
+      && /sortTh\('activeDays'/.test(src)
+      && /sortTh\('lastTs'/.test(src)
+      && /memSort: \{ key: 'pv', dir: 'desc' \}/.test(src)
+      && /function redrawMemRows/.test(src)
+      && /LS_MEM_SORT/.test(src);
+    return pickerOk && evOk && sortOk;
   }
   if (file === 'lib/mod-usage.js') {
     const src = fs.readFileSync(tmpPath, 'utf8');
@@ -553,6 +592,12 @@ mutateAndExpectFail(
   'public/app.js',
   '      state.memberPage = 1;\n      state.auditPage = 1;',
   '      /* 变异：不重置分页 */'
+);
+mutateAndExpectFail(
+  '成员明细排序列头被删（次数列点不动）',
+  'public/app.js',
+  "sortTh('pv', '次数 (PV)')",
+  "'<th>次数 (PV)</th>'"
 );
 mutateAndExpectFail(
   '切班不撤掉开着的导入弹层（看到 A 班、导进 B 班）',

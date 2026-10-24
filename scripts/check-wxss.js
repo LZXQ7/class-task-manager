@@ -270,6 +270,10 @@ console.log('\n── 自证：声明里的「无冒号残留段」必被抓（�
  * 起因（2026-09-25）：`pages/home/index.wxss` 被整段覆盖，
  * `.wrap` / `.hero` 等**用了但没定义** → 页面能编译、不报错，只是默默变样
  * （卡片满宽贴边、Hero 退化成一行纯文字）。括号配平查不出这种问题。
+ * 🔴 2026-10-24 作业详情页事故：只扫 `index.wxml` 的年代，
+ *    `homework/detail.wxml` 用的 `.mb-row` 家族只定义在 `roster/index.wxss`
+ *    （页面级作用域）⇒ 本页名单竖排堆叠，门禁却全绿。现改为递归扫
+ *    `pages/**` 下**所有** wxml，各自与**同级** wxss 配对。
  * ============================================================ */
 console.log('\n── ② wxml 用到的 class 必须在 wxss（或 app.wxss）里有定义');
 
@@ -329,7 +333,26 @@ function usedClasses(src) {
   return set;
 }
 
-const pageDirs = fs.readdirSync(path.join(MINI, 'pages'));
+/**
+ * 收集目录下所有 .wxml（递归）。
+ * 🔴 2026-10-24：原实现只读每页 `index.wxml`，作业模块的 `detail.wxml` /
+ *    `publish.wxml` 从未进过检查 ⇒ 详情页名单行（.mb-row 家族，实际只定义在
+ *    roster/index.wxss、**页面级作用域**）整块缺样式，名单竖排堆叠
+ *    （头像/姓名/学号/状态各占一行），而当时全部门禁全绿。
+ *    WXSS 是页面级作用域：A 页定义的类，B 页用了就是没定义。
+ */
+function collectWxml(dir, out) {
+  fs.readdirSync(dir, { withFileTypes: true }).forEach((e) => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name === 'node_modules') return;
+      collectWxml(p, out);
+    } else if (e.name.endsWith('.wxml')) {
+      out.push(p);
+    }
+  });
+  return out;
+}
 
 /**
  * 「用了但没有样式规则」的**钩子类**白名单。
@@ -339,23 +362,41 @@ const pageDirs = fs.readdirSync(path.join(MINI, 'pages'));
  */
 const HOOK_ALLOWLIST = new Set(['home', 'ps', 'roster-group']);
 
-let classFail = 0;
-pageDirs.forEach((p) => {
-  const wxmlPath = path.join(MINI, 'pages', p, 'index.wxml');
-  const wxssPath = path.join(MINI, 'pages', p, 'index.wxss');
-  if (!fs.existsSync(wxmlPath) || !fs.existsSync(wxssPath)) return;
-  const used = usedClasses(fs.readFileSync(wxmlPath, 'utf8'));
-  const def = definedClasses(fs.readFileSync(wxssPath, 'utf8'));
+/**
+ * 单页（wxml 源码 + 同级 wxss 源码）的 class 缺失检查。
+ * 抽成纯函数是为了自证段能拿临时文件复用**同一套判据**（不是另写一遍）。
+ * ⚠️ 组件目录（components/）不扫：组件 wxml 里的类常由使用方通过 class 属性
+ *    透传（externalClasses 约定），判缺失会误报。
+ */
+function missingClassesOf(wxmlSrc, wxssSrc) {
+  const used = usedClasses(wxmlSrc);
+  const def = definedClasses(wxssSrc);
   definedClasses(appWxss).forEach((c) => def.add(c));
-  const missing = [...used].filter((c) => !def.has(c) && !HOOK_ALLOWLIST.has(c)).sort();
-  if (missing.length) {
+  return {
+    used,
+    missing: [...used].filter((c) => !def.has(c) && !HOOK_ALLOWLIST.has(c)).sort()
+  };
+}
+
+let classFail = 0;
+let pairCount = 0;
+collectWxml(path.join(MINI, 'pages'), []).sort().forEach((wxmlPath) => {
+  const wxssPath = wxmlPath.replace(/\.wxml$/, '.wxss');
+  if (!fs.existsSync(wxssPath)) return;   // 没有配对样式文件的不查（与旧行为一致）
+  pairCount += 1;
+  const rel = path.relative(ROOT, wxmlPath).replace(/\\/g, '/');
+  const r = missingClassesOf(
+    fs.readFileSync(wxmlPath, 'utf8'),
+    fs.readFileSync(wxssPath, 'utf8')
+  );
+  if (r.missing.length) {
     classFail += 1;
-    bad(`pages/${p}/index.wxml 用了但没定义的 class：${missing.join(' / ')}`);
+    bad(`${rel} 用了但没定义的 class：${r.missing.join(' / ')}`);
   } else {
-    ok(`pages/${p}：${used.size} 个 class 全部有定义`);
+    ok(`${rel}：${r.used.size} 个 class 全部有定义`);
   }
 });
-if (classFail === 0) ok('全部页面无「用了但没定义」的 class');
+if (classFail === 0) ok(`全部 ${pairCount} 个页面 wxml 无「用了但没定义」的 class`);
 
 /* ---------- ③ WXSS 选择器合法性：通用兄弟选择器 `~` 是 fatal ---------- */
 /*
@@ -403,6 +444,39 @@ if (!sqFail) ok(`${files.length} 个 wxss 均无通用兄弟选择器 \`~\`（WX
     const fakeMissing = [...used].filter((c) => !def.has(c));
     chk(fakeMissing.length > 0, '整页样式丢失时能列出缺失的 class（回归保护）');
   }
+}
+
+/* ---------- 自证 ②-b：2026-10-24 作业详情页事故的复刻 ----------
+ * 坏样本：wxml 用了 .mb-row 家族，但 wxss 里没有对应规则
+ *         （= 详情页名单竖排堆叠的直接成因：类定义在 roster 页、页面级作用域）。
+ * 必须逐个列出缺失类名；好样本（有定义）不得误报。 */
+console.log('\n── 自证 ②-b：跨页借类（作业详情页事故）必须被抓住');
+{
+  const tWxml = path.join(ROOT, '.workbuddy', 'tmp', '__wxss_borrow__.wxml');
+  const tWxss = path.join(ROOT, '.workbuddy', 'tmp', '__wxss_borrow__.wxss');
+  // 与 detail.wxml 真实结构逐字同形（状态类是动态绑定的，门禁只静态可见 mb-tag）
+  // ⚠️ 样本里的姓名/学号一律用伪值：本仓库要同步公开脱敏模板，
+  //    12 位 260 开头学号会被 publish-release.sh 的 PII 自检直接拦下。
+  const badWxml = '<view class="mb-row"><view class="mb-info">'
+    + '<view class="mb-nameline"><text class="mb-name">张三</text></view>'
+    + '<view class="mb-sub">0000000003</view></view>'
+    + '<view class="mb-tag {{item.statusTone}}">未交</view></view>\n';
+  const badWxss = '.other { color: #000; }\n';
+  const goodWxss = badWxss + '.mb-row { display: flex; }\n.mb-info { flex: 1; }\n'
+    + '.mb-nameline { display: flex; }\n.mb-name { font-size: 30rpx; }\n'
+    + '.mb-sub { font-size: 24rpx; }\n.mb-tag { flex-shrink: 0; }\n';
+  fs.writeFileSync(tWxml, badWxml);
+  fs.writeFileSync(tWxss, badWxss);
+  const rBad = missingClassesOf(badWxml, badWxss);
+  cleanupTmp(tWxml); cleanupTmp(tWxss);
+  chk(rBad.missing.indexOf('mb-row') >= 0
+      && rBad.missing.indexOf('mb-info') >= 0
+      && rBad.missing.indexOf('mb-name') >= 0
+      && rBad.missing.indexOf('mb-sub') >= 0
+      && rBad.missing.indexOf('mb-tag') >= 0,
+    '坏样本（wxss 缺 .mb-row 家族）被逐个列出（本次事故回归保护）');
+  const rGood = missingClassesOf(badWxml, goodWxss);
+  chk(rGood.missing.length === 0, '好样本（补齐定义后）不误报');
 }
 
 console.log('\n' + (failed ? `✗ ${failed} 项未通过` : '✓ WXSS 体检全部通过'));

@@ -1476,6 +1476,15 @@ Page({
     });
   },
 
+  /** 作业（2026-10-24）：首页快捷入口，全员可见，进入作业列表；发布入口在列表页内（仅班委/超管） */
+  goHomework() {
+    if (getApp().track) getApp().track.action('homework_open');
+    wx.navigateTo({
+      url: '/pages/homework/index',
+      fail: () => wx.switchTab({ url: '/pages/mine/index' })
+    });
+  },
+
   /* ---------------- 发布通知（管理员） ---------------- */
   /** 每次打开都重置表单：上一次填了一半的内容不该被下一次悄悄带上 */
   onNoticeOpen() {

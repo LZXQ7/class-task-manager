@@ -381,6 +381,16 @@
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
 
+      <!-- 作业（2026-10-24）：首页快捷入口，全员可见，进入作业列表；发布入口在列表页内（仅班委/超管） -->
+      <view class="card mt16 notice-card st-item st-7" bindtap="goHomework" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+        <app-icon name="edit" variant="brand" size="{{40}}" />
+        <view class="notice-info">
+          <view class="notice-title">作业</view>
+          <view class="notice-sub">查看与提交班级作业</view>
+        </view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+
       <!-- 查看班级（超管 / 辅导员，多班级 §43 需求⑤）：可新建班级、查看邀请码 / 入班码、导入名单
            v0.7.16：辅导员的这个入口已上移到管理员卡（原「成员与分组」位置），这里不再重复显示 -->
       <!-- 1.0.6 修：这张卡过去**漏标 st-item / 档位类**，是首页唯一不参与入场动画的块

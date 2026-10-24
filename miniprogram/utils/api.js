@@ -242,5 +242,18 @@ module.exports = {
   feeAddExpense: C('fee', 'addExpense'),
   feeDeleteRecord: C('fee', 'deleteRecord'),
   /** 给已有记录补图（管理人；当前 <9 张时才能补；班费/团费都支持） */
-  feeAppendImages: C('fee', 'feeAppendImages')
+  feeAppendImages: C('fee', 'feeAppendImages'),
+
+  /* ---------- 作业提交与管理（2026-10-24） ----------
+   * 🔴 文件一律**不经云函数**：小程序端 `request.uploadFile()` 直传云存储拿 fileID，
+   *    再把 fileID 当字符串交给下面的 action 落库（绕开 256MB 内存 / 60s 超时）。
+   *    大小与格式限制：前端 `utils/homework-limits.js` 提前拦（说人话），
+   *    后端 `common/homework-limit.js` 再判一次（防绕过），两处数值由门禁比对。 */
+  homeworkPublish: C('homework', 'publish'),
+  homeworkList: C('homework', 'list'),
+  homeworkDetail: C('homework', 'detail'),
+  homeworkSubmit: C('homework', 'submit'),
+  homeworkReview: C('homework', 'review'),
+  homeworkDelete: C('homework', 'delete'),
+  homeworkPurge: C('homework', 'purge')
 };
