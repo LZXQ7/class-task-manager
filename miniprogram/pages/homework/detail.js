@@ -97,7 +97,11 @@ Page({
         const h = (res && res.homework) || null;
         const hh = h ? Object.assign({}, h, {
           groupText: (h.groups || []).map(g => g === 'SELF' ? '仅自己' : g + ' 组').join(' / '),
-          requireText: REQUIRE_TEXT[h.requireType] || ''
+          requireText: REQUIRE_TEXT[h.requireType] || '',
+          // 提交弹层按钮可见性（2026-10-24 用户反馈「要求上传图片为什么还有添加文件的按钮」）：
+          // IMAGE → 只给「+ 图片」；FILE → 只给「+ 文件」；EITHER/NONE → 两个都给
+          canPickImage: h.requireType !== 'FILE',
+          canPickFile: h.requireType !== 'IMAGE'
         }) : null;
         this.setData({
           homework: hh,

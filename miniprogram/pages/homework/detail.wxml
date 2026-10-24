@@ -127,8 +127,10 @@
     <view class="rv-wrap">
       <view wx:if="{{homework.requireText}}" class="sb-req">本作业要求上传：{{homework.requireText}}</view>
       <view class="fm-acts">
-        <view class="fm-act" bindtap="onChooseFile">+ 图片</view>
-        <view class="fm-act" bindtap="onChooseDoc">+ 文件</view>
+        <!-- 按发布时的提交要求显示按钮：IMAGE 只给图片、FILE 只给文件、EITHER/NONE 两个都给
+             （2026-10-24 用户反馈「要求图片就不该出现添加文件按钮」；flag 由 _load 计算） -->
+        <view wx:if="{{homework.canPickImage}}" class="fm-act" bindtap="onChooseFile">+ 图片</view>
+        <view wx:if="{{homework.canPickFile}}" class="fm-act" bindtap="onChooseDoc">+ 文件</view>
       </view>
       <view
         wx:for="{{files}}"

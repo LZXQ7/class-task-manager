@@ -225,9 +225,12 @@
   background: #00B42A;
 }
 
-/* 批阅弹层 */
+/* 批阅/提交两个弹层的内容容器。
+   🔴 左右 32rpx（2026-10-24 用户反馈「说了很多遍了，文字/按钮等要和手机边缘有距离，
+   不要贴边」）：与 bottom-sheet 组件 .sheet-footer 的 32rpx 同口径 —— 要求提示文字、
+   选择按钮、文件行都不再贴屏幕边缘；底部 24rpx 让末行内容与 footer 分隔线有呼吸感。 */
 .rv-wrap {
-  padding: 8rpx 8rpx 0;
+  padding: 8rpx 32rpx 24rpx;
 }
 
 .rv-tip {
