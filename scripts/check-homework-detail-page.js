@@ -79,13 +79,13 @@ const WXML_PATH = path.join(ROOT, 'miniprogram', 'pages', 'homework', 'detail.wx
 const WXSS_PATH = path.join(ROOT, 'miniprogram', 'pages', 'homework', 'detail.wxss');
 
 /* ---------- 依赖桩 ---------- */
-const calls = { detail: [], submit: [], toast: [], preview: [], openDoc: [], tempUrl: [] };
+const calls = { detail: [], submit: [], review: [], toast: [], preview: [], openDoc: [], tempUrl: [] };
 // 每轮 _load 换一个假响应（D1 四态 / D7 myStatus 五态轮换）
 let fakeRes = null;
 const apiStub = {
   homeworkDetail: async (p) => { calls.detail.push(p); return fakeRes; },
   homeworkSubmit: async (p) => { calls.submit.push(p); return { ok: true }; },
-  homeworkReview: async () => ({ ok: true })
+  homeworkReview: async (p) => { calls.review.push(p); return { ok: true }; }
 };
 const utilStub = { toast: (m) => calls.toast.push(m) };
 const requestStub = {
@@ -393,8 +393,8 @@ function rvWrapPad(wxss) {
     // ⚠️ 文案在开标签的 > 之后，标签正则匹配不到 —— 必须按「bindtap + 文案」整体查；
     // 且两处提交按钮（iAmSubmitter 独立行 / 成员 else 分支）都要用 submitBtnText
     const textHits = wxml.match(/bindtap="onOpenSubmit">\{\{submitBtnText\}\}/g) || [];
-    check('D9.2 提交作业按钮文案用 submitBtnText（未交=提交作业 / 打回=重新提交 / 已交=置灰提示）',
-      textHits.length === 2, '命中 ' + textHits.length + ' 处');
+    check('D9.2 提交作业按钮文案用 submitBtnText（合并为一处：提交入口只在底部；批阅已移入查看弹层）',
+      textHits.length === 1, '命中 ' + textHits.length + ' 处');
     // 附件预览绑定
     check('D9.3 图片附件行绑 onPreviewAttach（data-idx 定位被点附件）',
       /bindtap="onPreviewAttach"/.test(wxml) && /data-idx="\{\{index\}\}"/.test(wxml), '(未找到 onPreviewAttach 绑定)');
@@ -535,6 +535,47 @@ function rvWrapPad(wxss) {
       '(未找到 我的提交块 老师批语 绑定)');
     check('D16.3 「我的提交」块文件行 bindtap="onViewMy"（点文件看自己的提交）',
       /class="my-sub-files"[\s\S]*?bindtap="onViewMy"/.test(wxml), '(未找到 my-sub 文件绑定 onViewMy)');
+
+    /* ---------- D17 批阅入口内移：详情页底部不再展示，点进成员提交后才可标记（2026-10-24 用户反馈） ---------- */
+    // 17.1 「外面」的批量批阅按钮已移除：wxml 不再引用 onReviewOpen
+    check('D17.1 详情页底部不再有「标记已完成/有问题」入口（onReviewOpen 已移除）',
+      !/onReviewOpen/.test(wxml), '(仍引用 onReviewOpen)');
+    // 17.2/17.3 查看提交弹层 footer 提供单条批阅按钮，绑 onReviewFromView（DONE / REJECT）
+    check('D17.2 查看弹层 footer 含「标记已完成」(data-status=DONE) 且绑 onReviewFromView',
+      /bindtap="onReviewFromView" data-status="DONE"/.test(wxml), '(未找到 标记已完成 内移入口)');
+    check('D17.3 查看弹层 footer 含「标记有问题」(data-status=REJECT) 且绑 onReviewFromView',
+      /bindtap="onReviewFromView" data-status="REJECT"/.test(wxml), '(未找到 标记有问题 内移入口)');
+    // 17.4 仅真实成员（viewMember.id>0）展示；「我的提交」id=0 不展示
+    check('D17.4 批阅按钮仅在 canReview && viewMember.id 时展示（「我的提交」id=0 不显示）',
+      /wx:if="\{\{canReview && viewMember\.id\}\}"/.test(wxml), '(未找到 内移批阅按钮的展示条件)');
+    // 17.5~17.7 行为：点成员行 → 打开查看弹层(viewMember.id=11) → 点标记 → reviewShow + reviewTargetId=11
+    //           → 确认 → homeworkReview(memberIds=[11]) 并关闭两层弹层
+    fakeRes = fakeDetail('NONE', { canReview: true, list: members });
+    const p17 = freshPage({ id: 1, classId: 1 });
+    p17._load();
+    await flush();
+    p17.onRowTap({ currentTarget: { dataset: { id: 11 } } });
+    check('D17.5 点成员行打开查看弹层后 viewMember.id=11',
+      p17.data.viewShow === true && p17.data.viewMember && p17.data.viewMember.id === 11,
+      JSON.stringify(p17.data.viewMember));
+    if (typeof p17.onReviewFromView !== 'function') {
+      check('D17.6 点「标记已完成」→ 打开批阅层并锁定该成员(reviewTargetId=11)', false, '(缺少 onReviewFromView)');
+      check('D17.7 确认标记 → homeworkReview 针对该成员单条(memberIds=[11]) 并关闭弹层', false, '(同上)');
+    } else {
+      p17.onReviewFromView({ currentTarget: { dataset: { status: 'DONE' } } });
+      check('D17.6 点「标记已完成」→ 打开批阅层并锁定该成员(reviewTargetId=11)',
+        p17.data.reviewShow === true && p17.data.reviewTargetId === 11 && p17.data.reviewStatus === 'DONE',
+        'reviewShow=' + p17.data.reviewShow + ' target=' + p17.data.reviewTargetId);
+      calls.review.length = 0;
+      await p17.onReviewConfirm();
+      await flush();
+      check('D17.7 确认标记 → homeworkReview 针对该成员单条(memberIds=[11]) 并关闭两层弹层',
+        calls.review.length === 1
+        && JSON.stringify((calls.review[0] || {}).memberIds) === JSON.stringify([11])
+        && p17.data.reviewShow === false && p17.data.viewShow === false && p17.data.reviewTargetId === 0,
+        'review=' + JSON.stringify(calls.review.map((r) => r.memberIds))
+        + ' reviewShow=' + p17.data.reviewShow + ' viewShow=' + p17.data.viewShow);
+    }
 
     /* ---------- 汇总 ---------- */
     console.log('\n==============================');

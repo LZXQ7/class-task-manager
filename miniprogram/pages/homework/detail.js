@@ -1,7 +1,7 @@
 /**
  * P7 · 作业详情（2026-10-24）
  * ------------------------------------------------------------
- * · 班委：看提交名单 + 已交/未交统计 + 按状态筛选 + 多选批量批阅（已完成 / 有问题=打回）
+ * · 班委：看提交名单 + 已交/未交统计 + 按状态筛选 + 点进成员提交后单条批阅（已完成 / 有问题=打回）
  * · 成员：看作业与附件，提交 / 重新提交（覆盖原记录）
  *
  * 🔴 存储铁律：文件由小程序端 **直传云存储**（request.uploadFile），
@@ -94,6 +94,9 @@ Page({
     reviewShow: false,
     reviewStatus: 'DONE',
     reviewText: '',
+    // 单条批阅目标：点进某成员提交弹层后标记，记录该成员 id（与多选 picked 解耦，
+    // picked 仍服务于批量下载，2026-10-24 用户反馈「批阅不展示在外面，点进详情后才可标记」）
+    reviewTargetId: 0,
     submitShow: false
   },
 
@@ -210,7 +213,7 @@ Page({
     this.setData({ filter: key }, () => this._load());
   },
 
-  /* ---------------- 多选批阅 / 批量导出 ---------------- */
+  /* ---------------- 单条批阅（点进成员提交后标记） / 批量导出 ---------------- */
   /**
    * 勾选态派生量同步：pickedCount + allPicked（筛选行「全选」按钮的态）。
    * 所有改动 picked 的地方都走它，避免计数与全选态各算各的、互相漂移。
@@ -383,10 +386,15 @@ Page({
     this._downloadRows([Object.assign({}, row, { files })]);
   },
 
-  onReviewOpen(e) {
+  /**
+   * 点进某成员提交弹层后标记（2026-10-24 用户反馈「批阅不展示在外面，点进详情后才可标记」）：
+   * 入口在 viewShow 弹层 footer，针对**当前查看的成员**（viewMember.id）单条批阅。
+   */
+  onReviewFromView(e) {
     const status = String(e.currentTarget.dataset.status || 'DONE');
-    if (!this.data.pickedCount) { util.toast('请先选择成员'); return; }
-    this.setData({ reviewShow: true, reviewStatus: status, reviewText: '' });
+    const id = Number(this.data.viewMember && this.data.viewMember.id) || 0;
+    if (!id) return;
+    this.setData({ reviewShow: true, reviewStatus: status, reviewText: '', reviewTargetId: id });
   },
 
   onReviewClose() {
@@ -394,7 +402,9 @@ Page({
   },
 
   onReviewConfirm() {
-    const ids = Object.keys(this.data.picked).map(Number);
+    // 🔴 单条批阅（点进成员提交后标记）：优先用 reviewTargetId；
+    // 老的多选路径兜底（picked 仍服务于批量下载，标记不再走它）。
+    const ids = this.data.reviewTargetId ? [this.data.reviewTargetId] : Object.keys(this.data.picked).map(Number);
     if (!ids.length) { util.toast('请先选择成员'); return; }
     const status = this.data.reviewStatus;
     api.homeworkReview(this._payload({
@@ -403,8 +413,8 @@ Page({
     }))
       .then(() => {
         util.toast(status === 'DONE' ? '已标记完成' : '已打回');
-        this.setData({ reviewShow: false });
-        this._syncPick({});
+        // 标记完成后关掉批阅确认层与底下成员提交层，回到名单（状态已刷新）
+        this.setData({ reviewShow: false, viewShow: false, reviewTargetId: 0 });
         this._load();
       })
       .catch(() => {});

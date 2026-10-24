@@ -141,29 +141,21 @@
 
   <view style="height:40rpx"></view>
 
-  <!-- 底部操作：班委 = 批量批阅；成员 = 提交 / 重新提交；
-       本人也需交（iAmSubmitter：仅自己自测 / 班委本人也在目标分组）时，提交行排在批阅行上方。
-       提交按钮三态（2026-10-24 用户反馈「提交作业后按钮就消失或变成灰色禁用」）：
-       只有未提交/被打回可点（走 onOpenSubmit）；待批阅/已完成/已截止置灰
-       （全局 .btn.disabled = --brand-disable），文案随状态变化，双保险在 onOpenSubmit 里再拦一次 -->
-  <view wx:if="{{loaded && homework && canReview && iAmSubmitter}}" class="f-actions">
+  <!-- 底部操作：仅「提交作业」入口。
+       🔴 批阅入口已移入「查看提交」弹层内（点进某成员提交后才可标记已完成/有问题），
+          详情页底部不再展示批阅按钮（2026-10-24 用户反馈）。
+       显示条件：普通成员（!canReview）或班委本人也需交（canReview && iAmSubmitter）。
+       提交按钮三态（2026-10-24 用户反馈）：只有未提交/被打回可点（走 onOpenSubmit）；
+       待批阅/已完成/已截止置灰（全局 .btn.disabled），文案随状态变化。 -->
+  <view wx:if="{{loaded && homework && ((canReview && iAmSubmitter) || (!canReview))}}" class="f-actions">
     <view class="btn f-save {{canSubmit ? '' : 'disabled'}}" bindtap="onOpenSubmit">{{submitBtnText}}</view>
-  </view>
-  <view wx:if="{{loaded && homework}}" class="f-actions">
-    <block wx:if="{{canReview}}">
-      <view class="btn btn-ghost f-cancel" bindtap="onReviewOpen" data-status="REJECT">标记有问题</view>
-      <view class="btn f-save" bindtap="onReviewOpen" data-status="DONE">标记已完成</view>
-    </block>
-    <block wx:else>
-      <view class="btn f-save {{canSubmit ? '' : 'disabled'}}" bindtap="onOpenSubmit">{{submitBtnText}}</view>
-    </block>
   </view>
 
   <!-- 批阅确认弹层 -->
   <bottom-sheet show="{{reviewShow}}" title="{{reviewStatus === 'DONE' ? '标记已完成' : '打回作业'}}" bind:close="onReviewClose" footer="{{true}}">
     <view class="rv-wrap">
       <view class="rv-tip">
-        {{reviewStatus === 'DONE' ? '将所选成员的作业标记为「已完成」。' : '将所选成员的作业标记为「有问题」并打回，对应成员可重新提交（覆盖原记录）。'}}
+        {{reviewStatus === 'DONE' ? '将该成员的作业标记为「已完成」。' : '将该成员的作业标记为「有问题」并打回，对应成员可重新提交（覆盖原记录）。'}}
       </view>
       <textarea
         class="rv-input"
@@ -244,9 +236,17 @@
       </view>
       <view wx:if="{{!viewFiles.length}}" class="hw-empty-sm">没有提交文件</view>
     </view>
-    <view slot="footer" class="f-actions">
-      <view class="btn btn-ghost f-cancel" bindtap="onViewClose">关闭</view>
-      <view class="btn f-save" bindtap="onDownloadMember">保存全部</view>
+    <view slot="footer">
+      <!-- 🔴 批阅入口内移（2026-10-24 用户反馈）：点进某成员提交后才可标记；
+           普通成员提交的「我的提交」弹层 viewMember.id=0，不展示批阅按钮 -->
+      <view wx:if="{{canReview && viewMember.id}}" class="f-actions">
+        <view class="btn btn-ghost f-cancel" bindtap="onReviewFromView" data-status="REJECT">标记有问题</view>
+        <view class="btn f-save" bindtap="onReviewFromView" data-status="DONE">标记已完成</view>
+      </view>
+      <view class="f-actions">
+        <view class="btn btn-ghost f-cancel" bindtap="onViewClose">关闭</view>
+        <view class="btn f-save" bindtap="onDownloadMember">保存全部</view>
+      </view>
     </view>
   </bottom-sheet>
 </view>
