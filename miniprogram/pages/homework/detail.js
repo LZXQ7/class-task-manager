@@ -394,7 +394,10 @@ Page({
     const status = String(e.currentTarget.dataset.status || 'DONE');
     const id = Number(this.data.viewMember && this.data.viewMember.id) || 0;
     if (!id) return;
-    this.setData({ reviewShow: true, reviewStatus: status, reviewText: '', reviewTargetId: id });
+    // 🔴 关掉当前查看弹层，让批阅确认层浮到最前：两个 bottom-sheet 都开时，
+    // view 弹层在 DOM 里排在 review 弹层之后（shadow-tree 后置顶），会盖住 review 弹层
+    // （2026-10-24 用户反馈「点标记后新弹层在背后，必须关掉当前弹层才看得到」）。
+    this.setData({ reviewShow: true, reviewStatus: status, reviewText: '', reviewTargetId: id, viewShow: false });
   },
 
   onReviewClose() {

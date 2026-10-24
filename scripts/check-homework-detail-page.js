@@ -559,13 +559,14 @@ function rvWrapPad(wxss) {
       p17.data.viewShow === true && p17.data.viewMember && p17.data.viewMember.id === 11,
       JSON.stringify(p17.data.viewMember));
     if (typeof p17.onReviewFromView !== 'function') {
-      check('D17.6 点「标记已完成」→ 打开批阅层并锁定该成员(reviewTargetId=11)', false, '(缺少 onReviewFromView)');
+      check('D17.6 点「标记已完成」→ 打开批阅层并锁定该成员(reviewTargetId=11) 且关掉当前查看弹层(viewShow=false，让批阅层浮到最前)', false, '(缺少 onReviewFromView)');
       check('D17.7 确认标记 → homeworkReview 针对该成员单条(memberIds=[11]) 并关闭弹层', false, '(同上)');
     } else {
       p17.onReviewFromView({ currentTarget: { dataset: { status: 'DONE' } } });
-      check('D17.6 点「标记已完成」→ 打开批阅层并锁定该成员(reviewTargetId=11)',
-        p17.data.reviewShow === true && p17.data.reviewTargetId === 11 && p17.data.reviewStatus === 'DONE',
-        'reviewShow=' + p17.data.reviewShow + ' target=' + p17.data.reviewTargetId);
+      check('D17.6 点「标记已完成」→ 打开批阅层并锁定该成员(reviewTargetId=11) 且关掉当前查看弹层(viewShow=false，让批阅层浮到最前)',
+        p17.data.reviewShow === true && p17.data.reviewTargetId === 11 && p17.data.reviewStatus === 'DONE'
+        && p17.data.viewShow === false,
+        'reviewShow=' + p17.data.reviewShow + ' target=' + p17.data.reviewTargetId + ' viewShow=' + p17.data.viewShow);
       calls.review.length = 0;
       await p17.onReviewConfirm();
       await flush();
@@ -576,6 +577,18 @@ function rvWrapPad(wxss) {
         'review=' + JSON.stringify(calls.review.map((r) => r.memberIds))
         + ' reviewShow=' + p17.data.reviewShow + ' viewShow=' + p17.data.viewShow);
     }
+    // 17.8 查看弹层 footer 不再有「关闭」按钮（点外面 / 点右上角叉号即可关闭，无需冗余按钮）
+    check('D17.8 查看弹层 footer 已移除「关闭」按钮（bindtap="onViewClose">关闭 不再出现）',
+      !/bindtap="onViewClose">关闭/.test(wxml), '(仍含 关闭 按钮)');
+
+    /* ---------- D18 主按钮主题化：去掉高饱和蓝紫粉渐变，改用品牌蓝（用户反馈「按钮颜色太过艳丽」） ---------- */
+    const wxss18 = fs.readFileSync(WXSS_PATH, 'utf8');
+    check('D18.1 作业详情页主按钮(.hw .btn.f-save)被主题化覆盖为品牌蓝 var(--brand)（与 chip/状态色同色系，降低艳丽感）',
+      /\.hw\s+\.btn\.f-save\s*\{[^}]*background:\s*var\(--brand\)/.test(wxss18),
+      '(未找到 .hw .btn.f-save 覆盖为 var(--brand))');
+    check('D18.2 主按钮覆盖不使用 linear-gradient 高饱和渐变（排除全局 .btn 的蓝紫粉渐变）',
+      !/\.hw\s+\.btn\.f-save\s*\{[^}]*linear-gradient/.test(wxss18),
+      '(覆盖里仍用了渐变)');
 
     /* ---------- 汇总 ---------- */
     console.log('\n==============================');

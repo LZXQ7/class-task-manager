@@ -244,7 +244,6 @@
         <view class="btn f-save" bindtap="onReviewFromView" data-status="DONE">标记已完成</view>
       </view>
       <view class="f-actions">
-        <view class="btn btn-ghost f-cancel" bindtap="onViewClose">关闭</view>
         <view class="btn f-save" bindtap="onDownloadMember">保存全部</view>
       </view>
     </view>

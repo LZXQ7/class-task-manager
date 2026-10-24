@@ -585,3 +585,16 @@
   line-height: 34rpx;
   color: #4E5969;
 }
+
+/* 主按钮主题化（2026-10-24 用户反馈「保存全部/标记已完成等按钮颜色太过艳丽，不符合主题样式」）：
+   去掉全局 .btn 的高饱和蓝紫粉渐变（#7C5CFF → #3370FF → #F472B6），改用主题品牌蓝 #3370FF，
+   与 chip / 状态色同色系，降低艳丽感；按下态用 --brand-press 微深一档。
+   ⚠️ 作用域锁在 .hw（本页根节点），不污染其它页的主按钮（timetable / mine 等）。 */
+.hw .btn.f-save {
+  background: var(--brand);
+  box-shadow: 0 6rpx 16rpx rgba(51,112,255,0.18);
+}
+.hw .btn.f-save.btn-hover {
+  background: var(--brand-press);
+  box-shadow: 0 4rpx 12rpx rgba(51,112,255,0.22);
+}
