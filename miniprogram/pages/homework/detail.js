@@ -65,6 +65,13 @@ Page({
     // 本人是否也需提交这份作业（后端 iAmSubmitter）：班委发的「仅自己」自测作业、
     // 或班委本人也在目标分组时，底部要同时给「提交作业」入口（2026-10-24 用户反馈）
     iAmSubmitter: false,
+    // 学生视角展示「我的提交」用（2026-10-24 用户反馈「老师批语学生怎么看到」）：
+    // 后端 detail 在**顶层**返回 myRemark（老师批语）/ myFiles（本人提交的附件）/
+    // myStatus（本人提交状态）。non-privileged 看不到名单，只能靠这几个字段。
+    myStatusText: '未交',
+    myStatusTone: 'none',
+    myRemark: '',
+    myFiles: [],
     // 「提交作业」按钮三态（后端 myStatus + closed）：只有未提交/被打回可点，
     // 待批阅/已完成/已截止置灰禁用（2026-10-24 用户反馈「提交后按钮还亮着」）
     canSubmit: true,
@@ -134,6 +141,11 @@ Page({
           statusTone: x.status || 'none',
           fileCount: (x.files || []).length
         }));
+        // 学生视角「我的提交」展示用（2026-10-24 用户反馈）：
+        // 后端 detail 顶层返回 myStatus / myRemark / myFiles —— non-privileged 看不到
+        // 名单，只能靠这几个字段看到「老师给自己的批语」与「自己交的文件」。
+        const myStatus = res && res.myStatus ? String(res.myStatus) : '';
+        const myFiles = (res && res.myFiles) || [];
         // 勾选态派生量：picked 跨筛选/刷新保留（只同步计数与「全选」态）
         const picked = this.data.picked || {};
         const selectable = list.filter(x => !!x.status);
@@ -154,6 +166,14 @@ Page({
           submitBtnText: sub.text,
           pickedCount: Object.keys(picked).length,
           allPicked: selectable.length > 0 && selectable.every(x => picked[Number(x.id)]),
+          // 学生视角「我的提交」块：状态文本/色调 + 老师批语 + 本人提交文件
+          myStatusText: myStatus ? (STATUS_TEXT[myStatus] || myStatus) : '未交',
+          myStatusTone: myStatus || 'none',
+          myRemark: (res && res.myRemark) || '',
+          myFiles: myFiles.map(f => Object.assign({}, f, {
+            sizeText: humanSize(f.size),
+            isImage: isImage(f.name)
+          })),
           loaded: true
         });
       })
@@ -247,7 +267,7 @@ Page({
     }
     this.setData({
       viewShow: true,
-      viewMember: { id: row.id, name: row.name, studentNo: row.studentNo, statusText: row.statusText, statusTone: row.statusTone || 'none' },
+      viewMember: { id: row.id, name: row.name, studentNo: row.studentNo, statusText: row.statusText, statusTone: row.statusTone || 'none', remark: row.remark || '' },
       viewFiles: (row.files || []).map(f => Object.assign({}, f, {
         sizeText: humanSize(f.size),
         isImage: f.kind === 'IMAGE' || isImage(f.name)
@@ -297,6 +317,31 @@ Page({
 
   onViewClose() {
     this.setData({ viewShow: false });
+  },
+
+  /**
+   * 学生视角「我的提交」块点文件 → 打开查看弹层（含老师批语 + 本人提交预览/下载）。
+   * 非班委看不到名单，只能靠 myFiles/myRemark 这两个顶层字段展示自己的提交。
+   */
+  onViewMy() {
+    const files = this.data.myFiles || [];
+    if (!files.length) {
+      util.toast(this.data.myRemark ? '老师批语：' + this.data.myRemark : '没有可查看的文件');
+      return;
+    }
+    this.setData({
+      viewShow: true,
+      viewMember: {
+        id: 0, name: '我的提交', studentNo: '',
+        statusText: this.data.myStatusText, statusTone: this.data.myStatusTone || 'none',
+        remark: this.data.myRemark
+      },
+      viewFiles: files.map(f => Object.assign({}, f, {
+        sizeText: humanSize(f.size),
+        isImage: f.kind === 'IMAGE' || isImage(f.name)
+      }))
+    });
+    this._fillViewUrls();
   },
 
   /**

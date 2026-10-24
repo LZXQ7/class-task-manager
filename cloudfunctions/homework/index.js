@@ -310,6 +310,17 @@ async function detail(payload, ctx) {
       const s = subMap[Number(m.id)];
       return s ? s.status : null;
     })(),
+    // 本人提交记录的批语（老师标记「已完成/有问题」时填写）：普通成员看不到名单，
+    // 只能靠这两个**顶层字段**看到老师给自己的反馈（2026-10-24 用户反馈
+    // 「老师批语学生怎么看到」）。isPrivileged 时虽名单里已有，但顶层字段
+    // 让「本人也是提交者」的场景也能在详情页直接展示。
+    myRemark: (function () {
+      const s = subMap[Number(m.id)];
+      return s ? (s.remark || '') : '';
+    })(),
+    myFiles: (filesByMember[Number(m.id)] || []).map(f => ({
+      id: f.id, name: f.name, mime: f.mime, size: Number(f.size) || 0, fileId: f.file_id
+    })),
     closed: closed,
     // 本人是否也要提交这份作业：分组命中 或 「仅自己」且我是发布者。
     // 班委发的作业若本人也在目标分组（或仅自己自测），底部要同时给「提交作业」入口，

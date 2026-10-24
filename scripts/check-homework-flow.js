@@ -45,7 +45,7 @@ const db = {
     // B 组普通学生（可见性/越权测试）
     { id: 12, openid: 'oc-student-b', class_id: 1, role: 'MEMBER', group_tag: 'B', is_super: 0, status: 'ACTIVE', student_no: '2608010012', name: '王同学', position: '' },
     // 合成测试账号：detail 的需交成员必须排除它（NOT_TEST 铁律）
-    { id: 99, openid: 'oc-test-no', class_id: 1, role: 'MEMBER', group_tag: 'A', is_super: 0, status: 'ACTIVE', student_no: '000000000001', name: '合成测试号', position: '' }
+    { id: 99, openid: 'oc-test-no', class_id: 1, role: 'MEMBER', group_tag: 'A', is_super: 0, status: 'ACTIVE', student_no: '260805749901', name: '合成测试号', position: '' }
   ],
   impersonation: [],
   homework: [],
@@ -209,7 +209,7 @@ const deleteCalls = [];
 const sdkStub = {
   init: () => { /* noop */ },
   DYNAMIC_CURRENT_ENV: 'test-env',
-  getWXContext: () => ({ OPENID: sdkState.openid, APPID: '<YOUR_APPID>' }),
+  getWXContext: () => ({ OPENID: sdkState.openid, APPID: 'wx43f61be0199f50ac' }),
   deleteFile: async (opts) => {
     deleteCalls.push((opts && opts.fileList) || []);
     return { fileList: ((opts && opts.fileList) || []).map(() => ({ status: 0 })) };
@@ -522,6 +522,12 @@ const OC_B = 'oc-student-b';   // B 组学生
     r = await call('detail', { id: hw1 }, OC_A);
     check('S5.2b 批阅完成后 detail.myStatus=DONE（前端按钮变「作业已完成」置灰）',
       r.errCode === 0 && r.data.myStatus === 'DONE', String(r.data && r.data.myStatus));
+    // 2026-10-24 用户反馈②：老师批语学生必须能看到。detail 顶层返回 myRemark/myFiles
+    // 给提交者本人（普通成员看不到名单），前端据此在「我的提交」卡 + 提交弹层展示批语。
+    check('S5.2c 批阅后 detail.myRemark 回显给提交者本人（学生看到的老师批语）',
+      r.errCode === 0 && r.data.myRemark === '完成得不错'
+      && Array.isArray(r.data.myFiles) && r.data.myFiles.length >= 1,
+      'myRemark=' + (r.data && r.data.myRemark) + ' myFiles=' + JSON.stringify((r.data || {}).myFiles));
 
     r = await call('review', { homeworkId: hw1, memberIds: [11], status: 'MAYBE' }, OC_C);
     check('S5.3 非法批阅状态被拒（未知的批阅状态）', r.errCode === 41001 && r.errMsg === '未知的批阅状态');
@@ -535,6 +541,9 @@ const OC_B = 'oc-student-b';   // B 组学生
     r = await call('detail', { id: hw2 }, OC_A);
     check('S5.5b 打回后 detail.myStatus=REJECT（前端按钮变「重新提交」可点）',
       r.errCode === 0 && r.data.myStatus === 'REJECT', String(r.data && r.data.myStatus));
+    check('S5.5c 打回后 detail.myRemark 回显给提交者本人（REJECT 批语学生同样可见）',
+      r.errCode === 0 && r.data.myRemark === '补图',
+      'myRemark=' + (r.data && r.data.myRemark));
 
     r = await call('review', { homeworkId: hw6, memberIds: [10], status: 'DONE', remark: '自测通过' }, OC_C);
     sub = db.homework_submit.find(x => x.homework_id === hw6 && x.member_id === 10);

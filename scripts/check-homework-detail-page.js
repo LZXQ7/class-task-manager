@@ -62,6 +62,9 @@
  *   D11 「全选」行为：只勾有提交的成员 / 再点全清 / 勾齐置 allPicked        ← 反馈⑦-c 回归判据
  *   D12 批量下载按全量名单取行（勾选后切筛选仍下得到已勾的人）             ← 反馈⑦-c 回归判据
  *   D13 筛选行「全选」入口 wxml 接线（canReview 时才显示）                  ← 反馈⑦-c 回归判据
+ *   D14 批量操作条仅「已完成」筛选下展示（非 done 筛选不出现下载入口）      ← 反馈⑧-a 回归判据
+ *   D15 _load 把后端顶层 myRemark/myFiles 写入 data（学生看老师批语）       ← 反馈⑧-b 回归判据
+ *   D16 学生视角「我的提交」块含「老师批语」并绑定 myRemark                  ← 反馈⑧-b 回归判据
  *
  * 退出码：全过 0；任一不过 1（由 scripts/run_all_gates.sh 的 glob 自动纳入）。
  */
@@ -162,6 +165,8 @@ function fakeDetail(requireType, opts) {
       requireType: requireType, publisherId: 1
     },
     myStatus: o.myStatus === undefined ? null : o.myStatus,
+    myRemark: o.myRemark === undefined ? '' : o.myRemark,
+    myFiles: o.myFiles === undefined ? [] : o.myFiles,
     closed: !!o.closed,
     attaches: o.attaches || [],
     stats: { total: 1, submitted: 0, pending: 1, done: 0, reject: 0 },
@@ -371,8 +376,8 @@ function rvWrapPad(wxss) {
       rowTags.length === 1 && /bindtap="onRowTap"/.test(rowTags[0]) && !/bindtap="onTogglePick"/.test(rowTags[0]),
       rowTags[0] || '(未找到)');
     // 批量操作条静态结构
-    check('D8.5 名单上方有批量操作条（canReview && pickedCount 时才显示）',
-      /wx:if="\{\{canReview && pickedCount\}\}"/.test(wxml), '(未找到 batch-bar)');
+    check('D8.5 名单上方有批量操作条（canReview && pickedCount && filter===\'done\' 时才显示）',
+      /wx:if="\{\{canReview && pickedCount && filter === 'done'\}\}"/.test(wxml), '(未找到 batch-bar 或条件未含 filter===\'done\')');
     check('D8.6 批量操作条含「批量下载」入口（onBatchDownload 从此可触达）',
       /bindtap="onBatchDownload"/.test(wxml), '(未找到 onBatchDownload 绑定)');
     // 查看弹层 + 滚动锁
@@ -430,7 +435,7 @@ function rvWrapPad(wxss) {
       { id: 11, name: '李同学', studentNo: '2608010011', status: 'PENDING',
         files: [{ id: 1, name: '图片1.jpg', size: 2048, fileId: 'cloud://env/hw/s1.jpg', kind: 'IMAGE' }] },
       { id: 12, name: '王同学', studentNo: '2608010012', status: null, files: [] },
-      { id: 13, name: '示例成员65', studentNo: '2608010013', status: 'DONE',
+      { id: 13, name: '赵同学', studentNo: '2608010013', status: 'DONE',
         files: [{ id: 3, name: '报告.pdf', size: 4096, fileId: 'cloud://env/hw/s3.pdf', kind: 'FILE' }] }
     ];
     fakeRes = fakeDetail('NONE', { canReview: true, list: members3 });
@@ -485,6 +490,51 @@ function rvWrapPad(wxss) {
       flAllTags[0] || '(未找到 fl-all)');
     check('D13.2 「全选」文案随 allPicked 切换（全选 / 取消全选）',
       /\{\{allPicked \? '取消全选' : '全选'\}\}/.test(wxml), '(未找到 allPicked 三元文案)');
+
+    /* ---------- D14 批量操作条仅「已完成」筛选下展示（反馈⑧-a） ---------- */
+    const batchTags = wxml.match(/<view[^>]*class="batch-bar"[^>]*>/g) || [];
+    check('D14.1 批量操作条 wx:if 含 filter === \'done\'（仅在「已完成」筛选下展示下载入口）',
+      batchTags.length === 1 && /filter === 'done'/.test(batchTags[0]), batchTags[0] || '(未找到 batch-bar)');
+
+    /* ---------- D15 _load 把后端 myRemark/myFiles 写入 data（反馈⑧-b） ---------- */
+    // 学生（!canReview）也能收到自己的提交批语与文件：后端 detail 在**顶层**返回
+    // myRemark（老师批语）/ myFiles（本人提交的附件）。fakeDetail 对齐真实形状。
+    fakeRes = fakeDetail('NONE', {
+      canReview: false,
+      myStatus: 'REJECT',
+      myRemark: '字迹潦草请重抄一遍',
+      myFiles: [
+        { id: 9, name: '图片1.jpg', size: 2048, fileId: 'cloud://env/hw/mine.jpg' },
+        { id: 10, name: '说明.pdf', size: 4096, fileId: 'cloud://env/hw/mine.pdf' }
+      ],
+      // 非特权：list 只含本人一行（后端已按 id 过滤）
+      list: [{ id: 11, name: '宋同学', studentNo: '260805740301', status: 'REJECT',
+        remark: '字迹潦草请重抄一遍', files: [] }]
+    });
+    const p15 = freshPage({ id: 1, classId: 1 });
+    p15._load();
+    await flush();
+    check('D15.1 学生收到 myRemark 并写入 data（老师批语可见）',
+      p15.data.myRemark === '字迹潦草请重抄一遍', 'myRemark=' + p15.data.myRemark);
+    check('D15.2 学生收到 myFiles 并标 isImage/sizeText（本人提交可预览）',
+      (p15.data.myFiles || []).length === 2
+      && p15.data.myFiles[0].isImage === true && p15.data.myFiles[1].isImage === false
+      && !!p15.data.myFiles[0].sizeText,
+      JSON.stringify((p15.data.myFiles || []).map((f) => [f.name, f.isImage, f.sizeText])));
+    check('D15.3 学生提交状态文本/色调按 myStatus 计算（已完成/有问题 显色）',
+      p15.data.myStatusText === '有问题' && p15.data.myStatusTone === 'REJECT',
+      'text=' + p15.data.myStatusText + ' tone=' + p15.data.myStatusTone);
+
+    /* ---------- D16 学生视角「我的提交」块含「老师批语」（反馈⑧-b wxml 侧） ---------- */
+    check('D16.1 学生视角展示「我的提交」块（!canReview && myStatus 时显示）',
+      /wx:if="\{\{!canReview && myStatus\}\}"/.test(wxml), '(未找到我的提交块)');
+    // ⚠️ 必须锚定「学生块」专属的 my-sub-remark 类：view 弹层(s) 与提交弹层也含
+    // 「老师批语」/{{myRemark}}，若只查这两个 token 会误判通过（变异漏检）。
+    check('D16.2 「我的提交」块内展示「老师批语」且绑定 myRemark（学生块专属 my-sub-remark）',
+      /my-sub-remark-lab">老师批语/.test(wxml) && /\{\{myRemark\}\}/.test(wxml),
+      '(未找到 我的提交块 老师批语 绑定)');
+    check('D16.3 「我的提交」块文件行 bindtap="onViewMy"（点文件看自己的提交）',
+      /class="my-sub-files"[\s\S]*?bindtap="onViewMy"/.test(wxml), '(未找到 my-sub 文件绑定 onViewMy)');
 
     /* ---------- 汇总 ---------- */
     console.log('\n==============================');

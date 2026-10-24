@@ -480,3 +480,108 @@
   font-size: 22rpx;
   color: #86909C;
 }
+
+/* 查看提交弹层：老师批语（学生看得到老师给自己的反馈） */
+.vw-remark {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin: 8rpx 0 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  background: #FFF7E8;
+}
+
+.vw-remark-lab {
+  flex-shrink: 0;
+  margin-right: 12rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #FF7D00;
+}
+
+.vw-remark-text {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #4E5969;
+}
+
+/* 学生视角「我的提交」块（非班委本人也交了作业，且看不到名单，靠此块看批语） */
+.my-sub {
+  margin: 0 24rpx 20rpx;
+  padding: 24rpx 28rpx;
+  border-radius: 20rpx;
+  background: #FFFFFF;
+}
+
+.my-sub-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.my-sub-lab {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+
+.my-sub-remark {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  background: #FFF7E8;
+}
+
+.my-sub-remark-lab {
+  flex-shrink: 0;
+  margin-right: 12rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #FF7D00;
+}
+
+.my-sub-remark-text {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #4E5969;
+}
+
+.my-sub-files {
+  margin-top: 4rpx;
+}
+
+.my-sub-empty {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #86909C;
+}
+
+/* 提交弹层：打回时展示老师批语（学生重交前先看原因） */
+.sb-reject {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin: 16rpx 0 4rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  background: #FFECE8;
+}
+
+.sb-reject-lab {
+  flex-shrink: 0;
+  margin-right: 12rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #F53F3F;
+}
+
+.sb-reject-text {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #4E5969;
+}
