@@ -104,6 +104,14 @@ function toItems(list) {
  *     · 排除自己发布的（isPublisher）
  *     · id > 本机记录的最后查看游标（进通知页即推进）
  *   游标存本地 storage、按成员 id 分开（同一台机器切换测试账号互不串味）。
+ *
+ * 2026-10-24 用户反馈（超管视角）：「超管虽然收到所有通知，但若不是指定成员给
+ * 自己的就不用红色提醒。只有和自己相关的才提醒。」
+ *   ⇒ 追加 forMe 过滤：后端 msgList 逐行算好「是否与我相关」（全班(我的班)/
+ *      指定到我 / 我是班委的班委通知）。超管的**可见性**不变（仍看得到全部），
+ *      只是红点不再被别班通知、发给别的成员的通知触发。
+ *   ⚠️ `!== false` 而非 `=== true`：后端未部署/旧缓存缺该字段时按老口径计数，
+ *      避免部署窗口期角标突然全消（前端先上传也安全）。
  * ------------------------------------------------------------ */
 const SEEN_KEY = 'noticeSeen:';
 
@@ -116,10 +124,10 @@ function seenId(memberId) {
   }
 }
 
-/** 未查看的新通知条数（「我的」/首页角标） */
+/** 未查看的新通知条数（首页红色角标） */
 function unackedCount(list, memberId) {
   const seen = seenId(memberId);
-  return (list || []).filter(x => !x.isPublisher && Number(x.id) > seen).length;
+  return (list || []).filter(x => !x.isPublisher && Number(x.id) > seen && x.forMe !== false).length;
 }
 
 /**

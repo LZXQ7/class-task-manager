@@ -588,6 +588,24 @@ const routes = {
     ORDER BY n.id DESC LIMIT 100`,
   [me.id, me.id, counselorOnly, me.id, isSuper ? 1 : 0, me.id, myClassId, myClassId, me.id, meIsCommittee ? 1 : 0, me.id, me.id]
 );
+      /*
+       * 「与我相关」判定（2026-10-24 用户反馈：超管虽因 oversight 看得到**全部**通知，
+       * 但首页红色角标只该由「发给自己」的通知触发 —— 别班通知、PICK 给别的成员的
+       * 通知，不该在超管首页亮红点）：
+       *   · scope=ALL        → 我的班命中（单班 class_id=我的班；跨班 class_id=0 查 notice_msg_class）
+       *   · scope=COMMITTEE  → 我是班委（meIsCommittee）或我在 notice_msg_target
+       *   · scope=PICK/POSITION → 我在 notice_msg_target
+       * 代价：两条轻查询 —— target 表有 idx_member 索引；class 表仅跨班通知才有行（百行级）。
+       * ⚠️ 这是**角标口径**，不是可见性口径：上面的可见性过滤一字未动（超管仍看得到全部）。
+       * 前端 utils/notice.unackedCount 按 `forMe !== false` 过滤角标（缺字段时按老口径计数，
+       * 保证后端先行部署 / 前端未上传的窗口期角标不突变）。
+       */
+      const [myTargetRows] = await pool.query(
+        'SELECT notice_id FROM notice_msg_target WHERE member_id = ?', [me.id]);
+      const myTargets = new Set(myTargetRows.map(r => Number(r.notice_id)));
+      const [myClassRows] = await pool.query(
+        'SELECT notice_id FROM notice_msg_class WHERE class_id = ?', [myClassId]);
+      const myClassNotices = new Set(myClassRows.map(r => Number(r.notice_id)));
       const out = [];
       for (const r of rows) {
         // 谁能看回执：发布人自己，或超级管理员
@@ -622,6 +640,11 @@ const routes = {
           recipientCount: Number(r.recipientCount) || 0,
           canSeeAck: canSeeAck,
           isPublisher: isPublisher,
+          // forMe：是否「与我相关」（红色角标口径）。超管可见性短路看得到全部，
+          // 但只有发给自己（全班(我的班) / 指定到我 / 我是班委的班委通知）才该亮红点。
+          forMe: r.scope === 'ALL'
+            ? (Number(r.class_id) === myClassId || myClassNotices.has(r.id))
+            : (r.scope === 'COMMITTEE' ? (meIsCommittee || myTargets.has(r.id)) : myTargets.has(r.id)),
           ackList
         });
       }
