@@ -65,8 +65,18 @@ Page({
     // 本人是否也需提交这份作业（后端 iAmSubmitter）：班委发的「仅自己」自测作业、
     // 或班委本人也在目标分组时，底部要同时给「提交作业」入口（2026-10-24 用户反馈）
     iAmSubmitter: false,
+    // 「提交作业」按钮三态（后端 myStatus + closed）：只有未提交/被打回可点，
+    // 待批阅/已完成/已截止置灰禁用（2026-10-24 用户反馈「提交后按钮还亮着」）
+    canSubmit: true,
+    submitBtnText: '提交作业',
     picked: {},
     pickedCount: 0,
+    // 查看某成员提交的弹层（2026-10-24 用户反馈「发布人员无法点击查看提交的作业」）
+    viewShow: false,
+    viewMember: null,
+    viewFiles: [],
+    // 批量下载命名方式：RENAME = 姓名+学号；DEFAULT = 原始文件名
+    nameMode: 'RENAME',
     files: [],
     uploading: false,
     reviewShow: false,
@@ -92,7 +102,10 @@ Page({
 
   _load() {
     if (!this.data.id) { this.setData({ loaded: true }); return; }
-    api.homeworkDetail(this._payload({ id: this.data.id }))
+    // ⚠️ filter 必须随请求带上：onFilter 只改 this.data.filter，早年 _payload 里
+    // 从不带它 ⇒ 后端永远按默认 all 返回，「已交/未交」筛选-chip 点了没反应
+    // （2026-10-24 用户反馈「下方筛选没有用」）。
+    api.homeworkDetail(this._payload({ id: this.data.id, filter: this.data.filter }))
       .then((res) => {
         const h = (res && res.homework) || null;
         const hh = h ? Object.assign({}, h, {
@@ -103,6 +116,9 @@ Page({
           canPickImage: h.requireType !== 'FILE',
           canPickFile: h.requireType !== 'IMAGE'
         }) : null;
+        // 「提交作业」按钮三态（2026-10-24 用户反馈「提交后按钮还亮着」）：
+        // 只有未提交 / 被打回（REJECT）可点；待批阅/已完成置灰；截止后仅打回可重交。
+        const sub = this._submitState(hh);
         this.setData({
           homework: hh,
           // 作业附件（发布时上传）：补 sizeText 人类可读大小 + isImage 缩略图判据；
@@ -119,10 +135,28 @@ Page({
           })),
           canReview: !!(res && res.canReview),
           iAmSubmitter: !!(res && res.iAmSubmitter),
+          canSubmit: sub.canSubmit,
+          submitBtnText: sub.text,
           loaded: true
         });
       })
       .catch(() => this.setData({ loaded: true }));
+  },
+
+  /**
+   * 提交入口三态（后端 detail 给 myStatus + closed）：
+   *   未交（null）      → 可点，「提交作业」
+   *   被打回（REJECT）  → 可点，「重新提交」（截止也豁免，与后端 submit 同口径）
+   *   待批阅（PENDING） → 置灰，「已提交 · 待批阅」；已截止则「已截止」
+   *   已完成（DONE）    → 置灰，「作业已完成」；已截止则「已截止」
+   */
+  _submitState(h) {
+    const st = h && h.myStatus ? String(h.myStatus) : '';
+    const closed = !!(h && h.closed);
+    if (st === 'PENDING') return { canSubmit: false, text: closed ? '已截止' : '已提交 · 待批阅' };
+    if (st === 'DONE') return { canSubmit: false, text: closed ? '已截止' : '作业已完成' };
+    if (st === 'REJECT') return { canSubmit: true, text: '重新提交' };
+    return { canSubmit: !closed, text: closed ? '已截止' : '提交作业' };
   },
 
   _payload(extra) {
@@ -145,6 +179,113 @@ Page({
     if (picked[id]) delete picked[id]; else picked[id] = true;
     const n = Object.keys(picked).length;
     this.setData({ picked, pickedCount: n });
+  },
+
+  /**
+   * 点成员行 = 查看该成员提交的作业（2026-10-24 用户反馈：
+   * 「成员提交作业后，发布人员无法点击查看提交的作业」）。
+   * 多选改由行尾勾选框负责（catchtap 不冒泡）—— 行点击与选人从此分离。
+   */
+  onRowTap(e) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    const row = (this.data.list || []).find(x => Number(x.id) === id);
+    if (!row) return;
+    if (!(row.files || []).length) {
+      util.toast(row.status ? '该成员的提交记录没有文件' : '该成员还没有提交作业');
+      return;
+    }
+    this.setData({
+      viewShow: true,
+      viewMember: { id: row.id, name: row.name, studentNo: row.studentNo, statusText: row.statusText, statusTone: row.statusTone || 'none' },
+      viewFiles: (row.files || []).map(f => Object.assign({}, f, {
+        sizeText: humanSize(f.size),
+        isImage: f.kind === 'IMAGE' || isImage(f.name)
+      }))
+    });
+    // 弹层先开（即时反馈），临时链接异步补（cloud:// 不能直接预览/下载）
+    this._fillViewUrls();
+  },
+
+  /** 查看弹层文件列表补临时 http 链接（预览/打开/下载都依赖它） */
+  async _fillViewUrls() {
+    const files = this.data.viewFiles || [];
+    const ids = files.map(f => f.fileId).filter(Boolean);
+    if (!ids.length) return;
+    try {
+      const map = await request.getTempFileURL(ids);
+      const next = files.map(f => Object.assign({}, f, { url: map[f.fileId] || '' }));
+      // 弹层可能已关：只在还开着时回写
+      if (this.data.viewShow) this.setData({ viewFiles: next });
+    } catch (e) { /* 取链接失败：url 为空，点击时 toast「加载中」 */ }
+  },
+
+  /**
+   * 作业附件（发布时上传）图片预览（2026-10-24 用户反馈「作业附件若为图片则可点击预览」）。
+   * ⚠️ cloud:// 云文件 ID 不能直接喂 wx.previewImage —— 必须先 getTempFileURL
+   *    换临时 http 链接；相册 = 本作业全部图片附件，从被点那张开始。
+   */
+  async onPreviewAttach(e) {
+    const idx = Number(e.currentTarget.dataset.idx);
+    const list = this.data.attaches || [];
+    const cur = list[idx];
+    if (!cur || !cur.isImage) return;
+    const imgIds = list.filter(a => a.isImage && a.fileId).map(a => a.fileId);
+    if (!imgIds.length) { util.toast('附件加载中，请稍后再试'); return; }
+    let map = {};
+    try {
+      map = await request.getTempFileURL(imgIds);
+    } catch (err) {
+      util.toast('附件加载失败，请稍后重试');
+      return;
+    }
+    const urls = imgIds.map(id => map[id]).filter(Boolean);
+    if (!urls.length) { util.toast('附件加载失败，请稍后重试'); return; }
+    const current = map[cur.fileId] || urls[0];
+    wx.previewImage({ current: current, urls: urls });
+  },
+
+  onViewClose() {
+    this.setData({ viewShow: false });
+  },
+
+  /**
+   * 查看弹层内点某个提交文件：图片 → 相册预览（整份提交的图片一个相册）；
+   * 文件 → 下载到本地后 openDocument 打开（微信里由用户自选保存/转发）。
+   */
+  async onViewFile(e) {
+    const idx = Number(e.currentTarget.dataset.idx);
+    const files = this.data.viewFiles || [];
+    const f = files[idx];
+    if (!f) return;
+    if (f.isImage) {
+      const urls = files.filter(x => x.isImage).map(x => x.url).filter(Boolean);
+      if (!urls.length) { util.toast('图片加载中，请稍后再试'); return; }
+      wx.previewImage({ current: f.url || urls[0], urls: urls.length ? urls : [f.url] });
+      return;
+    }
+    if (!f.url) { util.toast('文件加载中，请稍后再试'); return; }
+    this.setData({ uploading: true });
+    try {
+      const ext = extOf(f.name) || 'pdf';
+      const savePath = wx.env.USER_DATA_PATH + '/作业-' + Date.now() + '.' + ext;
+      const dl = await wx.downloadFile({ url: f.url, filePath: savePath });
+      if (dl.statusCode && dl.statusCode >= 400) { util.toast('下载失败'); return; }
+      await wx.openDocument({ filePath: savePath, showMenu: true, fileType: ext });
+    } catch (err) {
+      util.toast('打开失败，请稍后重试');
+    } finally {
+      this.setData({ uploading: false });
+    }
+  },
+
+  /** 查看弹层内「保存全部」：把该成员的全部提交文件落手机（图片进相册 / 文件 openDocument） */
+  onDownloadMember() {
+    const row = this.data.viewMember;
+    if (!row) return;
+    const files = this.data.viewFiles || [];
+    if (!files.length) { util.toast('没有可保存的文件'); return; }
+    this._downloadRows([Object.assign({}, row, { files })]);
   },
 
   onReviewOpen(e) {
@@ -181,6 +322,9 @@ Page({
 
   /** 打开提交弹层（选图 / 选文件 / 提交） */
   onOpenSubmit() {
+    // 禁用态双保险：已提交（待批阅）/已完成/已截止时按钮在 wxml 已置灰，
+    // 这里再拦一次 —— 防有人去掉 disabled 类后按钮还能把弹层唤起来。
+    if (!this.data.canSubmit) return;
     this.setData({ submitShow: true });
   },
 
@@ -321,55 +465,60 @@ Page({
   },
 
   /* ---------------- 查看与下载 ---------------- */
-  /**
-   * 在线预览图片：整份作业里所有图片作为一个相册，从被点那张开始。
-   * ⚠️ current 必须是 urls 里**真实存在**的那一项，否则真机白屏 ——
-   *    所以这里直接用被点图片的 src 当 current（它必然在 urls 里）。
-   */
-  onPreview(e) {
-    const url = String(e.currentTarget.dataset.src || '');
-    const all = String(e.currentTarget.dataset.all || '').split('|').filter(Boolean);
-    if (!url) return;
-    wx.previewImage({ current: url, urls: all.length ? all : [url] });
-  },
-
   /** 切换批量下载的命名方式：RENAME = 姓名+学号；DEFAULT = 保持原始文件名 */
   onToggleNameMode() {
     this.setData({ nameMode: this.data.nameMode === 'RENAME' ? 'DEFAULT' : 'RENAME' });
   },
 
+  /** 取消批量选择（批量操作条右侧） */
+  onClearPick() {
+    this.setData({ picked: {}, pickedCount: 0 });
+  },
+
   /**
-   * 批量下载所选成员的作业到手机。
-   *
-   * ⚠️ 微信小程序**没有「任意目录 + 自定义文件名」的落盘 API**（沙箱限制），所以按类型分两条路：
-   *   · 图片 → `saveImageToPhotosAlbum` 存进系统相册（需 `scope.writePhotosAlbum` 授权）
-   *   · 其它文件 → 先 `downloadFile` 到本地并**重命名**，再 `openDocument(showMenu:true)`，
-   *     由用户在系统弹窗里自选保存位置 / 转发。
-   *   ⇒「保存路径」这件事：图片固定落在相册；文件由用户自选。我们负责把**文件名**整理好。
+   * 批量下载：名单上方批量操作条入口（2026-10-24 用户反馈
+   * 「发布人员无法批量选择作业（图片/文件）下载」——方法早在、按钮从未接上）。
+   * 下载范围 = 勾选框选中的成员；单人「保存全部」复用同一实现。
    */
-  async onBatchDownload() {
+  onBatchDownload() {
     if (this.data.uploading) return;
     const picked = this.data.picked || {};
     const ids = Object.keys(picked).map(Number).filter(Boolean);
     if (!ids.length) { util.toast('请先选择成员'); return; }
-
     const list = this.data.list || [];
     const targets = [];
     ids.forEach((id) => {
       const row = list.find(x => Number(x.id) === id);
       if (row && (row.files || []).length) targets.push(row);
     });
-
     if (!targets.length) { util.toast('所选成员还没有提交作业'); return; }
+    this._downloadRows(targets);
+  },
 
+  /**
+   * 把若干成员的提交文件保存到手机（批量下载 / 单人「保存全部」共用实现）。
+   *
+   * ⚠️ 微信小程序**没有「任意目录 + 自定义文件名」的落盘 API**（沙箱限制），所以按类型分两条路：
+   *   · 图片 → `saveImageToPhotosAlbum` 存进系统相册（需 `scope.writePhotosAlbum` 授权）
+   *   · 其它文件 → 先 `downloadFile` 到本地并**重命名**，再 `openDocument(showMenu:true)`，
+   *     由用户在系统弹窗里自选保存位置 / 转发。
+   *   ⇒「保存路径」这件事：图片固定落在相册；文件由用户自选。我们负责把**文件名**整理好。
+   * ⚠️ 后端 list/files 行不带 kind（ homework_file.kind 是 ATTACH/SUBMIT 用途列，不是文件类型），
+   *    图片判定必须 `kind === 'IMAGE' || isImage(name)` 双兜底 —— 早年只看 kind，
+   *    批量下载时图片也走 openDocument，存不进相册。
+   */
+  async _downloadRows(rows) {
+    if (this.data.uploading) return;
+    if (!rows.length) { util.toast('没有可保存的文件'); return; }
     this.setData({ uploading: true });
     let saved = 0;
     let failed = 0;
     try {
-      for (const row of targets) {
+      for (const row of rows) {
         const files = row.files || [];
         for (const f of files) {
-          if (!allowExt(extOf(f.name), f.kind === 'IMAGE' ? 'IMAGE' : 'FILE')) { failed += 1; continue; }
+          const isImg = f.kind === 'IMAGE' || isImage(f.name);
+          if (!allowExt(extOf(f.name), isImg ? 'IMAGE' : 'FILE')) { failed += 1; continue; }
           let url = '';
           try {
             const map = await request.getTempFileURL([f.fileId]);
@@ -377,7 +526,7 @@ Page({
           } catch (e) { /* 取链接失败：记一次失败 */ }
           if (!url) { failed += 1; continue; }
 
-          const ext = extOf(f.name) || 'pdf';
+          const ext = extOf(f.name) || (isImg ? 'jpg' : 'pdf');
           const base = this.data.nameMode === 'RENAME'
             ? String(row.name || '') + String(row.studentNo || '')
             : String(f.name || '作业').replace(/\.[^.]+$/, '');
@@ -388,7 +537,7 @@ Page({
             if (dl.statusCode && dl.statusCode >= 400) { failed += 1; continue; }
           } catch (e) { failed += 1; continue; }
 
-          if (f.kind === 'IMAGE') {
+          if (isImg) {
             try {
               await wx.saveImageToPhotosAlbum({ filePath: savePath });
             saved += 1;

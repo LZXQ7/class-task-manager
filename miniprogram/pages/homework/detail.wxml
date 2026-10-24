@@ -1,7 +1,7 @@
 <!-- 弹层打开时锁住页面滚动（防滚动穿透）。
      ⚠️ 新增任何 bottom-sheet 时，必须把它的 show 标志加进下面这个表达式，
         否则门禁 scripts/check-scroll-lock.js 会直接报错。 -->
-<page-meta page-style="{{(reviewShow || submitShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(reviewShow || submitShow || viewShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <view class="page hw page-fade {{tClass}}">
 
@@ -22,19 +22,24 @@
       </view>
       <view wx:if="{{homework.requireText}}" class="hd-req">提交要求：需上传 {{homework.requireText}}</view>
       <view wx:if="{{homework.purged}}" class="hd-purged">文件已按策略清除（保留提交记录）</view>
-      <!-- 作业附件（发布时上传）：图片缩略图 + 文件名；fileId 云文件 ID 可直接渲染 -->
+      <!-- 作业附件（发布时上传）：图片缩略图 + 文件名；fileId 云文件 ID 可直接渲染。
+           图片行可点开相册预览（2026-10-24 用户反馈「作业附件若为图片则可点击预览」；
+           预览走 getTempFileURL 换临时链接，cloud:// 不能直接喂 previewImage） -->
       <view wx:if="{{attaches.length}}" class="hd-attach">
         <view class="hd-attach-lab">作业附件</view>
         <view
           wx:for="{{attaches}}"
           wx:key="id"
-          class="fm-file"
+          class="fm-file {{item.isImage ? 'fm-file-tap' : ''}}"
+          data-idx="{{index}}"
+          bindtap="onPreviewAttach"
         >
           <image wx:if="{{item.isImage}}" class="fm-file-thumb" src="{{item.fileId}}" mode="aspectFill" />
           <view class="fm-file-body">
             <text class="fm-file-name">{{item.name}}</text>
             <text class="fm-file-size">{{item.sizeText}}</text>
           </view>
+          <view wx:if="{{item.isImage}}" class="fm-file-go">预览</view>
         </view>
       </view>
     </view>
@@ -58,7 +63,19 @@
       >{{item.label}}</view>
     </view>
 
-    <!-- 提交名单 -->
+    <!-- 批量操作条：班委勾选成员后才出现（2026-10-24 用户反馈
+         「发布人员无法批量选择作业（图片/文件）下载」——onBatchDownload 方法早在，
+         wxml 里从未接上按钮，本次补入口）。行点击=查看提交，勾选框=选人，两者分离。 -->
+    <view wx:if="{{canReview && pickedCount}}" class="batch-bar">
+      <text class="batch-num">已选 {{pickedCount}} 人</text>
+      <view class="batch-name" bindtap="onToggleNameMode">
+        命名：{{nameMode === 'RENAME' ? '姓名+学号' : '原文件名'}}
+      </view>
+      <view class="batch-clear" bindtap="onClearPick">取消</view>
+      <view class="batch-dl" bindtap="onBatchDownload">批量下载作业</view>
+    </view>
+
+    <!-- 提交名单：行点击=查看该成员提交的作业；行尾勾选框=多选批阅（catchtap 不冒泡） -->
     <view
       wx:for="{{list}}"
       wx:key="id"
@@ -67,7 +84,7 @@
       hover-class="tap-hover"
       hover-start-time="0"
       hover-stay-time="60"
-      bindtap="onTogglePick"
+      bindtap="onRowTap"
     >
       <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{64}}" disabled="{{false}}" />
       <view class="mb-info">
@@ -78,7 +95,7 @@
         <view class="mb-sub"><text>{{item.studentNo}}</text></view>
       </view>
       <view class="mb-tag {{item.statusTone}}">{{item.statusText}}</view>
-      <view wx:if="{{canReview && item.status}}" class="pk-box {{picked[item.id] ? 'on' : ''}}"></view>
+      <view wx:if="{{canReview && item.status}}" class="pk-box {{picked[item.id] ? 'on' : ''}}" catchtap="onTogglePick"></view>
     </view>
 
     <view wx:if="{{!list.length}}" class="hw-empty"><text>该筛选下没有成员</text></view>
@@ -87,9 +104,12 @@
   <view style="height:40rpx"></view>
 
   <!-- 底部操作：班委 = 批量批阅；成员 = 提交 / 重新提交；
-       本人也需交（iAmSubmitter：仅自己自测 / 班委本人也在目标分组）时，提交行排在批阅行上方 -->
+       本人也需交（iAmSubmitter：仅自己自测 / 班委本人也在目标分组）时，提交行排在批阅行上方。
+       提交按钮三态（2026-10-24 用户反馈「提交作业后按钮就消失或变成灰色禁用」）：
+       只有未提交/被打回可点（走 onOpenSubmit）；待批阅/已完成/已截止置灰
+       （全局 .btn.disabled = --brand-disable），文案随状态变化，双保险在 onOpenSubmit 里再拦一次 -->
   <view wx:if="{{loaded && homework && canReview && iAmSubmitter}}" class="f-actions">
-    <view class="btn f-save" bindtap="onOpenSubmit">提交作业</view>
+    <view class="btn f-save {{canSubmit ? '' : 'disabled'}}" bindtap="onOpenSubmit">{{submitBtnText}}</view>
   </view>
   <view wx:if="{{loaded && homework}}" class="f-actions">
     <block wx:if="{{canReview}}">
@@ -97,7 +117,7 @@
       <view class="btn f-save" bindtap="onReviewOpen" data-status="DONE">标记已完成</view>
     </block>
     <block wx:else>
-      <view class="btn f-save" bindtap="onOpenSubmit">提交作业</view>
+      <view class="btn f-save {{canSubmit ? '' : 'disabled'}}" bindtap="onOpenSubmit">{{submitBtnText}}</view>
     </block>
   </view>
 
@@ -150,6 +170,37 @@
     <view slot="footer" class="f-actions">
       <view class="btn btn-ghost f-cancel" bindtap="onSubmitClose">取消</view>
       <view class="btn f-save" bindtap="onSubmit">提交</view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 查看某成员提交的作业（2026-10-24 用户反馈「发布人员无法点击查看提交的作业」）：
+       图片缩略图可点开相册；文件可下载后打开；底部「保存全部」落手机 -->
+  <bottom-sheet show="{{viewShow}}" title="{{viewMember.name ? viewMember.name + ' 的提交' : '查看提交'}}" bind:close="onViewClose" footer="{{true}}">
+    <view class="rv-wrap">
+      <view class="vw-member">
+        <text class="vw-name">{{viewMember.name}}</text>
+        <text class="vw-no">{{viewMember.studentNo}}</text>
+        <text class="mb-tag {{viewMember.statusTone}}">{{viewMember.statusText}}</text>
+      </view>
+      <view
+        wx:for="{{viewFiles}}"
+        wx:key="id"
+        class="fm-file"
+        data-idx="{{index}}"
+        bindtap="onViewFile"
+      >
+        <image wx:if="{{item.isImage}}" class="fm-file-thumb" src="{{item.fileId}}" mode="aspectFill" />
+        <view class="fm-file-body">
+          <text class="fm-file-name">{{item.name}}</text>
+          <text class="fm-file-size">{{item.sizeText}}</text>
+        </view>
+        <view class="fm-file-go">{{item.isImage ? '预览' : '打开'}}</view>
+      </view>
+      <view wx:if="{{!viewFiles.length}}" class="hw-empty-sm">没有提交文件</view>
+    </view>
+    <view slot="footer" class="f-actions">
+      <view class="btn btn-ghost f-cancel" bindtap="onViewClose">关闭</view>
+      <view class="btn f-save" bindtap="onDownloadMember">保存全部</view>
     </view>
   </bottom-sheet>
 </view>

@@ -403,6 +403,10 @@ const OC_B = 'oc-student-b';   // B 组学生
     check('S3.8 学生A 可看 A+SELF 组合作业（targets 含 A 即放行）',
       r.errCode === 0 && (r.data.homework.groups || []).indexOf('A') >= 0);
 
+    r = await call('detail', { id: hw3 }, OC_C);
+    check('S3.11 已截止作业 detail.closed=true（前端提交按钮置灰「已截止」）',
+      r.errCode === 0 && r.data.closed === true, String(r.data && r.data.closed));
+
     // 「仅自己」作业的发布者本人（班委 id=10）也要进需交名单 + iAmSubmitter：
     // 早年 members 只按 group_tag 过滤 ⇒ SELF 作业滤成空 ⇒ 详情页「该筛选下没有成员」、
     // 发布者自己也无法提交测试（2026-10-24 用户反馈）。
@@ -435,6 +439,28 @@ const OC_B = 'oc-student-b';   // B 组学生
       !!sub && sub.status === 'PENDING' && db.homework_submit.filter(x => x.homework_id === hw1 && x.member_id === 11).length === 1);
     check('S4.7 SUBMIT 文件记录 1 条',
       db.homework_file.filter(f => f.homework_id === hw1 && f.member_id === 11 && f.kind === 'SUBMIT').length === 1);
+
+    /* ---- detail 的 myStatus / closed / files 回显（2026-10-24 用户反馈④⑤⑥ 的后端判据：
+       「提交后按钮置灰」要 myStatus；「附件/提交可预览下载」要 files 对自己也回显） ---- */
+    r = await call('detail', { id: hw1 }, OC_A);
+    check('S4.7b 提交后 detail.myStatus=PENDING（前端据此把「提交作业」置灰）',
+      r.errCode === 0 && r.data.myStatus === 'PENDING', String(r.data && r.data.myStatus));
+    check('S4.7c 未截止作业 detail.closed=false（hw3 的 closed=true 在 S3.11 验）',
+      r.errCode === 0 && r.data.closed === false, String(r.data && r.data.closed));
+    check('S4.7d 普通成员 detail 也回显自己提交的文件（预览/下载数据源；仍不见他人）',
+      r.errCode === 0 && r.data.list.length === 1 && (r.data.list[0].files || []).length === 1
+      && r.data.list[0].files[0].name === '作业图1.jpg',
+      JSON.stringify((r.data.list[0] || {}).files));
+
+    r = await call('detail', { id: hw1 }, OC_C);
+    const cRow11 = ((r.data.list || []).find(x => x.id === 11)) || {};
+    check('S4.7e 班委 detail 可见成员提交的文件（查看弹层/批量下载的数据源）',
+      (cRow11.files || []).length === 1 && cRow11.files[0].name === '作业图1.jpg',
+      JSON.stringify(cRow11.files));
+    const cRow10 = ((r.data.list || []).find(x => x.id === 10)) || {};
+    check('S4.7f 未提交成员 files=[]（前端行点击 toast「该成员还没有提交作业」）',
+      r.errCode === 0 && (cRow10.files || []).length === 0 && cRow10.status === null,
+      JSON.stringify(cRow10.files));
 
     // 覆盖重交：旧文件应被 deleteFile 删除，记录仍唯一
     deleteCalls.length = 0;
@@ -493,6 +519,9 @@ const OC_B = 'oc-student-b';   // B 组学生
     sub = db.homework_submit.find(x => x.homework_id === hw1 && x.member_id === 11);
     check('S5.2 班委批阅 DONE + remark 落库', r.errCode === 0 && sub.status === 'DONE' && sub.remark === '完成得不错',
       sub && sub.status + '/' + sub.remark);
+    r = await call('detail', { id: hw1 }, OC_A);
+    check('S5.2b 批阅完成后 detail.myStatus=DONE（前端按钮变「作业已完成」置灰）',
+      r.errCode === 0 && r.data.myStatus === 'DONE', String(r.data && r.data.myStatus));
 
     r = await call('review', { homeworkId: hw1, memberIds: [11], status: 'MAYBE' }, OC_C);
     check('S5.3 非法批阅状态被拒（未知的批阅状态）', r.errCode === 41001 && r.errMsg === '未知的批阅状态');
@@ -503,6 +532,9 @@ const OC_B = 'oc-student-b';   // B 组学生
     r = await call('review', { homeworkId: hw2, memberIds: [11], status: 'REJECT', remark: '补图' }, OC_C);
     sub = db.homework_submit.find(x => x.homework_id === hw2 && x.member_id === 11);
     check('S5.5 REJECT 打回状态流转正确', r.errCode === 0 && sub.status === 'REJECT' && sub.remark === '补图');
+    r = await call('detail', { id: hw2 }, OC_A);
+    check('S5.5b 打回后 detail.myStatus=REJECT（前端按钮变「重新提交」可点）',
+      r.errCode === 0 && r.data.myStatus === 'REJECT', String(r.data && r.data.myStatus));
 
     r = await call('review', { homeworkId: hw6, memberIds: [10], status: 'DONE', remark: '自测通过' }, OC_C);
     sub = db.homework_submit.find(x => x.homework_id === hw6 && x.member_id === 10);

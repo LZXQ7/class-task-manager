@@ -254,6 +254,7 @@ async function detail(payload, ctx) {
   const closed = String(h.due_date) < now;
 
   // 提交名单：班委 / 辅导员看全部；普通成员只看自己
+  // files（提交的附件）：特权角色看全部；普通成员至少能看自己交的（预览/下载用）
   const list = members.map(x => {
     const s = subMap[Number(x.id)];
     return {
@@ -261,7 +262,8 @@ async function detail(payload, ctx) {
       status: s ? s.status : null,           // null = 未交
       remark: s ? s.remark : '',
       submittedAt: s ? s.submitted_at : null,
-      files: isPrivileged ? (filesByMember[Number(x.id)] || []) : []
+      files: (isPrivileged || Number(x.id) === Number(m.id))
+        ? (filesByMember[Number(x.id)] || []) : []
     };
   });
 
@@ -301,6 +303,14 @@ async function detail(payload, ctx) {
     stats: { total: list.length, submitted, pending, done, reject },
     list: view,
     canReview: canReview(m),
+    // 查看者自己的提交状态（null=未交）+ 是否已截止：前端「提交作业」按钮
+    // 只有未提交 / 被打回（REJECT）时可点，待批阅/已完成/已截止一律置灰
+    // （2026-10-24 用户反馈「提交作业后按钮还亮着，只有未提交或被打回的才可点」）
+    myStatus: (function () {
+      const s = subMap[Number(m.id)];
+      return s ? s.status : null;
+    })(),
+    closed: closed,
     // 本人是否也要提交这份作业：分组命中 或 「仅自己」且我是发布者。
     // 班委发的作业若本人也在目标分组（或仅自己自测），底部要同时给「提交作业」入口，
     // 否则发布者自己无法测试提交（2026-10-24 用户反馈）。

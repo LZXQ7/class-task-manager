@@ -384,3 +384,83 @@
    ⚠️ 别把它挪进 app.wxss：timetable / timetable-apply 的 .f-save 是页面级
       定义（含自己的高度/底色），全局加规则会踩坏它们的布局。 */
 .f-cancel, .f-save { flex: 1; }
+
+/* 附件/文件行右侧动作字（预览 / 打开）：蓝色小字，提示该行可点 */
+.fm-file-go {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  font-size: 22rpx;
+  color: #3370FF;
+}
+
+/* 可点的附件行（图片）：加按下反馈，与列表行 tap-hover 同手感 */
+.fm-file-tap {
+  transition: background .12s;
+}
+
+.fm-file-tap.tap-hover {
+  background: #E5E6EB;
+}
+
+/* 批量操作条（2026-10-24 用户反馈「无法批量选择作业下载」补的入口）：
+   第一行 = 已选人数 + 命名切换 + 取消；第二行 = 批量下载主按钮（通栏）。
+   整体不贴屏幕边缘（margin 0 24rpx，与名单行左右同口径）。 */
+.batch-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0 24rpx 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 16rpx;
+  background: #FFFFFF;
+}
+
+.batch-num {
+  margin-right: auto;
+  font-size: 24rpx;
+  color: #4E5969;
+}
+
+.batch-name {
+  margin-right: 16rpx;
+  font-size: 22rpx;
+  color: #3370FF;
+}
+
+.batch-clear {
+  font-size: 22rpx;
+  color: #86909C;
+}
+
+.batch-dl {
+  width: 100%;
+  margin-top: 14rpx;
+  height: 64rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  line-height: 64rpx;
+  text-align: center;
+  color: #FFFFFF;
+  background: #3370FF;
+}
+
+/* 查看提交弹层：成员信息行（姓名 + 学号 + 状态标签，与名单行同口径） */
+.vw-member {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 4rpx;
+}
+
+.vw-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #1D2129;
+}
+
+.vw-no {
+  margin: 0 12rpx;
+  font-size: 22rpx;
+  color: #86909C;
+}
