@@ -53,6 +53,9 @@
       <view class="st-cell"><text class="st-num bad">{{stats.reject}}</text><text class="st-lab">有问题</text></view>
     </view>
 
+    <!-- 筛选 chip 行 + 「全选」（2026-10-24 用户反馈「将已完成的人多选后批量导出」：
+         配合「已完成」芯片，全选一下勾完一批人，不用逐个点勾选框）。
+         ⚠️ flex-wrap：五个芯片 + 全选在窄屏放不下时，全选换到第二行右对齐，不挤压芯片 -->
     <view class="fl-row">
       <view
         wx:for="{{filters}}"
@@ -61,6 +64,7 @@
         data-key="{{item.key}}"
         bindtap="onFilter"
       >{{item.label}}</view>
+      <view wx:if="{{canReview}}" class="fl-all {{allPicked ? 'on' : ''}}" bindtap="onTogglePickAll">{{allPicked ? '取消全选' : '全选'}}</view>
     </view>
 
     <!-- 批量操作条：班委勾选成员后才出现（2026-10-24 用户反馈
@@ -95,7 +99,11 @@
         <view class="mb-sub"><text>{{item.studentNo}}</text></view>
       </view>
       <view class="mb-tag {{item.statusTone}}">{{item.statusText}}</view>
-      <view wx:if="{{canReview && item.status}}" class="pk-box {{picked[item.id] ? 'on' : ''}}" catchtap="onTogglePick"></view>
+      <!-- 行尾勾选框：catchtap 不冒泡（点勾选框=选人，不触发行点击的「查看提交」）。
+           🔴 data-id 必须写在**勾选框自己身上**：catchtap 的 e.currentTarget 是本元素，
+              dataset 不继承父行 —— 早年 id 只写在 .mb-row 上，点勾选框毫无反应
+              （2026-10-24 用户反馈「无法选择成员了」） -->
+      <view wx:if="{{canReview && item.status}}" class="pk-box {{picked[item.id] ? 'on' : ''}}" data-id="{{item.id}}" catchtap="onTogglePick"></view>
     </view>
 
     <view wx:if="{{!list.length}}" class="hw-empty"><text>该筛选下没有成员</text></view>

@@ -32,6 +32,19 @@
  *    正解：行点击=查看该成员提交（弹层），行尾勾选框=catchtap 多选；
  *    名单上方批量操作条（已选 N 人 → 批量下载/命名切换/取消）。
  *
+ * 反馈⑦「无法选择成员了 / 提交后按钮没置灰」（2026-10-24 深夜真机截图）：
+ *   ⑦-a 勾选框 pk-box 上有 catchtap="onTogglePick"，但 data-id 只写在父行
+ *      .mb-row 上 —— catchtap 的 e.currentTarget 是 pk-box **本身**（dataset
+ *      不继承父级），onTogglePick 取不到 id ⇒ Number(undefined)=NaN ⇒ 守卫
+ *      return，点勾选框毫无反应。静态锁：同一开标签必须同时有 catchtap 与 data-id。
+ *   ⑦-b _load 把 homework 对象传给 _submitState，但 myStatus/closed 是 detail
+ *      响应的**顶层字段**（与 homework 平级，见后端 index.js 的 return 对象）⇒
+ *      六态全废，按钮恒为可点的「提交作业」。**门禁假响应早年把这两个字段放在
+ *      homework 对象里，与现实形状不一致 → 测了空枪**（本门禁最大教训：
+ *      fake 响应必须逐字段对齐真实后端，flow 门禁验后端形状、本门禁验前端映射）。
+ *   ⑦-c 用户要「将已完成的人多选后批量导出」：逐个点勾选框太累，筛选行加
+ *      「全选」入口（一次选完当前筛选下所有有提交的成员）。
+ *
  * 本门禁加载 detail.js **生产源码**（Module._load 钩子桩掉 5 个依赖 + wx 全局），
  *  在 seam 处断言；wxml/wxss 做静态结构断言。防同类复发。
  *
@@ -42,8 +55,13 @@
  *   D4 onSubmit 前端校验不丢：IMAGE 要求下只选文件 → toast 且不调提交 API
  *   D5 onFilter 后 detail 请求带上 filter（后端才按状态过滤）              ← 反馈④回归判据
  *   D6 图片附件可点击预览（getTempFileURL + previewImage；文件不弹相册）   ← 反馈③回归判据
- *   D7 提交按钮可见性四态（未交/打回=可交；待批阅/已完成=禁交；截止置灰）   ← 反馈⑤回归判据
+ *   D7 提交按钮可见性六态（假响应用**顶层** myStatus/closed，对齐真实后端）  ← 反馈⑤回归判据
  *   D8 行点击查看提交 / 勾选框 catchtap 不冒泡 / 批量操作条静态结构         ← 反馈⑥回归判据
+ *   D9 提交按钮禁用态 + 文案 + 附件预览的 wxml 静态绑定                    ← 反馈⑤回归判据
+ *   D10 勾选框 pk-box 同一标签带 data-id（点勾选框真正能选人）             ← 反馈⑦-a 回归判据
+ *   D11 「全选」行为：只勾有提交的成员 / 再点全清 / 勾齐置 allPicked        ← 反馈⑦-c 回归判据
+ *   D12 批量下载按全量名单取行（勾选后切筛选仍下得到已勾的人）             ← 反馈⑦-c 回归判据
+ *   D13 筛选行「全选」入口 wxml 接线（canReview 时才显示）                  ← 反馈⑦-c 回归判据
  *
  * 退出码：全过 0；任一不过 1（由 scripts/run_all_gates.sh 的 glob 自动纳入）。
  */
@@ -128,6 +146,12 @@ function freshPage(overrides) {
 /**
  * detail 假响应。opts.myStatus = 查看者自己的提交状态（null=未交）；
  * opts.closed = 是否已截止；opts.list / opts.attaches 可按场景覆写。
+ *
+ * 🔴 myStatus / closed 是**顶层字段**（与 homework 平级）—— 逐字段对齐
+ *    cloudfunctions/homework/index.js detail 的 return 对象。早年门禁把这两个
+ *    字段塞进 homework 对象里，与真实形状不一致：_submitState 从 homework 上
+ *    取永远取不到，六态全废而门禁全绿（2026-10-24 真机截图复现，反馈⑦-b）。
+ *    fake 响应必须与现实同形，否则就是测空枪。
  */
 function fakeDetail(requireType, opts) {
   const o = opts || {};
@@ -135,10 +159,10 @@ function fakeDetail(requireType, opts) {
     homework: {
       id: 1, title: '自测作业', brief: '', dueDate: o.closed ? '2020-10-25 12:00' : '2030-10-25 12:00',
       groups: ['A'], maxImages: 9, maxFiles: 3,
-      requireType: requireType, publisherId: 1,
-      myStatus: o.myStatus === undefined ? null : o.myStatus,
-      closed: !!o.closed
+      requireType: requireType, publisherId: 1
     },
+    myStatus: o.myStatus === undefined ? null : o.myStatus,
+    closed: !!o.closed,
     attaches: o.attaches || [],
     stats: { total: 1, submitted: 0, pending: 1, done: 0, reject: 0 },
     list: o.list || [],
@@ -369,6 +393,98 @@ function rvWrapPad(wxss) {
     // 附件预览绑定
     check('D9.3 图片附件行绑 onPreviewAttach（data-idx 定位被点附件）',
       /bindtap="onPreviewAttach"/.test(wxml) && /data-idx="\{\{index\}\}"/.test(wxml), '(未找到 onPreviewAttach 绑定)');
+
+    /* ---------- D10 勾选框必须自带 data-id（反馈⑦-a 回归判据） ---------- */
+    // 2026-10-24 用户反馈「无法选择成员了」：pk-box 上有 catchtap="onTogglePick"，
+    // 但 data-id 只写在父行 .mb-row 上 —— catchtap 的 e.currentTarget 是 pk-box
+    // 本身（dataset 不继承父级），onTogglePick 里 Number(undefined)=NaN ⇒ 守卫
+    // return，点勾选框毫无反应。行为测试直接调 onTogglePick 并传 dataset 是
+    // **测不到这条路径**的（id 是测试塞进去的），必须静态锁同一个开标签上的接线。
+    const pkBoxTags = wxml.match(/<view[^>]*class="pk-box[^"]*"[^>]*>/g) || [];
+    check('D10.1 勾选框 pk-box 与 catchtap="onTogglePick" 在**同一个标签**上带 data-id="{{item.id}}"',
+      pkBoxTags.length === 1
+      && /catchtap="onTogglePick"/.test(pkBoxTags[0])
+      && /data-id="\{\{item\.id\}\}"/.test(pkBoxTags[0]),
+      pkBoxTags[0] || '(未找到 pk-box)');
+    // 行为侧锁勾选/取消语义（配合上面的静态接线才是完整闭环）
+    fakeRes = fakeDetail('NONE', { canReview: true, list: members });
+    const p10 = freshPage({ id: 1, classId: 1 });
+    p10._load();
+    await flush();
+    p10.onTogglePick({ currentTarget: { dataset: { id: 11 } } });
+    check('D10.2 点勾选框 → picked[11]=true 且 pickedCount=1（选人真正生效）',
+      !!(p10.data.picked && p10.data.picked[11] === true) && p10.data.pickedCount === 1,
+      'picked=' + JSON.stringify(p10.data.picked) + ' count=' + p10.data.pickedCount);
+    p10.onTogglePick({ currentTarget: { dataset: { id: 11 } } });
+    check('D10.3 再点同一个勾选框 → 取消勾选，pickedCount=0',
+      !(p10.data.picked && p10.data.picked[11]) && p10.data.pickedCount === 0,
+      'picked=' + JSON.stringify(p10.data.picked) + ' count=' + p10.data.pickedCount);
+    // 勾选态联动批量操作条：选上才显示（D8.5 已锁静态条件，这里锁行为）
+    p10.onTogglePick({ currentTarget: { dataset: { id: 11 } } });
+    check('D10.4 onClearPick 清空勾选且 pickedCount 归零（批量条右侧「取消」）',
+      (p10.onClearPick(), p10.data.pickedCount === 0 && Object.keys(p10.data.picked || {}).length === 0),
+      'count=' + p10.data.pickedCount);
+
+    /* ---------- D11 「全选」：一次选完当前筛选下所有有提交的成员（反馈⑦-c） ---------- */
+    const members3 = [
+      { id: 11, name: '李同学', studentNo: '2608010011', status: 'PENDING',
+        files: [{ id: 1, name: '图片1.jpg', size: 2048, fileId: 'cloud://env/hw/s1.jpg', kind: 'IMAGE' }] },
+      { id: 12, name: '王同学', studentNo: '2608010012', status: null, files: [] },
+      { id: 13, name: '示例成员65', studentNo: '2608010013', status: 'DONE',
+        files: [{ id: 3, name: '报告.pdf', size: 4096, fileId: 'cloud://env/hw/s3.pdf', kind: 'FILE' }] }
+    ];
+    fakeRes = fakeDetail('NONE', { canReview: true, list: members3 });
+    const p11 = freshPage({ id: 1, classId: 1 });
+    p11._load();
+    await flush();
+    if (typeof p11.onTogglePickAll !== 'function') {
+      check('D11.0 detail.js 有 onTogglePickAll 方法', false, '(缺少 onTogglePickAll)');
+    } else {
+      check('D11.0 detail.js 有 onTogglePickAll 方法', true);
+      p11.onTogglePickAll();
+      check('D11.1 全选 → 只勾「有提交」的成员（未交没有勾选框），pickedCount=2 且 allPicked=true',
+        p11.data.pickedCount === 2 && p11.data.allPicked === true
+        && !!(p11.data.picked || {})[11] && !!(p11.data.picked || {})[13] && !(p11.data.picked || {})[12],
+        'picked=' + JSON.stringify(p11.data.picked) + ' allPicked=' + p11.data.allPicked);
+      p11.onTogglePickAll();
+      check('D11.2 再点一次（取消全选）→ 全部清空，pickedCount=0 且 allPicked=false',
+        p11.data.pickedCount === 0 && p11.data.allPicked === false
+        && Object.keys(p11.data.picked || {}).length === 0,
+        'picked=' + JSON.stringify(p11.data.picked) + ' allPicked=' + p11.data.allPicked);
+      p11.onTogglePick({ currentTarget: { dataset: { id: 11 } } });
+      p11.onTogglePick({ currentTarget: { dataset: { id: 13 } } });
+      check('D11.3 手动逐个勾齐 → allPicked=true（按钮文案切「取消全选」）',
+        p11.data.allPicked === true && p11.data.pickedCount === 2,
+        'allPicked=' + p11.data.allPicked);
+      p11.onClearPick();
+      check('D11.4 取消勾选后 allPicked 回 false',
+        p11.data.allPicked === false, 'allPicked=' + p11.data.allPicked);
+    }
+
+    /* ---------- D12 批量下载按全量名单取行（勾选后切筛选仍下得到已勾的人） ---------- */
+    fakeRes = fakeDetail('NONE', { canReview: true, list: members });
+    const p12 = freshPage({ id: 1, classId: 1 });
+    p12._load();
+    await flush();
+    p12.onTogglePick({ currentTarget: { dataset: { id: 11 } } });
+    // 模拟切到看不到 11 号的筛选：display list 被过滤空，但勾选还在
+    p12.setData({ list: [] });
+    calls.toast.length = 0;
+    p12.onBatchDownload();
+    await flush();   // _downloadRows 内部是 await 链，等它落地
+    check('D12 勾选后切换筛选（名单被过滤空）→ 批量下载仍按全量名单找到该成员（不误报「还没有提交」）',
+      calls.toast.indexOf('所选成员还没有提交作业') < 0
+      && calls.toast.join('|').indexOf('已保存') >= 0,
+      JSON.stringify(calls.toast));
+
+    /* ---------- D13 筛选行「全选」入口 wxml 接线（反馈⑦-c） ---------- */
+    const flAllTags = wxml.match(/<view[^>]*class="fl-all[^"]*"[^>]*>/g) || [];
+    check('D13.1 筛选行有「全选」入口且仅 canReview 显示',
+      flAllTags.length === 1 && /wx:if="\{\{canReview\}\}"/.test(flAllTags[0])
+      && /bindtap="onTogglePickAll"/.test(flAllTags[0]),
+      flAllTags[0] || '(未找到 fl-all)');
+    check('D13.2 「全选」文案随 allPicked 切换（全选 / 取消全选）',
+      /\{\{allPicked \? '取消全选' : '全选'\}\}/.test(wxml), '(未找到 allPicked 三元文案)');
 
     /* ---------- 汇总 ---------- */
     console.log('\n==============================');

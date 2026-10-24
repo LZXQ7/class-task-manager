@@ -71,6 +71,11 @@ Page({
     submitBtnText: '提交作业',
     picked: {},
     pickedCount: 0,
+    // 「全选」态（筛选行右侧按钮文案）：当前筛选下所有「有提交」的成员都被勾选
+    allPicked: false,
+    // 全量名单（不过滤）：批量下载按它取行 —— 勾选后切筛选，display list 会
+    // 过滤空，但已勾的人仍在全量名单里，不能因此下不到（2026-10-24 用户反馈）
+    listAll: [],
     // 查看某成员提交的弹层（2026-10-24 用户反馈「发布人员无法点击查看提交的作业」）
     viewShow: false,
     viewMember: null,
@@ -118,7 +123,20 @@ Page({
         }) : null;
         // 「提交作业」按钮三态（2026-10-24 用户反馈「提交后按钮还亮着」）：
         // 只有未提交 / 被打回（REJECT）可点；待批阅/已完成置灰；截止后仅打回可重交。
-        const sub = this._submitState(hh);
+        // 🔴 myStatus/closed 是 detail 响应的**顶层字段**（与 homework 平级，见后端
+        //    index.js 的 return 对象）—— 早年把 homework 对象传给 _submitState，
+        //    两个字段永远取不到 ⇒ 六态全废、按钮恒为可点「提交作业」（真机截图复现：
+        //    本人「已完成」且已截止，按钮还是亮的「提交作业」）。
+        const sub = this._submitState({ myStatus: res && res.myStatus, closed: res && res.closed });
+        const listAll = (res && res.list) || [];
+        const list = listAll.map(x => Object.assign({}, x, {
+          statusText: x.status ? (STATUS_TEXT[x.status] || x.status) : '未交',
+          statusTone: x.status || 'none',
+          fileCount: (x.files || []).length
+        }));
+        // 勾选态派生量：picked 跨筛选/刷新保留（只同步计数与「全选」态）
+        const picked = this.data.picked || {};
+        const selectable = list.filter(x => !!x.status);
         this.setData({
           homework: hh,
           // 作业附件（发布时上传）：补 sizeText 人类可读大小 + isImage 缩略图判据；
@@ -128,15 +146,14 @@ Page({
             isImage: isImage(a.name)
           })),
           stats: (res && res.stats) || this.data.stats,
-          list: ((res && res.list) || []).map(x => Object.assign({}, x, {
-            statusText: x.status ? (STATUS_TEXT[x.status] || x.status) : '未交',
-            statusTone: x.status || 'none',
-            fileCount: (x.files || []).length
-          })),
+          list: list,
+          listAll: listAll,
           canReview: !!(res && res.canReview),
           iAmSubmitter: !!(res && res.iAmSubmitter),
           canSubmit: sub.canSubmit,
           submitBtnText: sub.text,
+          pickedCount: Object.keys(picked).length,
+          allPicked: selectable.length > 0 && selectable.every(x => picked[Number(x.id)]),
           loaded: true
         });
       })
@@ -144,15 +161,17 @@ Page({
   },
 
   /**
-   * 提交入口三态（后端 detail 给 myStatus + closed）：
+   * 提交入口三态（入参 = detail 响应的**顶层** myStatus + closed，调用方负责从
+   * res 上取 —— 这两个字段与 homework 平级，不在 homework 对象里）：
    *   未交（null）      → 可点，「提交作业」
    *   被打回（REJECT）  → 可点，「重新提交」（截止也豁免，与后端 submit 同口径）
    *   待批阅（PENDING） → 置灰，「已提交 · 待批阅」；已截止则「已截止」
    *   已完成（DONE）    → 置灰，「作业已完成」；已截止则「已截止」
    */
-  _submitState(h) {
-    const st = h && h.myStatus ? String(h.myStatus) : '';
-    const closed = !!(h && h.closed);
+  _submitState(fields) {
+    const f = fields || {};
+    const st = f.myStatus ? String(f.myStatus) : '';
+    const closed = !!f.closed;
     if (st === 'PENDING') return { canSubmit: false, text: closed ? '已截止' : '已提交 · 待批阅' };
     if (st === 'DONE') return { canSubmit: false, text: closed ? '已截止' : '作业已完成' };
     if (st === 'REJECT') return { canSubmit: true, text: '重新提交' };
@@ -171,14 +190,45 @@ Page({
     this.setData({ filter: key }, () => this._load());
   },
 
-  /* ---------------- 多选批阅 ---------------- */
+  /* ---------------- 多选批阅 / 批量导出 ---------------- */
+  /**
+   * 勾选态派生量同步：pickedCount + allPicked（筛选行「全选」按钮的态）。
+   * 所有改动 picked 的地方都走它，避免计数与全选态各算各的、互相漂移。
+   */
+  _syncPick(nextPicked) {
+    const picked = nextPicked || this.data.picked || {};
+    const selectable = (this.data.list || []).filter(x => !!x.status);
+    const allPicked = selectable.length > 0 && selectable.every(x => picked[Number(x.id)]);
+    this.setData({ picked, pickedCount: Object.keys(picked).length, allPicked });
+  },
+
   onTogglePick(e) {
+    // ⚠️ id 从**勾选框元素自身**的 dataset 取（wxml 里 data-id 必须写在 pk-box 上，
+    //   不能只写在父行 —— catchtap 的 currentTarget 是 pk-box 本身，dataset 不继承父级）
     const id = Number(e.currentTarget.dataset.id);
     if (!id) return;
-    const picked = Object.assign({}, this.data.picked);
+    const picked = Object.assign({}, this.data.picked || {});
     if (picked[id]) delete picked[id]; else picked[id] = true;
-    const n = Object.keys(picked).length;
-    this.setData({ picked, pickedCount: n });
+    this._syncPick(picked);
+  },
+
+  /**
+   * 「全选」：一次选完**当前筛选下**所有有提交的成员（未交没有勾选框，不参与）。
+   * 2026-10-24 用户反馈「我需要将已完成的人多选后批量导出作业，而不是一个人
+   * 一个人查看并保存」——配合「已完成」筛选芯片，两下点完一批人。
+   * 再点一次 = 取消全选（清空全部勾选，含别的筛选下勾的，计数归零才符合直觉）。
+   */
+  onTogglePickAll() {
+    const selectable = (this.data.list || []).filter(x => !!x.status);
+    if (!selectable.length) { util.toast('当前筛选下没有可导出的提交'); return; }
+    const picked = Object.assign({}, this.data.picked || {});
+    const allPicked = selectable.every(x => picked[Number(x.id)]);
+    if (allPicked) {
+      Object.keys(picked).forEach((k) => { delete picked[k]; });
+    } else {
+      selectable.forEach((x) => { picked[Number(x.id)] = true; });
+    }
+    this._syncPick(picked);
   },
 
   /**
@@ -308,7 +358,8 @@ Page({
     }))
       .then(() => {
         util.toast(status === 'DONE' ? '已标记完成' : '已打回');
-        this.setData({ reviewShow: false, picked: {}, pickedCount: 0 });
+        this.setData({ reviewShow: false });
+        this._syncPick({});
         this._load();
       })
       .catch(() => {});
@@ -472,23 +523,25 @@ Page({
 
   /** 取消批量选择（批量操作条右侧） */
   onClearPick() {
-    this.setData({ picked: {}, pickedCount: 0 });
+    this._syncPick({});
   },
 
   /**
    * 批量下载：名单上方批量操作条入口（2026-10-24 用户反馈
    * 「发布人员无法批量选择作业（图片/文件）下载」——方法早在、按钮从未接上）。
    * 下载范围 = 勾选框选中的成员；单人「保存全部」复用同一实现。
+   * ⚠️ 取行走**全量名单** listAll（不是过滤后的 display list）：勾选后切到别的
+   *    筛选芯片，已勾的人不在当前视图里，但仍在全量名单中，不能因此漏下载。
    */
   onBatchDownload() {
     if (this.data.uploading) return;
     const picked = this.data.picked || {};
     const ids = Object.keys(picked).map(Number).filter(Boolean);
     if (!ids.length) { util.toast('请先选择成员'); return; }
-    const list = this.data.list || [];
+    const listAll = this.data.listAll || this.data.list || [];
     const targets = [];
     ids.forEach((id) => {
-      const row = list.find(x => Number(x.id) === id);
+      const row = listAll.find(x => Number(x.id) === id);
       if (row && (row.files || []).length) targets.push(row);
     });
     if (!targets.length) { util.toast('所选成员还没有提交作业'); return; }

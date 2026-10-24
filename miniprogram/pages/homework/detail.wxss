@@ -96,12 +96,28 @@
   color: #86909C;
 }
 
-/* 筛选 chip 行 */
+/* 筛选 chip 行（含「全选」入口：2026-10-24 用户反馈「将已完成的人多选后批量导出」）
+   ⚠️ flex-wrap：五个芯片 + 全选在窄屏放不下时，全选换到第二行右对齐，不挤压芯片 */
 .fl-row {
   display: flex;
   flex-direction: row;
   align-items: center;
+  flex-wrap: wrap;
   padding: 0 24rpx 20rpx;
+}
+
+/* 「全选 / 取消全选」：贴在芯片行右侧（margin-left:auto），蓝色文字按钮 */
+.fl-all {
+  margin-left: auto;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  line-height: 40rpx;
+  color: #3370FF;
+}
+
+.fl-all.on {
+  color: #86909C;
 }
 
 .fl-chip {
