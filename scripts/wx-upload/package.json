@@ -1,0 +1,12 @@
+{
+  "name": "wx-upload",
+  "version": "1.0.0",
+  "private": true,
+  "description": "微信小程序无头上传（miniprogram-ci），与主小程序工程隔离",
+  "scripts": {
+    "upload": "node upload.mjs"
+  },
+  "dependencies": {
+    "miniprogram-ci": "^2.1.31"
+  }
+}

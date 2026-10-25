@@ -76,7 +76,7 @@ function buildState(roster, cursors) {
     const g = m.group === 'B' ? 'B' : 'A';
     if (Number(m.seq) <= (Number(c[g]) || 0)) used[g].add(Number(m.seq));
   });
-  return { cursors: { A: Number(c.A) || 0, B: Number(c.B) || 0 }, used };
+  return { cursors: { A: Number(c.A) || 0, B: Number(c.B) || 0 }, used, start: { A: Number(c.A) || 0, B: Number(c.B) || 0 } };
 }
 
 /**
@@ -252,8 +252,33 @@ function pickBySeq(roster, scope, n, state, opt) {
         state.allTurn = other(g);
       } else {
         // —— 正常路径：跨组只比 ahead；两组都到尾才比回绕候选（peekWrap）——
-        const aA = peekAhead('A');
-        const bA = peekAhead('B');
+        let aA = peekAhead('A');
+        let bA = peekAhead('B');
+        /* 🔴 防「全体课饿死某一组」（class 3 第 7→8 周实测：B 游标卡 56 ⇒ B 的 ahead 恒为空
+         *    ⇒ 全体课永远只取 A，大课变单组课）。某组 ahead 为空时，仅在两种情形回绕兜底：
+         *   ① 该组「从起点就卡死」——整池已排满且游标从未前进（cursor == start，上轮 bug 遗留的
+         *      假「已排满」，如 B 恒 56，真实需要回绕追平）；② 两组同时到尾（另一组也整池已排满）
+         *      ⇒ 开新一轮，与原版 peekWrap 比较口径等价（两组都回绕，序号小的组先取）。
+         * ⚠️ 严禁在「本组排满、但另一组还有人」时回绕：那是本组刚正常走完一轮，应让另一组把剩的
+         *   人排完（如 A 已到 55、B 还剩 56 ⇒ 必须取 B=56，而非把 A 回绕去抢 3 号），否则破坏
+         *   「两组交替」并导致全体课只取单组的失衡（check-round-robin.js 第5部分已锁）。
+         * ⚠️ 这里**不**置 wrapped 标志：是「解除卡死」的纠错而非正常整轮回绕，误置会触发护栏
+         *   让后续全体课变成 4,9 / 6,8 这种失衡错排（已自证）。正常整轮回绕仍由 takeFrom 的 ③ 分支置位。
+         * ⚠️ 先快照「整池已排满」再回绕：两组都为空时需同时回绕，若边回绕边判断，先回绕那组的
+         *   used 被清空会让另一组的「另一组是否排满」误判 false ⇒ 另一组不回绕 ⇒ 退化成单组连取
+         *   （check-round-robin.js 第5部分 pick5 = 两组同时回绕 实测锁死）。 */
+        const otherG = (g) => (g === 'A' ? 'B' : 'A');
+        const startOf = (g) => (state.start && typeof state.start[g] === 'number') ? state.start[g] : -1;
+        const aDone = pools['A'].length > 0 && pools['A'].every(m => state.used['A'].has(m.seq));
+        const bDone = pools['B'].length > 0 && pools['B'].every(m => state.used['B'].has(m.seq));
+        const aStuck = aDone && state.cursors['A'] === startOf('A');   // 从起点就卡死（游标从未前进）
+        const bStuck = bDone && state.cursors['B'] === startOf('B');
+        if (!aA && (aStuck || bDone)) {
+          state.used['A'].clear(); state.cursors['A'] = 0; aA = peekAhead('A');
+        }
+        if (!bA && (bStuck || aDone)) {
+          state.used['B'].clear(); state.cursors['B'] = 0; bA = peekAhead('B');
+        }
         if (aA && bA) {
           g = (aA.seq <= bA.seq) ? 'A' : 'B';          // 两组都有 ahead：ahead 小的组优先（落后组追平）
         } else if (aA) {

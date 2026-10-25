@@ -3,7 +3,7 @@
  * ------------------------------------------------------------
  * 这三条都是「前端入口 + 后端落库」成对出现的能力，缺任何一半用户都会看到
  * 「点了没反应」或「选了保存失败」，所以按对校验：
- *   ① 查看人员页「仅班委」筛选：viewMembers 只用于展示，members 保持全量供详情查找；
+ *   ① 查看人员页「全班 / 仅班委 / A 组 / B 组」筛选：viewMembers 只用于展示，members 保持全量供详情查找；
  *   ② 设置班委（超管 + 辅导员）：入口 → util.POSITIONS → api → member.setPosition（role + position）；
  *   ③ 手动排班的选人名册纳入测试账号，但**自动生成不能**被污染。
  */
@@ -27,9 +27,9 @@ const schSrc = read('cloudfunctions/schedule/index.js');
 const manWxml = read('miniprogram/pages/manual/index.wxml');
 
 /* ============================================================
- * ① 仅班委筛选
+ * ① 分组筛选（全班 / 仅班委 / A 组 / B 组）
  * ============================================================ */
-console.log('── ① 查看人员页「仅班委」筛选');
+console.log('── ① 查看人员页「全班 / 仅班委 / A组 / B组」筛选');
 has(rosJs, /_isCommittee\s*\(/, 'roster 有 _isCommittee 判据');
 // 判据只锚「非辅导员」这一半。
 // ⚠️ 「非测试账号」那一半已在 2026-10-08 删除：member.list 对测试账号是**服务端一律过滤**，
@@ -39,15 +39,23 @@ has(rosJs, /_isCommittee\s*\(/, 'roster 有 _isCommittee 判据');
 has(rosJs, /_isCommittee\(x\)[\s\S]{0,120}?role === 'ADMIN' \|\| x\.role === 'MONITOR'[\s\S]{0,80}?groupTag !== 'X'/,
   '班委判据 = ADMIN/MONITOR 且非辅导员（测试账号由服务端过滤，见 check-test-account-hidden）');
 has(rosJs, /_filterRows\s*\(/, 'roster 有 _filterRows 过滤器');
-has(rosJs, /viewMembers:\s*this\._filterRows\(rows, this\.data\.onlyCommittee\)/,
+has(rosJs, /viewMembers:\s*this\._filterRows\(rows, this\.data\.groupFilter\)/,
   '_loadMembers 同时算出 viewMembers');
 has(rosJs, /committeeCount:\s*rows\.filter\(x => this\._isCommittee\(x\)\)\.length/,
   '统计班委人数（chip 角标）');
 has(rosJs, /this\.data\.members\.find\(x => x\.id === id\)/,
   '详情查找仍走全量 members（筛选只影响展示）');
 has(rosWxml, /wx:for="\{\{viewMembers\}\}"/, '列表渲染 viewMembers');
-has(rosWxml, /bindtap="onToggleCommittee"[\s\S]{0,60}?仅班委/, '有「仅班委」chip 且绑定切换');
-has(rosWxml, /bindtap="onFilterAll"/, '有「全班」chip 可取消筛选');
+/* 2026-10-24：原来只有「全班 / 仅班委」两个 chip（布尔开关），
+   加 A/B 组后改成**四选一枚举** `groupFilter`，四个 chip 共用 onFilterScope。 */
+has(rosWxml, /data-scope="ALL"[\s\S]{0,90}?全班/, '有「全班」chip 且走 onFilterScope');
+has(rosWxml, /data-scope="COMMITTEE"[\s\S]{0,90}?仅班委/, '有「仅班委」chip 且走 onFilterScope');
+has(rosWxml, /data-scope="A"[\s\S]{0,90}?A 组/, '有「A 组」chip 且走 onFilterScope');
+has(rosWxml, /data-scope="B"[\s\S]{0,90}?B 组/, '有「B 组」chip 且走 onFilterScope');
+has(rosJs, /onFilterScope\s*\(/, '四个 chip 共用一个作用域切换入口');
+has(rosJs, /groupACount:\s*rows\.filter\(x => x\.groupTag === 'A'\)\.length/, '统计 A 组人数（chip 角标）');
+has(rosJs, /groupBCount:\s*rows\.filter\(x => x\.groupTag === 'B'\)\.length/, '统计 B 组人数（chip 角标）');
+has(rosJs, /emptyText:\s*EMPTY_TEXT\[this\.data\.groupFilter\]/, '空态文案随作用域变化（不会「筛A组却提示暂无班委」）');
 has(rosWxml, /wx:if="\{\{membersLoaded && !viewMembers\.length\}\}"/, '筛选后为空有占位提示（骨架加载完才判空，避免闪现）');
 has(rosWxss, /\.mb-chip\.on\s*\{/, '筛选 chip 选中态样式已定义');
 

@@ -45,7 +45,7 @@ const db = {
     // B 组普通学生（可见性/越权测试）
     { id: 12, openid: 'oc-student-b', class_id: 1, role: 'MEMBER', group_tag: 'B', is_super: 0, status: 'ACTIVE', student_no: '2608010012', name: '王同学', position: '' },
     // 合成测试账号：detail 的需交成员必须排除它（NOT_TEST 铁律）
-    { id: 99, openid: 'oc-test-no', class_id: 1, role: 'MEMBER', group_tag: 'A', is_super: 0, status: 'ACTIVE', student_no: '260805749901', name: '合成测试号', position: '' }
+    { id: 99, openid: 'oc-test-no', class_id: 1, role: 'MEMBER', group_tag: 'A', is_super: 0, status: 'ACTIVE', student_no: '000000000001', name: '合成测试号', position: '' }
   ],
   impersonation: [],
   homework: [],
@@ -209,7 +209,7 @@ const deleteCalls = [];
 const sdkStub = {
   init: () => { /* noop */ },
   DYNAMIC_CURRENT_ENV: 'test-env',
-  getWXContext: () => ({ OPENID: sdkState.openid, APPID: 'wx43f61be0199f50ac' }),
+  getWXContext: () => ({ OPENID: sdkState.openid, APPID: '<YOUR_APPID>' }),
   deleteFile: async (opts) => {
     deleteCalls.push((opts && opts.fileList) || []);
     return { fileList: ((opts && opts.fileList) || []).map(() => ({ status: 0 })) };

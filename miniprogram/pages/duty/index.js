@@ -487,6 +487,10 @@ Page({
           : ('第' + g.period + '节 · ' + (util.fmtRoom(g.room) || '未填教室') + ' · ' + g.courseName);
         g.count = g.members.length;
       });
+      /* 🔴 保洁课次（打扫410）必须排在每个日期的**最后**：合并行按 isClean 置底，
+       *    与后端 loadWeekDuties / manualBoard 的排序口径一致（用户 2026-10-25 实锤：
+       *    第四节课排在打扫410前面）。V8 的 Array.sort 稳定，非保洁项相对顺序保留。 */
+      merged.sort((a, b) => ((a.isClean ? 1 : 0) - (b.isClean ? 1 : 0)));
       return Object.assign({}, d, {
         duties,
         mergedDuties: merged,

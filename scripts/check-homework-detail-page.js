@@ -435,7 +435,7 @@ function rvWrapPad(wxss) {
       { id: 11, name: '李同学', studentNo: '2608010011', status: 'PENDING',
         files: [{ id: 1, name: '图片1.jpg', size: 2048, fileId: 'cloud://env/hw/s1.jpg', kind: 'IMAGE' }] },
       { id: 12, name: '王同学', studentNo: '2608010012', status: null, files: [] },
-      { id: 13, name: '赵同学', studentNo: '2608010013', status: 'DONE',
+      { id: 13, name: '示例成员65', studentNo: '2608010013', status: 'DONE',
         files: [{ id: 3, name: '报告.pdf', size: 4096, fileId: 'cloud://env/hw/s3.pdf', kind: 'FILE' }] }
     ];
     fakeRes = fakeDetail('NONE', { canReview: true, list: members3 });
@@ -508,7 +508,7 @@ function rvWrapPad(wxss) {
         { id: 10, name: '说明.pdf', size: 4096, fileId: 'cloud://env/hw/mine.pdf' }
       ],
       // 非特权：list 只含本人一行（后端已按 id 过滤）
-      list: [{ id: 11, name: '宋同学', studentNo: '260805740301', status: 'REJECT',
+      list: [{ id: 11, name: '宋同学', studentNo: '000000000301', status: 'REJECT',
         remark: '字迹潦草请重抄一遍', files: [] }]
     });
     const p15 = freshPage({ id: 1, classId: 1 });

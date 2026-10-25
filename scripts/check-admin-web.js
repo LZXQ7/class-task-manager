@@ -480,7 +480,10 @@ function stillPasses(file, tmpPath) {
       && /memSort: \{ key: 'pv', dir: 'desc' \}/.test(src)
       && /function redrawMemRows/.test(src)
       && /LS_MEM_SORT/.test(src);
-    return pickerOk && evOk && sortOk;
+    // 判据四（2026-10-25）：埋点事件中文映射必须全覆盖，删掉任一映射（如 homework_open）
+    //   必须翻脸 —— 否则统计页会漏翻成英文 key（反复翻车的根因）
+    const labelOk = eventLabelCoversMiniProgram(src);
+    return pickerOk && evOk && sortOk && labelOk;
   }
   if (file === 'lib/mod-usage.js') {
     const src = fs.readFileSync(tmpPath, 'utf8');
@@ -839,6 +842,58 @@ t('使用统计：前端渲染成员各功能次数（中文标签 ×N）', () =
   assert.ok(/ev-count/.test(js), '渲染未输出 ev-count 标签');
 });
 
+/* ---------------- 使用统计：埋点事件中文映射必须全覆盖（防漏翻，2026-10-25） ---------------- */
+/**
+ * 小程序里所有埋点事件键（track.pageView / track.action 的字面量参数）都必须在
+ * admin-web 的 EVENT_LABEL 里有中文名，否则统计页会直接显示英文 key（如 homework_open）。
+ * 这条门禁就是为堵「新增功能忘加映射」这种反复翻车的漏翻 —— 之前 1.0.8 作业模块上线，
+ * 小程序已经 track.action('homework_open')，但 EVENT_LABEL 漏了它，统计页就裸奔成英文。
+ */
+function extractEventLabelKeys(adminJsSrc) {
+  const blk = /var EVENT_LABEL = \{([\s\S]*?)\};/.exec(adminJsSrc);
+  if (!blk) return null;
+  const keys = new Set();
+  const kr = /([a-z_]+)\s*:\s*'/g;
+  let k;
+  while ((k = kr.exec(blk[1]))) keys.add(k[1]);
+  return keys;
+}
+function miniProgramEventKeys() {
+  const mpRoot = path.join(__dirname, '..', 'miniprogram');
+  const walk = (dir) => {
+    const out = [];
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) out.push(...walk(p));
+      else if (e.name.endsWith('.js')) out.push(p);
+    }
+    return out;
+  };
+  const keys = new Set();
+  for (const f of walk(mpRoot)) {
+    const src = fs.readFileSync(f, 'utf8');
+    const re = /track\.(?:pageView|action)\(\s*['"]([a-z_]+)['"]\s*\)/g;
+    let m;
+    while ((m = re.exec(src))) keys.add(m[1]);
+  }
+  return keys;
+}
+function eventLabelCoversMiniProgram(adminJsSrc) {
+  const labelKeys = extractEventLabelKeys(adminJsSrc);
+  if (!labelKeys) return false;
+  const ev = miniProgramEventKeys();
+  for (const k of ev) if (!labelKeys.has(k)) return false;
+  return true;
+}
+t('使用统计：小程序所有埋点事件键都有中文映射（防漏翻）', () => {
+  const adminJs = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8');
+  const labelKeys = extractEventLabelKeys(adminJs);
+  const ev = miniProgramEventKeys();
+  const missing = [...ev].filter((k) => !labelKeys.has(k));
+  assert.strictEqual(missing.length, 0,
+    '以下小程序埋点事件缺中文映射（统计页会裸奔成英文 key）：' + missing.join(', '));
+});
+
 mutateAndExpectFail(
   '成员功能点次不按功能细分（塌成每人才一行）',
   'lib/mod-usage.js',
@@ -850,6 +905,12 @@ mutateAndExpectFail(
   'public/app.js',
   "return '<span class=\"ev-count\"><b>' + esc(it.label) + '</b> ×' + esc(it.cnt) + '</span>';",
   "return '<span>' + esc(it.label) + '</span>';"
+);
+mutateAndExpectFail(
+  'EVENT_LABEL 漏掉 homework_open（统计页漏翻成英文 key）',
+  'public/app.js',
+  "    homework_open: '打开作业',\n",
+  "    /* 变异：漏翻 */\n"
 );
 
 /* ================= 汇总 ================= */

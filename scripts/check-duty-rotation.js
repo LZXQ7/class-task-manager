@@ -307,5 +307,71 @@ chk2('自证：给 schedule 多加一处「+1」会被抓到（>1 处即违规�
   !schedSwapKeepsMarks(SCHED_SRC + '\n' + INJECT));
 chk2('自证：原样判为通过（judge 本身有效）', adjustKeepsMarks(ADJUST_SRC) && schedSwapKeepsMarks(SCHED_SRC));
 
-console.log('\n' + (pass ? '[PASS] 轮转算法 + roundReset 文案口径全部通过 ✓' : '[FAIL] 存在不一致 ✗'));
+/* ============ §C3 全体课不得饿死某组（2026-10-25 修复回归锁）============
+ * 用户实锤：class 3 第 8 周起点 {A:1, B:56}，B 整池 used 满、ahead 空，
+ *   旧内核会让全体课（ab 都上的大课）只取 A 组 ⇒ 表现为「大课变仅 a 组打扫」。
+ * 修复：全体课取人时若某组 ahead 空但其整池本轮已排满，清 used + 游标归 0 立即回绕兜底，
+ *   让该组重新可被选。本判据用等价起点 {A:1, B:56} 复现，断言全体课一定能取到 B 组。
+ * ⚠️ 直接 require 真源码（与文件头原则一致），不抄副本。 */
+console.log('\n===== §C3 全体课不得饿死某组（{A:1,B:56} 等价起点）=====');
+{
+  // 等价于 class 3 第 8 周：B 游标卡 56 → B 整池 used 满、ahead 空
+  const st = buildState(roster, { A: 1, B: 56 });
+  // 先推进 A 游标（模拟周一 P1 全体取 A、P2 A 组课），让 A 远领先、B 仍「卡死」
+  pickBySeq(roster, 'A', 2, st, {});   // A: 3,5
+  pickBySeq(roster, 'A', 2, st, {});   // A: 7,9  → A 游标到 9
+  // 此时再取全体课：A 已到 9，B 整池 used。修复后必须回绕 B 取到 B 组的人
+  const r = pickBySeq(roster, null, 2, st, {});
+  const groups = new Set(r.chosen.map(m => m.group));
+  chk('§C3 全体课在 B 游标卡 56 时仍取到 B 组（不饿死）', groups.has('B') && r.chosen.length === 2);
+  chk('§C3 全体课未退化成仅 A 组', !(groups.has('A') && !groups.has('B')));
+  // 反向对称：A 卡死（{A:56, B:1}）→ 全体课必须能取到 A 组
+  const st2 = buildState(roster, { A: 56, B: 1 });
+  pickBySeq(roster, 'B', 2, st2, {});
+  pickBySeq(roster, 'B', 2, st2, {});
+  const r2 = pickBySeq(roster, null, 2, st2, {});
+  const g2 = new Set(r2.chosen.map(m => m.group));
+  chk('§C3 对称：A 卡死时全体课仍取到 A 组', g2.has('A') && r2.chosen.length === 2);
+}
+
+/* ============ §C4 打扫410 必须恒排当天最后（2026-10-25 修复回归锁）============
+ * 修复落在三处排序：schedule.generate 的 rotatePlan.sort、schedule.manualBoard 的
+ * 课次排序、duty/index.js 前端 merged.sort。本判据**直接抽取真源码里的比较函数体**
+ * eval 运行（不是抄副本），断言 CLEAN 课次无论 period 多小都排到最后；并 grep 另两处
+ * 排序含 CLEAN 置底权重，确保三处都还在。
+ * SCHED_SRC / DUTY_SRC 已在上方加载。 */
+console.log('\n===== §C4 打扫410 恒排当天最后（抽取真源码比较函数验证）=====');
+{
+  // —— generate 的 rotatePlan.sort（主路径，含 CLEAN 置底权重）——
+  // ⚠️ 文件里有两处 rotatePlan.sort：line 1031（buildCleaningPlan，无 CLEAN 权重）
+  //   与 line 1620（generate 主路径，含 CLEAN 权重）。必须精确挑「含 CLEAN」的那个，
+  //   否则会误测到旧的无权重比较函数（已踩过：首轮匹配到 1031 导致 period=1 用例误红）。
+  const allRot = [...SCHED_SRC.matchAll(/rotatePlan\.sort\(\(a, b\) => \(([\s\S]*?)\)\);/g)];
+  let rotM = null;
+  for (const mm of allRot) { if (mm[1].includes('CLEAN')) { rotM = mm; break; } }
+  let rotCmp = null;
+  try { if (rotM) rotCmp = new Function('a', 'b', 'return (' + rotM[1] + ');'); } catch (e) { rotCmp = null; }
+  chk('§C4 能从 schedule 源码抽出「含 CLEAN 权重」的 rotatePlan 比较函数', !!rotCmp);
+  if (rotCmp) {
+    const day = [
+      { classDate: '2026-11-02', s: { kind: 'CLEAN', id: 26 }, slot: { period: 4 } },
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 1 }, slot: { period: 1 } },
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 2 }, slot: { period: 4 } }
+    ];
+    day.sort(rotCmp);
+    chk('§C4 打扫410 恒排当天最后（即便 period 与其他课次相同）', day[2].s.kind === 'CLEAN');
+    const day2 = [
+      { classDate: '2026-11-02', s: { kind: 'CLEAN', id: 26 }, slot: { period: 1 } },
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 2 }, slot: { period: 4 } }
+    ];
+    day2.sort(rotCmp);
+    chk('§C4 打扫410 即便 period=1（更小）也排最后', day2[1].s.kind === 'CLEAN');
+  }
+  // —— 另两处排序含 CLEAN 置底权重（grep 存在性）——
+  chk('§C4 manualBoard 课次排序含 CLEAN 置底权重', /a\.kind === 'CLEAN'/.test(SCHED_SRC));
+  chk('§C4 duty/index.js merged 排序含 isClean 置底权重',
+    /merged\.sort\(\(a, b\) => \(\(a\.isClean \? 1 : 0\) - \(b\.isClean \? 1 : 0\)\)\);/.test(DUTY_SRC));
+}
+
+console.log('\n' + (pass ? '[PASS] 轮转算法 + roundReset 文案口径 + 第8周修复锁 全部通过 ✓' : '[FAIL] 存在不一致 ✗'));
 process.exit(pass ? 0 : 1);

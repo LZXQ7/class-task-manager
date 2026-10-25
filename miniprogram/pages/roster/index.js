@@ -22,6 +22,17 @@ const theme = require('../../utils/theme');
 /** 直传云存储 / 取临时链接（请假条图片：前端直传绕开 VPC 慢下载，与通知配图同链路） */
 const request = require('../../utils/request');
 
+/**
+ * 筛选作用域 → 空态文案（2026-10-24：新增 A/B 组后占位提示要跟着作用域走，
+ * 否则筛「A 组」却显示「本班暂无班委」，用户会以为系统坏了）。
+ */
+const EMPTY_TEXT = {
+  ALL: '没有匹配的成员',
+  COMMITTEE: '本班暂无班委',
+  A: '本班暂无 A 组同学',
+  B: '本班暂无 B 组同学'
+};
+
 /** Date → 'YYYY-MM-DD'（本地时区；请假登记的原生 picker 取值格式） */
 function ymd(d) {
   const p = (n) => (n < 10 ? '0' + n : '' + n);
@@ -139,10 +150,15 @@ Page({
     viewMembers: [],
     /** 首屏成员列表是否已加载完成：加载中显示骨架，避免「没有匹配的成员」闪现（Req 3） */
     membersLoaded: false,
-    /** 「仅班委」筛选开关（2026-09-26 需求①） */
-    onlyCommittee: false,
+    /** 筛选作用域：全班 / 仅班委 / A 组 / B 组（2026-09-26 需求① + 2026-10-24 分组查看） */
+    groupFilter: 'ALL',
     /** 班委人数（用于筛选 chip 上的角标） */
     committeeCount: 0,
+    /** A / B 组人数（用于筛选 chip 上的角标） */
+    groupACount: 0,
+    groupBCount: 0,
+    /** 当前作用域下的空态文案（随 groupFilter 变化） */
+    emptyText: EMPTY_TEXT.ALL,
     /** 全班已绑定微信人数（只在未搜索时统计，避免把搜索结果当全班）
      *  ⚠️ 初始 null 而不是 0（1.0.6 需求④）：卡片壳现在**常驻**，用 0 占位会让人
      *    误读成「一个人都没绑定」；null → wxml 显示 '—'，名单回来才填真值。 */
@@ -1210,8 +1226,11 @@ _clockNow() {
   _applyMemberRows(rows, kw) {
     const patch = {
       members: rows,
-      viewMembers: this._filterRows(rows, this.data.onlyCommittee),
+      viewMembers: this._filterRows(rows, this.data.groupFilter),
       committeeCount: rows.filter(x => this._isCommittee(x)).length,
+      groupACount: rows.filter(x => x.groupTag === 'A').length,
+      groupBCount: rows.filter(x => x.groupTag === 'B').length,
+      emptyText: EMPTY_TEXT[this.data.groupFilter] || EMPTY_TEXT.ALL,
       membersLoaded: true
     };
     // 2026-10-04 需求②：「已绑定」不含辅导员（辅导员行已在上游滤掉，这里再兜一层）。
@@ -1277,9 +1296,19 @@ _clockNow() {
       && x.groupTag !== 'X';
   },
 
-  /** 按「仅班委」开关过滤；筛选是纯展示层行为，不动 members（详情查找仍按全量） */
-  _filterRows(rows, only) {
-    return only ? (rows || []).filter(x => this._isCommittee(x)) : (rows || []);
+  /**
+   * 按筛选作用域过滤（全班 / 仅班委 / A 组 / B 组）。
+   * 筛选是纯展示层行为，不动 members（详情查找仍按全量）。
+   *
+   * ⚠️ 名册里辅导员（X 组）已在 `_loadMembers` 上游滤掉，故 A + B = 全班，
+   *    四个作用域互斥且**合起来刚好是全量**，不会出现「怎么筛都漏人」。
+   */
+  _filterRows(rows, scope) {
+    const list = rows || [];
+    if (scope === 'COMMITTEE') return list.filter(x => this._isCommittee(x));
+    if (scope === 'A') return list.filter(x => x.groupTag === 'A');
+    if (scope === 'B') return list.filter(x => x.groupTag === 'B');
+    return list;
   },
 
   /**
@@ -1290,7 +1319,7 @@ _clockNow() {
    *    三页共用一份；这里只负责说清「现在筛谁」和「补丁长什么样」。
    * ⚠️ 列表项必须有稳定 wx:key（这里是 id）+ 稳定的 data-id，FLIP/塌缩靠它认人。
    */
-  _applyFilter(only) {
+  _applyFilter(scope) {
     const lt = listTransition;
     // 打断令牌：chip 连点时，上一轮的 setTimeout 醒来发现令牌变了就自己退出，
     // 不会回来把新一轮的 max-height / opacity 清掉（否则第二轮会被「按住」）
@@ -1301,20 +1330,22 @@ _clockNow() {
       field: 'lt',
       guard: () => this._ltToken === tk,
       cur: () => this.data.viewMembers,
-      next: () => this._filterRows(this.data.members, only),
+      next: () => this._filterRows(this.data.members, scope),
       // 选中态（chip 高亮）立刻生效，不等动画 —— 控件必须马上响应，动画只是内容的
-      patch: (rows) => ({ viewMembers: rows, onlyCommittee: only })
+      patch: (rows) => ({ viewMembers: rows, groupFilter: scope })
     });
   },
 
-  onToggleCommittee() {
-    this._applyFilter(!this.data.onlyCommittee);
-  },
-
-  /** 「全班」chip：关掉筛选（点两次同一个 chip 不会来回抖） */
-  onFilterAll() {
-    if (!this.data.onlyCommittee) return;
-    this._applyFilter(false);
+  /**
+   * 四个筛选 chip（全班 / 仅班委 / A 组 / B 组）共用一个入口，作用域由 data-scope 决定。
+   * 2026-10-24：原来是「onlyCommittee 布尔 + onToggleCommittee 切换」，只能表达两种状态；
+   * 加 A/B 组后必须改成**四选一枚举**，否则「仅班委」与「A 组」会互相打架
+   * （「仅班委 + A 组」到底按哪个筛，语义不清）。
+   */
+  onFilterScope(e) {
+    const scope = String((e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.scope) || 'ALL');
+    if (scope === this.data.groupFilter) return;   // 点两次同一个 chip 不会来回抖
+    this._applyFilter(scope);
   },
 
   onMemberKw(e) {

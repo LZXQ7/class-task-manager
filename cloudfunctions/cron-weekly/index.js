@@ -247,6 +247,42 @@ async function purgeLeaveImages(pool) {
   return { scanned: rows.length, fileDeleted: deleted, columnCleared: cleared };
 }
 
+/**
+ * 作业附件回收站清理（每日一趟，幂等）：
+ * 截止满 `LIMIT.PURGE_AFTER_DAYS` 天的作业，**物理删除**其全部云存储文件实体，
+ * 但**保留**提交记录与状态（只把 `homework_file` 行删掉、`homework.purged` 置 1）。
+ *
+ * ⚠️ 删的是文件实体，`homework_submit` 一行不动 —— 班委事后仍能查「完成情况」，
+ *    只是打不开原始文件（这正是需求里的「仅保留提交记录与状态」）。
+ * ⚠️ 幂等：`purged=1` 后不再重复处理；中途失败下次 daily 会重试。
+ */
+async function purgeHomeworkFiles(pool) {
+  const { LIMIT } = require('./common/homework-limit');
+  const [rows] = await pool.query(
+    `SELECT h.id FROM homework h
+      WHERE h.purged = 0 AND h.due_date < DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
+    [LIMIT.PURGE_AFTER_DAYS]
+  );
+  let filesDeleted = 0;
+  let assignmentsPurged = 0;
+  for (const h of rows) {
+    const [files] = await pool.query(
+      'SELECT id, file_id FROM homework_file WHERE homework_id = ?', [Number(h.id)]
+    );
+    const ids = files.map(f => String(f.file_id || '')).filter(Boolean);
+    if (ids.length) {
+      try {
+        await cloud.deleteFile({ fileList: ids });
+        filesDeleted += ids.length;
+      } catch (e) { /* 文件可能已被手工删掉：照样清记录 */ }
+    }
+    await pool.query('DELETE FROM homework_file WHERE homework_id = ?', [Number(h.id)]);
+    await pool.query('UPDATE homework SET purged = 1 WHERE id = ?', [Number(h.id)]);
+    assignmentsPurged += 1;
+  }
+  return { scanned: rows.length, filesDeleted, assignmentsPurged };
+}
+
 /** 每小时：超时申请撤销 + 审核超时下架 */
 async function hourlyJobs(pool) {
   const now = week.nowStamp();
@@ -450,6 +486,8 @@ exports.main = async (event) => {
       result.daily = await markExpired(pool);
       // 假条图片回收站：结束后满 7 天物理清除（与过期扫描同一趟，幂等）
       result.leaveImagePurge = await purgeLeaveImages(pool);
+      // 作业附件回收站：截止满 7 天物理清除（只删文件实体，保留提交记录与状态）
+      result.homeworkPurge = await purgeHomeworkFiles(pool);
     } else if (trigger === 'remind') {
       // 每日 21:00：预告明天
       result.remind = await remindDuty(pool, 'tomorrow');

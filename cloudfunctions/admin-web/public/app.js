@@ -1401,6 +1401,7 @@
     timetable: '课程表', timetable_apply: '调课申请', classes: '班级',
     roster: '名册', notice: '通知', bind: '班级绑定', webview: '网页', doc: '文档',
     fee_open: '班费/团费', notice_open: '打开通知', notice_publish: '发布通知',
+    homework_open: '打开作业',
     class_open: '打开班级', roster_open: '打开名册', leave_open: '打开请假',
     about: '关于', switch_account: '切换账号'
   };

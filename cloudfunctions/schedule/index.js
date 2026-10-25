@@ -14,7 +14,8 @@ const { BizError, ok, fail } = require('./common/resp');
  * 2026-10-07 v2：轮转位置 = 独立游标（class.round_cursor_a/b），不再用 duty_count 推断。 */
 const {
   pickBySeq, buildState, loadDayBlocks, loadCursors, saveCursors, toSeqSet,
-  loadWeekCursors, saveWeekCursors, syncGlobalCursors, dropWeekCursorsFrom
+  loadWeekCursors, saveWeekCursors, syncGlobalCursors, dropWeekCursorsFrom,
+  bumpCursorForManual
 } = require('./common/schedule-core');
 /* 测试账号唯一真源（见 common/test-account.js）。铁律：所有人员列表一律不展示，
  * 唯一例外是「超管手动排班」三处（名册 / 手动加人 / 换人）—— 需求④：把测试账号
@@ -1247,7 +1248,11 @@ async function loadWeekDuties(pool, wk, shifts, classId) {
        JOIN course c ON c.id = s.course_id
        JOIN member m ON m.id = d.member_id
       WHERE d.class_id = ? AND d.week = ?
-      ORDER BY d.class_date, s.period, d.id`, [Number(classId) || 1, wk]
+      /* 🔴 打扫410（kind='CLEAN'）必须排在每个日期的**最后**：
+       *   用 (s.kind = 'CLEAN') 当排序权重（CLEAN=1，其余=0），把保洁课次恒压到当天末尾，
+       *   否则它与同节次（第4节）的微课B 仅靠 d.id（duty 行插入序，非确定性）定先后，
+       *   会偶发「第四节课排在打扫410前面」（用户 2026-10-25 实锤）。 */
+      ORDER BY d.class_date, (s.kind = 'CLEAN'), s.period, s.id, d.id`, [Number(classId) || 1, wk]
   );
   return rows.map((d) => {
     const slot = week.resolveSlot(d.session_id, d.day_of_week, d.period, wk, shifts);
@@ -1399,6 +1404,14 @@ const routes = {
           filled: members.length
         });
       });
+      // 🔴 每个日期内的课次按「打扫410(CLEAN)恒置底」重排：保洁课次权重 1 压到当天末尾，
+      //    否则它与同节次微课B 仅靠 session id 定先后，会偶发「第四节课排在打扫410前面」。
+      Object.keys(dayMap).forEach((date) => {
+        dayMap[date].sessions.sort((a, b) =>
+          ((a.kind === 'CLEAN') ? 1 : 0) - ((b.kind === 'CLEAN') ? 1 : 0)
+          || (Number(a.period) - Number(b.period)) || (a.sessionId - b.sessionId)
+        );
+      });
       const days = Object.keys(dayMap).sort().map(k => dayMap[k]);
 
       // 同日占用（含当天别节课的人）：手动添加/换人时的硬规则之一
@@ -1491,7 +1504,7 @@ const routes = {
       try {
         await conn.beginTransaction();
         const sessions = (await conn.query(
-          `SELECT s.id, s.week_rule, s.weeks, s.day_of_week, s.period, s.group_scope, s.duty_count
+          `SELECT s.id, s.week_rule, s.weeks, s.day_of_week, s.period, s.group_scope, s.duty_count, s.kind
              FROM session s WHERE s.class_id = ? ORDER BY s.day_of_week, s.period`, [classId]
         ))[0].filter(s => week.matchesWeeks(s.weeks, wk, s.week_rule));
         /*
@@ -1607,7 +1620,9 @@ const routes = {
         rotatePlan.sort((a, b) => (
           a.classDate < b.classDate ? -1
             : a.classDate > b.classDate ? 1
-              : (Number(a.slot.period) - Number(b.slot.period)) || (a.s.id - b.s.id)
+              /* 🔴 打扫410（CLEAN）恒排当天最后：权重 1 压到末尾，绝不插在任何课次前面 */
+              : ((a.s.kind === 'CLEAN') ? 1 : 0) - ((b.s.kind === 'CLEAN') ? 1 : 0)
+                || (Number(a.slot.period) - Number(b.slot.period)) || (a.s.id - b.s.id)
         ));
         for (const { s, slot, classDate } of rotatePlan) {
           /* 本课次名额 = 课次应排人数 − **已被手动排班占用的人数**。
@@ -2264,6 +2279,8 @@ const routes = {
       );
       // 手动加人也算「本轮已排」，避免后续自动生成时被重复安排
       await pool.query('UPDATE member SET duty_count = duty_count + 1, last_duty_at = ? WHERE id = ?', [classDate, memberId]);
+      // 2026-10-23：手动排班计入轮转游标，使紧接着的自动生成从「该同学之后」续排，不再重复
+      await bumpCursorForManual(pool, classId, memberId, wk);
       return {};
     }
   },

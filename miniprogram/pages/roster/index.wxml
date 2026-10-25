@@ -87,10 +87,14 @@
     <view wx:if="{{canLeave}}" class="mb-act mb-act-leave" bindtap="onLeaveOpen">请假<text wx:if="{{leaveStat && leaveStat.leave > 0}}" class="mb-leave-dot">{{leaveStat.leave}}</text></view>
   </view>
 
-  <!-- 筛选：全班 / 仅班委（纯展示层过滤，不影响搜索与详情） -->
+  <!-- 筛选：全班 / 仅班委 / A 组 / B 组（纯展示层过滤，不影响搜索与详情）
+       2026-10-24：新增 A/B 分组查看。四个作用域**互斥**（四选一），
+       统一走 onFilterScope 读 data-scope —— 沿用同一组 .mb-chip / .chip-motion 样式。 -->
   <view class="mb-filters">
-    <view class="mb-chip chip-motion {{!onlyCommittee ? 'on' : ''}}" bindtap="onFilterAll">全班 {{members.length}}</view>
-    <view class="mb-chip chip-motion {{onlyCommittee ? 'on' : ''}}" bindtap="onToggleCommittee">仅班委 {{committeeCount}}</view>
+    <view class="mb-chip chip-motion {{groupFilter === 'ALL' ? 'on' : ''}}" data-scope="ALL" bindtap="onFilterScope">全班 {{members.length}}</view>
+    <view class="mb-chip chip-motion {{groupFilter === 'COMMITTEE' ? 'on' : ''}}" data-scope="COMMITTEE" bindtap="onFilterScope">仅班委 {{committeeCount}}</view>
+    <view class="mb-chip chip-motion {{groupFilter === 'A' ? 'on' : ''}}" data-scope="A" bindtap="onFilterScope">A 组 {{groupACount}}</view>
+    <view class="mb-chip chip-motion {{groupFilter === 'B' ? 'on' : ''}}" data-scope="B" bindtap="onFilterScope">B 组 {{groupBCount}}</view>
   </view>
 
   <!-- 加载骨架（Req 3）：首屏名单异步拉取期间显示，替代原来「没有匹配的成员」的闪现 -->
@@ -129,7 +133,7 @@
   </view>
 
   <view wx:if="{{membersLoaded && !viewMembers.length}}" class="rb-empty">
-    <text>{{onlyCommittee ? '本班暂无班委' : '没有匹配的成员'}}</text>
+    <text>{{emptyText}}</text>
   </view>
 
   <view style="height:40rpx"></view>

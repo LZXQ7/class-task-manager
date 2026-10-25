@@ -11,7 +11,7 @@
 
 ## 【主线状态】 · 更新于 2026-10-18（**小程序 1.0.7.0 已就绪：移除失效提醒入口 + 「我的」头像可换 + 后台使用统计（v0.7.44）**。门禁 87/87 全绿、收尾体检 16/16 全过；前端埋点/统计页/头像重构均已完成；**云端发布步骤①②③已上线（2026-10-18）：建 `usage_event` 表 + 部署 `stat` + 重部署 `admin-web`（新增 `/api/usage` + 「使用统计」页）**；同日又迭代四轮后台修复（成员明细 1052 / 刷新恢复现场 / 刷新闪登录页 / 绑定页对齐+统计布局+「全部」按钮）均已部署验证；**⑤ 双仓库已提交并打 tag 推送（2026-10-18 12:4x）：私有 tag `v1.0.7.0` = `7edb067`，公开脱敏 `839de45`；**公开仓随后随头像修复 re-export 至 `9af2a4f`（2026-10-18 22:0x，脱敏 177 文件、自检 0 PII 命中）**——`publish-release.sh v1.0.7.0` 跑通（私有 HEAD 已含全部头像修复，故只把最新代码推公开仓；tag 仍停在 `7edb067`，未 bump）。**🔴 2026-10-18 晚修头像占位（两次回归，`c010544`/`0083c05` 已被 `ba4a464` 取代）**：1.0.7.0 初版把 `<avatar-tag>` 自定义组件放进 chooseAvatar 按钮内，真机上被挤出按钮右侧、按钮撑大、头像右移 87px（用户第一次报「头像占位太大」）；第一次修复（`c010544`）改成按钮内只放内置 `<image>` + 姓氏色块，用户复报「占位还是太大、头像要往左，不是只变小」——截图二次量化证实**空区是 125rpx 纯卡片底色**（无按钮底/描边），结论是 **button 只要参与布局就必然被撑宽，与里面放什么无关**；最终改为「`.avatar-slot` 定宽槽位 + 正常流头像 + **留空的 absolute button** 只当点击层」，按钮彻底脱离文档流。第三次微调（`ba4a464`）：头像放大至 **96rpx** 与姓名上端 / 学号下端对齐（信息区高 = 姓名 56 + 学号 6+34 = 96rpx，与 `.mn-user` 等高 ⇒ 自然对齐）。门禁 87/87、该门禁变异 6/6 全抓、Chrome harness 三场景 24 条断言全过。**✅ 本版已正式交付（2026-10-18 晚）**：微信端上传 1.0.7.0 前端 + 送审已由用户完成，且用户确认「1.0.7.0 审核通过了」；审核通过后已按铁律关闭审核体验后门（`scripts/disable-review-demo.sql` 在生产库执行：`class` id=3 `review_demo_on=0`/`review_demo_code=''`、`member` id=69 openid 已清 ⇒ `unbound=1`；前端无需重部署，入口由运行时读库 `reviewOn` 控制）。**1.0.7.0 / v0.7.44 收口完成。**
 
-**当前节点**：小程序主线已至 **对外 1.0.7.1**（内部 v0.7.45）。1.0.7.0 已审核通过、正式交付；1.0.7.1 在 1.0.7.0 基础上纯版本号推进+文档（值日页去切换、手动排版放开重复排班三入口均已随 1.0.7.0 前端上传/云函数部署落地），双轨已发（私有 tag `v1.0.7.1` @ `fbf99b1`、公开 @ `519dde2`）。代码改动与发布动作全部就位。
+**当前节点**：小程序主线已至 **对外 1.0.7.1**（内部 v0.7.45）。1.0.7.0 已审核通过、正式交付；1.0.7.1 在 1.0.7.0 基础上纯版本号推进+文档（值日页去切换、手动排版放开重复排班三入口均已随 1.0.7.0 前端上传/云函数部署落地），双轨已发（私有 tag `v1.0.7.1` @ `fbf99b1`、公开 @ `519dde2`）。代码改动与发布动作全部就位。**✅ 前端已由 miniprogram-ci 无头上传（2026-10-24，干净 tag 状态重传，项目备注=该版更新公告；上传机制与坑见【本session】· 2026-10-24）**。⚠️ 作业模块（homework）后端已上线但**前端未上传**（待单开 1.0.8 发版，见【本session】· 2026-10-24 未决段）。
 
 - **本版三块（工作区已完成，未提交/未推/未部署）**：
   ① **移除失效提醒入口**：删掉「添加值日到系统日历」「值日微信提醒」入口与首页「打开微信通知页」悬浮胶囊（WXML/WXSS/JS 全清，含 `legal.js` 的微信能力说明；后端 `remind_block`/`remind_reopen` 字段保留、门禁继续看守）。门禁 `check-clean-label.js` 已改为看守这两条字段而非 UI 文案。
@@ -29,6 +29,95 @@
 - ✅ **⑤ 双仓库已提交并推送（2026-10-18，走 `publish-release.sh` 一键双发）**：私有 `class-task-manager-template` 提交 `7edb067` 并打 tag **`v1.0.7.0`**（main + tag 均已推）；公开 `class-task-manager` 从私有 HEAD 导出 675 文件 → scrub 改 177 文件 → 自检 **0 命中原始 PII / 无 .xlsx** → 提交 `839de45` 已推（公开仓按惯例只提交不打 tag）。发版前收尾体检 `check_closeout.sh` **16/16 全过**（口径已 bump 至 1.0.7.0/v0.7.44）。⚠️ 同批修了一个**发版流程隐患**：`.gitignore` 的 `.env-*` 覆盖不到 `.env.local`，且一批本机 AI 工具目录（`.agents/`、`.codebuddy/`、`codebuddy-plugin/`、`.mcp.json`、`CODEBUDDY.md` 及乱名空文件 `1）——`）未忽略——`publish-release.sh` 第 1 步是 `git add -A`，会把这些吞进版本库；已全部补进 `.gitignore`（第 64-76 行）并验证只剩 7 个应提交新文件。
 - ✅ **工作区改动已全部提交（2026-10-18，`7edb067`）**：含 `cloudbaserc.json` 的 `envId` 由 `{{env.ENV_ID}}` 改为真实值 `<YOUR_ENV_ID>`（非机密、`deploy_all.sh` 已硬编码同款）；新增 `scripts/deploy-stat.js`、`scripts/check-require-paths.js`、`scripts/migrate-usage.sql`、`cloudfunctions/stat/`、`cloudfunctions/admin-web/lib/mod-usage.js`、`miniprogram/utils/track.js`、`outputs/v1.0.7.0-更新说明.md`；`deploy-admin-web.js` 改 `tcb deploy --only functions --yes`；prior 源码/文档。**HANDOFF 本次更新（双仓库已推状态）需再补一个提交推送**。
   - ⚠️ 1.0.6.9 的**前端此前从未上传**；本版 1.0.7.0 直接携带其全部前端改动（含班费跨班查看 v0.7.43）一并上传，不再单独发 1.0.6.9。
+
+---
+
+## 【本session】 · 2026-10-25（**一键排班轮转『重复开头』复发修复：loadWeekCursors 兜底顺序校正 + 门禁去假绿 + 双函数已部署**）
+
+- **现象（用户实锤）**：第7周 10/30 周五值日收尾 1号&55号；第8周 11/2 周一「按序号轮转排班」草稿第一条又从 1号&55号 开头 → 轮转游标未从上轮终点续推。用户原话「怎么一键排班又出问题了，每次修好又能出问题」。
+- **根因**：`cloudfunctions/common/schedule-core.js` 的 `loadWeekCursors` 无本周快照时，原逻辑**先调 `inferStartFromPrevWeek`**（返回 `duty` 表 `MAX(d.id)` 那行的序号 = 插入顺序最后一人，非轮转游标终点）；只要有任意上一周 duty 行，反推就非空，正确的「上周快照结束游标 / 全局游标兜底」被篡夺 → 新周起点错置 → 重复开头。这是之前 2026-10-23 修复没盖到的分支。
+- **修复**：无快照分支里把「读上一周快照结束游标」(`SELECT end_a,end_b FROM duty_week_cursor WHERE class_id=? AND week<? ORDER BY week DESC LIMIT 1`) 提到 `inferStartFromPrevWeek` **之前**。最终兜底顺序：**① 本周快照 → ② 上周快照结束游标 → ③ 上周 duty 反推 → ④ 全局游标 fallback**。② 与全局游标等价（generate 已正确写 end + syncGlobalCursors 对齐），且优先于会错置起点的反推。
+- **门禁去假绿（关键）**：`scripts/check-round-robin-continuity.js` 原 T5 集成测试**自己 mock 了一份 `loadWeekCursors`**，根本没测真实函数 → 门禁绿但线上仍翻车。已改 T5 直接调真实 `loadWeekCursors/saveWeekCursors/syncGlobalCursors` + 内存 `fakeConn` 模拟 `duty_week_cursor`，连跑 4 周验证 `第N+1周起点===第N周结束点`；新增 **T6** 锁死「上周快照结束游标优先于 MAX(id) 反推」。🔴 **铁律：轮转门禁绝不能再 mock `loadWeekCursors`，必须直接调真实函数**。
+- **验证**：`check-round-robin-continuity.js` 全过（T1-T4 + T6 + T5 真实函数连跑 4 周）；`check-schedule-generate-runtime.js` 全过；`run_all_gates.sh` → **96/96 全绿**。**变异自证**：把 if 顺序还原成旧版「反推优先」→ T6 翻红（返回 7/10，EXIT=1），确认门禁能抓回退；再还原回正确顺序 → 全绿。
+- **同步 + 部署（已上线）**：`node scripts/sync-common.js` 把修复同步到全 16 个函数目录；`tcb fn code update schedule --dir ./cloudfunctions/schedule -e <YOUR_ENV_ID>` 成功（Modification time 2026-10-25 12:07:39）；`tcb fn code update cron-weekly --dir ./cloudfunctions/cron-weekly -e <YOUR_ENV_ID>` 成功（顺带带 `purgeHomeworkFiles` 作业附件回收，对无 homework 行的生产库为 no-op，安全）。**本次仅云函数改动，前端无需重传**。
+- **未决/待办**：私有仓可提交（无 PII 风险）；公开仓双轨推送随 1.0.8 发版走 scrub。49 个 `scripts/_q_*.txt` 为查询 scratch 切勿提交；合法未跟踪文件（`scripts/wx-upload/` + 三个轮转门禁 `check-round-robin-continuity.js`/`check-infer-counts-manual.js`/`check-manual-bumps-cursor.js`）应纳入提交。
+
+---
+
+## 【本session】 · 2026-10-24（**miniprogram-ci 无头上传落地 + 上传记录两字段治理：项目备注=版本更新公告**）
+
+**背景**：用户要把小程序发版从「开发者工具手动上传」升级为 WorkBuddy 可驱动的自动上传。先试微信开发者工具 AI ToolKit 的 `wechatide` 桥接（Nightly + 本地 skill server），授权任务能登记但连不上 DevTools server（`connect_failed`/`AUTH_TASK_ERROR` 反复，已排除版本/进程/CLI），**整条路弃用**；改走微信官方 **miniprogram-ci**（v2.1.31，纯 Node 无头上传，无需开 IDE、无需点确认，可接 CI）。
+
+**落地（`scripts/wx-upload/`，隔离目录不动主工程；node_modules 已被 `.gitignore` 覆盖）**：
+- `upload.mjs`：`ci.upload()` 无头上传；setting es6/es7/minify/autoPrefixWXSS；AppID `<YOUR_APPID>`；密钥走环境变量 `WX_UPLOAD_KEY`（仓库外 `C:/Users/PC/.workbuddy/wx-keys/`，**不进 git**）；项目根默认仓库根，`WX_PROJECT_PATH` 可覆盖。
+- 🔴 **项目备注（desc）机制（2026-10-24 10:11 重传落地）**：desc 优先级 = ① 命令行显式 `--desc` / 第二位置参数 → ② **`outputs/v<版本>-更新说明.md` 的「版本 B 公告版」**（CHANGELOG 约定的发版必备产物，即超管「发送更新公告」整段粘贴的原文；解析跳过引用行/空行/【班级任务管理·更新公告】头行，trim 含全角空格 U+3000）→ ③ 回退「班级任务管理 <版本>」；超 500 字符截断。上传前打印来源与正文供人工核对。
+- 🔴 **开发者名不可改（微信官方答复，开放社区置顶帖）**：miniprogram-ci 上传记录的「开发者」固定显示 **ci机器人N**（`robot` 参数只能选序号 1-30，**前缀不可修改**）。要显示个人名只能用个人账号在 IDE 手动上传。**用户已决策：保持 CI 自动上传，接受「ci机器人1」。**
+- **干净状态重传技法（本次实踩）**：工作区有未提交改动时，`git worktree add _tmp_wxupload/wt-<tag> <tag>` 取标签纯净树 + `WX_PROJECT_PATH` 指过去上传，**完全不动主工作区**，传完 `git worktree remove`。已用于把 1.0.7.1 备注从「班级任务管理 1.0.7.1」修正为该版三行公告（10:11，`__FULL__ 667248`，同版本同 robot ⇒ 更新现有记录；**控制台显示效果待用户在 mp 后台版本管理页核对**）。
+- **环境坑（均已修，详见 `.workbuddy/memory/2026-10-24.md`）**：① Git Bash 缺 `APPDATA` → miniprogram-ci 依赖 npm-conf 在 `path.resolve(undefined)` 崩 ⇒ 脚本顶部补 APPDATA/HOME/USERPROFILE 兜底；② runner 里**禁设** `MSYS_NO_PATHCONV=1`（否则 node 收到 `/c/...` 拼成 `c:\c\...` MODULE_NOT_FOUND）；③ 上传密钥校验来源 IP ⇒ mp 后台「开发设置 → 小程序代码上传 → IP 白名单」须登记当前公网 IP（动态 IP 每次变，报 `-10008 invalid ip` 就加新 IP）；④ 上传产物是**开发版本**，设为体验版需 mp 后台点一下（同版本重传不影响既有体验版指定）。
+- 日常命令（用户自己终端，仓库根目录）：`node scripts/wx-upload/upload.mjs <版本号>`（备注自动取该版公告；要覆盖就加第二参数或 `--desc`）。
+
+**未决/下一步**：作业模块（homework）前端三页 + 首页「作业」入口 + 成员页 A/B 组筛选仍在工作区**未提交、未上传**（后端已上线，见 `.workbuddy/memory/2026-10-24.md` 作业模块段）——用户已确认本次只重传干净 1.0.7.1。作业前端建议按项目惯例**单开 1.0.8 正式发版**（先起草 `outputs/v1.0.8-更新说明.md` 版本B 公告给用户确认 → bump `APP_VERSION` → 提交双轨 → 上传），勿搭车混进 1.0.7.1（其公告无作业条目）。
+
+---
+
+## 【本session】 · 2026-10-23（**值日轮转断档 bug 修复：第7周从1号重排 → 接第6周续排 + 回归门禁 + 数据修复**）
+
+**输入**：用户报「第六周值日结束是 a组7号，b组10号。第七周一键生成却从1号开始」⇒ 修 bug，且「记录，以后不要再出问题」。
+
+**根因**：值日轮转内核 `common/schedule-core.js` 的 `loadWeekCursors` 在「某周无快照」时旧兜底直接退回全局游标 `(0,0)`，导致该周从 1 号重排。class 3 week 7 生成时其快照被写成 `(0,0)`（实际是旧兜底落库）⇒ 第7周从 seq 1 起排、断档；全局游标还被错写成 47/48。
+
+**修复（代码）**：
+- `common/schedule-core.js` 新增 `inferStartFromPrevWeek(conn, classId, wk)`：取 `week<wk` 中 `MAX(week)` 那周同组 AUTO 行 `MAX(d.id)` 对应学号末两位序号作为该组**结束**游标（排除 CLEAN）。
+- `loadWeekCursors` 兜底链改为 **快照 → 上周实际排班反推 → 全局游标**，绝不再「从 1 号重排」。
+- `scripts/sync-common.js` 已把含修复的 `schedule-core.js` 同步到 16 个函数目录。
+
+**修复（数据 · class 3 week 7）**：删 `duty_week_cursor` 中 class3/week7 的 `(0,0)` 快照（AUTO 行先留作安全网）→ 经 `cron-weekly` 临时 repair 分支定点 `generateWeek(pool,7,3)` 重算 → 起点由 1 改为接 week6 结束（A=3/B=10），第7周首排实测 A=5/B=12（续排，非 1），全局游标 `class.round_cursor_*` 由 **47/48 更正为 55/54**；快照重写为 `start 3/10 → end 55/54`。CLEAN 12 行含在 48 AUTO 内随重生（无丢失）。
+
+**回归门禁（防复发）**：
+- 新增 `scripts/check-round-robin-continuity.js`：T1 无快照+上周实际排班⇒反推上周结束游标；T2 结果绝不为 {0,0}；T3 无历史⇒退回 fallback；T4 有快照⇒不反推；T5 跨周连续性集成（第 N+1 周起点==第 N 周结束、绝不从 1 号）。**全部通过**。
+- `scripts/check-cron-triggers.js`：**全过**（含 3/3 变异自证），确认 cron-weekly 5 触发器部署后仍在。
+
+**部署**：`cron-weekly`、`schedule` 已重部署（runtime Nodejs18.15 / VPC / 内存256 / 超时120&60 / 环境变量 / 触发器 均保留）；cron-weekly 的临时 repair 分支已用完即删并重新部署。
+
+**用户复核「还是不对」→ 实测证明衔接已正确（本 continuation，2026-10-23 晚）**：
+- 用户据截图（第七周 10/26 周一：5王佳瑄/7示例成员07/9示例成员09/11示例成员11/12示例成员12…）报「第六周最后是5号和7号，第七周a组应从9/11起」。
+- 实测生产库（class 3）：week6(10/19-10/23) **末位 A=3(id2846)/B=10(id2850)**；week7(10/26-10/30) **起 A=5(id3706)/B=12(id3710)**。→ 6→7 衔接 **3→5(+2)、10→12(+2)**，无断档、无重复。跨周链 5→6→7 两组全绿。
+- 结论：用户把「第七周开头 5/7」误当成「第六周结尾」；5/7 正是接第六周 3/10 的正确续排。**若按用户要求让第七周改从 9/11 起，反而会跳过 5/7 制造断档**——故未改数据。
+- 收尾：cron-weekly/index.js 残留 repair 分支已彻底清除 → `node --check` 绿 → 重部署；`tcb fn detail` 复核 runtime18.15/VPC/5触发器(env全保留)/源码已无 repair。两个门禁（check-round-robin-continuity T1-T5、check-cron-triggers）均全过。
+- 沟通建议：向用户展示「第六周末位 3/10 → 第七周起 5/12」的衔接表，并说明其截图里的 5/7 是第七周开头而非第六周结尾。
+
+**🔴 class3 轮转数据被整体清零事故 + 恢复（本 continuation 后续，2026-10-23 深夜）**：
+- **现象**：两次生产库查询之间，class3 轮转状态被整体清零 —— week7 AUTO 行 48→**0**；`duty_week_cursor` 中 class3 全部快照→**0 行**；`class.round_cursor_a/b`→**0/0**（原 55/54）。
+- **归因**：`check-round-robin-continuity.js` 用 mockConn 完全不连生产库，排除；`tcb fn log cron-weekly` = "No invocation logs"，且 `tcb fn invoke cron-weekly -d '{"TriggerName":"weekly"}'` 回显 class3 `"skipped":true,"reason":"cron disabled"`（cron 因 class3 禁用未参与）→ 清零来自**手动「一键生成」**（`schedule.generate`：读登录态 classId、无视 cron_enabled），疑似某次手动生成时游标已坏(0/0)，`generateWeek` 先 `DELETE` 48 行 AUTO 再重生 0 行、写回 0/0。
+- **恢复**：复用 cron-weekly 的 repair 分支（`if(event&&event.repair){generateWeek(pool,wk,cid)}`，无登录态要求）→ `node --check` 绿 → 部署 → `tcb fn invoke cron-weekly -d '{"TriggerName":"weekly","repair":true,"classId":3,"week":7}'` → `created:48, cursor:"3/10 → 55/54"`。
+- **复核**：week7 AUTO 首排 = a5/b12（接 week6 末位 a3/b10，+2 连续）；`duty_week_cursor`(class3,w7)= start 3/10 end 55/54；`class.round_cursor_a/b`=55/54；week7 AUTO 计数=48。门禁 check-round-robin-continuity(T1-T5) 全过。
+- **收尾**：移 repair 分支 → `node --check` 绿 → 重部署干净版（fn detail 复核 runtime18.15/VPC/5触发器/env全保留/源码 `grep event.repair` = 无）。
+- **用户二次指控「5/7 第六周结尾和第七周开头重复」澄清**：截图所见「第六周结尾的 5/7」= **MANUAL(Pending)** 行（id 2853/2854，session 28，2026-10-23，非 AUTO 轮转）；当日 AUTO 为 55/3/4/6/8/10（a 组末位 55/03，b 组 04/06/08/10）。第七周开头(10/26) AUTO a 组 = 05/07/09/11/13，是接 week6 末位 a=03 的正确续排（03→05 +2），**非重复**。AUTO 序列跨周无重叠：W5含5/7 → W6 A 末位 55/03(不含5/7) → W7 A 起5/7(接3)。用户把手动 Pending 项误认为系统轮转项。
+
+**🔧 用户选定「手动计入游标」→ 让手动排班推进 round_cursor（2026-10-23 深夜，接续上条）**：
+- **决策**：用户确认「第六周手动 5/7 应计入游标 ⇒ 第七周从 9/11 起」。
+- **根因**：`schedule/addManual` 只 `duty_count+1`（v1 旧标记，v2 退化为纯统计），从不碰 `round_cursor_a/b` ⇒ 手动加的人被紧接着的自动生成再排一次（5/7 在 W7 重排）。`reassign`/换人 是「原地替换槽位里的人、槽位 seq 不变」⇒ 正确不改动游标。
+- **代码**：`common/schedule-core.js` 新增 `bumpCursorForManual`（导出）；`sync-common` 同步 15 函数；`schedule/addManual` 插入后调用。仅推进**该周快照 end**（全局游标由下次 generate 的 `syncGlobalCursors` 对齐）；仅当手动 seq 在该组轮转顺序「正向不落后于」当前游标才推进（`isAheadInRotation`：rotPos A:1,3..55→0..27 / B:2,4..56→0..27；dp=(rotPos(seq)-rotPos(cur))%28，dp=0 保持、0<dp≤14 推进、dp>14 不推进——回绕更近=已排过的人被复用，不跳中间 14+ 人）。
+- **数据修复**：`UPDATE duty_week_cursor SET start_a=7 WHERE class_id=3 AND week=7`（计入手动 5/7）→ cron-weekly repair 重算 `created:48, cursor:"7/10 → 1/56"`。
+- **复核（生产库）**：W7 10/26 首排 = a 09(示例成员09)/11(示例成员11)/13(示例成员13)/15(示例成员15)、b 12(示例成员12)/14(示例成员14)/16(示例成员16)/18(示例成员18) —— **a 组确从 9/11 起**；5/7 在 W7 AUTO 计数=**0**（彻底消失，不再重复）。
+- **门禁**：新增 `scripts/check-manual-bumps-cursor.js`（6 项全过）；R1 round-robin、R2 cron-triggers 均全过。
+- **部署**：`schedule` + `cron-weekly` 重部署（runtime18.15/VPC/内存256/环境变量/5触发器全保留）；repair 分支用完即删。
+
+**🔴 复发根因修复：清空值日表→重生成 仍把手动 5/7 忘掉（本 continuation，2026-10-24 凌晨）**：
+- **复发现象**：上条「手动计入游标」只改了 week7 快照的 `start_a=7`，**极脆**——一旦「清空值日表」(`clear`→`dropWeekCursorsFrom` 删该周及之后快照) 再「一键生成」，`loadWeekCursors` 无快照→走 `inferStartFromPrevWeek`，而该函数仍只查 `d.source='AUTO'` 且排除 CLEAN ⇒ 把 week6 手动 5/7 完全忽略 ⇒ 反推为 3/10 ⇒ 重排 5/7。用户截图实锤 week7 10/26 又出现 5示例成员05/7示例成员07(AUTO/PENDING)。
+- **根因定位（生产库复核）**：week6 手动 5/7 = `source=MANUAL, kind=CLEAN`（id 2853/2854，周五 10/23 打扫410），是 `inferStartFromPrevWeek` 两个过滤条件（`source='AUTO'` + 排除 CLEAN）共同排除的对象。
+- **代码修复**（`common/schedule-core.js` `inferStartFromPrevWeek`）：WHERE 由 `d.source='AUTO' AND (CLEAN 排除)` 改为 `(d.source='AUTO' AND CLEAN 排除) OR d.source='MANUAL'`（MANUAL 一律计入，含手动保洁），与 `bumpCursorForManual` 口径一致；仍用 `MAX(d.id)` 取每组「最后落库」行=轮转终点（手动行后插、id 更大，正好吃到手动续排的人）。轮转环周内回绕 ⇒ 必须用 `MAX(id)` 而非 `MAX(seq)`（seq 55→下档是 1，非 57）。
+- **数据修复（class3 week7）**：先 `DELETE duty_week_cursor WHERE class_id=3 AND week>=7`（删掉 `start_a=3` 的错误陈旧快照，让反推链生效）→ `cron-weekly` 临时 repair 分支 `generateWeek(pool,7,3)` 重算 → `created:48, cursor:"7/10 → 1/56"`，`start_a` 回到 7。
+- **复核（生产库）**：W7 10/26 首排 = a 09/11/13/15、b 12/14/16/18 —— **a 组确从 9/11 起**；5/7 在 W7 AUTO 计数=**0**（彻底消失）；week7 快照 `start_a=7`。
+- **门禁**：新增 `scripts/check-infer-counts-manual.js`（内存数据集模拟真实 SQL 过滤+MAX(id) 分组，断言 A=7/B=10；若有人把 WHERE 改回 AUTO-only 会自动翻红）；R1 round-robin、R2 cron-triggers、R3 manual-bumps-cursor 均全过。
+- **部署**：`schedule` + `cron-weekly` 重部署（runtime18.15/VPC/内存256/环境变量/5触发器全保留）；repair 分支用完即删并重新部署干净版。
+
+**未决/待办**：
+1. **作业提交功能（新建）** —— ✅ **已上线（2026-10-24）**：三表 DDL 已跑、`homework` 云函数已部署、`cron-weekly` 已重部署（挂 `purgeHomeworkFiles`），门禁/invoke 验证全绿；**前端待用户上传**（详见 `.workbuddy/memory/2026-10-24.md` 作业模块 P7 段）。
+   - 定档：混合模式（图片 / 语音 → 云存储直传；**视频 → 第三方外链**）+ 视频硬上限 **≤30 秒 / ≤10MB**。
+   - 容量实测、可复用基建 → 见 `.workbuddy/memory/2026-10-24.md`。
+2. 值日轮转：无遗留（清空→重生成 路径已封堵：`inferStartFromPrevWeek` 计入 MANUAL；新增 `scripts/check-infer-counts-manual.js` 门禁守住，杜绝「手动项被遗忘→下周重排」复发）。
+3. ⚠️ **环境到期**：`<YOUR_ENV_ID>`（个人版）到期 **2026-11-24 23:59:59**，需确认续费。
 
 ---
 

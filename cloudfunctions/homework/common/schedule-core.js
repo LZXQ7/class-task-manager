@@ -163,15 +163,32 @@ async function inferStartFromPrevWeek(conn, classId, wk) {
  * @returns {{A:number, B:number, hasSnapshot:boolean, inferred?:boolean}}
  */
 async function loadWeekCursors(conn, classId, wk, fallback) {
+  const cid = Number(classId) || 1;
+  const w = Number(wk) || 0;
+  // ① 本周已有快照 → 幂等起点（重复生成同一周永远从同一个起点开始）
   const [rows] = await conn.query(
     'SELECT start_a, start_b FROM duty_week_cursor WHERE class_id = ? AND week = ?',
-    [Number(classId) || 1, Number(wk) || 0]
+    [cid, w]
   );
   if (rows.length) {
     return { A: Number(rows[0].start_a) || 0, B: Number(rows[0].start_b) || 0, hasSnapshot: true };
   }
-  // 无快照（v2 上线前的周 / 被清空后重排）：从「上一周实际落库排班」反推起点，
-  // 保证「接着上周排」而不是「从 1 号重排」。仍取不到（全无历史）才退回全局游标。
+  // ② 无快照（首次生成该周）：优先取「上一周快照的结束游标」。
+  //    generate 已正确写入 end_a/end_b，syncGlobalCursors 也已把全局游标对齐到
+  //    「最大周的结束游标」，二者等价，都是对本链「接着上周排」最准确的定义。
+  //    🔴 这一句必须排在 inferStartFromPrevWeek 之前：旧版把反推（MAX(d.id) 那行的序号）
+  //    放在最前，导致只要存在任意上一周 duty 行，反推就非空、正确的全局游标兜底被篡夺，
+  //    新周起点被错置成「插入顺序最后的人的序号」→ 表现为「下周重复开头 / 又从 1 号附近排」
+  //    （2026-10-25 实锤：第 8 周按序号轮转又从第 7 周最后的 1&55 开头）。
+  const [prev] = await conn.query(
+    'SELECT end_a, end_b FROM duty_week_cursor WHERE class_id = ? AND week < ? ORDER BY week DESC LIMIT 1',
+    [cid, w]
+  );
+  if (prev.length) {
+    return { A: Number(prev[0].end_a) || 0, B: Number(prev[0].end_b) || 0, hasSnapshot: false };
+  }
+  // ③ 仍取不到（v2 上线前的周：既无快照、全局游标又被清零成 0）→ 从上一周实际落库排班
+  //    反推起点，至少「接着上周排」而非「从 1 号重排」；仍取不到（全无历史）才退回全局游标。
   const inferred = await inferStartFromPrevWeek(conn, classId, wk);
   if (inferred) return inferred;
   return { A: Number(fallback.A) || 0, B: Number(fallback.B) || 0, hasSnapshot: false };
