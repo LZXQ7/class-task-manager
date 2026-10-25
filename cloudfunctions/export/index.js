@@ -39,7 +39,9 @@ const routes = {
            JOIN course c ON c.id = s.course_id
            JOIN member m ON m.id = d.member_id
           WHERE d.class_id = ? AND d.week = ?
-          ORDER BY d.class_date, (s.kind = 'CLEAN'), s.period`, [classId, wk]
+          /* 先节次，同节次内打扫410(CLEAN)压在课次后面：第4节课 → 打扫410 → 第5节
+           * （用户 2026-10-25 纠正，保洁节次就是第4节，不是每天最后） */
+          ORDER BY d.class_date, s.period, (s.kind = 'CLEAN')`, [classId, wk]
       );
       // 临时调课后的真实节次：duty 表不含节次，得靠 resolveSlot 解析才准
       const shifts = await week.loadSessionShifts(pool, classId);
@@ -50,10 +52,10 @@ const routes = {
       rows.sort((a, b) => {
         const da = String(a.class_date).slice(0, 10);
         const db = String(b.class_date).slice(0, 10);
-        // 保洁课次（打扫410）恒排每天最后：与 generate / duty 页同口径
+        // 先按节次，同节次内保洁课次（打扫410）压在课次后面：与 generate / duty 页同口径
         return (da < db ? -1 : da > db ? 1
-          : ((a.sessionKind === 'CLEAN') ? 1 : 0) - ((b.sessionKind === 'CLEAN') ? 1 : 0)
-            || (a.period - b.period));
+          : (a.period - b.period)
+            || ((a.sessionKind === 'CLEAN') ? 1 : 0) - ((b.sessionKind === 'CLEAN') ? 1 : 0));
       });
       const head = ['日期', '星期', '节次', '时间', '课程', '教室', '分组课', '姓名', '所属组', '状态'];
       const lines = [head.join(',')];

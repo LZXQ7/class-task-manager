@@ -1248,11 +1248,14 @@ async function loadWeekDuties(pool, wk, shifts, classId) {
        JOIN course c ON c.id = s.course_id
        JOIN member m ON m.id = d.member_id
       WHERE d.class_id = ? AND d.week = ?
-      /* 🔴 打扫410（kind='CLEAN'）必须排在每个日期的**最后**：
-       *   用 (s.kind = 'CLEAN') 当排序权重（CLEAN=1，其余=0），把保洁课次恒压到当天末尾，
-       *   否则它与同节次（第4节）的微课B 仅靠 d.id（duty 行插入序，非确定性）定先后，
-       *   会偶发「第四节课排在打扫410前面」（用户 2026-10-25 实锤）。 */
-      ORDER BY d.class_date, (s.kind = 'CLEAN'), s.period, s.id, d.id`, [Number(classId) || 1, wk]
+      /* 🔴 打扫410（kind='CLEAN'）按**节次**定位（它就是第4节），只在「同节次内」压到课次后面：
+       *   ORDER BY class_date, period, (kind='CLEAN') —— 节次相同时课先行、保洁后，
+       *   顺序即 第4节课 → 打扫410 → 第5节课（用户 2026-10-25 纠正：
+       *   「打扫410不是每天最后，第一/二/三/四节、打扫410、第五节」）。
+       * ⚠️ 绝不能把 (kind='CLEAN') 提到 period 前面：那会把保洁压到当天末尾（第5节之后），
+       *    已实证错误（曾按此实现并被用户打回）。同节次内仅靠 d.id（插入序）定先后，
+       *    会偶发「保洁跑到课次前面」。 */
+      ORDER BY d.class_date, s.period, (s.kind = 'CLEAN'), s.id, d.id`, [Number(classId) || 1, wk]
   );
   return rows.map((d) => {
     const slot = week.resolveSlot(d.session_id, d.day_of_week, d.period, wk, shifts);
@@ -1404,12 +1407,15 @@ const routes = {
           filled: members.length
         });
       });
-      // 🔴 每个日期内的课次按「打扫410(CLEAN)恒置底」重排：保洁课次权重 1 压到当天末尾，
-      //    否则它与同节次微课B 仅靠 session id 定先后，会偶发「第四节课排在打扫410前面」。
+      // 🔴 每个日期内的课次按「节次」排序，同节次内打扫410(CLEAN)压在课次后面：
+      //    顺序 = 第4节课 → 打扫410 → 第5节（用户 2026-10-25 纠正：保洁不是每天最后，
+      //    其节次本就是第4节）。节次是主键，CLEAN 只是同节次内的 tie-breaker，
+      //    绝不能提到 period 前面（那会把它压到第5节之后）。
       Object.keys(dayMap).forEach((date) => {
         dayMap[date].sessions.sort((a, b) =>
-          ((a.kind === 'CLEAN') ? 1 : 0) - ((b.kind === 'CLEAN') ? 1 : 0)
-          || (Number(a.period) - Number(b.period)) || (a.sessionId - b.sessionId)
+          (Number(a.period) - Number(b.period))
+          || ((a.kind === 'CLEAN') ? 1 : 0) - ((b.kind === 'CLEAN') ? 1 : 0)
+          || (a.sessionId - b.sessionId)
         );
       });
       const days = Object.keys(dayMap).sort().map(k => dayMap[k]);
@@ -1620,9 +1626,13 @@ const routes = {
         rotatePlan.sort((a, b) => (
           a.classDate < b.classDate ? -1
             : a.classDate > b.classDate ? 1
-              /* 🔴 打扫410（CLEAN）恒排当天最后：权重 1 压到末尾，绝不插在任何课次前面 */
-              : ((a.s.kind === 'CLEAN') ? 1 : 0) - ((b.s.kind === 'CLEAN') ? 1 : 0)
-                || (Number(a.slot.period) - Number(b.slot.period)) || (a.s.id - b.s.id)
+              /* 🔴 先按节次；同节次内打扫410（CLEAN）压在课次后面，即
+               *   第4节课 → 打扫410 → 第5节（用户 2026-10-25 纠正：保洁节次就是第4节，
+               *   「不是每天最后」）。⚠️ CLEAN 只是同节次 tie-breaker，绝不能提到 period 前。
+               *   轮转取人顺序必须与展示顺序同口径，否则人对了、位置仍错。 */
+              : (Number(a.slot.period) - Number(b.slot.period))
+                || ((a.s.kind === 'CLEAN') ? 1 : 0) - ((b.s.kind === 'CLEAN') ? 1 : 0)
+                || (a.s.id - b.s.id)
         ));
         for (const { s, slot, classDate } of rotatePlan) {
           /* 本课次名额 = 课次应排人数 − **已被手动排班占用的人数**。

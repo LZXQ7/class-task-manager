@@ -280,6 +280,7 @@ const ADJUST_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/ad
 const SCHED_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/schedule/index.js'), 'utf8');
 const DUTY_FN_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/duty/index.js'), 'utf8');
 const EXPORT_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/export/index.js'), 'utf8');
+const CRON_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/cron-weekly/index.js'), 'utf8');
 
 function chk2(label, cond) {
   if (!cond) pass = false;
@@ -336,59 +337,99 @@ console.log('\n===== §C3 全体课不得饿死某组（{A:1,B:56} 等价起点�
   chk('§C3 对称：A 卡死时全体课仍取到 A 组', g2.has('A') && r2.chosen.length === 2);
 }
 
-/* ============ §C4 打扫410 必须恒排当天最后（2026-10-25 修复回归锁）============
- * 修复落在三处排序：schedule.generate 的 rotatePlan.sort、schedule.manualBoard 的
- * 课次排序、duty/index.js 前端 merged.sort。本判据**直接抽取真源码里的比较函数体**
- * eval 运行（不是抄副本），断言 CLEAN 课次无论 period 多小都排到最后；并 grep 另两处
- * 排序含 CLEAN 置底权重，确保三处都还在。
- * SCHED_SRC / DUTY_SRC 已在上方加载。 */
-console.log('\n===== §C4 打扫410 恒排当天最后（抽取真源码比较函数验证）=====');
+/* ============ §C4 打扫410 按节次排：同节次内「课先行、保洁后」（2026-10-25 用户纠正回归锁）============
+ * 正确顺序（用户原话）：「第一节、第二节、第三节、第四节、打扫410、第五节」——
+ * 保洁课次的节次本就是第4节：先按 period，同节次内 CLEAN 只是 tie-breaker（课先行、保洁后），
+ * 于是 第4节课 → 打扫410 → 第5节。
+ * 🔴 绝不是「恒排每天最后」：曾按那个实现（CLEAN 权重提到 period 之前），有第5节课的日子
+ *    保洁被压到第5节之后，被用户 2026-10-25 打回。本判据用生产实测课次结构锁死正确口径。
+ * 覆盖 7 处：schedule.rotatePlan（generate 取人序，直接 eval 真源码比较函数）/
+ *   schedule.manualBoard 课次排序 / schedule.loadWeekDuties SQL / duty 云函数 SQL /
+ *   export SQL + JS rows.sort / cron-weekly rotatePlan（每周自动生成）/ 前端不再重排。
+ * SCHED_SRC / DUTY_SRC / DUTY_FN_SRC / EXPORT_SRC / CRON_SRC 已在上方加载。 */
+console.log('\n===== §C4 打扫410 按节次排（同节次内课先行、保洁后）=====');
 {
-  // —— generate 的 rotatePlan.sort（主路径，含 CLEAN 置底权重）——
-  // ⚠️ 文件里有两处 rotatePlan.sort：line 1031（buildCleaningPlan，无 CLEAN 权重）
-  //   与 line 1620（generate 主路径，含 CLEAN 权重）。必须精确挑「含 CLEAN」的那个，
-  //   否则会误测到旧的无权重比较函数（已踩过：首轮匹配到 1031 导致 period=1 用例误红）。
+  // —— generate 的 rotatePlan.sort（主路径）——
+  // ⚠️ 文件里有两处 rotatePlan.sort：line 1031（buildCleaningPlan，仅保洁课次、无课次混排，
+  //   (period,id) 已完备）与 generate 主路径（含 CLEAN 权重）。必须精确挑「含 CLEAN」的那个，
+  //   否则会误测到 buildCleaningPlan 的比较函数（曾踩过：首轮匹配到 1031 导致 period=1 用例误红）。
   const allRot = [...SCHED_SRC.matchAll(/rotatePlan\.sort\(\(a, b\) => \(([\s\S]*?)\)\);/g)];
   let rotM = null;
   for (const mm of allRot) { if (mm[1].includes('CLEAN')) { rotM = mm; break; } }
   let rotCmp = null;
   try { if (rotM) rotCmp = new Function('a', 'b', 'return (' + rotM[1] + ');'); } catch (e) { rotCmp = null; }
-  chk('§C4 能从 schedule 源码抽出「含 CLEAN 权重」的 rotatePlan 比较函数', !!rotCmp);
+  chk('§C4 能从 schedule 源码抽出含 CLEAN 权重的 rotatePlan 比较函数', !!rotCmp);
   if (rotCmp) {
-    const day = [
+    // 周一 11/02 实测课次：326=p1全体课 / 330=p2 A组课 / 334=p3全体课 / 357=p4 B组课 / 26=p4 打扫410
+    const mon = [
       { classDate: '2026-11-02', s: { kind: 'CLEAN', id: 26 }, slot: { period: 4 } },
-      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 1 }, slot: { period: 1 } },
-      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 2 }, slot: { period: 4 } }
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 326 }, slot: { period: 1 } },
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 330 }, slot: { period: 2 } },
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 334 }, slot: { period: 3 } },
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 357 }, slot: { period: 4 } }
     ];
-    day.sort(rotCmp);
-    chk('§C4 打扫410 恒排当天最后（即便 period 与其他课次相同）', day[2].s.kind === 'CLEAN');
-    const day2 = [
-      { classDate: '2026-11-02', s: { kind: 'CLEAN', id: 26 }, slot: { period: 1 } },
-      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 2 }, slot: { period: 4 } }
+    mon.sort(rotCmp);
+    chk('§C4 周一：第4节课(357) 排在 打扫410(26) 前面（保洁不再因 session id 小插到课前）',
+      mon[3].s.id === 357 && mon[4].s.kind === 'CLEAN');
+    // 周二 11/03 实测课次：327=p1 A组 / 332=p2 A组 / 30=p4 打扫410 / 340=p5 A组课
+    const tue = [
+      { classDate: '2026-11-03', s: { kind: 'COURSE', id: 340 }, slot: { period: 5 } },
+      { classDate: '2026-11-03', s: { kind: 'CLEAN', id: 30 }, slot: { period: 4 } },
+      { classDate: '2026-11-03', s: { kind: 'COURSE', id: 327 }, slot: { period: 1 } },
+      { classDate: '2026-11-03', s: { kind: 'COURSE', id: 332 }, slot: { period: 2 } }
     ];
-    day2.sort(rotCmp);
-    chk('§C4 打扫410 即便 period=1（更小）也排最后', day2[1].s.kind === 'CLEAN');
+    tue.sort(rotCmp);
+    chk('§C4 周二：打扫410(p4) 排在第5节课(p5) 前面（🔴 用户纠正：不是每天最后）',
+      tue[2].s.kind === 'CLEAN' && tue[3].s.id === 340);
+    // 跨日期：日期权重高于节次与保洁（调休/同日混排都不能破坏日期优先）
+    const cross = [
+      { classDate: '2026-11-03', s: { kind: 'CLEAN', id: 30 }, slot: { period: 1 } },
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 326 }, slot: { period: 5 } }
+    ];
+    cross.sort(rotCmp);
+    chk('§C4 跨日期仍按日期优先（11-02 的任何课次先于 11-03 的保洁）',
+      cross[0].classDate === '2026-11-02');
   }
-  // —— 另两处排序含 CLEAN 置底权重（grep 存在性）——
-  chk('§C4 manualBoard 课次排序含 CLEAN 置底权重', /a\.kind === 'CLEAN'/.test(SCHED_SRC));
-  chk('§C4 duty/index.js merged 排序含 isClean 置底权重',
-    /merged\.sort\(\(a, b\) => \(\(a\.isClean \? 1 : 0\) - \(b\.isClean \? 1 : 0\)\)\);/.test(DUTY_SRC));
-  // —— 2026-10-25 补：后端读取/导出链路的 CLEAN 置底（值日页数据源 + 导出 CSV）——
-  chk('§C4 duty 云函数（我的值日）ORDER BY 含 CLEAN 置底权重',
-    /ORDER BY d\.class_date, \(s\.kind = 'CLEAN'\), s\.period/.test(DUTY_FN_SRC));
-  chk('§C4 export 云函数 SQL ORDER BY 含 CLEAN 置底权重',
-    /ORDER BY d\.class_date, \(s\.kind = 'CLEAN'\), s\.period/.test(EXPORT_SRC));
-  chk('§C4 export 云函数 SELECT 取了 s.kind（JS 排序判据用）',
-    /s\.kind AS sessionKind/.test(EXPORT_SRC));
-  chk('§C4 export 云函数 JS rows.sort 含 CLEAN 置底权重',
-    /a\.sessionKind === 'CLEAN'\) \? 1 : 0\) - \(\(b\.sessionKind === 'CLEAN'/.test(EXPORT_SRC));
-  // 自证：把 export 的 JS 排序权重删掉，本节必须翻红
+  // —— 另几处排序：CLEAN 权重必须位于 period **之后**（只是同节次 tie-breaker）——
+  chk('§C4 manualBoard 课次排序：period 在前、CLEAN 权重在后',
+    /sessions\.sort\(\(a, b\) =>\s*\(Number\(a\.period\) - Number\(b\.period\)\)\s*\|\|\s*\(\(a\.kind === 'CLEAN'\)/.test(SCHED_SRC));
+  chk('§C4 前端不再按 isClean 置底（merged.sort 已移除，展示顺序以后端为准）',
+    !/merged\.sort/.test(DUTY_SRC));
+  chk('§C4 duty 云函数 SQL：period 在前、(s.kind=\'CLEAN\') 在后',
+    /ORDER BY d\.class_date, s\.period, \(s\.kind = 'CLEAN'\)/.test(DUTY_FN_SRC));
+  chk('§C4 export 云函数 SQL：period 在前、(s.kind=\'CLEAN\') 在后',
+    /ORDER BY d\.class_date, s\.period, \(s\.kind = 'CLEAN'\)/.test(EXPORT_SRC));
+  chk('§C4 export 云函数 JS rows.sort：period 在前、CLEAN 权重在后',
+    /: \(a\.period - b\.period\)\s*\|\|\s*\(\(a\.sessionKind === 'CLEAN'\)/.test(EXPORT_SRC));
+  chk('§C4 cron-weekly rotatePlan：period 在前、CLEAN 权重在后（每周自动生成同口径）',
+    /: \(Number\(a\.slot\.period\) - Number\(b\.slot\.period\)\)\s*\|\|\s*\(\(a\.s\.kind === 'CLEAN'\)/.test(CRON_SRC));
+  chk('§C4 cron-weekly SELECT 取了 s.kind（排序判据用）',
+    /s\.duty_count, s\.kind\s*\n\s*FROM session s WHERE s\.class_id/.test(CRON_SRC));
+  // —— 自证（变异必须翻红，证明判据能分辨对错）——
   {
-    const broken = EXPORT_SRC.replace(
-      /\(\(a\.sessionKind === 'CLEAN'\) \? 1 : 0\) - \(\(b\.sessionKind === 'CLEAN'\) \? 1 : 0\)\s*\|\|/, '');
     const chk2 = (label, cond) => { if (!cond) { pass = false; console.log('    ✗ ' + label); } };
-    chk2('自证：删 export JS 置底权重后判据能抓到', !/a\.sessionKind === 'CLEAN'\) \? 1 : 0\) - \(\(b\.sessionKind === 'CLEAN'/.test(broken));
-    console.log('    ✓ 自证：删 export JS 置底权重 → 判据翻红（判据有效）');
+    // 变异1：「恒置底」错误实现（CLEAN 权重提到 period 之前）→ 周二用例里保洁被压到第5节课之后
+    const wrongCmp = new Function('a', 'b', 'return ('
+      + '((a.s.kind === \'CLEAN\') ? 1 : 0) - ((b.s.kind === \'CLEAN\') ? 1 : 0)'
+      + ' || (Number(a.slot.period) - Number(b.slot.period)) || (a.s.id - b.s.id));');
+    const tueW = [
+      { classDate: '2026-11-03', s: { kind: 'COURSE', id: 340 }, slot: { period: 5 } },
+      { classDate: '2026-11-03', s: { kind: 'CLEAN', id: 30 }, slot: { period: 4 } }
+    ];
+    tueW.sort(wrongCmp);
+    chk2('自证：错误实现（CLEAN 提前）会把打扫410 压到第5节课之后 → 周二判据可分辨',
+      tueW[0].s.kind !== 'CLEAN');
+    // 变异2：完全无 CLEAN 权重（旧版按 session id）→ 周一用例里保洁(id 26)插到第4节课(id 357)前面
+    const noWeightCmp = new Function('a', 'b', 'return ('
+      + '(Number(a.slot.period) - Number(b.slot.period)) || (a.s.id - b.s.id));');
+    const monW = [
+      { classDate: '2026-11-02', s: { kind: 'CLEAN', id: 26 }, slot: { period: 4 } },
+      { classDate: '2026-11-02', s: { kind: 'COURSE', id: 357 }, slot: { period: 4 } }
+    ];
+    monW.sort(noWeightCmp);
+    chk2('自证：无 CLEAN 权重（旧版按 id）会把打扫410 插到第4节课前面 → 周一判据可分辨',
+      monW[0].s.kind === 'CLEAN');
+    console.log('    ✓ 自证：两种错误实现均被对应用例分辨（判据有效）');
   }
 }
 

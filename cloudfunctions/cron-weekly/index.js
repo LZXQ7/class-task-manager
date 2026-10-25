@@ -61,7 +61,7 @@ async function generateWeek(pool, wk, classId) {
     const cal = await week.loadCalendar(conn);
     const shifts = await week.loadSessionShifts(conn);
     const [sessRows] = await conn.query(
-      `SELECT s.id, s.weeks, s.week_rule, s.day_of_week, s.period, s.group_scope, s.duty_count
+      `SELECT s.id, s.weeks, s.week_rule, s.day_of_week, s.period, s.group_scope, s.duty_count, s.kind
          FROM session s WHERE s.class_id = ? ORDER BY s.day_of_week, s.period`, [classId]
     );
     // 只排「这一周实际上课」的课次（weeks 数组 + week_rule 双条件）
@@ -137,7 +137,12 @@ async function generateWeek(pool, wk, classId) {
     rotatePlan.sort((a, b) => (
       a.classDate < b.classDate ? -1
         : a.classDate > b.classDate ? 1
-          : (Number(a.slot.period) - Number(b.slot.period)) || (a.s.id - b.s.id)
+          /* 🔴 先按节次；同节次内打扫410（CLEAN）压在课次后面：第4节课 → 打扫410 → 第5节。
+           * 与 schedule.generate 同口径（用户 2026-10-25 纠正：保洁节次就是第4节，
+           * 「不是每天最后」）。CLEAN 只是 period 之后的 tie-breaker。 */
+          : (Number(a.slot.period) - Number(b.slot.period))
+            || ((a.s.kind === 'CLEAN') ? 1 : 0) - ((b.s.kind === 'CLEAN') ? 1 : 0)
+            || (a.s.id - b.s.id)
     ));
 
     for (const { s, slot, classDate } of rotatePlan) {

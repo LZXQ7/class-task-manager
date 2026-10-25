@@ -51,7 +51,10 @@ async function deriveMyDuties(pool, classId, memberId) {
        JOIN session s ON s.id = d.session_id
        JOIN course c ON c.id = s.course_id
       WHERE d.member_id = ?
-      ORDER BY d.class_date, (s.kind = 'CLEAN'), s.period`, [memberId]
+      /* 排序口径（用户 2026-10-25 纠正）：先节次，同节次内打扫410(CLEAN)压在课次后面
+       * —— 第4节课 → 打扫410 → 第5节。保洁节次就是第4节，不是「每天最后」，
+       * (kind='CLEAN') 只能当 period 之后的 tie-breaker。 */
+      ORDER BY d.class_date, s.period, (s.kind = 'CLEAN')`, [memberId]
   );
   const list = [];
   for (const d of rows) {
