@@ -40,7 +40,19 @@
 - **门禁去假绿（关键）**：`scripts/check-round-robin-continuity.js` 原 T5 集成测试**自己 mock 了一份 `loadWeekCursors`**，根本没测真实函数 → 门禁绿但线上仍翻车。已改 T5 直接调真实 `loadWeekCursors/saveWeekCursors/syncGlobalCursors` + 内存 `fakeConn` 模拟 `duty_week_cursor`，连跑 4 周验证 `第N+1周起点===第N周结束点`；新增 **T6** 锁死「上周快照结束游标优先于 MAX(id) 反推」。🔴 **铁律：轮转门禁绝不能再 mock `loadWeekCursors`，必须直接调真实函数**。
 - **验证**：`check-round-robin-continuity.js` 全过（T1-T4 + T6 + T5 真实函数连跑 4 周）；`check-schedule-generate-runtime.js` 全过；`run_all_gates.sh` → **96/96 全绿**。**变异自证**：把 if 顺序还原成旧版「反推优先」→ T6 翻红（返回 7/10，EXIT=1），确认门禁能抓回退；再还原回正确顺序 → 全绿。
 - **同步 + 部署（已上线）**：`node scripts/sync-common.js` 把修复同步到全 16 个函数目录；`tcb fn code update schedule --dir ./cloudfunctions/schedule -e <YOUR_ENV_ID>` 成功（Modification time 2026-10-25 12:07:39）；`tcb fn code update cron-weekly --dir ./cloudfunctions/cron-weekly -e <YOUR_ENV_ID>` 成功（顺带带 `purgeHomeworkFiles` 作业附件回收，对无 homework 行的生产库为 no-op，安全）。**本次仅云函数改动，前端无需重传**。
-- **未决/待办**：私有仓可提交（无 PII 风险）；公开仓双轨推送随 1.0.8 发版走 scrub。49 个 `scripts/_q_*.txt` 为查询 scratch 切勿提交；合法未跟踪文件（`scripts/wx-upload/` + 三个轮转门禁 `check-round-robin-continuity.js`/`check-infer-counts-manual.js`/`check-manual-bumps-cursor.js`）应纳入提交。
+- **未决/待办（已于 2026-10-25 下午闭环）**：✅ 私有仓已提交推送（`7c7f967` 连续性 + `216d351` admin-web + `789ec5d` 排班双 bug）；✅ 公开仓已同步（`d251b1e`，导出→脱敏→PII 自检 0 命中→推送；期间发现并修复 scrub.js 缺 `.mjs` 扩展名导致 upload.mjs 跳过脱敏的问题，见下节）；✅ scripts/ 下 56 个 `_q_*`/`_v_*` 查询 scratch 已清（误删的 tracked `scripts/_q_mt.txt` 已从初始提交恢复）。
+
+## 【本session】 · 2026-10-25 下午（**值日排班双 bug：全体课饿死单组 + 打扫410 不置底 · 生产数据已重算落库 · 双轨已同步**）
+
+- **现象（用户截图 + 明确期望）**：① 第四节课排在「打扫410」前面（410 应恒为每天最后）；② 第三节课明明大课（两组都上）却只排 A 组。用户期望：P1全体=2,3 / P2A=5,7 / P3全体=4,6 / P4B=8,10 / 打扫410=9,11。用户原话「固定好规则严格按照规则执行…不能擅自更改」。
+- **根因**：① cleaning 课次 period 与正常课次相同（=4）但 session id 更小 ⇒ 按 (period,id) 排序排到课次前（四处排序均无 CLEAN 权重）；② class3 第8周快照 `{A:1,B:56}`，B 游标卡池尾 ⇒ B 候选恒空 ⇒ 原内核只要有 A 的候选就永远取 A（takeFrom ③回绕只在 g='B' 被选中时触发，而 B 永不被选中）⇒ 全体课饿死 B 组（生产实测 P1=3,5 / P3=11,13 / 410=15,17 全 A 组）。
+- **修复**：① `schedule/index.js` 的 loadWeekDuties ORDER BY / rotatePlan.sort（**注意文件里有两处**，只改 generate 主路径那处）/ manualBoard 课次排序 + `duty/index.js` `_decorate` 的 merged.sort 加 CLEAN 置底；generate SELECT 补 `s.kind`。② `round-robin.js` 全体课路径加「卡死回绕」：某组候选为空时仅当该组**从起点就卡死**（cursor==start）或**两组同时到尾**才回绕；**先快照再回绕**（防顺序依赖，中间态错误被 check-round-robin 第5部分 pick5 实测抓到）；严禁本组排满但另一组还有人时回绕；回绕不置 wrapped 标志。
+- **🔴 关键方法论——HEAD 原版对照实验**：中间态修复连挂 check-round-robin 3 项 + check-ai-plan，用 `git show HEAD:...round-robin.js` 喂给门禁重跑，证明 HEAD 原版这些用例**全过** ⇒ 是回归不是旧 bug，最终定位到「先回绕清 used 导致另一组误判不回绕」。**改内核后必须做此对照**。
+- **生产数据已修正（已落库）**：class3 第8周 50 行 AUTO 按修复引擎重算（周一五项精确匹配；全周 410 置底/分组纯净/无重复）；week8 快照 end 与全局 round_cursor 对齐 `{51,50}`（week8 为最新周，不影响连续性）。补丁重算结果与落库 50 行逐行一致。
+- **门禁**：`check-duty-rotation.js` 新增 §C3（`{A:1,B:56}` 不饿死+对称）/§C4（抽取真源码比较函数验 CLEAN 恒置底含 period=1）；run_all_gates **96/96**。
+- **部署（已上线）**：`tcb fn deploy schedule --dir ./cloudfunctions/schedule --force`（🔴 必须带函数名，漏带进批量部署交互卡死；cloudbaserc 无 schedule 条目会问默认配置，需 `printf 'y\n' |` 喂确认）；`tcb fn code update cron-weekly --dir ./cloudfunctions/cron-weekly`。线上包下载逐字节比对：两函数内核与修复源 IDENTICAL。
+- **双轨（已同步）**：私有 `789ec5d` 已推；公开 `d251b1e` 已推。🔴 **scrub.js 原本缺 `.mjs` 扩展名** ⇒ `scripts/wx-upload/upload.mjs`（真实 AppID + 本机密钥路径）整文件跳过脱敏，同步被 PII 自检拦（fail-closed 生效）；已补 TEXT_EXT + 密钥路径规则（排在 AppID 规则前）。**新增新扩展名脚本必须先补 scrub.js TEXT_EXT**。
+- **待办**：1.0.8 前端上传（`node scripts/wx-upload/upload.mjs 1.0.8.0`，备注自动取已更新的版本 B 公告——已补入排班修复条目）仍待用户本机执行；上传后真机验证「打扫410 置底」显示与周一排班。
 
 ---
 
