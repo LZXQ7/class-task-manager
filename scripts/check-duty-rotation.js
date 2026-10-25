@@ -278,6 +278,8 @@ console.log('\n===== roundReset 文案口径（文本级）=====');
 console.log('\n--- §7 换班不改动轮转标记 ---');
 const ADJUST_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/adjust/index.js'), 'utf8');
 const SCHED_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/schedule/index.js'), 'utf8');
+const DUTY_FN_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/duty/index.js'), 'utf8');
+const EXPORT_SRC = fs.readFileSync(path.resolve(__dirname, '../cloudfunctions/export/index.js'), 'utf8');
 
 function chk2(label, cond) {
   if (!cond) pass = false;
@@ -371,6 +373,23 @@ console.log('\n===== §C4 打扫410 恒排当天最后（抽取真源码比较�
   chk('§C4 manualBoard 课次排序含 CLEAN 置底权重', /a\.kind === 'CLEAN'/.test(SCHED_SRC));
   chk('§C4 duty/index.js merged 排序含 isClean 置底权重',
     /merged\.sort\(\(a, b\) => \(\(a\.isClean \? 1 : 0\) - \(b\.isClean \? 1 : 0\)\)\);/.test(DUTY_SRC));
+  // —— 2026-10-25 补：后端读取/导出链路的 CLEAN 置底（值日页数据源 + 导出 CSV）——
+  chk('§C4 duty 云函数（我的值日）ORDER BY 含 CLEAN 置底权重',
+    /ORDER BY d\.class_date, \(s\.kind = 'CLEAN'\), s\.period/.test(DUTY_FN_SRC));
+  chk('§C4 export 云函数 SQL ORDER BY 含 CLEAN 置底权重',
+    /ORDER BY d\.class_date, \(s\.kind = 'CLEAN'\), s\.period/.test(EXPORT_SRC));
+  chk('§C4 export 云函数 SELECT 取了 s.kind（JS 排序判据用）',
+    /s\.kind AS sessionKind/.test(EXPORT_SRC));
+  chk('§C4 export 云函数 JS rows.sort 含 CLEAN 置底权重',
+    /a\.sessionKind === 'CLEAN'\) \? 1 : 0\) - \(\(b\.sessionKind === 'CLEAN'/.test(EXPORT_SRC));
+  // 自证：把 export 的 JS 排序权重删掉，本节必须翻红
+  {
+    const broken = EXPORT_SRC.replace(
+      /\(\(a\.sessionKind === 'CLEAN'\) \? 1 : 0\) - \(\(b\.sessionKind === 'CLEAN'\) \? 1 : 0\)\s*\|\|/, '');
+    const chk2 = (label, cond) => { if (!cond) { pass = false; console.log('    ✗ ' + label); } };
+    chk2('自证：删 export JS 置底权重后判据能抓到', !/a\.sessionKind === 'CLEAN'\) \? 1 : 0\) - \(\(b\.sessionKind === 'CLEAN'/.test(broken));
+    console.log('    ✓ 自证：删 export JS 置底权重 → 判据翻红（判据有效）');
+  }
 }
 
 console.log('\n' + (pass ? '[PASS] 轮转算法 + roundReset 文案口径 + 第8周修复锁 全部通过 ✓' : '[FAIL] 存在不一致 ✗'));

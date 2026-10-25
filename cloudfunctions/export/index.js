@@ -33,13 +33,13 @@ const routes = {
       if (!admin && !published) throw new BizError(41001, '本周排班尚未发布，无法导出');
 
       const [rows] = await pool.query(
-        `SELECT d.*, s.day_of_week, s.period, c.name AS courseName, c.room, m.name AS memberName, m.group_tag
+        `SELECT d.*, s.kind AS sessionKind, s.day_of_week, s.period, c.name AS courseName, c.room, m.name AS memberName, m.group_tag
            FROM duty d
            JOIN session s ON s.id = d.session_id
            JOIN course c ON c.id = s.course_id
            JOIN member m ON m.id = d.member_id
           WHERE d.class_id = ? AND d.week = ?
-          ORDER BY d.class_date, s.period`, [classId, wk]
+          ORDER BY d.class_date, (s.kind = 'CLEAN'), s.period`, [classId, wk]
       );
       // 临时调课后的真实节次：duty 表不含节次，得靠 resolveSlot 解析才准
       const shifts = await week.loadSessionShifts(pool, classId);
@@ -50,7 +50,10 @@ const routes = {
       rows.sort((a, b) => {
         const da = String(a.class_date).slice(0, 10);
         const db = String(b.class_date).slice(0, 10);
-        return (da < db ? -1 : da > db ? 1 : a.period - b.period);
+        // 保洁课次（打扫410）恒排每天最后：与 generate / duty 页同口径
+        return (da < db ? -1 : da > db ? 1
+          : ((a.sessionKind === 'CLEAN') ? 1 : 0) - ((b.sessionKind === 'CLEAN') ? 1 : 0)
+            || (a.period - b.period));
       });
       const head = ['日期', '星期', '节次', '时间', '课程', '教室', '分组课', '姓名', '所属组', '状态'];
       const lines = [head.join(',')];

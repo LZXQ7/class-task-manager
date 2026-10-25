@@ -51,7 +51,7 @@ async function deriveMyDuties(pool, classId, memberId) {
        JOIN session s ON s.id = d.session_id
        JOIN course c ON c.id = s.course_id
       WHERE d.member_id = ?
-      ORDER BY d.class_date, s.period`, [memberId]
+      ORDER BY d.class_date, (s.kind = 'CLEAN'), s.period`, [memberId]
   );
   const list = [];
   for (const d of rows) {
