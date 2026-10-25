@@ -42,17 +42,27 @@
 - **同步 + 部署（已上线）**：`node scripts/sync-common.js` 把修复同步到全 16 个函数目录；`tcb fn code update schedule --dir ./cloudfunctions/schedule -e <YOUR_ENV_ID>` 成功（Modification time 2026-10-25 12:07:39）；`tcb fn code update cron-weekly --dir ./cloudfunctions/cron-weekly -e <YOUR_ENV_ID>` 成功（顺带带 `purgeHomeworkFiles` 作业附件回收，对无 homework 行的生产库为 no-op，安全）。**本次仅云函数改动，前端无需重传**。
 - **未决/待办（已于 2026-10-25 下午闭环）**：✅ 私有仓已提交推送（`7c7f967` 连续性 + `216d351` admin-web + `789ec5d` 排班双 bug）；✅ 公开仓已同步（`d251b1e`，导出→脱敏→PII 自检 0 命中→推送；期间发现并修复 scrub.js 缺 `.mjs` 扩展名导致 upload.mjs 跳过脱敏的问题，见下节）；✅ scripts/ 下 56 个 `_q_*`/`_v_*` 查询 scratch 已清（误删的 tracked `scripts/_q_mt.txt` 已从初始提交恢复）。
 
-## 【本session】 · 2026-10-25 下午（**值日排班双 bug：全体课饿死单组 + 打扫410 不置底 · 生产数据已重算落库 · 双轨已同步**）
+## 【本session】 · 2026-10-25 下午（**值日排班双 bug：全体课饿死单组 + 打扫410 顺序 · 生产数据已重算落库 · 双轨已同步**）
+> ⚠️ 本节「打扫410 恒置底」的口径**当晚已被用户纠正**（不是每天最后，是按第4节排）——最终口径见下一节，本节仅存历史过程。
 
-- **现象（用户截图 + 明确期望）**：① 第四节课排在「打扫410」前面（410 应恒为每天最后）；② 第三节课明明大课（两组都上）却只排 A 组。用户期望：P1全体=2,3 / P2A=5,7 / P3全体=4,6 / P4B=8,10 / 打扫410=9,11。用户原话「固定好规则严格按照规则执行…不能擅自更改」。
-- **根因**：① cleaning 课次 period 与正常课次相同（=4）但 session id 更小 ⇒ 按 (period,id) 排序排到课次前（四处排序均无 CLEAN 权重）；② class3 第8周快照 `{A:1,B:56}`，B 游标卡池尾 ⇒ B 候选恒空 ⇒ 原内核只要有 A 的候选就永远取 A（takeFrom ③回绕只在 g='B' 被选中时触发，而 B 永不被选中）⇒ 全体课饿死 B 组（生产实测 P1=3,5 / P3=11,13 / 410=15,17 全 A 组）。
-- **修复**：① `schedule/index.js` 的 loadWeekDuties ORDER BY / rotatePlan.sort（**注意文件里有两处**，只改 generate 主路径那处）/ manualBoard 课次排序 + `duty/index.js` `_decorate` 的 merged.sort 加 CLEAN 置底；generate SELECT 补 `s.kind`。② `round-robin.js` 全体课路径加「卡死回绕」：某组候选为空时仅当该组**从起点就卡死**（cursor==start）或**两组同时到尾**才回绕；**先快照再回绕**（防顺序依赖，中间态错误被 check-round-robin 第5部分 pick5 实测抓到）；严禁本组排满但另一组还有人时回绕；回绕不置 wrapped 标志。
+- **现象（用户截图 + 明确期望）**：① 第四节课排在「打扫410」前面（**当晚用户再纠正：410 不是每天最后，顺序是第一/二/三/四节、打扫410、第五节**，见下节）；② 第三节课明明大课（两组都上）却只排 A 组。用户期望：P1全体=2,3 / P2A=5,7 / P3全体=4,6 / P4B=8,10 / 打扫410=9,11。用户原话「固定好规则严格按照规则执行…不能擅自更改」。
+- **根因**：① cleaning 课次 period 与正常课次相同（=4）但 session id 更小 ⇒ 按 (period,id) 排序排到课次前（多处排序均无 CLEAN 权重）；② class3 第8周快照 `{A:1,B:56}`，B 游标卡池尾 ⇒ B 候选恒空 ⇒ 原内核只要有 A 的候选就永远取 A（takeFrom ③回绕只在 g='B' 被选中时触发，而 B 永不被选中）⇒ 全体课饿死 B 组（生产实测 P1=3,5 / P3=11,13 / 410=15,17 全 A 组）。
+- **修复**：① `schedule/index.js` 的 loadWeekDuties ORDER BY / rotatePlan.sort（**注意文件里有两处**，只改 generate 主路径那处）/ manualBoard 课次排序 + `duty/index.js` `_decorate` 的 merged.sort 加 CLEAN 权重（**当晚已再改为按节次排 + 移除前端排序**，见下节）；generate SELECT 补 `s.kind`。② `round-robin.js` 全体课路径加「卡死回绕」：某组候选为空时仅当该组**从起点就卡死**（cursor==start）或**两组同时到尾**才回绕；**先快照再回绕**（防顺序依赖，中间态错误被 check-round-robin 第5部分 pick5 实测抓到）；严禁本组排满但另一组还有人时回绕；回绕不置 wrapped 标志。
 - **🔴 关键方法论——HEAD 原版对照实验**：中间态修复连挂 check-round-robin 3 项 + check-ai-plan，用 `git show HEAD:...round-robin.js` 喂给门禁重跑，证明 HEAD 原版这些用例**全过** ⇒ 是回归不是旧 bug，最终定位到「先回绕清 used 导致另一组误判不回绕」。**改内核后必须做此对照**。
-- **生产数据已修正（已落库）**：class3 第8周 50 行 AUTO 按修复引擎重算（周一五项精确匹配；全周 410 置底/分组纯净/无重复）；week8 快照 end 与全局 round_cursor 对齐 `{51,50}`（week8 为最新周，不影响连续性）。补丁重算结果与落库 50 行逐行一致。
-- **门禁**：`check-duty-rotation.js` 新增 §C3（`{A:1,B:56}` 不饿死+对称）/§C4（抽取真源码比较函数验 CLEAN 恒置底含 period=1）；run_all_gates **96/96**。
-- **部署（已上线）**：`tcb fn deploy schedule --dir ./cloudfunctions/schedule --force`（🔴 必须带函数名，漏带进批量部署交互卡死；cloudbaserc 无 schedule 条目会问默认配置，需 `printf 'y\n' |` 喂确认）；`tcb fn code update cron-weekly --dir ./cloudfunctions/cron-weekly`。线上包下载逐字节比对：两函数内核与修复源 IDENTICAL。
+- **生产数据已修正（已落库，当晚又按正确顺序二次重算）**：class3 第8周 50 行 AUTO 按修复引擎重算（周一五项精确匹配；顺序口径当晚二次重算后全周「P4 → 打扫410 → P5」结构正确）；week8 快照 end 与全局 round_cursor `{51,50}`（week8 为最新周，不影响连续性）。补丁重算结果与落库 50 行逐行一致。
+- **门禁**：`check-duty-rotation.js` 新增 §C3（`{A:1,B:56}` 不饿死+对称）/§C4（当晚重写为锁「先节次、同节次内课先行保洁后」+ 两种错误实现变异自证）；run_all_gates **96/96**。
+- **部署（已上线，当晚又重部署 4 函数）**：`tcb fn deploy schedule --dir ./cloudfunctions/schedule --force`（🔴 必须带函数名，漏带进批量部署交互卡死；cloudbaserc 无 schedule 条目会问默认配置，需 `printf 'y\n' |` 喂确认）；`tcb fn code update <fn> --dir ./cloudfunctions/<fn>`（也要带函数名）。线上包下载逐字节比对验证。
 - **双轨（已同步）**：私有 `789ec5d` 已推；公开 `d251b1e` 已推。🔴 **scrub.js 原本缺 `.mjs` 扩展名** ⇒ `scripts/wx-upload/upload.mjs`（真实 AppID + 本机密钥路径）整文件跳过脱敏，同步被 PII 自检拦（fail-closed 生效）；已补 TEXT_EXT + 密钥路径规则（排在 AppID 规则前）。**新增新扩展名脚本必须先补 scrub.js TEXT_EXT**。
-- **待办**：1.0.8 前端上传（`node scripts/wx-upload/upload.mjs 1.0.8.0`，备注自动取已更新的版本 B 公告——已补入排班修复条目）仍待用户本机执行；上传后真机验证「打扫410 置底」显示与周一排班。
+
+## 【本session】 · 2026-10-25 晚（**顺序口径二次纠正：打扫410 按节次排，不是“每天最后” · 4 函数已部署 + 第8周二次重算**）
+
+- **用户纠正（原话）**：「打扫410不是每天最后，第一节、第二节、第三节、第四节、打扫410、第五节。这样的」——保洁课次节次本就是第4节，正确顺序 = **第4节课 → 打扫410 → 第5节**。下午按「恒置底」实现（CLEAN 权重提到 period 之前）是错的：有第5节课的日子保洁被压到第5节之后。
+- **正确口径（8 处全部对齐）**：`class_date → period → (kind='CLEAN') → id`。🔴 **CLEAN 权重只能排在 period 之后**（同节次内课先行、保洁后），提前=恒置底=错误实现。落点：schedule `loadWeekDuties` ORDER BY / `generate` `rotatePlan.sort`（取人序与展示序同口径）/ `manualBoard` 课次排序 / **cron-weekly `rotatePlan.sort` + SELECT 补 `s.kind`（每周自动生成链路，自查新发现：原先既无 kind 列也无权重，是旧 bug 遗漏点）** / `duty` 云函数 ORDER BY / `export` SQL + JS `rows.sort` / 前端 `duty/index.js` **移除** merged 置底排序（顺序以后端为准）。`buildCleaningPlan` 的 rotatePlan 只含保洁课次，(period,id) 已完备不用改。
+- **生产数据二次重算（已落库）**：class3 第8周删 50 插 50；周一 11/2 五项与用户期望逐项一致；全周「P4 → 打扫410 → P5」结构正确、分组课纯净、无重复；与引擎重算输出逐行一致；**结束游标 {A:51,B:50} 不变**。只有周三~周五人选变（cleaning 与 P5 互换选取顺序），周一/周二不变。
+- **门禁 §C4 重写**：eval 真源码 rotatePlan 比较函数（周一/周二生产实测课次用例）+ grep 全部 8 处 + 两种错误实现（恒置底 / 无权重按 id）变异自证；96/96。
+- **部署（已上线）**：schedule deploy + cron-weekly/duty/export code update；线上包下载 7 项验证全 PASS。**双轨**：私有 `c3901bd` / 公开 `9db4b8a`（PII 自检 0 命中）。更新说明中「恒排每天最后」三处已改正。
+- 🔴 **教训（本日第四例同类）：「恒置底」类横切规则必须先把规则问准再动手**。用户一句原话「第一/二/三/四节、打扫410、第五节」就定了性；凭“410 应始终在每天最后”的臆测实现被用户打回。**规则类需求一律向用户要原话/示例顺序，不要自己推断“显然该如何”**。
+- **待办**：1.0.8 前端上传（`node scripts/wx-upload/upload.mjs 1.0.8.0`，备注自动取已更新的版本 B 公告——含“打扫410 按第4节排序”条目）仍待用户本机执行；上传后真机验证顺序显示与周一排班。
 
 ---
 
