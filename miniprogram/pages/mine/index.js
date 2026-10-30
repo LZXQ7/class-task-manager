@@ -78,13 +78,6 @@ Page({
     feeInputClass: '',
     feeInputLeague: '',
     feeTotalBusy: false,
-    /* -------- 审核体验入口（2026-10-15 · v1.0.6.8，仅超管） --------
-       reviewOn：后端 `class.review_demo_on` 的当前状态（由 reviewDemoStatus 查回来，
-       不是 login 下发的那个布尔位 —— 那个只决定绑定页要不要渲染入口）。
-       reviewCode：只在「开启成功」或「点口令按钮」之后才有值，且**只在弹层里渲染**。 */
-    reviewOn: false,
-    reviewCode: '',
-    reviewShow: false,
     /* AI 排班设置（需求 D：自带密钥，跟随本人）。
        ⚠️ aiKey 只用于**输入**，永不回填服务端明文（接口只回掩码）。 */
     aiShow: false,
@@ -105,6 +98,20 @@ Page({
     selfTier: '',
     /** 超管「切换测试账号」模拟态：true 时显示「恢复本人」入口 */
     switched: false,
+    /**
+     * 超管「切换体验版」演示态标记（2026-10-29）：true 时不显示顶部「模拟中」横幅，
+     * 「我的 → 更多」里本按钮文案在「切换体验版 ⇄ 切换正式版」间切换承担退出入口。
+     * 来源 app.globalData.demo（onSwitchDemo 进入时置 true，recover/boot 清 false）。
+     */
+    demo: false,
+    /**
+     * 是否体验版（trial）（2026-10-29）：仅体验版演示态才在「我的」渲染「返回登录页」。
+     * 静态求值一次（wx.getAccountInfoSync 同步可用）；任何异常一律按「非体验版」兜底，
+     * 保证超管正式版的演示态不会误显「返回登录页」（那条走「更多 → 切换正式版」）。
+     */
+    isTrial: (function () {
+      try { return wx.getAccountInfoSync().miniProgram.envVersion === 'trial'; } catch (e) { return false; }
+    })(),
     /** 「切换测试账号」模拟态顶部横幅（v1.0.5）：非空即渲染红色护栏条，内含「恢复本人」 */
     impersonateBanner: '',
     /** 班级绑定入口开关（仅超管可见可操作，防爆破自动锁死后在这里开回） */
@@ -200,7 +207,7 @@ Page({
   onShow() {
     const app = getApp();
     if (app.track) app.track.pageView('mine');
-    app.setTabBar(3);
+    app.setTabBar(4);
     // v0.7.31：不再立即播 —— 等「身份(app.ready) + 首屏数据(loading=false)」就绪、或 READY_MS 兜底超时再统一开播
     pageAnim.playReady(this, getApp());
     const isSuperNow = !!(app && app.isSuper && app.isSuper());
@@ -216,6 +223,7 @@ Page({
       canSchedule: canScheduleNow,
       isCounselor: !!(p && p.groupTag === 'X'),
       switched: !!(app.globalData.switched),
+      demo: !!(app.globalData.demo),
       impersonateBanner: impersonate.bannerText(),
       bindOpen: !!(app.globalData.config && app.globalData.config.bindOpen !== false),
       selfTag: this._selfRoleTag().text,
@@ -229,9 +237,6 @@ Page({
     }
     // v0.7.32 问题③：超管预取「可切换的测试账号」→ 点「切换测试账号」时立即弹 ActionSheet
     if (isSuperNow) this._loadTestAccounts();
-    /* 审核体验入口开关（2026-10-15）：超管进页面就拉一次状态，
-       否则「刚在别处关了 / 后端还开着」这种不一致要等下次进页面才看得到。 */
-    if (isSuperNow) this._loadReviewStatus();
     // 登录可能晚于 onShow 完成：就绪后补一次身份，否则排班负责人首屏看不到「待确认换班」
     if (app && app.globalData && !app.globalData.authChecked) {
       app.ready().then(() => {
@@ -246,11 +251,10 @@ Page({
           canSchedule: cs,
           isCounselor: !!(p2 && p2.groupTag === 'X'),
           switched: !!(app.globalData.switched),
+          demo: !!(app.globalData.demo),
           impersonateBanner: impersonate.bannerText()
         }, this._feeFlags()));
         if (cs) this._loadPending();
-        if (s) this._loadTestAccounts();
-        if (s) this._loadReviewStatus();
       });
     }
     if (app.globalData.openApps) {
@@ -273,6 +277,7 @@ Page({
           canSchedule: !!(app.canSchedule && app.canSchedule()),
           isCounselor: !!(p3 && p3.groupTag === 'X'),
           switched: !!(app.globalData.switched),
+          demo: !!(app.globalData.demo),
           impersonateBanner: impersonate.bannerText(),
           selfTag: this._selfRoleTag().text,
           selfTier: this._selfRoleTag().tier
@@ -383,7 +388,11 @@ Page({
         const target = accounts[res.tapIndex];
         if (!target) return;
         api.switchAccount({ memberId: target.id }, { loading: '切换中' })
-          .then(() => this._afterSwitch('已切换为 ' + target.name))
+          .then(() => {
+            // 演示态与切换测试账号共用同一个 impersonation 行（互斥）：一旦进入后者，前者标记必须清掉
+            getApp().globalData.demo = false;
+            this._afterSwitch('已切换为 ' + target.name);
+          })
           .catch(() => {});
       }
     });
@@ -403,6 +412,47 @@ Page({
   /** 顶部「模拟中」横幅的「恢复本人」（v1.0.5）：与其余 3 个 Tab 页共用同一份实现 */
   onRecoverSelf() {
     impersonate.recover();
+  },
+  /**
+   * 体验版演示态 →「返回登录页」（口令页）（2026-10-29）：
+   * 清演示身份（impersonation；并自愈旧版 reviewDemo 的真绑定污染）→ 未绑定 → reLaunch 回口令页。
+   * 与「切换正式版」同一底层（impersonate.recover），但入口更直白、结果就是「回到登录页」。
+   */
+  onBackToLogin() {
+    if (getApp().track) getApp().track.action('demo_back_login');
+    impersonate.recover();
+  },
+  /**
+   * 切换体验版 / 切换正式版（2026-10-29，仅超管）：一键 impersonate 到演示班 104 超管（全虚拟数据），
+   * 无需第二账号、不解绑真实身份。与「切换测试账号」的区别：**不显示顶部「模拟中」横幅**
+   * （避免打扰演示体验），而是让本按钮在「切换体验版 ⇄ 切换正式版」之间切换文案来承担退出入口。
+   *   · 当前非演示态 → 点「切换体验版」进入（api.switchDemo + 置 g.demo=true）。
+   *   · 当前已是演示态 → 点「切换正式版」退出（impersonate.recover 清 impersonation，reLaunch 回首页）。
+   * 两种模拟态共用同一个 impersonation 行（互斥），故退出演示态不会影响「切换测试账号」的语义。
+   */
+  onSwitchDemo() {
+    const app = getApp();
+    // 已在体验版 ⇒ 点「切换正式版」退出演示态
+    if (app.globalData.demo) {
+      if (getApp().track) getApp().track.action('switch_demo_exit');
+      impersonate.recover();   // 清 impersonation → switched/demo 一并失效，reLaunch 回首页
+      return;
+    }
+    if (getApp().track) getApp().track.action('switch_demo');
+    wx.showModal({
+      title: '切换为体验版？',
+      content: '将 impersonate 到演示班 104（全虚拟数据），可随时在「我的 → 更多」里点「切换正式版」切回本人。',
+      confirmText: '切换',
+      success: (res) => {
+        if (!res.confirm) return;
+        api.switchDemo({}, { loading: '切换中' })
+          .then((r) => {
+            app.globalData.demo = true;   // 演示态标记：不显示顶部横幅、按钮变「切换正式版」
+            this._afterSwitch('已切换为体验版 · ' + ((r && r.name) || '演示班'));
+          })
+          .catch(() => {});
+      }
+    });
   },
   /**
    * 绑定入口开关（仅超管）。关闭后所有人无法走「口令 → 选人 → 学号验证」流程，
@@ -426,61 +476,6 @@ Page({
       }
     });
   },
-  /* ---------------- 审核体验入口（2026-10-15 · v1.0.6.8，仅超管） ----------------
-   * 老流程：我在更新说明里手写一条口令 → 用户跑 UPDATE 写库 → 提审。每个版本来一遍，
-   *   而且手写口令容易复用旧的、也容易随仓库泄漏出去。
-   * 现在：超管在这里一键开 / 关。
-   *   开启 = 后端**随机生成**一条新口令（旧口令当场作废），弹层里复制去填 mp 后台；
-   *   关闭 = 口令作废 + 把正在体验的演示身份踢下线。
-   * ⚠️ 一个易错点：**「口令」按钮只回显、不换口令**（走 status），
-   *   换口令只发生在「开启」那一刻（走 set）—— 别让超管为了再看一眼就把审核员踢下线。
-   * ⚠️ 口令只存在 data.reviewCode、且**只在弹层里渲染**；页面其余位置一律不出现。
-   */
-  _loadReviewStatus() {
-    return api.reviewDemoStatus({}, { toast: false })
-      .then((r) => { this.setData({ reviewOn: !!(r && r.on) }); })
-      .catch(() => {});
-  },
-  onReviewToggle() {
-    const on = !this.data.reviewOn;
-    wx.showModal({
-      title: on ? '开启审核体验入口？' : '关闭审核体验入口？',
-      content: on
-        ? '将生成一条新的仅预览口令（旧口令立即失效），审核员凭它可进入体验账号。审核通过后请回来关闭。'
-        : '口令将立即作废，正在体验的账号会被登出。',
-      confirmText: on ? '开启' : '关闭',
-      success: (res) => {
-        if (!res.confirm) return;
-        api.reviewDemoSet({ on }, { loading: '处理中' })
-          .then((r) => {
-            const code = String((r && r.code) || '');
-            // 关闭时 code 为空 ⇒ reviewShow 保持 false，不弹空口令层
-            this.setData({ reviewOn: !!(r && r.on), reviewCode: code, reviewShow: !!code });
-            util.toast(on ? '已开启，请复制口令' : '已关闭，体验账号已登出');
-          })
-          .catch(() => {});
-      }
-    });
-  },
-  /** 再看一次当前口令：**只回显、不换口令**（换口令会把正在体验的审核员踢下线） */
-  onReviewShowCode() {
-    api.reviewDemoStatus({}, { loading: '读取中' })
-      .then((r) => {
-        const code = String((r && r.code) || '');
-        if (!code) { util.toast('当前没有生效的口令'); return; }
-        this.setData({ reviewCode: code, reviewShow: true });
-      })
-      .catch(() => {});
-  },
-  onReviewCopy() {
-    const code = String(this.data.reviewCode || '');
-    if (!code) return;
-    // setClipboardData 自带「内容已复制」toast，不要再叠一个
-    wx.setClipboardData({ data: code });
-  },
-  onReviewClose() {
-    this.setData({ reviewShow: false });
-  },
 
   _afterSwitch(tip) {
     const app = getApp();
@@ -494,6 +489,7 @@ Page({
            否则从超管切到生活委员后「待确认换班」会沿用旧值不刷新 */
         canSchedule: !!(app.canSchedule && app.canSchedule()),
         switched: !!(app.globalData.switched),
+        demo: !!(app.globalData.demo),
         impersonateBanner: impersonate.bannerText()
       }, this._feeFlags()));
       util.toast(tip);
@@ -536,6 +532,7 @@ Page({
     this.setData({ moreShow: false }, () => setTimeout(fn, 200));
   },
   onMoreSwitch() { this._afterMoreClose(() => this.onSwitchAccount()); },
+  onMoreSwitchDemo() { this._afterMoreClose(() => this.onSwitchDemo()); },
   onMoreAi() { this._afterMoreClose(() => this.openAiSetting()); },
   onMoreManual() { this._afterMoreClose(() => this.goManual()); },
   _loadFeeSummary() {
@@ -632,18 +629,29 @@ Page({
 
   /* ---------------- 提醒 ---------------- */
   /**
-   * 点自己的头像 → 微信官方「选择头像」面板（open-type=chooseAvatar）。
-   * getUserProfile 已被微信回收（只会返回灰色默认头像），必须走 chooseAvatar。
-   * 选中的是临时文件 → 上传云存储拿 fileID（小程序 image 组件直接支持 cloud:// 显示）→ 存库。
+   * 点自己的头像 → 从手机相册/拍摄选一张图作为头像（不再调用微信「选择头像」面板，避免取微信头像）。
+   * 选中本地图片 → 上传云存储拿 fileID（小程序 image 组件直接支持 cloud:// 显示）→ 存库。
+   * 取消选图不提示；其他错误轻提示。
    */
-  /**
-   * chooseAvatar 失败兜底（v0.7.34）：隐私接口检查在微信侧完成，失败**到不了** onChooseAvatar，
-   * 而是走 button 的 binderror（如「api scope is not declared in the privacy agreement」——
-   * 平台《用户隐私保护指引》未声明微信头像）。不兜底就是 MiniProgramError 红屏。
-   */
-  onAvatarError(e) {
-    console.error('chooseAvatar fail:', e && e.detail);
-    util.toast('打开头像选择失败，请稍后再试');
+  onPickAvatar() {
+    const me = this.data.profile;
+    if (!me) { util.toast('请先绑定班级'); return; }
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      sizeType: ['compressed'],
+      success: (res) => {
+        const tempPath = res && res.tempFiles && res.tempFiles[0] && res.tempFiles[0].tempFilePath;
+        if (!tempPath) { util.toast('未获取到图片'); return; }
+        this._uploadAvatar(tempPath);
+      },
+      fail: (err) => {
+        if (err && err.errMsg && err.errMsg.indexOf('cancel') !== -1) return;
+        console.error('chooseMedia avatar fail:', err);
+        util.toast('选择图片失败，请重试');
+      }
+    });
   },
 
   /**
@@ -656,9 +664,8 @@ Page({
     this.setData({ avatarErrSrc: (this.data.profile && this.data.profile.avatarUrl) || '' });
   },
 
-  onChooseAvatar(e) {
-    const tempPath = e && e.detail && e.detail.avatarUrl;
-    if (!tempPath) { util.toast('未获取到头像'); return; }
+  /** 本地图片 → 上传云存储 → 更新头像 URL（与旧 chooseAvatar 链路一致）。 */
+  _uploadAvatar(tempPath) {
     const app = getApp();
     const me = this.data.profile;
     const memberId = (me && me.id) || 'me';

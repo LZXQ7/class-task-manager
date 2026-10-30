@@ -42,6 +42,8 @@ project.private.config.json
 Dawn-Course-ref/
 preview/
 miniapp/
+# promo/：Remotion 宣传片工程（本地 node_modules 后约 940MB），非源码、勿入库
+promo/
 
 # outputs/：702MB 构建/验证/迁移垃圾（含 Windows 保留名 aux 目录，git 无法读取），默认全忽略，仅保留 *.md 发版说明
 outputs/**
@@ -74,3 +76,7 @@ codebuddy-plugin/
 .mcp.json
 CODEBUDDY.md
 1）——
+
+# 查询/探测日志产物（run_query.js / probe-fn-modules.js 生成，含运行期数据，不入库）
+scripts/_q_*.txt
+scripts/_probe_fn_modules.txt

@@ -165,8 +165,8 @@ function kfYs(css, name) {
   return Array.from(body.matchAll(/translateY\(([\d.]+)px\)/g)).map(x => Number(x[1]));
 }
 
-const TABS = ['home', 'timetable', 'duty', 'mine'];
-const TAB_LABEL = { home: '首页', timetable: '课表页', duty: '值日页', mine: '我的页' };
+const TABS = ['home', 'timetable', 'duty', 'mine', 'classinfo'];
+const TAB_LABEL = { home: '首页', timetable: '课表页', duty: '值日页', mine: '我的页', classinfo: '班级信息页' };
 
 /* ============================================================
  * ① utils/page-anim.js —— 首次 / 回访 的 class 轮换（真实行为自证）

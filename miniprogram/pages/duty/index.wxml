@@ -3,7 +3,7 @@
      表现就是「在值日详情里选择替补，滑到底后后面的『本周值日』跟着一起滑」。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(sheetShow || aiShow || groupShow || addShow || endedSheetShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(sheetShow || aiShow || groupShow || addShow || endedSheetShow || slotShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <!-- 左右滑动切周：手势挂在页面根节点（覆盖整页），见 utils/swipe.js。
      弹层打开时在 onSwipeEnd 里挡掉（弹层 DOM 就在这个根节点里，touch 会冒泡上来）。 -->
@@ -384,20 +384,38 @@
         </view>
       </view>
 
-      <!-- 自检结果 -->
+      <!-- 自检结果（默认收起，2026-10-28）
+           以前诊断信息会跟着弹层一起展开，占掉半屏技术细节（IP / HTTP 状态 /
+           环境变量），看着像报错页。现在：点「自检」才出现，出现时也只露
+           一行结论 + 「展开」，明细要手动点开。 -->
       <view wx:if="{{aiDiag}}" class="ai-diag">
-        <view class="ai-diag-row"><text class="ai-diag-k">通路</text><text class="ai-diag-v">{{aiDiag.route || '-'}}</text></view>
-        <view class="ai-diag-row"><text class="ai-diag-k">出口</text><text class="ai-diag-v">{{aiDiag.egress || '-'}}（HTTP {{aiDiag.httpStatus || 0}}）</text></view>
-        <view class="ai-diag-row"><text class="ai-diag-k">密钥</text><text class="ai-diag-v">{{aiDiag.hasKey ? '已配置' : '未配置'}}</text></view>
-        <view class="ai-diag-row"><text class="ai-diag-k">部署包含 seqOf</text><text class="ai-diag-v">{{aiDiag.hasSeqOf ? '是' : '否（需重新部署）'}}</text></view>
-        <view wx:if="{{aiDiag.reply}}" class="ai-diag-row"><text class="ai-diag-k">真实往返</text><text class="ai-diag-v">成功 {{aiDiag.probeMs}}ms → {{aiDiag.reply}}</text></view>
-        <view wx:if="{{aiDiag.error}}" class="ai-diag-row"><text class="ai-diag-k">错误</text><text class="ai-diag-v err">{{aiDiag.error}}</text></view>
-        <text class="ai-diag-copy" bindtap="onAiCopyDiag">复制自检信息</text>
+        <view class="ai-diag-hd" bindtap="onAiDiagToggle">
+          <text class="ai-diag-hd-t">自检结果</text>
+          <text class="ai-diag-hd-s">{{aiDiagBrief}}</text>
+          <text class="ai-diag-arrow">{{aiDiagOpen ? '收起' : '展开'}}</text>
+        </view>
+        <view wx:if="{{aiDiagOpen}}" class="ai-diag-body">
+          <view class="ai-diag-row"><text class="ai-diag-k">通路</text><text class="ai-diag-v">{{aiDiag.route || '-'}}</text></view>
+          <view class="ai-diag-row"><text class="ai-diag-k">出口</text><text class="ai-diag-v">{{aiDiag.egress || '-'}}（HTTP {{aiDiag.httpStatus || 0}}）</text></view>
+          <view class="ai-diag-row"><text class="ai-diag-k">密钥</text><text class="ai-diag-v">{{aiDiag.hasKey ? '已配置' : '未配置'}}</text></view>
+          <view class="ai-diag-row"><text class="ai-diag-k">部署包含 seqOf</text><text class="ai-diag-v">{{aiDiag.hasSeqOf ? '是' : '否（需重新部署）'}}</text></view>
+          <view wx:if="{{aiDiag.reply}}" class="ai-diag-row"><text class="ai-diag-k">真实往返</text><text class="ai-diag-v">成功 {{aiDiag.probeMs}}ms → {{aiDiag.reply}}</text></view>
+          <view wx:if="{{aiDiag.error}}" class="ai-diag-row"><text class="ai-diag-k">错误</text><text class="ai-diag-v err">{{aiDiag.error}}</text></view>
+          <text class="ai-diag-copy" bindtap="onAiCopyDiag">复制自检信息</text>
+        </view>
       </view>
 
       <view class="ai-actions">
         <view class="ai-btn ghost" bindtap="onGenerate">按序号轮转</view>
-        <view class="ai-btn primary {{aiBusy ? 'off' : ''}}" bindtap="onAiRun">{{aiBusy ? '生成中…' : 'AI 生成'}}</view>
+        <view class="ai-btn primary {{aiBusy ? 'off' : ''}}" bindtap="onAiRun">{{aiBusy ? '生成中…' : '智能排班'}}</view>
+      </view>
+
+      <!-- 排班方式（2026-10-28）：生活委员自定义「岗位槽」，
+           决定上面「一键生成」到底按什么制度排。保存只影响之后新生成的周。 -->
+      <view class="ai-slot" bindtap="onSlotOpen">
+        <text class="ai-slot-k">排班方式</text>
+        <text class="ai-slot-v">{{slotSummary}}</text>
+        <text class="ai-slot-go">设置 ›</text>
       </view>
 
       <!-- 预览：确认后才会写入 -->
@@ -434,6 +452,113 @@
           <view class="ai-btn ghost" bindtap="onAiDiscard">放弃</view>
           <view class="ai-btn primary {{aiBusy ? 'off' : ''}}" bindtap="onAiApply">{{aiBusy ? '写入中…' : '应用到本周'}}</view>
         </view>
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 排班方式 · 岗位槽（2026-10-28）
+       生活委员在这里定义「哪天、第几节、几个人」：
+         period 选「全天」 = 承包一整天（当天所有节次共用这批人）
+         填具体节次       = 该节单独一个岗位（等价于「每节课换人」）
+       保存后只影响之后新生成的周 —— 已生成/已发布的周原样保留。 -->
+  <bottom-sheet show="{{slotShow}}" title="排班方式" height="{{1320}}" bind:close="onSlotClose">
+    <view class="sl">
+      <view class="sl-tip">
+        先勾「哪几天用这套岗位」，再填「第几节、几个人」。想每节课换人 → 每节各建一个岗位；想一个人负责一整天 → 选「全天」。保存后只影响之后新生成的周；主教室是班级设置，改完立刻生效。
+      </view>
+
+      <!-- 适用星期：勾中的每一天都套用下面这组岗位（一次设定，不用逐天重复填）。
+           ⚠️ slotDayChips 的 on 在 js 里预算好 —— WXML 不支持 indexOf 这类方法调用。 -->
+      <view class="sl-sec">适用星期</view>
+      <view class="sl-days">
+        <view wx:for="{{slotDayChips}}" wx:key="wd"
+              class="sl-day {{item.on ? 'on' : ''}}"
+              data-wd="{{item.wd}}" bindtap="onSlotDay">{{item.text}}</view>
+      </view>
+
+      <view class="sl-sec">岗位<span class="sl-sec-note">（没课的节次会自动跳过，不会空排）</span></view>
+
+      <view class="sl-head">
+        <text class="sl-h-pd">节次</text>
+        <text class="sl-h-num">人数</text>
+        <text class="sl-h-del"></text>
+      </view>
+
+      <view class="sl-list">
+        <view wx:for="{{slotList}}" wx:key="key" class="sl-row">
+          <picker class="sl-pick" range="{{periodTexts}}" value="{{item.periodIdx}}"
+                  data-idx="{{index}}" bindchange="onSlotPeriod">
+            <view class="sl-cell">{{item.periodText}}</view>
+          </picker>
+          <view class="sl-num">
+            <text class="sl-step" data-idx="{{index}}" data-d="-1" bindtap="onSlotNeed">−</text>
+            <text class="sl-num-v">{{item.needN}}</text>
+            <text class="sl-step" data-idx="{{index}}" data-d="1" bindtap="onSlotNeed">+</text>
+          </view>
+          <text class="sl-del" data-idx="{{index}}" bindtap="onSlotDel">删</text>
+        </view>
+        <view wx:if="{{!slotList.length}}" class="sl-empty">
+          还没有岗位。点下面「添加岗位」开始；也可以直接保存为空（= 沿用课程表每节各排一人）。
+        </view>
+      </view>
+
+      <view class="sl-add" bindtap="onSlotAdd">+ 添加岗位</view>
+
+      <!-- 主教室（2026-10-28）：18:10 保洁打扫的房间。生活委员自己填，
+           落库到 class.main_room —— 与后台「班级设置 · 主教室」同一个字段，
+           两边改都生效（保洁课次的名称/房间会跟着一起改）。 -->
+      <view class="sl-sec sl-sec-gap">主教室<span class="sl-sec-note">（18:10 保洁的房间，留空显示「打扫主教室」）</span></view>
+      <view class="sl-room">
+        <input class="sl-room-inp" value="{{cleanRoom}}" maxlength="32"
+               placeholder="如 410 / 3号教学楼410" placeholder-class="sl-room-ph"
+               bindinput="onRoomInput" bindblur="onRoomBlur" bindconfirm="onRoomBlur" />
+      </view>
+
+      <!-- 18:10 打扫主教室（2026-10-28）
+           这是独立的 CLEAN 课次，不是大课的某一节：系统里固定排在第 4 节之后、
+           第 5 节之前（第 4 节 16:30–18:10 下课即打扫），前端一律显示「18 点前」。
+           勾哪几天，保存时就给哪几天补建保洁课次（已配过的天不重复建）。 -->
+      <view class="sl-clean">
+        <view class="sl-clean-hd">
+          <view class="sl-clean-txt">
+            <text class="sl-clean-t">{{cleanTitle}}</text>
+            <text class="sl-clean-s">{{cleanSummary}}</text>
+          </view>
+          <switch checked="{{cleanOn}}" color="#3370FF" bindchange="onCleanToggle" />
+        </view>
+
+        <view wx:if="{{cleanOn}}" class="sl-clean-body">
+          <view class="sl-sec">打扫日<span class="sl-sec-note">（每天 18:10，逐天可设人数）</span></view>
+
+          <view class="sl-list">
+            <view wx:for="{{cleanRows}}" wx:key="key" class="sl-row">
+              <picker class="sl-pick" range="{{weekdayTexts}}" value="{{item.wd - 1}}"
+                      data-idx="{{index}}" bindchange="onCleanWeekday">
+                <view class="sl-cell">{{item.text}}</view>
+              </picker>
+              <view class="sl-num">
+                <text class="sl-step" data-idx="{{index}}" data-d="-1" bindtap="onCleanNeed">−</text>
+                <text class="sl-num-v">{{item.needN}}</text>
+                <text class="sl-step" data-idx="{{index}}" data-d="1" bindtap="onCleanNeed">+</text>
+              </view>
+              <text class="sl-del" data-idx="{{index}}" bindtap="onCleanDel">删</text>
+            </view>
+            <view wx:if="{{!cleanRows.length}}" class="sl-empty">
+              还没有打扫日。点下面「添加打扫日」，通常加周一到周五。
+            </view>
+          </view>
+
+          <view class="sl-add" bindtap="onCleanAdd">+ 添加打扫日</view>
+
+          <view class="sl-clean-tip">
+            已配过保洁课次的天不会重复建；列表里没有的天，保洁在这套规则下不排人。周二是大扫除、人数更多时，直接在这一行调。
+          </view>
+        </view>
+      </view>
+
+      <view class="f-actions">
+        <view class="btn btn-ghost f-cancel" bindtap="onSlotClose">取消</view>
+        <view class="btn f-save {{slotBusy ? 'off' : ''}}" bindtap="onSlotSave">{{slotBusy ? '保存中…' : '保存'}}</view>
       </view>
     </view>
   </bottom-sheet>

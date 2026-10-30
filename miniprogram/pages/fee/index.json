@@ -1,0 +1,10 @@
+{
+  "navigationBarTitleText": "班费",
+  "usingComponents": {
+    "nav-bar": "/components/nav-bar/index",
+    "app-icon": "/components/app-icon/index",
+    "empty-state": "/components/empty-state/index",
+    "skeleton": "/components/skeleton/index",
+    "segmented": "/components/segmented/index"
+  }
+}

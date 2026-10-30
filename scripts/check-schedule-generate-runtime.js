@@ -307,8 +307,13 @@ async function main() {
      * 双向自证：把 `?? 1` 改回 `|| 1`，D6c 立刻红（0 被当成 1，排进 1 人）。 */
     {
       const code = stripComments(src);
-      assert(/const n = Math\.max\(0, Number\(s\.duty_count \?\? 1\) - alreadyFilled\);/.test(code),
-        'D6a generate 名额式用 ?? 窄化（duty_count=0 时排 0 人，不被 || 1 误当 1）');
+      /* 2026-10-28 起名额式多了「槽位优先」这一层，判据拆两段各守一件事：
+       *   ① `const dc = Number(s.duty_count ?? 1)` —— ?? 窄化在位（0 保持 0，不被 || 1 误当 1）
+       *   ② 名额取值 —— duty_count=0 直接 0（课次级「不排值日」不许被槽位冲掉），
+       *      其余以槽位 needN 为准（duty_count 只是默认值，不能截断 needN）。 */
+      assert(/const dc = Number\(s\.duty_count \?\? 1\);/.test(code)
+        && /const n = Math\.max\(0, \(dc === 0 \? 0 : \(slotRec \? slotRec\.needN : dc\)\) - alreadyFilled\);/.test(code),
+        'D6a generate 名额式用 ?? 窄化（duty_count=0 排 0 人，不被 || 1 误当 1）；其余以槽位 needN 为准');
       const inserted = [];
       const zeroSessions = [
         { id: 9, week_rule: null, weeks: '1,2,3,4,5', day_of_week: 1, period: 1, group_scope: null, duty_count: 0 }
@@ -325,8 +330,9 @@ async function main() {
      * 判据直接读源码里那条真实的 `n` 计算式（剥注释，避免命中注释里的字面量）。*/
     {
       const cronCode = stripComments(fs.readFileSync(CRON, 'utf8'));
-      assert(/Math\.max\(0,\s*Number\(s\.duty_count\s*\?\?\s*1\)\s*-\s*alreadyFilled\)/.test(cronCode),
-        'D4 cron-weekly 同步只补空缺（Math.max(0, duty_count − alreadyFilled)）');
+      assert(/const dc = Number\(s\.duty_count \?\? 1\);/.test(cronCode)
+        && /Math\.max\(0,\s*\(dc === 0 \? 0 : \(slotRec \? slotRec\.needN : dc\)\)\s*-\s*alreadyFilled\)/.test(cronCode),
+        'D4 cron-weekly 同步只补空缺（duty_count=0 不排 / 其余以槽位 needN 为准）');
       assert(/manualFilled\[Number\(m\.session_id\)\]/.test(cronCode),
         'D4b cron-weekly 手动排班也按课次统计占用（manualFilled[session_id]）');
     }

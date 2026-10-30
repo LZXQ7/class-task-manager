@@ -61,7 +61,14 @@ const keys = {
   /** 手动排班（二级页）：按周次归属 */
   manual: (week) => 'manual:' + week,
   /** 成员与分组（二级页）：按**班级 + 搜索词**归属（v0.7.32 问题①：同班回访秒开） */
-  roster: (classId, kw) => 'roster:' + (Number(classId) || 0) + ':' + (kw || '')
+  roster: (classId, kw) => 'roster:' + (Number(classId) || 0) + ':' + (kw || ''),
+  /** 班级信息页概况（成员统计 + 班费总额）：按**班级**归属，切班各自缓存、互不影响 */
+  classinfo: (classId) => 'ci:' + (Number(classId) || 0),
+  /** 教职工可切换的班级列表（staffClassIds 范围）：低频变化，整把一把缓存 */
+  classList: () => 'classList',
+  /** 普通成员本班班名：全运行期只解析一次（班名恒定），切 Tab 秒开；
+   * 按成员 id 隔离 —— 演示态 / 切换身份后不会串成上一个班的名字 */
+  myClass: (memberId) => 'myClass:' + (Number(memberId) || 0)
 };
 
 /**

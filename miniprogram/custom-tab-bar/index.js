@@ -16,6 +16,7 @@ const { get } = require('../utils/icons');
 const TABS = [
   { key: 'home', text: '首页', url: '/pages/home/index', icon: 'tab-home' },
   { key: 'timetable', text: '课程表', url: '/pages/timetable/index', icon: 'tab-timetable' },
+  { key: 'classinfo', text: '班级信息', url: '/pages/classinfo/index', icon: 'tab-classinfo' },
   { key: 'duty', text: '值日', url: '/pages/duty/index', icon: 'tab-duty' },
   { key: 'mine', text: '我的', url: '/pages/mine/index', icon: 'tab-mine' }
 ];
@@ -29,13 +30,13 @@ const LIST = TABS.map(t => {
 
 /* ============ 液态指示器几何（v0.7.14 第 6 轮：整体缩小一号 + 指示器满格） ============
  * ⚠️ 定位基准不是 750rpx，而是**胶囊自身的内容宽**：
- *   可用宽 = 750 − 2×`SIDE_RPX`，四等分 = 格宽。
+ *   可用宽 = 750 − 2×`SIDE_RPX`，五等分 = 格宽。
  * 第 5 轮（用户「底栏整体宽度收缩，大概我圈出来这么大」）：
  *   按其截图红框实测 ≈502rpx / 屏 750rpx → 取整 **500rpx**（左右各内缩 125rpx）。
  * 第 6 轮（用户「整体都小一点，左右上下，内部图标文字都小一点」）：
  *   内缩 125→**143rpx**、胶囊内容宽 **464rpx**、格宽 **116rpx**；胶囊高 104→92rpx。
- *   ⚠️ `SIDE_RPX` **必须取奇数** —— `750 − 2S` 要能被 4 整除（格宽为整数）；取 140 时
- *   470/4 = 117.5，`normLeft(3)+CELL ≠ BAR_W`，门禁的「零留白」硬断言会失败。
+ *   ⚠️ `SIDE_RPX` **必须取奇数** —— `750 − 2S` 要能被 5 整除（格宽为整数）；取 143 时
+ *   464/5 = 92.8，`normLeft(4)+CELL ≠ BAR_W`，门禁的「零留白」硬断言会失败。
  *
  * 历史 bug（2026-09-26 用户截图「位置不对」）：曾按 750/4 = 187.5rpx 算，
  *   指示器整体右偏且偏宽，越靠右越明显 —— 最后一格（我的）偏右 84rpx。
@@ -60,9 +61,9 @@ const LIST = TABS.map(t => {
  *    以及 4 处 `bottom/padding-bottom: calc(…rpx + env(…))`（由 check-tabbar-liquid 守）。
  */
 const TABBAR_LIFT_PX = 32;
-const SIDE_RPX = 143;                   // 与 index.wxss `.tabbar { margin: 0 143rpx 6rpx }` 一致（须为奇数）
-const BAR_W_RPX = 750 - SIDE_RPX * 2;   // 胶囊内容宽 464rpx
-const CELL_RPX = BAR_W_RPX / 4;         // 116rpx
+const SIDE_RPX = 85;                    // 与 index.wxss `.tabbar { margin: 0 85rpx 6rpx }` 一致（须为奇数）
+const BAR_W_RPX = 750 - SIDE_RPX * 2;   // 胶囊内容宽 580rpx
+const CELL_RPX = BAR_W_RPX / 5;         // 116rpx（五等分）
 const NORM_W_RPX = CELL_RPX;            // 常态宽 = 整格宽（两侧零留白）
 const OVER_RPX = 14;                    // 拉伸拍前缘预冲：先越过目标 14rpx，settle 拍回落
 const IND_MS = 140;                     // stretch 拍时长（与 index.wxss .tab-ind.stretch left 时长一致）

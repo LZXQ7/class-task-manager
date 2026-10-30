@@ -17,8 +17,11 @@ const guard = require('./common/guard');
 const week = require('./common/week');
 const { BizError, ok, fail } = require('./common/resp');
 
-/** 解析要操作的班级 id：默认本人班级；超管/辅导员可传 payload.classId 跨班生成入班码 */
-function resolveClassId(payload, ctx) {
+/** 解析要操作的班级 id：默认本人班级；超管/辅导员可传 payload.classId 跨班生成入班码。
+ *  ⚠️ 演示身份锁定（2026-10-29 演示环境隔离）：演示态只能操作演示班，屏蔽真实班级，
+ *  防止演示超管经「可跨班的 classId」拿到真实班的入班码 / 邀请码。 */
+async function resolveClassId(pool, payload, ctx) {
+  if (await guard.isDemoMember(pool, ctx)) return guard.classIdOf(ctx);
   if (payload.classId) {
     const cid = Number(payload.classId);
     if (cid && (guard.isSuper(ctx.member) || guard.isCounselor(ctx.member))) return cid;
@@ -38,7 +41,7 @@ const routes = {
     auth: { needBind: true },
     handler: async (payload, ctx) => {
       const pool = getPool();
-      const cfg = await week.getConfig(pool, resolveClassId(payload, ctx));
+      const cfg = await week.getConfig(pool, await resolveClassId(pool, payload, ctx));
       return { classId: cfg.classId, inviteCode: cfg.inviteCode, token: cfg.joinToken, className: cfg.name };
     }
   },
@@ -52,7 +55,7 @@ const routes = {
     auth: { needBind: true },
     handler: async (payload, ctx) => {
       const pool = getPool();
-      const cfg = await week.getConfig(pool, resolveClassId(payload, ctx));
+      const cfg = await week.getConfig(pool, await resolveClassId(pool, payload, ctx));
       const custom = String(payload.scene || '').trim();
       // 默认 scene = 班级口令（join_token）：扫码 → auth.resolveScene → 绑定页自动填入口令。
       // 口令可被「随机重置」，因此重置后重新生成的码会自动带新口令；invite_code 作兜底。

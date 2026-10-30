@@ -55,7 +55,8 @@ if (be && fe) {
 }
 
 console.log('\n── ② 前端不得再各写一份职位字面量');
-[['miniprogram/pages/home/index.js', 'NOTICE_POSITION_PRESETS'],
+// ⚠️ 2026-10-27 归位：NOTICE_POSITION_PRESETS 随发布表单搬到 pages/notice/publish
+[['miniprogram/pages/notice/publish/index.js', 'NOTICE_POSITION_PRESETS'],
 ['miniprogram/pages/roster/index.js', 'posList']].forEach(([p, name]) => {
   const s = read(p);
   if (/util\.POSITIONS/.test(s)) ok(p + ' 复用 util.POSITIONS');

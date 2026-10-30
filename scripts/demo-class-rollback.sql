@@ -1,0 +1,16 @@
+-- 删除虚拟演示班（invite_code = DEMO2605）的全部数据;
+DELETE FROM duty WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM session WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM course WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM duty_slot WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM schedule_rules WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM duty_week_cursor WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM notice_msg_read WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM notice_msg_target WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM notice_msg_class WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM notice_msg WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM class_fund_record WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM class_fund WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM member WHERE class_id = (SELECT id FROM `class` WHERE invite_code = 'DEMO2605' LIMIT 1);
+DELETE FROM `class` WHERE invite_code = 'DEMO2605';
+SELECT COUNT(*) AS remaining_classes FROM `class` WHERE invite_code = 'DEMO2605';

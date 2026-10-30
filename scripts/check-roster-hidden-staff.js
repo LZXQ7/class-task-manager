@@ -62,9 +62,14 @@ assertTrue(
   'roster._loadMembers 过滤掉教职工（groupTag !== \'X\'）—— 成员与分组不显示辅导员'
 );
 
-/* ---- ② boundCount 口径（只管 X；test 由服务端 member.list 一律过滤，见文件头修订说明）---- */
+/* ---- ② boundCount 口径（只管 X；test 由服务端 member.list 一律过滤，见文件头修订说明）----
+ * ⚠️ 正则允许赋值号后有前缀：2026-10-28 起该行是三元表达式
+ *    `patch.boundCount = this.data.canManage ? rows.filter(...).length : null`
+ *    （普通成员走只读接口，后端不回 bound，算出来必然是 0 ⇒ 假红字，必须给 null）。
+ *    判据仍然是「rows.filter 里同时有 bound 与 groupTag !== 'X'」，只是不再要求紧跟 `=`。 */
+const BOUND_COUNT_RE = /patch\.boundCount\s*=[^\n]*rows\.filter\(x => x\.bound && x\.groupTag !== 'X'\)\.length/;
 assertTrue(
-  /patch\.boundCount\s*=\s*rows\.filter\(x => x\.bound && x\.groupTag !== 'X'\)\.length/.test(rosterJs),
+  BOUND_COUNT_RE.test(rosterJs),
   'roster.boundCount 排除辅导员(X)：已绑定口径与「总人数」一致'
 );
 
@@ -113,9 +118,11 @@ assertTrue(
   /groupTag !== 'X'/.test(dutyJs),
   '值日页选人仍保留 groupTag !== \'X\'（辅导员不参与值日）'
 );
+// ⚠️ 2026-10-27 归位：通知「指定成员」选人随发布表单搬到 pages/notice/publish
+const pbJs = read('miniprogram/pages/notice/publish/index.js');
 assertTrue(
-  /\.filter\(x => x\.groupTag !== 'X'\)/.test(homeJs),
-  '首页通知「指定成员」选人仍过滤 groupTag !== \'X\''
+  /\.filter\(x => x\.groupTag !== 'X'\)/.test(pbJs),
+  '通知「指定成员」选人仍过滤 groupTag !== \'X\'（发布页 pages/notice/publish）'
 );
 
 /* ============================ 变异自证 ============================ */
@@ -143,7 +150,7 @@ proveNotVacuous(
     "rows.filter(x => x.bound && x.groupTag !== 'X').length",
     'rows.filter(x => x.bound).length'
   ),
-  (s) => /patch\.boundCount\s*=\s*rows\.filter\(x => x\.bound && x\.groupTag !== 'X'\)\.length/.test(s)
+  (s) => BOUND_COUNT_RE.test(s)
 );
 
 // ③ 给后端 manage 分支塞进 group_tag <> 'X' → 反向断言必须翻转

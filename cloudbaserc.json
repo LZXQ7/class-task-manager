@@ -61,6 +61,20 @@
         "vpcId": "vpc-c4ga6fms",
         "subnetId": "subnet-a5mkrg1l"
       }
+    },
+    {
+      "name": "config",
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "timeout": 20,
+      "memorySize": 256,
+      "installDependency": true,
+      "dir": "./cloudfunctions/config",
+      "description": "前端远程配置下发：公开读 app_config 全表（免审改文案/开关）",
+      "vpc": {
+        "vpcId": "vpc-c4ga6fms",
+        "subnetId": "subnet-a5mkrg1l"
+      }
     }
   ],
   "gateway": {

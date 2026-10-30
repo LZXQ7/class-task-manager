@@ -231,7 +231,6 @@ Page({
       impersonate.sync(this);
     };
     applyAuth();
-    const wasCounselor = firstCounselor;
     // 分支①（2026-10）：已启动且班级/身份未变 ⇒ 本地即时渲染 + 后台静默同步，
     // 不再每次切 Tab 都重拉云端并清空网格（避免刷新闪烁）。
     const booted = this._booted;
@@ -250,7 +249,10 @@ Page({
     if (app && app.globalData && !app.globalData.authChecked) {
       app.ready().then(() => {
         applyAuth();
-        if (this.data.isCounselor !== wasCounselor) this._afterAuth();
+        // 🔴 身份就绪后重选班级：首屏若 profile 未就绪，_loadTimetableClasses 拿不到 own(本班)
+        // 会回落到 chips[0]（超管列表里可能是 3 班）⇒ 演示态被钉在 3 班真实课表。
+        // 这里在 profile 就绪后再跑一次 _afterAuth，确保默认选回本班(104)。
+        this._afterAuth();
       });
     }
     // v0.7.32 问题②：切 tab 也做一次节流身份重校；身份变了就重套 + 重建课表
@@ -282,20 +284,41 @@ Page({
   _loadTimetableClasses() {
     api.classList({}, { toast: false })
       .then((list) => {
-        const chips = util.sortClasses(list || []).map(c => ({
+        let chips = util.sortClasses(list || []).map(c => ({
           id: Number(c.id), name: c.name, termStart: c.termStart, totalWeeks: c.totalWeeks,
           // 带 periodTime 供节次数用（本班可配到第 6 节等，2026-10-14）
           periodTime: c.periodTime || []
         }));
+        // 🔴 模拟态（切换测试账号 / 切换体验版）：生效身份已被替换为目标账号，课表切班条
+        //    只能显示目标账号所在班级，杜绝点进真实班级 —— 演示/审核隔离铁律。
+        //    后端 class.list 对演示身份已按 is_demo=1 过滤，这里再兜一层：即便后端身份映射
+        //    偶发失同步（残留缓存 / 误删映射），前端也绝不把真实班级塞进切班条。
+        const gApp = (typeof getApp === 'function') ? getApp() : null;
+        const gData = (gApp && gApp.globalData) || {};
+        if (gData.switched) {
+          const effId = Number(gData.profile && gData.profile.classId) || 0;
+          if (effId && chips.some(c => c.id === effId)) {
+            chips = chips.filter(c => c.id === effId);
+          }
+        }
         if (!chips.length) {
           // 清掉 tt 模块可能残留的上一身份/上一班状态，避免课表残影
-          tt.setClass(config.TIMETABLE_CLASS_ID);
+          const own0 = Number(getApp().globalData.profile && getApp().globalData.profile.classId) || config.TIMETABLE_CLASS_ID;
+          tt.setClass(own0);
           this.setData({ loading: false, classList: [], grid: [], dates: [], periods: [], tip: '' });
           return;
         }
-        const keep = chips.some(c => c.id === Number(this.data.viewClassId));
-        const def = keep ? Number(this.data.viewClassId)
-          : (chips.some(c => c.id === config.TIMETABLE_CLASS_ID) ? config.TIMETABLE_CLASS_ID : chips[0].id);
+        // 🔴 默认选中「自己的班」(profile.classId)，不再写死 3 班：
+        // 演示班(104)/辅导员/普通成员进课表页都应默认看本班，切班是显式操作。
+        // 旧逻辑写死 TIMETABLE_CLASS_ID=3 ⇒ 演示超管默认看到 3 班真实课表（串班缺陷）。
+        const own = Number(getApp().globalData.profile && getApp().globalData.profile.classId) || 0;
+        // 🔴 全局「当前查看班级」优先（从班级信息页切班联动）：超管/辅导员在别页切到 104，
+        //   课表页也跟着显示 104；其次回落本地 viewClassId（模拟态切班），最后本班。
+        const gView = Number(getApp().globalData.viewClassId) || 0;
+        const keep = (gView && chips.some(c => c.id === gView)) ? gView
+          : (chips.some(c => c.id === Number(this.data.viewClassId)) ? Number(this.data.viewClassId) : false);
+        const def = keep ? keep
+          : (own && chips.some(c => c.id === own) ? own : chips[0].id);
         const sel = chips.find(c => c.id === def) || chips[0];
         this.setData({
           classList: chips,

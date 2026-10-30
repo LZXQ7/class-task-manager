@@ -53,8 +53,12 @@ console.log('--- R1 通知可删除（本人收件软删除） ---');
      ⚠️ 2026-09-26：原正则钉的是「scope='ALL' 之后 200 字内有 member_id = ?」，
      多班级改造后这段变成 `EXISTS (SELECT 1 FROM notice_msg_class ...)`，
      于是判据失真、长期假失败。改成按真实实现形态断言：
-     msgDelete 里先 SELECT n.id 做可见性校验，查不到就抛「无权删除」。 */
-  if (/msgDelete[\s\S]{0,600}?const \[vis\] = await pool\.query\([\s\S]{0,900}?if \(!vis\.length\) throw/.test(media)) {
+     msgDelete 里先查一次可见性，查不到就抛「无权删除」。
+     ⚠️ 2026-10-28：可见性 SQL 抽成了 noticeTouchable（msgDelete / msgRead 共用，
+     消灭双份实现），判据改为认这个共用函数 —— 并**额外**要求它内部仍有
+     `throw ... 无权` 那条分支，别让「抽函数顺手把校验抽没了」混过去。 */
+  if (/msgDelete[\s\S]{0,600}?noticeTouchable\([\s\S]{0,220}?throw/.test(media)
+      && /async function noticeTouchable[\s\S]{0,1800}?return vis\.length > 0/.test(media)) {
     ok('msgDelete 仅允许删除「我可见」的通知（防越权标记他人删除）');
   } else bad('msgDelete 缺少可见性校验（可能越权删除他人通知）');
 
@@ -165,11 +169,12 @@ console.log('--- R6 标题选填 + 在线文档标题自动检测 ---');
     ok('订阅消息推送标题为空时回退（内容前 20 字 / 班级通知）');
   } else bad('订阅消息推送没有标题回退（空标题会导致 thing1 为空）');
   // 前端发布表单：标题选填文案（label「标题」+ np-opt「选填」紧跟其后）
-  const homeWxml = stripComments(readMini('pages/home/index.wxml'), 'wxml');
+  // ⚠️ 2026-10-27 归位：发布表单已从首页弹层搬到 pages/notice/publish（整页表单）
+  const homeWxml = stripComments(readMini('pages/notice/publish/index.wxml'), 'wxml');
   if (/标题\s*<text\s+class="np-opt">\s*选填/.test(homeWxml)) {
     ok('发布通知标题标注「选填」');
   } else bad('发布通知标题未标注「选填」');
-  const homeJs = readMini('pages/home/index.js');
+  const homeJs = readMini('pages/notice/publish/index.js');
   if (!/请填写通知标题/.test(homeJs)) {
     ok('前端发布不再拦截空标题');
   } else bad('前端发布仍拦截空标题');
@@ -202,7 +207,10 @@ console.log('--- R3 通知页打开提速 ---');
   // onLoad 必须读缓存优先；用 read(0) 不再因 60s 过期退回骨架。
   // ⚠️ 2026-09-26：onLoad 里前置逻辑（身份 / canClear / 未读游标）变多了，
   //    窗口从 260 放宽到 700 字，否则会变成假失败。
-  if (/onLoad\s*\(\)\s*\{[\s\S]{0,700}notice\.read\(0\)/.test(pageJs)) {
+  // ⚠️ 2026-10-28：onLoad 现在带 options（按班查看的 classId），缓存也按班分槽
+  //    （read(0, vc)）。判据同时认两种形态，但**必须仍然是 read(0)** ——
+  //    read(FRESH_MS) 会让过期缓存退回骨架，打开又变慢。
+  if (/onLoad\s*\([^)]*\)\s*\{[\s\S]{0,900}notice\.read\(0(?:\s*,\s*\w+)?\)/.test(pageJs)) {
     ok('通知页 onLoad 用 notice.read(0) 始终先渲染缓存（过期也先出内容）');
   } else if (/notice\.read\(notice\.FRESH_MS\)/.test(pageJs)) {
     bad('通知页仍在用 read(FRESH_MS)，会因 60s 过期退回骨架——打开又变慢');
@@ -278,7 +286,8 @@ console.log('--- R5 学号末两位 + 发布通知成员图形网格 ---');
   if (/slice\(-2\)/.test(util) && /parseInt/.test(util)) ok('seqOf 取后两位转数字（与后端 week.seqOf 同一套口径）');
   else bad('seqOf 实现与后端口径不一致');
 
-  const homeJs = stripComments(readMini('pages/home/index.js'), 'js');
+  // ⚠️ 同 R3：发布表单已归位到 pages/notice/publish
+  const homeJs = stripComments(readMini('pages/notice/publish/index.js'), 'js');
   // ⚠️ 2026-09-26：成员筛选条件变多（辅导员 / 测试账号），窗口从 400 放宽到 1400 字
   if (/_loadNoticeMembers[\s\S]{0,1400}seq:\s*util\.seqOf/.test(homeJs)) {
     ok('发布通知成员列表附上 seq（前端按学号后两位算，无需为选择列表多拉序号）');
@@ -288,7 +297,7 @@ console.log('--- R5 学号末两位 + 发布通知成员图形网格 ---');
     ok('home 提供 onPickGroup / onClearPick（一键选 A/B 组、清空）');
   } else bad('home 缺一键选组 / 清空逻辑');
 
-  const homeWxml = stripComments(readMini('pages/home/index.wxml'), 'wxml');
+  const homeWxml = stripComments(readMini('pages/notice/publish/index.wxml'), 'wxml');
   if (/np-grid/.test(homeWxml) && /np-cell/.test(homeWxml) && /avatar-tag/.test(homeWxml)) {
     ok('发布通知-指定成员改用图形网格（avatar-tag 显示序号），不再用长列表');
   } else bad('发布通知成员选择仍是长列表（应为 np-grid 图形网格）');

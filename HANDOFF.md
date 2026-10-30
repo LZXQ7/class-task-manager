@@ -32,6 +32,193 @@
 
 ---
 
+## 【本session】 · 2026-10-29（**线上事故：class / course 云函数部署丢了 node_modules ⇒ 两个函数 100% 崩溃**）
+
+- **症状**：班级信息页「未绑定班级」+ 概况从三个横杠到出数要 6s+；班级管理「暂无班级」（原本 5 个班）。用户连报三轮。
+- **真因（线上 invoke 实测钉死，不是推测）**：`tcb fn invoke class` → `Cannot find module 'wx-server-sdk'`。10-28 那批 17 函数重部署时，`deploy_all.sh` 的 `--deployMode zip` 把 **class(37MB) / course(50MB) 这两个最大包**的 `node_modules` 丢了 ⇒ require 阶段直接崩、每次调用必失败，而 CLI 照样报 `deployed successfully`。
+  - 误导性极强：`member` / `fee` 正常（56 人 / ¥280 都出得来）⇒ 前两轮一直在**前端**找原因（`906e3fe` / `47738b2` 改的都只是前端健壮性，方向错了；保留作兜底，无害）。
+- **修法**：新增 `scripts/deploy-fn-deps.js` —— 部署**前**先 `fn env pull` 该函数云端现存环境变量，连同 vpc 一起**临时**写进 `cloudbaserc.json`，再 `--install-dependency true` 走**云端装依赖**（绕开大包上传这个失败模式），`finally` 无条件还原（口令不落盘）。已用它重发 class / course：线上回 41001（模块正常）、CodeSize 11.78MB / 16.54MB（与健康态一致）、VPC(`vpc-c4ga6fms`) 与 DB_* 均在。
+  - 坏包修复通道固定为：`node scripts/deploy-fn-deps.js <fn>`。
+- **防复发**：`deploy_all.sh` 末尾追加「部署后自检」= 跑 `scripts/probe-fn-modules.js`（逐个 invoke 全部函数，触发不存在的 action：正常包回 41001，缺依赖回 `Cannot find module`，只读无副作用）。**部署脚本报成功也照样可能是坏的，这次就是。**
+- **附带清理（否则修好后端也看不到数据）**：生产库 `impersonation` 里「本人 openid → 赵子涵（演示班 104）」的残留映射已删（`created_at 02:50:37`，晚于截图 02:50:21，属残留态）。该行会让服务端把本人全程当演示身份，`class.list` 只回演示班、5 个真实班一个都看不到。已恢复本人真实超管身份；要重进演示态：我的 → 更多 → 切换体验版（一键，可逆）。
+- 提交 `7916427`。⏳ **待真机复核**：班级信息页班名正常显示、班级管理恢复 5 个班、加载不再卡顿（**纯服务端修复，无需重传前端**）。
+
+## 【本session】 · 2026-10-28（**1.0.8.1 收口：排班方式槽位 / 18:10 保洁 / 主教室设置 / 只读名单修复 / 课表入口精简 / 教职工切班 / 通知按班查看 / 首页作业播报 / 体验入口改名 —— 门禁 105/105**）
+
+**当前节点**：对外 **1.0.8.1**（内部 **v0.7.47**，`APP_VERSION` 已改）。**代码全部就位、门禁 105/105 全绿、云函数已部署**（含 `media` 按班查看、`homework.feed`，10-28 已部署 + 线上复验；`admin-web` 静态资源同步更新）；**前端已于 2026-10-28 首传 1.0.8.1 开发版**（含 classinfo SWR 缓存 + api.js 删 courseDiag）；**2026-10-29 重传 1.0.8.1 开发版**，补入演示态课表隔离修复 `511b7a3` + 班级信息页 `906e3fe`/`47738b2`（117 文件、主包 761KB、备注=作业模块公告；无云函数 / 表结构变更）。线上对外仍是 **1.0.7.1**——1.0.8.1 已上传但未设为体验版 / 未提审，需 mp 后台「版本管理」选中该版本 → 设为体验版 或 提审。
+
+### 本轮新增：班级信息页「教职工切班」（10-28 上午，用户需求）
+- **诉求原话**：「辅导员在班级信息页切换班级，下面班级成员、班费等随之变动，**而不是在班级成员、班费子页面单独添加班级切换**」。
+- **后端零改动**：`member.stats` 的 `targetClassId()` 与 `fee.getSummary` 的 `guard.resolveClassId()` 本来就认 `payload.classId` 并按 `staffClassIds` 收口越权；`class.list` 对辅导员只返回 `staff_class` 绑定的班。子页面侧 `roster` 早支持 `?classId=`（`otherClass` 态）、`homework` 早读 `options.classId`、`fee` 只需补一行 `onLoad` 读 `options.classId` → 初始选中。
+- **前端改动**：`classinfo` 概况卡内加切班入口（`classChips`/`viewClassId`/`isStaff`/`isOtherClass`），切班后班名+总人数+A/B+班费同卡刷新；`onOpen` 看别班时给 roster/fee/homework 追加 `?classId=`。
+  - **⚠️ 交互两版（10-28 上午定稿）**：首版是**横向滚动 chips 条**，用户当天反馈「左右滑动不太好」（5 个班要滑着找、2 个班时又白占一行）⇒ 改成 **点班名开 `bottom-sheet` 选班**。入口 `classChips.length > 1` 才渲染，只绑 1 个班时班名退化成纯文本；弹层高度 `min(900, 130+n*96+40)` rpx 按班级数算。🔴 班名行 `align-items` 必须 `flex-start`（班名 11 个字在 375px 屏折两行，`center` 会让胶囊悬在两行中间空隙里）。**别再改回 chips。**
+- 🔴 **三条边界口径（已写进门禁，别改坏）**：
+  ① **看本班时 URL 必须干净** —— roster 里写的是 `otherClass: classId > 0`，带自己班 id 会被误判成「查看别班」；
+  ② **「通知」卡在别班也一样可点**（同日追加已改）—— 首版因 `media.msgList` 硬锁本班而置灰 + 注明「通知仅显示本人班级」，用户当天再提需求后已把后端做成**按班查看**，见下方「同日追加：通知按班级归属查看」；
+  ③ **`load()` 默认选中「已选且仍在列表内」而非无条件回主班** —— `onShow` 每次都会重跑 `load()`，无条件重置会让用户切的班被弹回去（这是本功能最容易回归的一条）。
+- **新门禁 `scripts/check-classinfo-switch.js`（71 项，含 8 组变异自证）**：动态执行 `classinfo/index.js` 的 Page 定义（mock 5 个 util 模块 + wx/getApp），按真实交互序调 `load`/`onClassSheetOpen`/`onClassPick`/`onOpen`。**不用静态正则**是因为「切班后被 onShow 弹回」「点班后不关弹层」这类 bug 每个字都合法、只有真跑 data 才露馅。
+- 🔴 **生产库现状（决定上线后看不看得见）**：`staff_class` 现有 **5 行**（2026-10-28 复核：staff_id=72 示例成员57 → 班 1/2/3/9/10）⇒ 辅导员 `staffClassIds` = 5 个班，**切班入口会显示**；超管（id=13 示例成员01，is_super=1）走超管分支，`class.list` 返回全部 5 个班。两者都可直接真机验收。⏳ 若之后新建辅导员，仍要先在「班级管理」给他绑班（无 `staff_class` 行时回退主班、只有 1 个班则入口不渲染）。
+
+### 同批已完成（10-27 夜 ~ 10-28）
+1. **值日「排班方式」**（新表 `duty_slot`，`schedule` + `cron-weekly` 各内联一份、逐字一致）+ **18:10 保洁开关**（人数逐天可设）+ **主教室设置**（`class.main_room`，与后台同字段）。
+2. **普通成员能看名单**：roster 按 `canManage` 选 `public:'read'|'manage'`；`member.stats` 放宽到 needBind；只读态 `boundCount` 给 null 而非 0。
+3. **课表入口下线**：班级信息页「课程表」子卡 + 首页「查看课表 ›」（两者都只是 `switchTab` 到已有 tab → 点完画面不变）。子卡减为 4 张，动画档位重排 st-1~st-5。
+4. **全量静态排查修掉 2 个真 bug**：① `pages/home/index.js` **`onHide` 同名定义两次**，后者覆盖前者 ⇒ 请假翻面定时器从上线起从未在切走时清理；② `api.homeworkPurge` 指向 homework 云函数**不存在**的 action。新门禁 `check-contract.js` 守这两类。
+5. **两个遗留页面已定性、暂不动**（用户 10-28 拍板）：`pages/my-timetable` = 纯空壳 `Page({})`；`pages/timetable-apply` = **课表适配申请页（超管端），功能完整但入口在 10-07 课表页回退时被拆掉**，后端 `course` 的 5 个 action 全在、`timetable_apply` 表 0 行 ⇒ 现状「后端通、前端断」。**不能随手删目录**（删→ENOENT，放回不注册→Framework inner error），`check-page-registry.js` 就是为这两次事故写的。参赛文档若要写「课表文件批量导入」，这是现成素材。
+
+### 同日追加：通知按班级归属查看（10-28 上午第二轮，用户需求）
+- **诉求原话**：「通知目前只有在 3 班时可以点开，但实际场景中辅导员同时管理五个班级……使通知按班级归属分别展示和管理，让每位辅导员能够查看其负责的所有班级的通知，并正常点开查看详情，而不是仅限于 3 班的通知可点击。同时确保切换班级时通知内容随之对应变化。」
+  （截图症状：切到 2601 后通知卡被置灰 +「通知仅显示本人班级」。根因是上一轮为了「不让人点进去看到自己班通知」而做的**前端拦截**，因为后端只有「我的可见性」一个口径。）
+- **后端 `media` 云函数（已部署 + 线上验证）**：
+  - 新增 `resolveViewClassId(pool, ctx, payload)`：超管可看**任意活动班**、辅导员限 `guard.staffClassIds`、其他身份恒 0。**越权静默回落 0**（不抛 403 —— 通知是「看」的入口，脏 classId 不该白屏）。
+  - `msgList` 变**双分支**：`? <> 0` 班级视角 vs `? = 0` **原口径逐字保留**（普通成员 / 首页入口零影响）。归属判定：`ALL` 看 `class_id` / `notice_msg_class`；`COMMITTEE`·`POSITION`·`PICK` 看**目标成员所在班**（`tm.class_id`）。
+  - 🔴 **班级视角绝不能给「自己发布的」开裸口子**：第一版写了 `OR n.publisher_id = me`，生产库一验就露 —— 超管在 示例班级A 发的两条通知出现在 2601 的列表里。已删该支（自己发到该班的本来就会被归属条件命中）。**这条只有拿真实 SQL 跑库才看得见，读代码看不出。**
+  - `msgRead` / `msgDelete` 的可见性抽成 **`noticeTouchable`**（与 msgList 同口径，消灭双份 SQL ⇒ 不会再「列表看得见、点删除报无权」）。
+  - 新增返回字段 `canAck`（`need_ack && !isPublisher && !acked && forMe`）：按班管理时看到的别班通知**不给「确认收到」按钮**（辅导员不是收件人）；`canSeeAck` 增加 `viewClassId > 0`（管理端要能看该班回执催人）。
+- **前端**：
+  - `classinfo`：通知卡**不再置灰**、删掉 `ci-item-off` 与「通知仅显示本人班级」；`onOpen` 里通知**恒带** `?classId=&name=<短名>`（本班也带 —— 它的 classId 只表示「看哪个班」；roster/fee/homework 仍只在 `isOtherClass` 时带）。
+  - `notice`：`onLoad(options)` 读 `classId`/`name`，导航标题变「示例班级C · 通知」；`msgList` 带 classId；**缓存按班级分槽**（`utils/notice` 的 `byClass`，`read/write` 收第二参 classId，`patchAcked`/`removeFromCache` 遍历所有槽，`invalidate` 全清）；别班视图**不推进未读游标**（`_shouldAdvanceSeen`，否则红点被别班通知吞掉）；确认/删除带 classId（`_noticeArg`）。
+  - `notice/publish`：`onLoad` 读 `?classId=` 预选「发送班级」，并让带着预选班进来的超管也能看到班级选择区 —— 此前在 2601 的通知页点「发布」会**静默发到主班 示例班级A**。
+- **新门禁 `scripts/check-notice-class.js`（7 组变异自证）**：锁「后端班级视角 / 双分支 / 触碰判定单份 / 缓存分槽 / 传参 / 发布预选」整条链。⚠️ 断言必须限定在 `msgList` 段内做（`section()`）—— 初版全文搜 `resolveViewClassId`，变异把 msgList 那行改掉后仍能匹配到 helper 里的同名行，**变异假通过**。
+- **生产库等价 SQL 六视角验证（跑真库，跑完删探针）**：`super-v3`=11 条 / `super-v1`=**空**（修复后不再串班；修复前是 2 条）/ `super-v0`=11 条（老口径不变）/ `stu14-v0`=28,29（只含发给她的）/ `staff72-v0`=空（只看自己发的）/ `staff72-v3`=11 条（该班全部）。线上 `tcb fn invoke` 复验：`classId=3`→11、`classId=1`→空、`classId=9999`→回落老口径 11。
+- ⚠️ **踩坑：SQL 模板字符串（反引号）里的注释不能出现反引号** —— 注释里写 `` `n.publisher_id = me` `` 会提前结束模板串，本地 `node --check` 报 `missing ) after argument list`、云端只回一句同名 SyntaxError、日志还是空的（像是平台问题，其实是自己代码）。另有次「部署返回成功、立刻 invoke 仍报旧错」= 打到旧实例，等 1~2 分钟再试即正常。
+
+### 同日追加②：首页「作业提交播报」+ 体验入口改名（10-28 上午第三轮，用户需求）
+- **诉求原话**：①「上面的文字改成，如果有发布作业，谁提交了作业就滚动展示一次，展示完就消失」（截图为首页顶部那条「欢迎使用班级任务管理 · 期中考试周请按时提交作业」）②「输入口令页面，审核体验入口改为体验入口，审核口令改为体验口令。『我的』页面审核体验入口也改为体验入口」。
+- **① 首页横幅 → 作业播报**
+  - 原位置内容是 `app_config.homeBanner`（远程配置下发，2026-10-26 做的「免审改文案」示范）。现在**首页不再渲染它**：远程配置机制仍在 `app.js` 的 onLaunch/onShow 全局拉取（60s 节流），只是当前没有页面消费 `homeBanner`。`check-remote-config.js` ⑤ 段相应改为「消费方已迁移」守卫。
+  - **后端 `homework.feed`（新增 action，已部署）**：只对 `committee / super / counselor` 放行，普通成员**静默返回 `{list:[]}`**（不抛 403 —— 首页首屏多一个错误态比少一条播报糟得多）。取本班最近 **24h**、最多 **6** 条，`UNIX_TIMESTAMP(GREATEST(submitted_at, updated_at))` 作为「最近动作」绝对秒。🔴 **必须 GREATEST**：重交只走 `ON DUPLICATE KEY UPDATE ... updated_at=CURRENT_TIMESTAMP`，只认 `submitted_at` 会让「被打回后重交」不播（那恰恰是最该播的一次）。已用真库验证：把某条 `submitted_at` 改到 3 天前 → 被窗口排除；再只刷 `updated_at` → 重新出现。
+  - **前端 `pages/home`**：data `hwFeedShow/hwFeedOut/hwFeedQueue/hwFeedIdx`；`_loadHwFeed / _feedBuild / _playHwFeed / _endHwFeed / _feedSetCursor / onHwFeedTap` 一组。滚动是**真滚动**——`.home-feed-body` 定高 40rpx + `overflow:hidden`，`.home-feed-track` 靠 `translateY(-idx*40rpx)` 上移（比逐条做入场动画省节点，也不会因 `wx:for` 复用节点导致动画不重播）。收起靠 `max-height:80rpx → 0` + `opacity`，随后 `wx:if` 整体移除。
+  - 🔴 **四条口径（都已写进门禁，别改坏）**：
+    ① 游标键 `'hwfeed:' + meId + ':' + classId` —— 换号 / 换班各记各的；
+    ② **首次没游标只记基线不播** —— 否则新装 / 换机用户一进首页被灌 5 条别人的历史提交，像出 bug；
+    ③ **播完才推进游标**（写在 `_endHwFeed` 里）—— 中途 `onHide` 停表不算看过，下次重播；
+    ④ `_loadHwFeed()` 必须放在 `load()` 的 **STALE_MS 早退之前** —— 播报是即时信号，跟着首屏 20s 缓存一起被跳过就永远慢一拍。
+  - **权限判断（需用户确认是否接受）**：播报内容就是「谁交了」，而普通成员在 `homework.detail` 里本来就看不到别人的提交状态（`isPrivileged` 之外只回自己那一行）⇒ 首页播出来等于绕过那道权限，所以**只给班委 / 超管 / 辅导员**。若用户想让全班都看到，后端删掉角色判定那 3 行即可。
+  - **新门禁 `scripts/check-home-feed.js`（7 组变异自证全抓）**。
+- **② 体验入口改名**：`bind/index.wxml`（标题「体验入口」+ placeholder「体验口令」+ 注释）、`bind/index.js`（「请输入体验口令」）、`mine/index.wxml`（行标题「体验入口」+ 弹层标题「体验口令」+ 警告语「我的 → 体验入口」）、`mine/index.js`（确认弹窗「开启/关闭体验入口？」）。后端 `auth.reviewDemo` 的文案早就是「体验入口未开放 / 体验口令不正确」，无需改。
+- **验证**：门禁 **105/105 全绿**；生产库等价 SQL 三验（班内 2 条正常 / 测试账号 69 被 `NOT_TEST` 排除 / `class_id=1` 返回 0 行跨班隔离 / 3 天前的被窗口排除 / 重交后重现），临时数据已删净（复核 `homework=0 / homework_submit=0`）；Chrome 无头三态截图（播报中 / 滚到第 2 条无残影 / 收起后无白缝）均正常。
+- ⚠️ 新增埋点键 `home_feed_tap` 已同步进 `admin-web/public/app.js` 的 `EVENT_LABEL`（否则 `check-admin-web` 判死），`admin-web` 已重部署。
+
+### 同日追加③：班级信息页性能优化（SWR 缓存 + 死代码清理）（10-28 续轮）
+- **诉求**：班级概况（成员统计 + 班费总额）每次进入页面都重拉、无缓存；首屏/切 Tab 慢；要求清理死代码、冗余组件、未用依赖、重复请求。
+- **根因定位**：全工程只有 `pages/classinfo` 在 `onShow→load` 每次重打 `memberStats` + `feeSummary`（教职工还多打 `classList`）且无任何缓存；其余 Tab 页（home / duty / mine / timetable）早已有 SWR / 本地缓存机制。
+- **改动**：
+  - `miniprogram/pages/classinfo/index.js`：`_loadClassData(classId, force)` 接入 `utils/mem` 按**班级**分槽缓存（`mem.keys.classinfo(cid)`）+ `STALE_MS=20000` 频率闸门。命中缓存**同步渲染**（不闪骨架/白屏）后后台静默刷新；切班（cid 变）自然重拉、`force` 可强刷；仅「无内容且无缓存」才 `loading:true` 避免白屏闪烁。教职工 `classList` 同样加 `mem.keys.classList()` + STALE 闸门，命中且已有 chips 时**零请求**。
+  - `miniprogram/utils/mem.js`：`keys` 新增 `classinfo(classId)`、`classList()` 两个键（按班级 / 整把归属，与首页 / 值日同源风格）。
+  - `scripts/check-classinfo-switch.js`：门禁 `mocks` 补真实内存版 `../../utils/mem`（否则引入 mem 后 `requireShim` 抛 `unexpected require` 整门禁崩）。
+  - `miniprogram/utils/api.js`：删除唯一确认死代码 `courseDiag: C('course','diag')`（全工程无调用、后端 `course.diag`+`__lap` 是 10-05 排查临时自诊断）。
+- **全局审计结论（安全项已清，建议项未做）**：① 死代码 = `courseDiag` 已删；② **16 个组件全部被 `usingComponents` 声明、无冗余**（`app.json` 的 `lazyCodeLoading:"requiredComponents"` 已保证按需打包）；③ 小程序**无 npm 依赖**（`project.config.json` 无 `packNpmRelationList`、无 `miniprogram/package.json`）⇒ 未使用依赖 N/A；④ 其它 Tab 页缓存机制已具备；⑤ `utils/list-transition.js` 非死代码（`timetable:27`、`roster:18` 引用）；⑥ `my-timetable`/`timetable-apply` 孤儿页是门禁故意未注册（不动）；⑦ `remindReopen` 字段保留（`check-clean-label.js` 看守）。
+  - ⏳ **建议未执行**：后端 `cloudfunctions/course/index.js` 的 `diag` action + `__lap` 计时（line 1375-1469）同为 10-05 临时自诊断，前端映射已删但后端残留，需 `tcb fn code update course` 重部署清理（用户未要求后端改动）。
+- **验证闭环**：`node --check` 三文件全过；`scripts/check-classinfo-switch.js` 71/71（12 用例 + 8 变异，含「缓存命中路径仍重跑 keep/sel 选择」修复——首版漏跑导致变异假通过）；`scripts/run_all_gates.sh` 连续两次 105/105 全绿（加缓存后、删 courseDiag 后均无回归）。
+- ✅ **前端已随 1.0.8.1 上传（2026-10-28，开发版）**：classinfo 缓存 + api.js 删一行随 1.0.8.1 一并发出；无云函数 / 表结构变更。
+
+### 下一步（按序）
+1. ✅ **1.0.8.1 前端已上传为开发版（2026-10-28）**；mp 后台「版本管理」选中该版本 → **设为体验版** 或 **提审**（上传即含本轮性能优化）。
+2. 真机验收：① 班级信息页**点班名开弹层**（超管应见 5 个班，切 2601 后人数 59→57、班费 280→0）② 切班后进成员/班费看到的是所选班 ③ **通知卡不置灰**，切 2601 进通知页标题显示「示例班级C · 通知」且列表为空（该班暂无通知）、切 示例班级A 能看到 11 条 ④ 排班方式弹层 ⑤ 普通成员能看名单 ⑥ 在 2601 的通知页点「发布」，发送班级默认 2601 ⑦ **作业播报**：用班委身份发一份作业 → 换成员身份提交 → 回首页应看到「某某 提交了《…》」滚一遍后消失，再进首页不重播 ⑧ 绑定页与「我的」页文案应为「体验入口 / 体验口令」。
+3. 参赛材料（截止 **10-30 24:00**）：源码 zip + 说明文档 PDF + 演示视频 1280×720。
+
+### 本轮追加：演示班(104)数据隔离修复（2026-10-28 晚）
+- **缺陷**：演示班切班后，课表页默认班写死 `TIMETABLE_CLASS_ID=3`，导致演示超管(班级104)进课表页默认看到 3 班(用户真实班)真实课表；且 104 的「本班请假」模块为空(leave_request=0)，无专属假数据。
+- **修复（前端 `miniprogram/pages/timetable/index.js` + `utils/config.js`）**：课表页默认班改为取登录身份本班 `profile.classId`（演示=104），切班为显式操作；`profile` 就绪后再跑一次 `_afterAuth` 兜底；`TIMETABLE_CLASS_ID` 退化为空列表/未就绪时的兜底常量。home/duty/课次 等模块本就经后端 `guard.classIdOf` 按 `m.class_id` 隔离（演示=104），无需改动。
+- **生产库（tcb 直连执行）**：① `class.id=104` 改名为「演示班级」；② 为 104 灌 3 条 APPROVED 假请假（member 253/254/255，覆盖 2026-10-28），使「本班请假」显专属假数据（模拟 `leaveBoard` 读回 3 条）。
+- **核查**：104 已有专属数据——member 40 / session 21 / course 9 / class_fund 1 / duty 294 / leave_request 3；后端 `guard.classIdOf` 对演示超管恒返 104，各模块不串到 3 班。
+- **闭环**：`node --check` 通过；门禁 105/105 全绿；commit `7423216`；已重传 **1.0.8.1 开发版**（含本次修复）。
+- ⚠️ **待用户真机验收**：微信 IDE 切到演示班，确认课表/值日/请假/绑定人数/课次均为 104 专属数据、不再出现 3 班内容。
+
+### 本轮追加：班级信息页切班全局联动其他4个tab（2026-10-28 续）
+- **用户反馈**：上一轮改名+灌假请假后，**仅班级信息页变了，首页/课表/值日/通知仍显示本人3班数据**——切班是页面本地状态未提升为全局，且后端 `duty.today` 用 `classIdOf` 取本班、不吃前端传入 classId。
+- **根因**：① classinfo 切班只 `setData` 本地 `viewClassId`，其他 tab 无感知；② 用户以本人超管(3班)登录后手动切到104，并非进体验态（演示态会自动 refreshAuth 成 member 250/104 本就全局生效）；③ 后端 `duty.today` 写死 `classIdOf(ctx)`。
+- **方案（用户拍板：全局联动切班）**：新增全局「当前查看班级」`app.globalData.viewClassId`（0=跟随本人本班）；classinfo 切班中心写全局；home/timetable/duty/notice 的 onShow/取数跟随全局并检测变化重拉；后端 `duty.today` 改 `resolveClassId`（超管可跨班按班查看），`myDuty` 查询加 `class_id` 限定防跨班串「我的今日值日」。
+- **改动文件**：`app.js`(全局态) / `classinfo`(_applyClass同步全局) / `home`(viewClassId()注入 dutyToday/leaveBoard/leaveSummary/homeworkFeed 且 onShow 检测) / `timetable`(_loadTimetableClasses 全局优先) / `duty`(cid全局优先+onShow检测+onDutyClass同步全局) / `notice`(补 onShow 跟随) / `cloudfunctions/duty`(today resolveClassId+myDuty class_id)。
+- **闭环**：`node --check` 7 文件全过；门禁 **105/105 全绿**；commit `2ecdac5`；后端 `duty` 已 `functions:deploy`（deployed successfully）；前端已重传 **1.0.8.1 开发版**（含本次修复）。
+- ⚠️ **待用户真机验收**：微信 IDE 设 1.0.8.1 为体验版 → 以本人超管登录 → 班级信息页切到「演示班级」(104) → 切回首页/课表/值日/通知应全部显示 104 专属数据，不再出现 3 班内容；**本机无法跑微信模拟器，截图验证需用户完成**。
+
+### 参赛材料就绪（2026-10-28，截止 10-30 24:00）
+- **结论**：源码 zip + 说明 PDF 已齐备可交；**演示视频由用户手动录制，不使用 AI 宣传片**（用户 17:19 明确：视频要手动操作录制，不用类似宣传片的）。
+- **源码 zip（脱敏）**：`outputs/班级任务管理-参赛源码.zip`（2.89 MB / 751 文件；`git archive` 取最新 HEAD，剔除 .git/node_modules/密钥(.env-*)/outputs/构建产物/promo(940MB)；含 miniprogram + cloudfunctions + scripts + docs + i18n + 配置）。已扫描确认：无 .env* / 私钥文件；仅 `process.env.DB_PWD` 等环境变量引用，无明文密钥值。
+- **说明文档 PDF**：`outputs/班级任务管理-参赛说明.pdf`（约 340 KB；Chrome 无头打印；含 项目概述 / 功能清单 / 技术架构 / 核心亮点(跨班联动) / 质量与安全 / 部署与提交 / 验收指引）。
+- **演示视频**：⚠️ **改由用户手动真机录制**（1280×720）。`outputs/promo-video/班级任务管理-宣传片-720p-参赛版.mp4` 仅为 AI 摆拍参考/备选，**不作为提交物**；旧版 `-v1` 同理。
+- ⚠️ 跨班联动功能本身仍待用户真机验收（见上条）。
+- **参赛评测登录入口（2026-10-28 新增）**：为满足「评委/第一个使用者无账号口令也能进」，在绑定页加了**免口令一键体验**入口（始终可见），一键进**演示班 104（全虚拟数据，无真实学生）**。
+  - 改动：`miniprogram/pages/bind/index.{wxml,js}`（入口页「参赛演示 · 一键体验」按钮 + `onQuickDemo`）、`cloudfunctions/auth/index.js`（新增 `DEMO_QUICK_OPEN` 常量 + `reviewDemo` 的 `quick` 免口令通道）。
+  - 文档：`README.md` §14「参赛评测登录方式」+ 独立 PDF `outputs/班级任务管理-参赛评测登录指引.pdf`。
+  - ⚠️ **参赛临时入口，赛后须关**：`DEMO_QUICK_OPEN=false` 重部署 `auth` 即关；前端按钮可选删除。
+- **「我的 → 更多 → 切换体验版」（2026-10-28 新增，仅超管）**：解决「开发者不想再搞一个没绑定的微信账号去测体验版」。从已登录超管的「我的」页一键 **impersonate 到演示班 104 超管（全虚拟数据）**，无需第二账号、不解绑真实身份；顶部自动出现「恢复本人」横幅（与「切换测试账号」同一套模拟态机制）。
+  - 实现：复用既有的 `impersonation` 表 + `guard.getContext` 生效身份映射，**不碰 `reviewDemo` 的 40006「绝不自动顶掉真人」铁律**（走的是模拟态，不是 openid 真绑定）。
+  - 改动：`cloudfunctions/auth/index.js`（新增 `switchDemo` 动作）、`miniprogram/utils/api.js`（`switchDemo` 封装）、`miniprogram/pages/mine/index.{wxml,js}`（「更多」弹层新增一行 + `onMoreSwitchDemo`/`onSwitchDemo` + 埋点 `switch_demo`）、`cloudfunctions/admin-web/public/app.js`（`EVENT_LABEL` 补 `switch_demo: '切换体验版'` 以过 `check-admin-web`）。
+  - 权限：用户拍板「正常全权」（104 为虚拟数据，怎么动都不影响真人），故**未**强制 `is_review_demo` 拦截。
+  - ⚠️ 门禁：本轮 `run_all_gates.sh` **104 通过 / 1 失败**；仅剩 `check-review-demo.js` 为**既有漂移**（其报错即「判据与实现已漂移，先修判据」，基线本来就非 0，且失败条数仍是 6、未因本次新增而增加），与 `switchDemo` 无关，属 reviewDemo 历史重构遗留。
+  - 📦 **部署要求**：① 重部署 `auth`（新增 `switchDemo`）；② 重部署 `admin-web`（EVENT_LABEL 改动）；③ 微信 IDE 重新上传小程序前端。
+  -   ✅ **「未知操作」已修复（2026-10-28 19:xx，Agent 直接部署）**：`tcb fn code update auth --dir ./cloudfunctions/auth -e <YOUR_ENV_ID>` 成功；`tcb fn invoke auth --params '{"action":"switchDemo"}'` 返回 40001（身份守卫，非 41001），证明 action 已上线；`tcb db execute` 确认 104 班演示超管「赵子涵」(id 250, is_super=1, ACTIVE) 已在线上库，不会 40009。**前端无需重传**（用户测试版已含新按钮）。`admin-web` 的 EVENT_LABEL 改动非功能必需，暂未单独部署。
+
+### 演示班级范畴定义与隔离机制（2026-10-28 晚）
+- **「演示班级」范畴定义**：后续所有提及的「演示班级」，均指 `class.is_demo=1` 的班级集合，包含**「审核体验」班级**与**「免密体验」班级**两种入口形态；两种入口最终都落到同一批演示班（当前 id=104 / invite_code=DEMO2605），数据全为虚拟、与真实班级完全隔离。
+- **问题实证**：截图显示「我的」页已切到演示身份（模拟中·赵子涵），但课表页班级切换器仍列出 2601/示例班级B/示例班级A/英语/商务英语等**真实班级**——演示超管(赵子涵,is_super=1)经 `class.list` 拉到全部启用班、并经 `guard.resolveClassId`/`media.resolveViewClassId` 放行任意活动班，真实数据可被切换/拉取。
+- **隔离机制（展示 + 查询 + 纵深防御）**：
+  - ① `class` 表新增 `is_demo TINYINT NOT NULL DEFAULT 0`；演示班 DEMO2605(104) 置 `is_demo=1`（线上 ALTER + 种子 SQL 同步）。
+  - ② `class.list`：演示身份(`guard.isDemoMember`)仅 `WHERE is_demo=1` —— **所有班级切换器(班级页/值日页/班级信息页/课表页下拉)只渲染演示班**。
+  - ③ `guard.resolveClassId`：演示身份**强制返回本人演示班**(忽略传入 classId)，即便篡改客户端传真实 classId 也拿不到真实数据。
+  - ④ `media.resolveViewClassId`：演示身份仅允许演示班视角(`wants===own` 才放行，否则回落 0)。
+  - ⑤ `class.detail`：演示身份请求非演示班抛 40003。
+- **演示身份判定**(`guard.isDemoMember`)：生效身份 `is_review_demo=1`（审核/免密体验写入），**或**所属班级为演示班(`class.is_demo=1`)。三种体验入口(审核体验/免密体验/切换体验版)最终都落到 104 超管，故判定一致覆盖。
+- **影响范围**：改动落到 18 份 `cloudfunctions/*/common/guard.js`（逐字一致，脚本 `scripts/patch-demo-isolation.js` 统一打补丁）+ `class/index.js`(list/detail) + `media/index.js`(resolveViewClassId) + `scripts/demo-class.sql`(种子 is_demo)。对**真实用户零影响**(isDemoMember 恒 false)。
+- 📦 **部署状态（已执行 2026-10-28）**：
+  - ① **线上库**：`is_demo` 列已存在（`information_schema.columns` 实测 count=1）；DEMO2605(104) 已置 `is_demo=1`，其余 5 个真实班（示例班级C/示例班级B/示例班级A/商务英语/英语）均为 `is_demo=0`。种子 `scripts/demo-class.sql` 同步补 `is_demo,1`。
+  - ② **代码打补丁**：`scripts/patch-demo-isolation.js` 已对 18 份 `cloudfunctions/*/common/guard.js`（含根模板）统一注入 `isDemoMember`/`demoClassIds` + `resolveClassId` 顶部锁定，逐文件断言命中数===1；全量 `node --check` 21 个 JS 通过。（脚本顶部注释曾含 `cloudfunctions/*/common` 触发 `*/` 提前闭合注释的 bug，已修。）
+  - ③ **全量重部署**：17 个受影响云函数全部 `Deployment completed`（class/media/adjust/auth/config/course/cron-weekly/duty/export/fee/homework/member/poster/schedule/stat/admin-web/audit-receiver），统一用 `tcb fn deploy --force` 保留云端 env/VPC/运行时(Nodejs18.15)；admin-web 为 HTTP 函数走专用 `scripts/deploy-admin-web.js`（避免 ProtocolType 错误）。
+  - ④ **三层验证**：代码（class.list `WHERE is_demo=1` / resolveClassId 锁 own / media 锁 own / detail 抛 40003）+ DB（is_demo 列与取值正确）+ 部署（17 个均 completed）。真实用户零影响（isDemoMember 恒 false）。
+  - ⑤ **待用户真机验收**：微信 IDE 以演示身份（审核体验/免密体验/切换体验版）走一遍班级切换器/课表/通知，确认**只见演示班、无任何真实班级数据**。本机无法跑微信模拟器，这一步需用户完成。
+
+---
+
+## 【本session】 · 2026-10-27 夜（**教学比赛方案③ 改码：底部导航重排 + 首页精简 + 功能归位；门禁 98/98 全绿**）
+
+**用户指令**：班级信息放到底部导航**中间**；相关功能放到对应位置；**首页仅保留值日、课次和请假**；班级信息里**不要文档**。
+
+### 已落地（全部代码改完，门禁 98/98 全绿）
+1. **导航顺序**：`首页 · 课表 · 班级信息 · 值日 · 我的`（5 等分几何不变：SIDE_RPX=85、CELL_RPX=116）。
+   `setTabBar` 索引全量同步：home0 / timetable1 / classinfo2 / duty3 / mine4。
+2. **首页**只剩 4 块：值日 Hero(st-1) / 今日课次(st-2) / 明日课次(st-3) / 请假(st-4)。
+3. **班级信息**页：成员 / 课表 / 班费 / 通知 / 作业 5 子卡（**文档卡已删**）。
+4. **班费** → 新建独立页 `pages/fee/index`（原首页底部弹层整块迁出；segmented 切班费/团费，整页表单）。
+5. **发布通知** → 新建 `pages/notice/publish/index`（整页表单）；入口移到**通知页**顶部
+   （`canPublish` = isAdmin ∨ 辅导员）。
+6. **关注的学生** → 迁到**成员页 roster** 顶部（仅辅导员，钉人按钮本来就在该页详情里）。
+
+### 结构性调整（改了别处要跟着改的）
+- `.np-*` 表单控件从 `pages/home/index.wxss` **提升到 `app.wxss`（全局）**——fee / publish 两页共用；
+  WXSS 是页面级作用域，跨页借类 = 没定义。
+- 门禁不再写死导航顺序：`check-perf` 的 Tab 索引改从 `app.json` 的 `tabBar.list` 推导。
+- `check-tabbar-liquid` 自证里「我的」索引 3 → 4（5 Tab 时代）。
+- 6 个门禁的判据随功能搬到新位置：check-notice / check-staff-pin / check-notice-v2 /
+  check-positions-sync / check-roster-hidden-staff / check-chip-anim。
+
+### 下一步
+- 参赛物料（PDF 文档 / 视频分镜 / 测试账号与体验指引）—— 此前任务 14/15/16，代码稳定后继续。
+- ⚠️ 本轮**纯前端改动**，云函数无需重部署；但**前端尚未上传送审**（涉及新页，必须重新上传）。
+
+---
+
+## 【本session】 · 2026-10-26 夜（**值日排班「规则可远程更新」：免排已存 duty_off + 补录窗口迁 makeup_days + admin-web 排班规则面板；修 2 个潜 bug**）
+
+- **背景**：用户问「值日一键排班规则能否也远程更新，不用排错班就改小程序规则再送审」。选中的痛点：①特定人免排 ②轮转/分组逻辑 ③保洁/补录固定规则。
+- **关键澄清**：排班算法在云函数（common/round-robin.js + schedule/duty/cron-weekly），**不在小程序前端** ⇒ 改算法只部署云函数、**不用送审小程序**（用户此前误解）。
+- **免排（已存在，无需新建）**：member.duty_off 早已有；generate/AI/手动/cron 四处查名单都过滤 `duty_off = 0`；admin-web 成员编辑弹层「不排值日」下拉(f-dutyoff) → 写 duty_off，线上已 curl 验证。**用户此前不知此入口**。
+- **保洁/补录**：保洁节次来自 session 表(kind=CLEAN, period 可后台课表改) ⇒ 已数据驱动，不迁。唯一写死的是 duty 的 `EXPIRED_MAKEUP_DAYS=3` ⇒ 迁 `schedule_rules.makeup_days`（duty confirm 读库、默认 3、0–60 钳制）。
+- **修 2 个潜 bug（99999 upsert 实测才暴露）**：① `schedule_rules.class_id` 无唯一索引 ⇒ `ON DUPLICATE KEY UPDATE` 退化成插新行、`ORDER BY id LIMIT 1` 永远取旧行 ⇒ 规则其实一直改不生效 ⇒ 加 `uk_class` 唯一；② `id` 非 AUTO_INCREMENT ⇒ INSERT 报 1364 ⇒ 改自增。之后 99999 实测「首插 1 行→再插 174 行 Updated→单行新值→清理」通过。
+- **新增 admin-web「排班规则」tab**：`lib/mod-schedule-rules.js`（get/save）+ `index.js` 的 GET/POST `/api/schedule-rules` + `public/app.js` 的 `renderRules`/`VIEWS.rules` + `index.html` 导航。可改 makeup_days / 同天不重复 / 定时排班(周几·几点)，**改它不用送审小程序**；面板附指针「免排=成员编辑」「保洁节次=课表」。
+- **部署**：`tcb fn code update schedule` / `duty` / `admin-web` 三者成功（保留 env/protocol）。全量门禁 **98/98 全绿**（新增 `check-schedule-rules.js` 21 项）。线上：admin-web app.js/导航已含规则面板；`GET /api/schedule-rules` 返回 401（路由存在需登录）；真实库 class=3 makeup_days=3。
+- **未做**：轮转/分组逻辑算错属算法代码（改云函数+部署，仍不用送审小程序），等用户给具体算错场景再修。avoid_back_to_back 仍是死 flag（未接算法），面板未暴露。
+
+## 【本session】 · 2026-10-26（**远程配置下发能力落地：app_config + config 云函数 + 前端 remote-config（免审改文案/开关）**）
+
+- **背景**：用户问个人主体小程序能否用 web-view 免审更新 → 个人主体不支持 web-view；改为「配置下发」（易变文案/开关抽成服务端数据，超管改库即生效、免审）。用户确认「可以」。
+- **实现**：① 生产库新建 `app_config` 键值表（k,v），INSERT 示范 `homeBanner`；② 新建 `cloudfunctions/config/index.js`（action=get 公开读全表，auth:null，v 以 { / [ 开头尝试 JSON.parse 否则原样）；③ 前端 `miniprogram/utils/remote-config.js`（loadRemoteConfig+getRemote，storage 缓存键 app.remoteConfig）；④ `api.js` 登记 `configGet: C('config','get')`；⑤ `app.js` onLaunch+onShow 调 pullRemoteConfig（60s 节流）；⑥ 首页 `pages/home` 示范消费 homeBanner（js data + onShow 读缓存/拉取覆盖；wxml wx:if 横幅；wxss .home-banner/.home-banner-text）。
+- **部署（关键根因修复）**：裸 `tcb fn deploy config` 直接 SIGTERM 空输出 —— 因 cloudbaserc.json 未登记 config 条目，tcb 交互问"用默认配置?"卡死。已把 config 登记进 cloudbaserc.json（含 vpc-c4ga6fms，与 fee/stat/auth 同款），并新建 `scripts/deploy-config.js`（照搬 deploy-fee：从 .env-course 注入 DB_* → 部署 → 还原，口令绝不留在 disk）。
+- **验证**：config 函数 detail 确认 env vars(DB_HOST=172.17.0.15/DB_USER=classassist_app 等)+vpc 已就位；`tcb fn invoke config --data '{"action":"get"}'` 返回 `{errCode:0,data:{homeBanner:"欢迎使用班级任务管理 · 期中考试周请按时提交作业"}}`（46ms）。新建 `scripts/check-remote-config.js` 24 项全绿。
+- **待用户侧**：homeBanner 首次布局改动需随下次前端上传（1.0.8）审一次；之后改 `app_config.homeBanner` 文案/显隐即免审生效。
+
 ## 【本session】 · 2026-10-25（**一键排班轮转『重复开头』复发修复：loadWeekCursors 兜底顺序校正 + 门禁去假绿 + 双函数已部署**）
 
 - **现象（用户实锤）**：第7周 10/30 周五值日收尾 1号&55号；第8周 11/2 周一「按序号轮转排班」草稿第一条又从 1号&55号 开头 → 轮转游标未从上轮终点续推。用户原话「怎么一键排班又出问题了，每次修好又能出问题」。

@@ -36,6 +36,15 @@ async function getContext() {
       const [r2] = await pool.query('SELECT * FROM member WHERE id = ? LIMIT 1', [imp[0].member_id]);
       if (r2.length) { member = r2[0]; impersonated = true; }
     }
+  } else {
+    /* 未绑定但存在演示态映射（reviewDemo 免绑定体验 / 超管 switchDemo 的免绑定预览）：
+       直接以映射目标为生效身份，使「体验版无需绑定」成立（2026-10-29）。
+       该映射始终指向演示班 104 共享账号，绝不波及真实班级。 */
+    const [imp] = await pool.query('SELECT member_id FROM impersonation WHERE openid = ? LIMIT 1', [openid]);
+    if (imp.length) {
+      const [r2] = await pool.query('SELECT * FROM member WHERE id = ? LIMIT 1', [imp[0].member_id]);
+      if (r2.length) { member = r2[0]; impersonated = true; }
+    }
   }
   return { openid, appid: wxContext.APPID || '', member, realMember: real, impersonated };
 }
@@ -256,9 +265,35 @@ function requireLeaveView(ctx) {
  * （那里已按同一规则收紧）；本函数给「跨班**查看**」类路由用（listWeek / member.list…）。
  * @returns {Promise<number>}
  */
+
+/**
+ * 演示班级集合（2026-10-28 演示环境隔离）：class.is_demo=1 的班级。
+ * 「演示班级」范畴 = 审核体验班级 + 免密体验班级，二者最终都落到同一批演示班。
+ */
+async function demoClassIds(pool) {
+  const [rows] = await pool.query('SELECT id FROM `class` WHERE is_demo = 1');
+  return rows.map(r => Number(r.id));
+}
+
+/**
+ * 当前生效身份是否为「演示身份」（2026-10-28 演示环境隔离）。
+ * 判定：member.is_review_demo=1（体验入口/免密体验写入），或生效身份所属班级为演示班。
+ * 演示身份全程只可见演示班数据，彻底屏蔽真实班级。
+ * @returns {Promise<boolean>}
+ */
+async function isDemoMember(pool, ctx) {
+  const me = ctx && (ctx.member || ctx.realMember);
+  if (!me) return false;
+  if (me.is_review_demo === 1) return true;
+  const ids = await demoClassIds(pool);
+  return ids.includes(Number(me.class_id));
+}
+
 async function resolveClassId(pool, ctx, payload) {
   const me = (ctx && (ctx.member || ctx.realMember)) || {};
   const own = classIdOf(ctx);
+  // 演示身份锁定：演示环境只能看演示班，屏蔽任何真实班级（防越权拉真实数据）
+  if (await isDemoMember(pool, ctx)) return own;
   const req = Number(payload && payload.classId) || 0;
   if (!req || req === own) return own;
   if (isSuper(me)) {
@@ -274,4 +309,4 @@ async function resolveClassId(pool, ctx, payload) {
   return own;
 }
 
-module.exports = { getContext, requireBind, requireAdmin, isAdmin, isSuper, requireSuper, classIdOf, isCounselor, staffClassIds, resolveClassId, ADMIN_ROLES, isDutyAdmin, isMonitor, isViceMonitor, requireTimetablePublish, requireScheduleAuth, requireRosterEdit, requirePositionGrant, isGrantedPosition, POSITION_DUTY_ADMIN, POSITION_MONITOR, POSITION_VICE_MONITOR, isCommittee, requireCommittee, requireLeaveRegister, requireLeaveView };
+module.exports = { getContext, requireBind, requireAdmin, isAdmin, isSuper, requireSuper, classIdOf, isCounselor, staffClassIds, resolveClassId, isDemoMember, demoClassIds, ADMIN_ROLES, isDutyAdmin, isMonitor, isViceMonitor, requireTimetablePublish, requireScheduleAuth, requireRosterEdit, requirePositionGrant, isGrantedPosition, POSITION_DUTY_ADMIN, POSITION_MONITOR, POSITION_VICE_MONITOR, isCommittee, requireCommittee, requireLeaveRegister, requireLeaveView };

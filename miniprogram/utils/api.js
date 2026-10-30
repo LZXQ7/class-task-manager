@@ -16,17 +16,10 @@ module.exports = {
    *  凭审核口令一键绑定到 99 段测试超管，跳过「口令→选人→学号后 4 位」三步。
    *  口令由超管填进 mp 后台「审核备注」；入口是否显示由 login 下发的布尔位决定。 */
   reviewDemo: C('auth', 'reviewDemo'),
-  /**
-   * 审核体验入口 · 状态查询（仅超管，2026-10-15 · v1.0.6.8）：返回 `{ on, code }`。
-   * ⚠️ 与上面的 reviewDemo 不同 —— 那条面向**未绑定的审核员**、返回体绝不带口令；
-   *    这条要求超管身份，用来在「我的」页显示开关状态、以及开启期间**再看一次**口令。
-   */
-  reviewDemoStatus: C('auth', 'reviewDemoStatus'),
-  /** 审核体验入口 · 开关（仅超管）：`{ on:true }` = 后端自动生成新口令并回显；`{ on:false }` = 作废旧口令并踢下线 */
-  reviewDemoSet: C('auth', 'reviewDemoSet'),
   unbind: C('auth', 'unbind'),
   updateAvatar: C('auth', 'updateAvatar'),
   switchAccount: C('auth', 'switchAccount'),
+  switchDemo: C('auth', 'switchDemo'),
   setBindOpen: C('auth', 'setBindOpen'),
   resolveScene: C('auth', 'resolveScene'),
 
@@ -90,9 +83,6 @@ module.exports = {
   getApplyList: C('course', 'getApplyList'),
   downloadApply: C('course', 'downloadApply'),
   handleApply: C('course', 'handleApply'),
-  // 🔍 临时自诊断（2026-10-05 排查「网络异常/-504005」）：返回 course 各阶段耗时。
-  // ⚠️ 定位完成后，连同 course 的 diag action + __lap 计时一起删除。
-  courseDiag: C('course', 'diag'),
 
   /* ---------- 个人课表（2026-10-06）：人人可编辑自己的课表，仅自己可见 ---------- */
   myTimetableList: C('course', 'myList'),
@@ -141,6 +131,10 @@ module.exports = {
   scheduleUnpublish: C('schedule', 'unpublish'),
   scheduleGetRules: C('schedule', 'getRules'),
   scheduleSetRules: C('schedule', 'setRules'),
+  /** 排班岗位槽（2026-10-28）：生活委员自定义「哪天 / 第几节 / 几个人 / 固定谁」。
+   *  权限与 setRules 同域（超管 | 本班生活委员）；整体覆盖语义，一次提交全部岗位。 */
+  scheduleGetSlots: C('schedule', 'getSlots'),
+  scheduleSetSlots: C('schedule', 'setSlots'),
 
   /* ---------- 一键生成 · AI（DeepSeek） ---------- */
   scheduleAiPrompt: C('schedule', 'aiPrompt'),
@@ -255,5 +249,12 @@ module.exports = {
   homeworkSubmit: C('homework', 'submit'),
   homeworkReview: C('homework', 'review'),
   homeworkDelete: C('homework', 'delete'),
-  homeworkPurge: C('homework', 'purge')
+  /** 首页顶部「提交播报」数据源（2026-10-28）：最近 24h 谁交了哪份作业。
+   *  只有班委 / 超管 / 辅导员拿得到内容，普通成员后端静默回空数组（不报错）。 */
+  homeworkFeed: C('homework', 'feed'),
+  /* ⚠️ 没有 `homeworkPurge`（2026-10-28 删除）：homework 云函数**没有** purge action，
+   *    过期附件清理是 cron-weekly 里的 `purgeHomeworkFiles(pool)` 定时跑的（PURGE 7 天）。
+   *    留一条不存在的映射 = 谁哪天顺手一调就拿到「未知操作」，且错误里看不出是前端写错。 */
+  /** 前端远程配置下发（2026-10-26）：公开读 app_config 全表 → {k:v}，超管改库即生效、免审 */
+  configGet: C('config', 'get')
 };

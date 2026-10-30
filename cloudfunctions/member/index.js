@@ -143,6 +143,9 @@ async function genUniqueStaffNo(pool) {
 async function targetClassId(pool, payload, ctx) {
   const me = ctx.member || ctx.realMember;
   const own = guard.classIdOf(ctx);
+  // 演示身份锁定（2026-10-29 演示环境隔离）：演示态只能操作演示班，屏蔽真实班级，
+  // 防止演示超管经「可跨班的 classId」拉到 / 改到真实班级数据（与 guard.resolveClassId 同口径）。
+  if (await guard.isDemoMember(pool, ctx)) return own;
   const req = Number(payload && payload.classId) || 0;
   if (!req || req === own) return own;
   if (!guard.isSuper(me) && !guard.isCounselor(me)) return own;
@@ -776,6 +779,45 @@ const routes = {
           bound: !!r.openid
         }));
       }
+      /**
+       * public='read'（2026-10-28）：**普通成员**看本班同学名单。
+       *
+       * 为什么必须单独一个分支、不能让普通成员走 manage：
+       *   manage 的鉴权是 `guard.requireAdmin`（role ∈ ADMIN/MONITOR），而「班级信息」页
+       *   是对全班开放的聚合页，MEMBER 点「班级成员」→ 40003 → 前端 catch 静默 →
+       *   表现为「名单空白、没有任何提示」（示例班级A 50 名 MEMBER 全中）。
+       *
+       * 口径（用户 2026-10-28 定）：**姓名 + 组别 + 职务**，其余一律不给 ——
+       *   学号、微信绑定态、值日次数、备注都是管理动作需要的，全班可见没有收益只有风险。
+       *
+       * ⚠️ 只读本班：忽略 payload.classId（不像 manage 可以带 classId 跨班查），
+       *    用 `guard.classIdOf(ctx)` 锁死。普通成员没有理由看别的班。
+       * ⚠️ 排序用 student_no 但**不返回**它 —— 名单顺序要和管理员视图一致（按学号），
+       *    否则同一份名单两种身份排出两种顺序。
+       */
+      if (payload.public === 'read') {
+        guard.requireBind(ctx);
+        const classId = guard.classIdOf(ctx);
+        const kw = String(payload.kw || '').trim();
+        let sql = 'SELECT id, name, group_tag, position, student_no FROM member WHERE class_id = ?'
+          + " AND status != 'DISABLED' AND " + NOT_TEST() + " AND group_tag <> 'X'";
+        const args = [classId];
+        if (kw) {
+          sql += ' AND name LIKE ?';
+          args.push('%' + kw + '%');
+        }
+        sql += ' ORDER BY group_tag, student_no';
+        const [rows] = await pool.query(sql, args);
+        return rows.map(r => ({
+          id: r.id,
+          name: r.name,
+          groupTag: r.group_tag,
+          position: r.position || '',
+          // 只读标记：前端据此隐藏学号列 / 绑定态 / 调组 / 移出等全部管理动作。
+          // 字段名刻意与管理视图不同名，避免「字段恰好存在就以为是完整数据」。
+          readOnly: true
+        }));
+      }
       if (payload.public === 'manage') {
         guard.requireAdmin(ctx);
         const classId = await targetClassId(pool, payload, ctx);
@@ -863,7 +905,13 @@ const routes = {
   },
 
   stats: {
-    auth: { needAdmin: true },
+    /**
+     * 人数统计（总人数 / A 组 / B 组）—— **全班可读**（2026-10-28 从 needAdmin 放宽）。
+     * 原因：它是「班级信息」页三个数字的唯一来源，原先 needAdmin 让普通成员看到的是
+     * 「— — —」；而它只是三个计数，不含任何成员身份信息，没有收紧的必要。
+     * 跨班仍受限：targetClassId 内部对非超管 / 非辅导员恒返回本班。
+     */
+    auth: { needBind: true },
     handler: async (payload, ctx) => {      const pool = getPool();
       const classId = await targetClassId(pool, payload, ctx);
       const [rows] = await pool.query(
@@ -1705,7 +1753,11 @@ exports.main = async (event) => {
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
-    reviewDemo.denyDemo(ctx.member, action);   // 演示态：拦截破坏性动作（v1.0.6.4）
+    /* 演示态（生效班级为演示班，含免绑定 reviewDemo / 超管 switchDemo）：拦截破坏性动作
+       （v1.0.6.4，2026-10-29 扩展判定为「演示班」） */
+    if (await guard.isDemoMember(getPool(), ctx) && reviewDemo.isDeniedAction(action)) {
+      throw new BizError(40010, '演示模式：该操作不会真实执行');
+    }
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     if (route.auth && route.auth.needAdmin) guard.requireAdmin(ctx);
     if (route.auth && route.auth.needSuper) guard.requireSuper(ctx);

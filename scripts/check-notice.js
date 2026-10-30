@@ -185,9 +185,13 @@ assertTrue(/bindtap="onLink"/.test(ntWxml) && /点击打开/.test(ntWxml),
 const ntJs = readM('pages/notice/index.js');
 assertTrue(/pages\/webview\/index\?url=/.test(ntJs),
   '在线文档跳 web-view 页打开（域名未配置业务域名时 webview 页提供复制兜底）');
-assertTrue(/api\.msgList\(\{\}, \{ toast: false \}\)/.test(ntJs),
+/* 2026-10-28：msgList 增加「按班查看」参数（classId），调用点从 `msgList({})`
+   变成 `msgList(vc ? { classId: vc } : {})`。判据认两种形态 —— 不传班时仍必须是
+   空对象（老口径「我可见的全部通知」不能被悄悄改掉）。 */
+assertTrue(/api\.msgList\(\s*(?:vc \? \{ classId: vc \} : \{\}|\{\})\s*,\s*\{ toast: false \}\)/.test(ntJs),
   '通知页列表用 msgList 拉取');
-assertTrue(/api\.msgRead\(\{ noticeId: id \}/.test(ntJs),
+/* 同理：确认收到改成 `msgRead(this._noticeArg(id))`（带 classId 才能按班放行）。 */
+assertTrue(/api\.msgRead\(\s*(?:this\._noticeArg\(id\)|\{ noticeId: id \})\s*,/.test(ntJs),
   '确认收到调用 msgRead');
 assertTrue(/subscribe\.noticeReady\(\)/.test(ntJs) && /requestNotice\(\)/.test(ntJs),
   '通知页有「开启微信提醒」入口且会降级');
@@ -200,22 +204,43 @@ assertTrue(/function noticeReady\(\)/.test(sub) && /function requestNotice\(\)/.
   && /module\.exports = \{ ready, request, noticeReady, requestNotice[,}]/.test(sub),
   'subscribe.js 导出 noticeReady / requestNotice');
 
-const homeWxml = readM('pages/home/index.wxml');
-assertTrue(/bindtap="onNoticeOpen"/.test(homeWxml) && /发布通知/.test(homeWxml),
-  '首页管理员卡片有「发布通知」入口');
-assertTrue(/noticeScopeItems/.test(homeWxml) && /noticeNeedAck/.test(homeWxml)
-  && /noticeLinkUrl/.test(homeWxml),
-  '发布弹层含：发给谁 / 需要确认收到 / 在线文档链接');
-// height 显式传入（值本身可调，2026-09-25 从 1280 调到 1360 统一表单留白）
-assertTrue(/<bottom-sheet show="\{\{noticeShow\}\}"[^>]*height="\{\{\d+\}\}"/.test(homeWxml),
-  '发布弹层传了显式 height（否则表单滚不动）');
-const homeJs = readM('pages/home/index.js');
-assertTrue(/api\.msgPublish\(\{/.test(homeJs), '首页发布调用 msgPublish');
-assertTrue(/if \(scope === 'PICK' && !memberIds\.length\)/.test(homeJs),
+/* ⚠️ 2026-10-27 归位：用户要求**首页只留值日 / 课次 / 请假**，管理员卡片下架，
+   发布通知迁到**通知页**（入口）+ **pages/notice/publish**（整页表单）。
+   门禁跟着功能走 —— 继续断言首页只会永远假红，同时也失去「入口还在」的保护。 */
+const noticeWxml = readM('pages/notice/index.wxml');
+assertTrue(/bindtap="onNoticeOpen"/.test(noticeWxml) && /发布通知/.test(noticeWxml),
+  '通知页有「发布通知」入口（2026-10-27 从首页管理员卡片迁入）');
+const noticeEntryJs = readM('pages/notice/index.js');
+assertTrue(/canPublish/.test(noticeEntryJs) && /pages\/notice\/publish/.test(noticeEntryJs),
+  '发布入口按 canPublish 门控并跳到发布页');
+
+const pbWxml = readM('pages/notice/publish/index.wxml');
+assertTrue(/noticeScopeItems/.test(pbWxml) && /noticeNeedAck/.test(pbWxml)
+  && /noticeLinkUrl/.test(pbWxml),
+  '发布表单含：发给谁 / 需要确认收到 / 在线文档链接');
+// 整页表单替代底部弹层：不再需要显式 height（页面本身可滚），但要给底部让位
+assertTrue(!/bottom-sheet/.test(pbWxml)
+  && /nav-bar/.test(pbWxml)
+  && /page-foot-space/.test(pbWxml),
+  '发布页是整页表单（nav-bar + 页面滚动 + 底部让位，不再依赖弹层 height）');
+assertTrue(JSON.parse(readM('app.json')).pages.indexOf('pages/notice/publish/index') >= 0,
+  'app.json 已注册 pages/notice/publish/index');
+const pbJs = readM('pages/notice/publish/index.js');
+assertTrue(/api\.msgPublish\(\{/.test(pbJs), '发布页调用 msgPublish');
+assertTrue(/if \(scope === 'PICK' && !memberIds\.length\)/.test(pbJs),
   '「指定成员」未选人时前端先拦一道');
-const homeJson = JSON.parse(readM('pages/home/index.json'));
-assertTrue(!!homeJson.usingComponents['bottom-sheet'] && !!homeJson.usingComponents['segmented'],
-  '首页引入了 bottom-sheet 与 segmented');
+const pbJson = JSON.parse(readM('pages/notice/publish/index.json'));
+assertTrue(!!pbJson.usingComponents['segmented'] && !!pbJson.usingComponents['nav-bar'],
+  '发布页引入了 segmented 与 nav-bar');
+const homeJs = readM('pages/home/index.js');
+const homeWxml = readM('pages/home/index.wxml');
+// 首页已彻底下线发布通知：入口 / 表单字段 / 提交调用一个都不留。
+// ⚠️ 不能用 `/发布通知/` 这种宽口径 —— 首页还留着「一次性弹窗」的说明注释，
+//    里面会提到「发布通知勾了…」，按文本命中必然假红（本项目第 N 次踩「判据命中注释」）。
+assertTrue(!/bindtap="onNoticeOpen"/.test(homeWxml)
+  && !/noticeScopeItems/.test(homeWxml)
+  && !/msgPublish/.test(homeJs),
+  '首页已无发布通知残留（首页只留值日 / 课次 / 请假）');
 
 const mineWxml = readM('pages/mine/index.wxml');
 /* v0.7.22 需求④：通知入口只保留首页一处，「我的」页整块下线（含角标与跳转函数）。

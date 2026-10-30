@@ -29,9 +29,8 @@ function bad(msg) { failed += 1; console.log('FAIL  ' + msg); }
 function chk(cond, msg) { if (cond) ok(msg); else bad(msg); }
 
 const MEMBER_SRC = read('cloudfunctions/member/index.js');
-const HOME_WXML = readM('pages/home/index.wxml');
-const HOME_JS = readM('pages/home/index.js');
 const ROSTER_WXML = readM('pages/roster/index.wxml');
+const ROSTER_JS = readM('pages/roster/index.js');
 const API_JS = readM('utils/api.js');
 
 /* ============================================================
@@ -67,11 +66,14 @@ console.log('── ① 静态审计：路由 / 权限 / 上限 / 接线');
     '前端 api.js 已登记 pinList / pinToggle');
   chk(/固定到主页/.test(ROSTER_WXML) && /onTogglePin/.test(ROSTER_WXML),
     '成员详情有「固定到主页」按钮');
-  chk(/关注的学生/.test(HOME_WXML) && /onPinTap/.test(HOME_WXML),
-    '首页有「关注的学生」卡片且可点开');
+  // ⚠️ 2026-10-27 归位：首页按用户要求只留「值日 / 课次 / 请假」，这张卡搬到**成员页**
+  //    （它是成员的子集，钉人的按钮本来就在成员详情里，归位后读写两端同页）。
+  //    门禁跟着卡片走 —— 断言首页会永远假红，同时也失去了「卡片还在」的保护。
+  chk(/关注的学生/.test(ROSTER_WXML) && /onPinTap/.test(ROSTER_WXML),
+    '成员页有「关注的学生」卡片且可点开（2026-10-27 从首页迁入）');
   // 可见范围（v0.7.18 需求①）：**仅辅导员**。两端同源，不会出现「能钉却看不到」
-  chk(/const showPins = isCounselor;/.test(HOME_JS),
-    '首页卡片只对辅导员渲染（showPins = isCounselor，不再跟着超管走）');
+  chk(/showPins:\s*!!\(p && p\.groupTag === 'X'\)/.test(ROSTER_JS),
+    '关注卡只对辅导员渲染（showPins = isCounselor，不再跟着超管走）');
   chk(/pinVisible: isCounselor/.test(readM('pages/roster/index.js')) &&
       /wx:if="\{\{pinVisible && !mDetailIsSelf\}\}"/.test(ROSTER_WXML),
     '详情「固定到主页」按钮按 pinVisible（仅辅导员）门控，与后端同口径');
@@ -139,6 +141,8 @@ function loadMember(pool, me, allowed) {
     },
     staffClassIds: async () => allowed,
     resolveClassId: async () => 1,
+    // 2026-10-29：member main 主链路新增演示态判定（免绑定 reviewDemo）⇒ 桩化，非演示身份一律放行
+    isDemoMember: async () => false,
     ADMIN_ROLES: ['ADMIN', 'MONITOR']
   };
   const req = (id) => {
@@ -264,14 +268,14 @@ const pinSqlOf = (pool) => {
         getContext: async () => ({ openid: 'o', member: COUNSELOR, realMember: COUNSELOR }),
         requireBind: c => c.member, requireAdmin: c => c.member, requireSuper: c => c.member,
         isAdmin: () => true, isSuper: () => false, isCounselor: () => true,
-        classIdOf: () => 0, staffClassIds: async () => [2], resolveClassId: async () => 2, ADMIN_ROLES: []
+        classIdOf: () => 0, staffClassIds: async () => [2], resolveClassId: async () => 2, isDemoMember: async () => false, ADMIN_ROLES: []
       };
       const req = (id) => {
         if (id === 'wx-server-sdk') return { init() {}, DYNAMIC_CURRENT_ENV: 't' };
         if (id === './common/db') return { getPool: () => pool };
         if (id === './common/guard') return guard;
         if (id === './common/resp') return { BizError, ok: d => ({ errCode: 0, data: d }), fail: (c, m) => ({ errCode: c, errMsg: m }) };
-        if (id === './common/review-demo') return { isReviewDemo: () => false, denyDemo: () => {} };
+        if (id === './common/review-demo') return { isReviewDemo: () => false, denyDemo: () => {}, isDeniedAction: () => false };
         return { todayStr: () => NOW_STR, dateStr: x => String(x), getConfig: async () => ({}), log: async () => {}, parseXlsx: () => ({}), sheetToText: () => '' };
       };
       new Function('exports', 'require', 'module', 'console', m1)(mod.exports, req, mod, { log() {}, error() {} });

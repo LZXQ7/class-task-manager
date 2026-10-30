@@ -103,10 +103,50 @@ Page({
 
     /* 一键生成 / AI 排班（DeepSeek） */
     aiShow: false,
+
+    /* ── 排班方式（岗位槽，2026-10-28）──────────────────────────
+     * 各班生活委员制度不同（每节换人 / 一人包全天），原先规则写死在云函数里。
+     * 这里让他们自己定义「哪天、第几节、几个人」：
+     *   period = null  → 承包全天（当天所有节次共用这一批人）
+     *   period = 数字  → 该节单独一个岗位
+     * 保存后**只影响之后新生成的周**，已生成的周原样保留。
+     * ⚠️ slotShow 必须同步进 page-meta 的锁滚动表达式（漏一个会背景跟着滚）。 */
+    slotShow: false,
+    slotList: [],        // [{ key, period, periodIdx, periodText, needN }]
+    /* 这套岗位适用哪几天（1=周一 … 7=周日）。一次勾选，全天共用同一组岗位，
+     * 不用逐天重复填 —— 例：勾周一到周五 + 建「第1节2人」，保存后 5 天都生效。 */
+    slotDays: [1, 2, 3, 4, 5],
+    /* 星期 chips 渲染态：{ wd, text, on }
+     * ⚠️ on 必须在这里预算 —— WXML 不支持 indexOf 之类的方法调用。 */
+    slotDayChips: [],
+    slotBusy: false,
+    slotSummary: '未设置',
+    /* ── 18:10 打扫主教室（2026-10-28）──────────────────────────
+     * 独立的 CLEAN 课次，不是大课的某一节：系统里固定排在第 4 节之后、
+     * 第 5 节之前（第 4 节 16:30–18:10 下课即打扫），前端一律显示「18 点前」。
+     * 🔴 人数必须**逐天可设**：示例班级A现状就是周二大扫除 4 人、其余 2 人，
+     *    统一一个人数会在打开开关那一刻把周二冲成 2 人。
+     * 一旦配过 CLEAN 槽，该班保洁就完全由槽位定义：列表里没有的天不排人。 */
+    cleanOn: false,
+    cleanRows: [],       // [{ key, wd, text, needN }]
+    cleanSummary: '未开启',
+    /* 主教室（保洁房间，2026-10-28）：存在 class.main_room，与后台「班级设置」
+     * 同一个字段 —— 生活委员在这里改，后台立刻能看到，反之亦然。
+     * 留空 = 课次名退化成「打扫主教室」。 */
+    cleanRoom: '',
+    cleanTitle: '每天 18:10 打扫主教室',
+    weekdayTexts: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+    /** 节次选项：第一项「全天」= period null，其余第 1–8 节 */
+    periodTexts: ['全天', '第1节', '第2节', '第3节', '第4节', '第5节', '第6节', '第7节', '第8节'],
     aiText: '',
     aiBusy: false,
     aiError: '',
     aiDiag: null,
+    /* 自检面板默认**折叠**：以前 _checkAi 会把诊断结果直接塞进 aiDiag，
+     * 用户一开「一键生成」弹层就先看到一大块 IP / HTTP 状态 / 环境变量，
+     * 像报错页。现在只有显式点「自检」才出现，且出现时也是收起状态。 */
+    aiDiagOpen: false,
+    aiDiagBrief: '',
     aiModel: '',
     aiHasKey: true,
     aiPlan: [],
@@ -146,7 +186,7 @@ Page({
   onShow() {
     const app = getApp();
     if (app.track) app.track.pageView('duty');
-    app.setTabBar(2);
+    app.setTabBar(3);
     // v0.7.31：不再立即播 —— 等「身份(app.ready) + 首屏数据(loading=false)」就绪、或 READY_MS 兜底超时再统一开播
     pageAnim.playReady(this, getApp());
     const applyAuth = () => {
@@ -188,7 +228,12 @@ Page({
     // isCurrentWeek 恒 false → pastDays=[] → 「已结束」入口（wx:if pastDays.length）整块消失。
     // 这里每次 onShow 把 current 纠回真实当前周；未手动切周时一并把 week 纠回当前周并强制重拉。
     const corrected = this._syncWeek();
-    this.load(corrected || dutyDirty);
+    // 🔴 全局「当前查看班级」联动：从班级信息页切到 104 后切到值日页，必须按新班重拉
+    //    （否则 STALE_MS 缓存早退会留住上一次的 3 班名单）。
+    const gView = Number(app.globalData.viewClassId) || 0;
+    const needClassReload = !!gView && gView !== (this._shownViewClassId || 0);
+    this.load(corrected || dutyDirty || needClassReload);
+    this._shownViewClassId = gView || (this.data.isCounselor ? (Number(this.data.viewClassId) || 0) : 0);
     // v0.7.32 问题②：切 tab 也做一次节流身份重校；身份变了就重套 + 强刷
     if (typeof app.recheckAuth === 'function') {
       app.recheckAuth().then((changed) => {
@@ -225,6 +270,8 @@ Page({
     const id = Number(e.currentTarget.dataset.id) || 0;
     if (!id || id === Number(this.data.viewClassId)) return;
     this.setData({ viewClassId: id });
+    // 同步全局「当前查看班级」，与班级信息页切班互通（其余 Tab 跟随）
+    getApp().globalData.viewClassId = id;
     this.load(true);
   },
 
@@ -366,7 +413,10 @@ Page({
       return;
     }
     // 教职工按班查看：缓存键带上 classId，避免 A 班的名单冒充 B 班（v0.7.16）
-    const cid = this.data.isCounselor ? (Number(this.data.viewClassId) || 0) : 0;
+    // 🔴 全局「当前查看班级」优先（从班级信息页切班联动）：超管/辅导员在别页切到 104，
+    //   值日页也跟着显示 104 的排班；其次回落本地 viewClassId（辅导员在值日页切班）。
+    const gView = Number(getApp().globalData.viewClassId) || 0;
+    const cid = gView || (this.data.isCounselor ? (Number(this.data.viewClassId) || 0) : 0);
     const key = mem.keys.duty(this.data.week) + (cid ? ':' + cid : '');
     /*
      * 首屏优先用 app 在登录后**后台预热**好的那一份（见 app._prefetchTabs）：
@@ -644,36 +694,438 @@ Page({
   onAiOpen() {
     this.setData({
       aiShow: true, aiBusy: false, aiError: '', aiDiag: null,
-      aiPlan: [], aiCleaningPlan: [], aiWarnings: [], aiNotes: '', aiSkipSeqs: []
+      aiDiagOpen: false, aiDiagBrief: '',
+      aiPlan: [], aiCleaningPlan: [], aiWarnings: [], aiNotes: [], aiSkipSeqs: []
     });
     this._checkAi();
+    // 顺手刷一次「排班方式」摘要（静默失败不打扰；入口就在这个弹层里）
+    this._loadSlots();
   },
   onAiClose() { this.setData({ aiShow: false }); },
   onAiInput(e) { this.setData({ aiText: e.detail.value }); },
+
+  /* ---------------- 排班方式 · 岗位槽（2026-10-28） ----------------
+   * 各班生活委员制度不同（每节课换人 / 一人包全天），原先规则写死在
+   * 云函数 generate 的主循环里。这里让他们自己定义「哪几天、第几节、几个人」：
+   *   period = null → 承包全天（当天所有节次共用这一批人）
+   *   period = n    → 该节单独一个岗位
+   * 「适用星期」一次勾选、全周共用，不用逐天重复填。
+   * 保存后**只影响之后新生成的周**，已生成的周原样保留。
+   */
+  onSlotOpen() {
+    this._syncDayChips();
+    this._syncCleanSummary();
+    this.setData({ slotShow: true });
+    this._loadSlots();
+  },
+  onSlotClose() { this.setData({ slotShow: false }); },
+
+  /* slotDays → chips 渲染态。
+   * ⚠️ 必须在这里算 on：WXML 不支持 indexOf 这类方法调用，写 {{slotDays.indexOf(..)}} 会渲染成永远不选中。 */
+  _syncDayChips() {
+    const days = this.data.slotDays || [];
+    this.setData({
+      slotDayChips: (this.data.weekdayTexts || []).map((t, i) => ({
+        wd: i + 1,
+        text: t,
+        on: days.indexOf(i + 1) >= 0
+      }))
+    });
+  },
+
+  /* ---------------- 18:10 打扫主教室（2026-10-28） ----------------
+   * 独立于大课岗位：每一天一条保洁，人数**逐天可设**。
+   * 保存时后端会为缺课次的天补齐 CLEAN 课次（period=4 = 18:10 下课），
+   * 所以生活委员不用先去后台建课表。
+   */
+  /** CLEAN 槽列表 → 渲染行；WXML 不支持方法调用，text / key 必须在这里算好 */
+  _decorateClean(list) {
+    const wk = this.data.weekdayTexts;
+    return (list || []).map((s, i) => {
+      const wd = Math.min(7, Math.max(1, Number(s && s.weekday) || 1));
+      return {
+        key: 'c' + i + '_' + ((s && s.id) || 'n') + '_' + wd,
+        wd,
+        text: wk[wd - 1],
+        needN: Math.min(10, Math.max(1, Number(s && s.needN) || 1))
+      };
+    }).sort((a, b) => a.wd - b.wd);
+  },
+
+  /** 把 [1,2,3,4,5] 说成「周一~周五」——连续区间合并，非连续用顿号 */
+  _dayText(days) {
+    const t = this.data.weekdayTexts || [];
+    const arr = (days || []).slice().sort((a, b) => a - b);
+    if (!arr.length) return '未选星期';
+    const runs = [];
+    let from = arr[0];
+    let prev = arr[0];
+    for (let i = 1; i < arr.length; i += 1) {
+      if (arr[i] === prev + 1) { prev = arr[i]; continue; }
+      runs.push([from, prev]);
+      from = arr[i];
+      prev = arr[i];
+    }
+    runs.push([from, prev]);
+    return runs.map((p) => (p[0] === p[1] ? t[p[0] - 1] : (t[p[0] - 1] + '~' + t[p[1] - 1]))).join('、');
+  },
+
+  _syncCleanSummary() {
+    let text = '未开启';
+    const rows = this.data.cleanRows || [];
+    if (this.data.cleanOn) {
+      const days = rows.map((r) => r.wd);
+      const n = rows.length ? Math.max.apply(null, rows.map((r) => r.needN)) : 0;
+      text = this._dayText(days) + (rows.length ? (' · ' + (rows.length === 1 ? (n + ' 人') : ('最多 ' + n + ' 人'))) : '');
+    }
+    this.setData({ cleanSummary: text });
+  },
+
+  /* ---------------- 主教室（2026-10-28） ----------------
+   * 生活委员自己填「18:10 打扫哪个教室」，落库到 class.main_room（与后台
+   * 「班级设置 · 主教室」同一字段），保洁课次的名称/房间会跟着一起改。
+   * ⚠️ 输入过程**不 setData 输入框的值**：中文输入法下 value 被回写会吞字，
+   *    所以草稿只存 this._roomInput，失焦或保存时才提交（下方 _roomInput 优先）。
+   */
+  onRoomInput(e) {
+    this._roomInput = String((e.detail && e.detail.value) || '');
+    this._syncCleanTitle(this._roomInput);
+  },
+
+  onRoomBlur(e) {
+    const v = String((e.detail && e.detail.value) || '').trim();
+    this._roomInput = v;
+    this.setData({ cleanRoom: v });
+    this._syncCleanTitle(v);
+  },
+
+  /** 保洁标题跟着主教室走：设了 410 就是「每天 18:10 打扫410」 */
+  _syncCleanTitle(v) {
+    const room = String(v === undefined ? (this.data.cleanRoom || '') : (v || '')).trim();
+    this.setData({ cleanTitle: '每天 18:10 ' + (room ? ('打扫' + room) : '打扫主教室') });
+  },
+
+  onCleanToggle(e) {
+    const on = !!(e.detail && e.detail.value);
+    /* 第一次打开：没数据就给周一到周五的默认行（最常见制度），
+     * 让生活委员只改人数，不用从零点五遍「添加」。
+     * 默认 2 人 = 生产库保洁课次的常态值（示例班级A 是周二大扫除 4 人、其余 2 人）。 */
+    const patch = { cleanOn: on };
+    if (on && !(this.data.cleanRows || []).length) {
+      patch.cleanRows = this._decorateClean([1, 2, 3, 4, 5].map((wd) => ({ weekday: wd, needN: 2 })));
+    }
+    this.setData(patch);
+    this._syncCleanSummary();
+  },
+
+  onCleanAdd() {
+    const rows = (this.data.cleanRows || []).slice();
+    /* 默认补到还没用过的最小星期，避免一加就撞车 */
+    const used = rows.map((r) => r.wd);
+    let wd = 1;
+    while (wd <= 7 && used.indexOf(wd) >= 0) wd += 1;
+    if (wd > 7) { util.toast('七天都已经有了'); return; }
+    rows.push(this._decorateClean([{ weekday: wd, needN: 1 }])[0]);
+    this.setData({ cleanRows: rows });
+    this._syncCleanSummary();
+  },
+
+  onCleanWeekday(e) {
+    const i = Number(e.currentTarget.dataset.idx);
+    const rows = (this.data.cleanRows || []).slice();
+    if (!rows[i]) return;
+    const wd = Math.min(7, Math.max(1, Number(e.detail.value) + 1));
+    rows[i] = Object.assign({}, rows[i], { wd, text: this.data.weekdayTexts[wd - 1] });
+    /* 同一天只能有一条保洁，改重复了直接顶掉原来那条 */
+    const seen = {};
+    const uniq = [];
+    rows.forEach((r) => {
+      if (seen[r.wd]) return;
+      seen[r.wd] = 1;
+      uniq.push(r);
+    });
+    this.setData({ cleanRows: uniq.sort((a, b) => a.wd - b.wd) });
+    this._syncCleanSummary();
+  },
+
+  onCleanNeed(e) {
+    const ds = e.currentTarget.dataset;
+    const i = Number(ds.idx);
+    const d = Number(ds.d);
+    const rows = (this.data.cleanRows || []).slice();
+    if (!rows[i]) return;
+    const next = Math.min(10, Math.max(1, (Number(rows[i].needN) || 1) + d));
+    rows[i] = Object.assign({}, rows[i], { needN: next });
+    this.setData({ cleanRows: rows });
+    this._syncCleanSummary();
+  },
+
+  onCleanDel(e) {
+    const i = Number(e.currentTarget.dataset.idx);
+    const rows = (this.data.cleanRows || []).slice();
+    if (!(i >= 0 && i < rows.length)) return;
+    rows.splice(i, 1);
+    this.setData({ cleanRows: rows });
+    this._syncCleanSummary();
+  },
+
+  /** 切换某一天是否套用这套岗位 */
+  onSlotDay(e) {
+    const wd = Number(e.currentTarget.dataset.wd);
+    if (!(wd >= 1 && wd <= 7)) return;
+    const days = (this.data.slotDays || []).slice();
+    const at = days.indexOf(wd);
+    if (at >= 0) days.splice(at, 1);
+    else { days.push(wd); days.sort((a, b) => a - b); }
+    this.setData({ slotDays: days });
+    this._syncDayChips();
+  },
+
+  /** 拉本班槽位 + 主教室。返回 { slots, mainRoom }，老形状（纯数组）也兼容。 */
+  _loadSlots() {
+    api.scheduleGetSlots({}, { toast: false })
+      .then((r) => {
+        const all = Array.isArray(r) ? r : ((r && r.slots) || []);
+        /* 主教室（class.main_room）：老版本云函数不回这个字段 → 落到 ''，
+         * 显示成「打扫主教室」，不会把已有 410 冲掉（保存时字段缺省=不改）。 */
+        const room = Array.isArray(r) ? '' : String((r && r.mainRoom) || '').trim();
+        /* 🔴 CLEAN 槽必须先剥出去：它是「18:10 保洁」，period 也是 null，
+         * 混进岗位列表会被当成一行「全天」岗位显示出来（且保存时会重复写一遍）。 */
+        const cleanRows = (all || []).filter(s => s && s.kind === 'CLEAN');
+        const list = (all || []).filter(s => !s || s.kind !== 'CLEAN');
+        /* 库里是「每个星期 × 每个岗位」一行，读回来要还原成「一组岗位 + 一组星期」：
+         *   星期 = 出现过的星期并集；岗位 = 按 period 去重（同 period 在多天出现是同义重复）。 */
+        const days = [];
+        const seen = {};
+        const uniq = [];
+        (list || []).forEach((s) => {
+          const wd = Math.min(7, Math.max(1, Number(s && s.weekday) || 1));
+          if (days.indexOf(wd) < 0) days.push(wd);
+          const hasP = s && s.period !== null && s.period !== undefined;
+          const k = hasP ? ('p' + Number(s.period)) : 'all';
+          if (seen[k]) return;
+          seen[k] = 1;
+          uniq.push(s);
+        });
+        /* 保洁区的还原：有 CLEAN 槽 ⇒ 开关打开，逐天还原天数与人数。
+         * 🔴 绝不能给「没有 CLEAN 槽」的班自动补默认行：那等于凭空把保洁打开。 */
+        this.setData({
+          slotList: this._decorateSlots(uniq),
+          slotDays: days.length ? days.sort((a, b) => a - b) : [1, 2, 3, 4, 5],
+          cleanOn: cleanRows.length > 0,
+          cleanRows: this._decorateClean(cleanRows),
+          cleanRoom: room
+        });
+        /* 输入框的「未提交草稿」也跟着同步，否则上次打开残留的 _roomInput
+         * 会在这次保存时盖掉刚从库里读到的值。 */
+        this._roomInput = room;
+        this._syncDayChips();
+        this._syncCleanSummary();
+        this._syncCleanTitle(room);
+        this._syncSlotSummary(list);
+      })
+      .catch((e) => {
+        /* 🔴 空 catch 会把 TypeError 伪装成「接口失败」，必须落日志 */
+        console.error('[duty] loadSlots failed', e && e.stack ? e.stack : e);
+      });
+  },
+
+  /**
+   * 转成 WXML 直接能渲染的结构。
+   * ⚠️ WXML 不支持方法调用，所以 periodText / periodIdx 必须在这里预算好；
+   * ⚠️ wx:key 只接属性名，所以每行额外给一个 key。
+   */
+  _decorateSlots(list) {
+    const pd = this.data.periodTexts;
+    return (list || []).map((s, i) => {
+      const hasP = s && s.period !== null && s.period !== undefined;
+      const p = hasP ? Number(s.period) : null;
+      return {
+        key: 's' + i + '_' + ((s && s.id) || 'n'),
+        id: Number(s && s.id) || 0,
+        period: p,
+        periodIdx: p === null ? 0 : Math.min(pd.length - 1, p),
+        periodText: p === null ? '全天' : ('第' + p + '节'),
+        needN: Math.min(10, Math.max(1, Number(s && s.needN) || 1))
+      };
+    });
+  },
+
+  /** 入口那行的摘要文案：未设置 / 一人包全天 · N 天 / 每节课不同人 · N 天 */
+  _syncSlotSummary(list) {
+    const rows = list || [];
+    const days = [];
+    const periods = [];
+    rows.forEach((s) => {
+      const wd = Math.min(7, Math.max(1, Number(s && s.weekday) || 1));
+      if (days.indexOf(wd) < 0) days.push(wd);
+      const k = (s && s.period !== null && s.period !== undefined) ? ('p' + Number(s.period)) : 'all';
+      if (periods.indexOf(k) < 0) periods.push(k);
+    });
+    let text = '未设置';
+    if (rows.length) {
+      const allDay = periods.every(k => k === 'all');
+      const allPeriod = periods.every(k => k !== 'all');
+      const kind = allDay ? '一人包全天' : (allPeriod ? '每节课不同人' : '自定义');
+      text = kind + ' · ' + periods.length + ' 个岗位 / ' + days.length + ' 天';
+    }
+    this.setData({ slotSummary: text });
+  },
+
+  onSlotAdd() {
+    const list = this.data.slotList.slice();
+    list.push(this._decorateSlots([{ period: null, needN: 1 }])[0]);
+    this.setData({ slotList: list });
+  },
+
+  onSlotDel(e) {
+    const i = Number(e.currentTarget.dataset.idx);
+    const list = this.data.slotList.slice();
+    if (!(i >= 0 && i < list.length)) return;
+    list.splice(i, 1);
+    this.setData({ slotList: list });
+  },
+
+  onSlotPeriod(e) {
+    const i = Number(e.currentTarget.dataset.idx);
+    const idx = Number(e.detail.value);
+    const list = this.data.slotList.slice();
+    const period = idx === 0 ? null : idx;
+    list[i] = Object.assign({}, list[i], {
+      period,
+      periodIdx: idx,
+      periodText: this.data.periodTexts[idx]
+    });
+    this.setData({ slotList: list });
+  },
+
+  onSlotNeed(e) {
+    const ds = e.currentTarget.dataset;
+    const i = Number(ds.idx);
+    const d = Number(ds.d);
+    const list = this.data.slotList.slice();
+    if (!list[i]) return;
+    const next = Math.min(10, Math.max(1, (Number(list[i].needN) || 1) + d));
+    list[i] = Object.assign({}, list[i], { needN: next });
+    this.setData({ slotList: list });
+  },
+
+  onSlotSave() {
+    if (this.data.slotBusy) return;
+    const list = this.data.slotList || [];
+    const days = this.data.slotDays || [];
+    /* 有岗位但一天都没勾 ⇒ 保存后等于「全周不排」，几乎一定是误操作，先拦住 */
+    if (list.length && !days.length) {
+      util.toast('请至少勾选一天');
+      return;
+    }
+    /* 整体覆盖语义：整份提交，后端事务内先删后插。
+     * 展开 = 勾中的每个星期 × 每个岗位 → 一行 duty_slot。
+     * 例：勾周一~周五 + 建「第1节2人 / 第2节2人」= 存 10 行，用户只填一次。
+     * fixedSeq 暂不在 UI 暴露（后端已支持），先按 null 参与轮转。 */
+    const slots = [];
+    days.forEach((wd) => {
+      list.forEach((s) => {
+        slots.push({
+          weekday: wd,
+          period: s.period,
+          needN: s.needN,
+          fixedSeq: null,
+          kind: 'NORMAL'
+        });
+      });
+    });
+    /* 18:10 打扫主教室：逐天一行 CLEAN 槽（period 留空 = 不限节次，
+     * 保洁课次固定在 18:10 那一条）。后端会顺带补齐缺失的保洁课次。
+     * 列表里没有的天 → 保洁不排人（后端按「配过 CLEAN 槽即由槽位定义」处理）。 */
+    if (this.data.cleanOn) {
+      const cr = this.data.cleanRows || [];
+      if (!cr.length) {
+        util.toast('请至少添加一个打扫日');
+        return;
+      }
+      cr.forEach((r) => {
+        slots.push({
+          weekday: r.wd,
+          period: null,
+          needN: Math.min(10, Math.max(1, Number(r.needN) || 1)),
+          fixedSeq: null,
+          kind: 'CLEAN'
+        });
+      });
+    }
+    this.setData({ slotBusy: true });
+    /* 主教室跟着同一份提交走（'' = 清空，后端只在字段出现时才改）。
+     * ⚠️ 草稿优先：用户打完字直接点保存时 bindblur 可能还没跑，
+     *    所以 _roomInput 有值就以它为准。 */
+    const room = String(this._roomInput === undefined
+      ? (this.data.cleanRoom || '') : (this._roomInput || '')).trim();
+    api.scheduleSetSlots({ slots, mainRoom: room }, { loading: '保存中' })
+      .then((r) => {
+        const saved = Array.isArray(r) ? r : ((r && r.slots) || []);
+        const savedRoom = Array.isArray(r) ? room : String((r && r.mainRoom) || '').trim();
+        this._roomInput = savedRoom;
+        this.setData({ slotBusy: false, slotShow: false, cleanRoom: savedRoom });
+        this._syncCleanTitle(savedRoom);
+        /* 摘要只统计大课岗位：CLEAN 槽没有 period，混进来会被数成「全天岗位」 */
+        this._syncSlotSummary((saved || []).filter(s => !s || s.kind !== 'CLEAN'));
+        util.toast('已保存，下次生成生效');
+      })
+      .catch((e) => {
+        this.setData({ slotBusy: false });
+        util.toast(this._errText(e));
+      });
+  },
 
   /** 真正探测一次「出口有没有配密钥」，避免只在代理模式下盲目显示可用 */
   _checkAi() {
     api.scheduleAiCheck({}, { toast: false })
       .then((r) => {
+        /* 🔴 只取「有没有密钥 / 什么模型」，**不要**把 r 塞进 aiDiag ——
+         * 那会让诊断面板在打开弹层时自动展开（用户 2026-10-28 打回：
+         * 「这个折叠起来默认不展示」）。诊断信息只在点「自检」时才给。 */
         this.setData({
           aiHasKey: !!(r && r.hasKey),
-          aiModel: (r && r.model) || this.data.aiModel,
-          aiDiag: r || null
+          aiModel: (r && r.model) || this.data.aiModel
         });
       })
-      .catch(() => {});
+      .catch((e) => {
+        // 空 catch 会把 TypeError 伪装成「接口失败」，这里必须留痕
+        console.error('[duty._checkAi]', (e && e.stack) || e);
+      });
+  },
+
+  /** 诊断结果压成一行摘要，收起态也能一眼看出结论 */
+  _briefDiag(d) {
+    if (!d) return '';
+    const parts = [];
+    parts.push(d.hasKey ? '密钥已配置' : '缺密钥');
+    if (d.egress) parts.push(d.egress + (d.httpStatus ? (' / HTTP ' + d.httpStatus) : ''));
+    if (d.error) parts.push('有错误');
+    else if (d.reply) parts.push('往返成功');
+    return parts.join(' · ');
   },
 
   /**
    * 自检：真实往返一次大模型（点它会真的花钱，但能一次定位到底是
    * 出口不通、缺密钥、包部署不对，还是模型本身在报错）。
+   * 结果**默认收起**，只露一行摘要；要看明细点展开。
    */
   onAiDiag() {
     if (this.data.aiBusy) return;
-    this.setData({ aiBusy: true, aiError: '', aiDiag: null });
+    this.setData({ aiBusy: true, aiError: '', aiDiag: null, aiDiagOpen: false, aiDiagBrief: '' });
     api.scheduleAiCheck({ probe: true }, { toast: false, loading: '自检中' })
-      .then((r) => this.setData({ aiBusy: false, aiDiag: r || null }))
+      .then((r) => this.setData({
+        aiBusy: false,
+        aiDiag: r || null,
+        aiDiagOpen: false,
+        aiDiagBrief: this._briefDiag(r)
+      }))
       .catch((e) => this.setData({ aiBusy: false, aiError: this._errText(e) }));
+  },
+
+  onAiDiagToggle() {
+    this.setData({ aiDiagOpen: !this.data.aiDiagOpen });
   },
 
   onAiCopyDiag() {

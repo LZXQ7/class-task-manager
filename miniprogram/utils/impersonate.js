@@ -22,6 +22,9 @@ function bannerText() {
   const app = typeof getApp === 'function' ? getApp() : null;
   const g = (app && app.globalData) || {};
   if (!g.switched) return '';
+  // 切换体验版（演示态）：不显示顶部「模拟中」横幅，由「我的 → 更多」按钮自身在
+  // 「切换体验版 ⇄ 切换正式版」间切换文案承担，避免对演示体验造成打扰。
+  if (g.demo) return '';
   const name = (g.profile && g.profile.name) || '测试账号';
   return '模拟中 · 正在以 ' + name + ' 的身份操作';
 }
@@ -46,9 +49,13 @@ function recover() {
       const app = getApp();
       return app && app.refreshAuth ? app.refreshAuth() : null;
     })
-    .then(() => {
-      util.toast('已恢复本人');
-      wx.reLaunch({ url: '/pages/home/index' });
+    .then((g) => {
+      const app = getApp();
+      // 免绑定演示态退出后回到未绑定态 → 落回绑定页（体验版无需绑定，让用户正式绑定）；
+      // 超管「切换测试账号 / 切换体验版」退出后仍是真绑定 → 回首页（2026-10-29）。
+      const unbound = app && app.globalData && !app.globalData.bound;
+      util.toast(unbound ? '已退出体验版' : '已恢复本人');
+      wx.reLaunch({ url: unbound ? '/pages/bind/index' : '/pages/home/index' });
     })
     .catch(() => {});
 }

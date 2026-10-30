@@ -1,5 +1,26 @@
 .nt { min-height: 100vh; }
 
+/* ===== 发布通知入口（2026-10-27 从首页管理员卡片归位）=====
+ * 一行玻璃条：图标 + 文案 + 右箭头。
+ * ⚠️ 玻璃材质直接复用全局 .card（wxml 上写 class="nt-publish card"）——
+ *    本文件不自带 @supports / prefers-reduced-transparency 降级块，
+ *    自己再写一遍 backdrop-filter 会被 check-glass ① 判「没有降级路径」。 */
+.nt-publish {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 24rpx 32rpx 0;
+  padding: 24rpx 28rpx;
+}
+.nt-publish-t {
+  flex: 1;
+  min-width: 0;
+  margin-left: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
 /* 提醒授权条 */
 /* v0.7.18 需求④：这一行是「说明 + 一个开启按钮」，说明部分不带底色 ——
    去掉整条底块与圆角后，右侧的开启按钮（实心粉胶囊）自己就有足够的可点性。 */

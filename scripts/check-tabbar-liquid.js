@@ -24,8 +24,8 @@
  *     所以**不要再把 40 当成正确值写死在断言里** —— 具体值只由 JS/CSS 绑定一致来保证。
  *   · ⚠️ 第 6 轮（用户「整体都小一点，左右上下，内部图标文字都小一点」）：`SIDE_RPX` 125→143、
  *     胶囊 104→92rpx、占位 112→98rpx，圆角 52→46rpx。本次给两条一直没人守的约定补了断言：
- *     ① **`SIDE_RPX` 必须取奇数**（`750 − 2S` 才能被 4 整除 → 格宽为整数；取 140 时
- *        470/4 = 117.5，`normLeft(3)+格宽 ≠ 内容宽`，零留白硬断言必然失败）；
+ *     ① **`SIDE_RPX` 必须取奇数**（`750 − 2S` 才能被 5 整除 → 格宽为整数；取 144 时
+ *        462/5 = 92.4，`normLeft(4)+格宽 ≠ 内容宽`，零留白硬断言必然失败）；
  *     ② **胶囊占位一变，6 处让位值必须整体同步**（home/timetable×2/duty-sheet/`_fitHeight()`/`app.js`）
  *        —— 少改一处的表现是「悬浮按钮被底栏压住」或「弹层底部被遮」，肉眼要滑到底才发现。
  *   · ⚠️ `.tab-ind` 必须 `top:0 + bottom:0` 铺满胶囊高度，**不许写死 height** ——
@@ -129,7 +129,7 @@ else bad('胶囊左右内缩 JS(' + sideJs + 'rpx) 与 CSS(' + sideM + 'rpx) 不
 console.log('\n── ③ js 行为自证');
 has(js, /SIDE_RPX\s*=\s*\d+\s*;/, '几何：SIDE_RPX 为显式常量（具体值只由 JS/CSS 绑定一致保证，不写死）');
 has(js, /BAR_W_RPX\s*=\s*750\s*-\s*SIDE_RPX\s*\*\s*2/, '几何：可用宽 = 750 − 2×内缩（= 胶囊内容宽）');
-has(js, /CELL_RPX\s*=\s*BAR_W_RPX\s*\/\s*4/, '几何：按胶囊内容宽四等分（不是 750/4）');
+has(js, /CELL_RPX\s*=\s*BAR_W_RPX\s*\/\s*5/, '几何：按胶囊内容宽五等分（不是 750/5）');
 // v0.7.14 第 5 轮：指示器常态宽 = 整格宽（两侧零留白）
 has(js, /NORM_W_RPX\s*=\s*CELL_RPX/, '几何：常态宽 = 整格宽（满足「指示器边缘与胶囊边缘零留白」）');
 has(js, /OVER_RPX\s*=\s*\d+\s*;/, '手感：OVER_RPX 为显式预冲常量');
@@ -195,7 +195,7 @@ has(js, /popIndex:\s*index/, 'popIndex 改在落地页实例的 syncActive 里�
   else {
     const sideV = Number((/SIDE_RPX\s*=\s*(\d+)/.exec(js) || [])[1]);
     const barW = 750 - sideV * 2;
-    const cell = barW / 4;
+    const cell = barW / 5;
     const nw = cell;                                              // 常态宽 = 整格宽
     const ov = Number((/OVER_RPX\s*=\s*(\d+)/.exec(js) || [])[1]);
     const nL = i => Math.round(i * cell);
@@ -218,53 +218,56 @@ has(js, /popIndex:\s*index/, 'popIndex 改在落地页实例的 syncActive 里�
     };
 
     const home = mk('/pages/home/index', 0);      // 当前显示中的页（点击发生在它身上）
-    const mine = mk('/pages/mine/index', 3);      // 已缓存的目标页：旧实现里它的 active 早就是 3 → 被守卫挡回
+    // ⚠️ 「我的」现在是索引 4（2026-10-27 导航重排：首页·课表·班级信息·值日·我的）。
+    //    旧值 3 是四 Tab 时代的「我的」；写死旧索引会让 _preplace 找不到落地页实例
+    //    （它按 TABS[index].url 匹配 _route），整条自证会假红。
+    const mine = mk('/pages/mine/index', 4);      // 已缓存的目标页：旧实现里它的 active 早就是 4 → 被守卫挡回
     sandbox.INSTANCES.add(home);
     sandbox.INSTANCES.add(mine);
 
-    /* —— 点击「我的」（首页 → 我的，跨 3 格 = 用户截图那一路）—— */
-    home.onChange({ currentTarget: { dataset: { index: 3 } } });
+    /* —— 点击「我的」（首页 → 我的，跨 4 格 = 用户截图那一路）—— */
+    home.onChange({ currentTarget: { dataset: { index: 4 } } });
 
-    if (home.data.active === 3 && !home.sets.some(s => s.indCls === 'stretch')) {
+    if (home.data.active === 4 && !home.sets.some(s => s.indCls === 'stretch')) {
       ok('自证：点击后离场实例只置 active、**不起拍**（旧 bug 正是「在被隐藏的实例上起拍」）');
     } else bad('自证：离场实例仍在起拍 / 未置 active —— ' + JSON.stringify(home.sets));
 
-    if (mine.data.indLeft === nL(0) && mine.data.active === 3) {
-      ok('自证：落地页实例被预置到**起点格** left=' + mine.data.indLeft + 'rpx（不是终点 ' + nL(3) + '）');
+    if (mine.data.indLeft === nL(0) && mine.data.active === 4) {
+      ok('自证：落地页实例被预置到**起点格** left=' + mine.data.indLeft + 'rpx（不是终点 ' + nL(4) + '）');
     } else bad('自证：落地页实例未被预置到起点格，实得 left=' + mine.data.indLeft + '（期望 ' + nL(0) + '）');
 
     // 预置补丁本身必须无过渡（indCls === ''）—— 带上 transition 会从旧位置滑一下，等于多播一段
     const preCard = mine.sets[0] || {};
-    if (preCard.indCls === '' && preCard.indLeft === nL(0) && preCard.indWidth === nw && preCard.active === 3) {
-      ok('自证：预置补丁 = {active:3, indCls:\'\', indLeft:' + preCard.indLeft + '}（无过渡瞬移，不额外播动画）');
+    if (preCard.indCls === '' && preCard.indLeft === nL(0) && preCard.indWidth === nw && preCard.active === 4) {
+      ok('自证：预置补丁 = {active:4, indCls:\'\', indLeft:' + preCard.indLeft + '}（无过渡瞬移，不额外播动画）');
     } else bad('自证：预置补丁不对，实得 ' + JSON.stringify(preCard));
 
     const h1 = sandbox.getHandoff();
-    if (h1 && h1.to === 3 && h1.from === 0) ok('自证：交接 {to:3, from:0} 已写入模块级状态（跨实例可见）');
+    if (h1 && h1.to === 4 && h1.from === 0) ok('自证：交接 {to:4, from:0} 已写入模块级状态（跨实例可见）');
     else bad('自证：交接未写入 / 内容不对：' + JSON.stringify(h1));
 
-    /* —— 落地页 onShow → app.setTabBar(3) → syncActive(3)：必须播完整三拍 —— */
+    /* —— 落地页 onShow → app.setTabBar(4) → syncActive(4)：必须播完整三拍 —— */
     const tBefore = timers.length;
     mine.sets.length = 0;                          // 清掉预置补丁，下面按节拍取下标
-    mine.syncActive(3);
+    mine.syncActive(4);
 
     const beat1 = mine.sets[0] || {};
-    if (beat1.indCls === '' && beat1.indLeft === nL(0) && beat1.popIndex === 3) {
+    if (beat1.indCls === '' && beat1.indLeft === nL(0) && beat1.popIndex === 4) {
       ok('自证：第一拍无过渡画在起点格（left=' + beat1.indLeft + '）并置 popIndex（弹跳落在屏幕上这个实例）');
     } else bad('自证：第一拍不是「无过渡画在起点格」，实得 ' + JSON.stringify(beat1));
 
     mine.cbs.splice(0).forEach(f => f());          // 渲染回调 = 起点格已落地 → 起拍
     const beat2 = mine.sets[1] || {};
-    if (beat2.indCls === 'stretch' && beat2.indLeft === sL(3, 0) && beat2.indWidth === nw) {
-      ok('自证：第二拍 stretch 起拍并预冲 ' + ov + 'rpx（left=' + beat2.indLeft + ' = 目标 ' + nL(3) + ' + ' + ov + '）');
+    if (beat2.indCls === 'stretch' && beat2.indLeft === sL(4, 0) && beat2.indWidth === nw) {
+      ok('自证：第二拍 stretch 起拍并预冲 ' + ov + 'rpx（left=' + beat2.indLeft + ' = 目标 ' + nL(4) + ' + ' + ov + '）');
     } else bad('自证：第二拍不是 stretch 起拍，实得 ' + JSON.stringify(beat2));
 
     const t1 = timers[tBefore];
     if (t1 && t1.ms === 140) {
       t1.fn();                                     // 140ms 后 settle 落位
       const beat3 = mine.sets[2] || {};
-      if (beat3.indCls === 'settle' && beat3.indLeft === nL(3)) {
-        ok('自证：第三拍 settle 回落到格位 left=' + beat3.indLeft + 'rpx（跨 3 格全程可见）');
+      if (beat3.indCls === 'settle' && beat3.indLeft === nL(4)) {
+        ok('自证：第三拍 settle 回落到格位 left=' + beat3.indLeft + 'rpx（跨 4 格全程可见）');
       } else bad('自证：settle 未落位，实得 ' + JSON.stringify(beat3));
     } else bad('自证：stretch 拍没有挂上 140ms 的 settle 定时器（实得 ' + JSON.stringify(t1 || null) + '）');
 
@@ -272,7 +275,7 @@ has(js, /popIndex:\s*index/, 'popIndex 改在落地页实例的 syncActive 里�
     else bad('自证：交接消费后未清空');
 
     const setsAfter = mine.sets.length;
-    mine.syncActive(3);
+    mine.syncActive(4);
     if (mine.sets.length === setsAfter) ok('自证：状态已一致时 syncActive 不产生多余 setData（去重职责已从 app.js 下沉到这里）');
     else bad('自证：syncActive 重复 setData（每次 onShow 都白渲染一次）');
 
@@ -296,7 +299,7 @@ has(js, /popIndex:\s*index/, 'popIndex 改在落地页实例的 syncActive 里�
 
     /* —— 过期交接不播放（switchTab 失败 / 用户中途离开）—— */
     sandbox.setHandoff({ to: 2, from: 0, at: Date.now() - 5000 });
-    mine.data.active = 3; mine.data.indLeft = nL(3);
+    mine.data.active = 4; mine.data.indLeft = nL(4);
     mine.sets.length = 0;
     mine.syncActive(2);
     if (mine.sets.length === 1 && 'indCls' in mine.sets[0] && mine.sets[0].indCls === '' && mine.sets[0].indLeft === nL(2)) {
@@ -306,21 +309,21 @@ has(js, /popIndex:\s*index/, 'popIndex 改在落地页实例的 syncActive 里�
     else bad('自证：过期交接仍触发了起拍');
 
     /* —— 几何：零留白 / 覆盖格中心 / 预冲幅度 —— */
-    if (Number.isInteger(cell)) ok('自证：格宽为整数 ' + cell + 'rpx（SIDE_RPX=' + sideV + ' 为奇数 → 750−2S 被 4 整除）');
+    if (Number.isInteger(cell)) ok('自证：格宽为整数 ' + cell + 'rpx（SIDE_RPX=' + sideV + ' 为奇数 → 750−2S 被 5 整除）');
     else bad('自证：格宽 ' + cell + 'rpx 非整数 —— SIDE_RPX 必须取奇数，否则零留白断言必然失败');
     let flushOk = true;
     if (nL(0) !== 0) flushOk = false;                        // 首页：左缘贴胶囊左缘
-    if (nL(3) + nw !== barW) flushOk = false;                // 我的：右缘贴胶囊右缘
-    for (let i = 0; i < 4; i++) {
+    if (nL(4) + nw !== barW) flushOk = false;                // 我的（末格）：右缘贴胶囊右缘
+    for (let i = 0; i < 5; i++) {
       const center = i * cell + cell / 2;
       if (!(nL(i) < center && center < nL(i) + nw)) flushOk = false;   // 常态覆盖格中心
     }
-    if (flushOk) ok('自证：4 档零留白（首格 left=0、末格 right=' + barW + '，常态各覆盖本格中心）');
-    else bad('自证：指示器未与胶囊边缘零留白（首格 left=' + nL(0) + '，末格右缘=' + (nL(3) + nw) + '，应为 0 / ' + barW + '）');
+    if (flushOk) ok('自证：5 档零留白（首格 left=0、末格 right=' + barW + '，常态各覆盖本格中心）');
+    else bad('自证：指示器未与胶囊边缘零留白（首格 left=' + nL(0) + '，末格右缘=' + (nL(4) + nw) + '，应为 0 / ' + barW + '）');
     // 预冲幅度：朝外（首格向左 / 末格向右）时允许为负/越界，由胶囊裁剪；幅度必须恒为 OVER_RPX
     let ovOk = true;
-    for (let i = 0; i < 4; i++) {
-      for (let f = 0; f < 4; f++) {
+    for (let i = 0; i < 5; i++) {
+      for (let f = 0; f < 5; f++) {
         const d = Math.abs(sL(i, f) - nL(i));
         if (d !== ov) ovOk = false;
       }

@@ -1,0 +1,96 @@
+/* ============ 班费 / 团费（独立页，从首页迁出；2026-10-27） ============
+   .np-* / .f-ph / .press-dim / .np-abtn-hover / .foot-space 等走全局 app.wxss，
+   本文件只放本页专属样式。 */
+.page.fee-page { background: var(--bg); }
+
+/* 内容容器：左右 32rpx 与全站一致（首页 `.wrap` / roster `.lv` / `.np` 都是 32rpx）。
+   ⚠️ 不能叫 `.wrap`：`.wrap{padding:24rpx 32rpx}` 只存在于 **home 的 wxss**，
+      页面级样式不跨页生效，班费页只会命中 app.wxss 里那条 flex 工具类 `.wrap{flex-wrap:wrap}`
+      → 内边距为 0 → 整页贴边（2026-10-27 用户报「消费明细不要贴边」的根因）。 */
+.fee-wrap { padding: 16rpx 32rpx 0; }
+
+/* 班费/团费切换条与内容之间的间隔 */
+.fee-seg { margin-bottom: 20rpx; }
+
+/* 班费/团费跨班查看切换条（v0.7.43）：辅导员切班看其他班的钱 */
+.fee-cls-switch { display: flex; flex-direction: row; align-items: center; margin-bottom: 16rpx; }
+.fee-cls-label { font-size: 22rpx; color: var(--text-3); margin-right: 16rpx; flex-shrink: 0; }
+.fee-cls-chips { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
+.fee-cls-chip {
+  font-size: 24rpx;
+  line-height: 36rpx;
+  padding: 6rpx 20rpx;
+  border-radius: 18rpx;
+  color: var(--text-2);
+  background: var(--bg-fill);
+  border: 1rpx solid transparent;
+}
+.fee-cls-chip.on { color: #3370FF; background: rgba(51,112,255,0.12); border-color: rgba(51,112,255,0.4); font-weight: 600; }
+
+/* 余额卡（居中展示，与首页弹层同口径）
+   2026-10-27：原来是一条无底的裸区块 + 底部细线分割，内容贴边。
+   现在与消费明细统一成「卡片」（.card 提供玻璃/圆角/深色降级，这里只补内边距与排版）。 */
+.fee-bal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32rpx 28rpx 34rpx;
+}
+.fee-bal-label { font-size: 24rpx; color: var(--text-3); }
+.fee-bal-num { margin-top: 8rpx; font-size: 64rpx; line-height: 76rpx; font-weight: 700; color: var(--text-1); }
+/* 余额下方的只读小字（总额 / 已消费）：用来核对，不占地方 */
+.fee-bal-sub { margin-top: 10rpx; font-size: 22rpx; line-height: 30rpx; color: var(--text-3); }
+
+/* 消费明细 */
+.fee-rec-head { margin: 36rpx 0 0; font-size: 28rpx; font-weight: 600; color: var(--text-1); }
+/* 每条记录 = 一张卡片。
+   ⚠️ 直接复用 .card：它自己既是圆角层也是裁切层（overflow:hidden 与 border-radius 在同一元素上），
+      不会出现 notice 那种「方形裁切边界 − 圆角」之间残留裸背景的四角色斑。 */
+.fee-rec {
+  position: relative;
+  margin-top: 16rpx;
+  padding: 24rpx 28rpx;
+}
+.fee-rec-main { display: flex; flex-direction: row; align-items: baseline; }
+/* 管理人可见「追加图片/删除」时，给标题行让出右侧空间，长备注不会钻到操作区下面。
+   210rpx = 「追加图片」(4×24 + 左右 8) 112 + gap 20 + 「删除」(2×24 + 左右 8) 64 + 操作区右偏 8 的余量 */
+.fee-rec.has-ops .fee-rec-main { padding-right: 210rpx; }
+.fee-rec-amt { font-size: 30rpx; font-weight: 600; color: var(--text-1); flex-shrink: 0; }
+.fee-rec-note {
+  margin-left: 16rpx;
+  min-width: 0;
+  font-size: 26rpx;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fee-rec-meta { margin-top: 6rpx; display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
+.fee-rec-op { font-size: 22rpx; color: var(--text-3); }
+.fee-rec-time { font-size: 22rpx; color: var(--text-3); }
+.fee-rec-imgs { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; margin-top: 14rpx; }
+.fee-rec-img { width: 120rpx; height: 120rpx; border-radius: 24rpx; overflow: hidden; background: var(--bg-fill); }
+.fee-rec-img-pic { width: 100%; height: 100%; display: block; }
+.fee-rec-del {
+  font-size: 24rpx;
+  color: #F53F3F;
+  padding: 4rpx 8rpx;
+}
+.fee-rec-del:active { opacity: 0.6; }
+/* 操作区贴卡片内边距的右上角（与 .fee-rec 的 padding 对齐） */
+.fee-rec-ops {
+  position: absolute;
+  top: 22rpx;
+  right: 20rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20rpx;
+}
+.fee-rec-append {
+  font-size: 24rpx;
+  color: #3370FF;
+  padding: 4rpx 8rpx;
+}
+.fee-rec-append:active { opacity: 0.6; }
+.fee-rec-empty { margin-top: 24rpx; font-size: 26rpx; color: var(--text-3); text-align: center; }

@@ -127,7 +127,7 @@
   justify-content: center;
   overflow: hidden;
 }
-/* 空的透明按钮：绝对铺满槽位，只当 chooseAvatar 点击层（不参与布局 ⇒ 不会撑大占位）。
+/* 空的透明按钮：绝对铺满槽位，只当「选图设头像」点击层（不参与布局 ⇒ 不会撑大占位）。
    🔴 必须 position:absolute + 显式 0/0 + 96rpx：一旦回到文档流，121rpx 空框立刻复现。 */
 .avatar-btn {
   position: absolute;

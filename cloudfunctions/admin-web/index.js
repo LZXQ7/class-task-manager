@@ -22,6 +22,7 @@ const modCourse = require('./lib/mod-course');
 const modConfig = require('./lib/mod-config');
 const modLeave = require('./lib/mod-leave');
 const modUsage = require('./lib/mod-usage');
+const modScheduleRules = require('./lib/mod-schedule-rules');
 
 const app = express();
 app.disable('x-powered-by');
@@ -252,6 +253,17 @@ app.get('/api/leave', (req, res) => handle(res, () =>
 app.post('/api/leave/:id', (req, res) => handle(res, () =>
   modLeave.updateLeave(Object.assign({ id: Number(req.params.id) }, req.body || {}), req.session2, req)
 ));
+
+/* ---------------- 排班规则（免代码 / 免送审的远程配置入口） ---------------- */
+app.get('/api/schedule-rules', (req, res) => handle(res, async () => {
+  const pool = getPool();
+  return modScheduleRules.getScheduleRules(pool, req.query.classId);
+}));
+
+app.post('/api/schedule-rules', (req, res) => handle(res, () => {
+  const pool = getPool();
+  return modScheduleRules.saveScheduleRules(pool, (req.body || {}).classId, req.body || {}, req.session2);
+}));
 
 /* ============================================================
  * 静态页面（与 API 同源 —— 见文件头「为什么必须单函数同源」）

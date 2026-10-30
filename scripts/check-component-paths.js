@@ -34,14 +34,55 @@ function checkJson(jsonFile, sink) {
   });
 }
 
+/**
+ * ⚠️ 2026-10-28 补盲区：原实现只扫 pages/<一级>/index.json，
+ * 三级页 pages/notice/publish/index.json **从未被检查** —— 它沿用了首页（二级）的
+ * "../../components/..." 相对路径，少一层 ../，开发者工具直接编译失败
+ * （Couldn't found the '../../components/app-icon/index.json'），而门禁却全绿。
+ * 现在 pages 递归到底。
+ */
+function collectJsonFiles(dir, recursive) {
+  const out = [];
+  if (!fs.existsSync(dir)) return out;
+  fs.readdirSync(dir, { withFileTypes: true }).forEach((d) => {
+    if (!d.isDirectory()) return;
+    const p = path.join(dir, d.name);
+    const jf = path.join(p, 'index.json');
+    if (fs.existsSync(jf)) out.push(jf);
+    // 子目录里的子页面（pages/notice/publish/…）同样要扫
+    if (recursive) out.push(...collectJsonFiles(p, true));
+  });
+  return out;
+}
+
+// 项目自有组件名（用于②：wxml 用了却没在 json 注册的校验）
+const OWN_COMPONENTS = fs.existsSync(path.join(R, 'components'))
+  ? fs.readdirSync(path.join(R, 'components'), { withFileTypes: true })
+    .filter((d) => d.isDirectory()).map((d) => d.name)
+  : [];
+
+/** ② wxml 里用了项目自有组件，却没在该页 json 注册 → 开发者工具静默不渲染/报错 */
+function checkWxmlTags(jsonFile, sink) {
+  const dir = path.dirname(jsonFile);
+  const wxml = path.join(dir, 'index.wxml');
+  if (!fs.existsSync(wxml)) return;
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(jsonFile, 'utf8')); } catch (e) { return; }
+  const registered = Object.keys(cfg.usingComponents || {});
+  const src = fs.readFileSync(wxml, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+  OWN_COMPONENTS.forEach((name) => {
+    if (registered.indexOf(name) >= 0) return;
+    // 形如 <app-icon ...> 或 </app-icon>
+    if (new RegExp('<' + name + '[\\s/>]').test(src)) {
+      sink.push(`${jsonFile}: wxml 使用了 <${name}>，但 usingComponents 未注册（组件不会渲染）`);
+    }
+  });
+}
+
 ['pages', 'components', 'custom-tab-bar'].forEach((base) => {
-  const b = path.join(R, base);
-  if (!fs.existsSync(b)) return;
-  fs.readdirSync(b).forEach((n) => {
-    const p = path.join(b, n);
-    if (!fs.statSync(p).isDirectory()) return;
-    const jsonFile = path.join(p, 'index.json');
-    if (fs.existsSync(jsonFile)) checkJson(jsonFile);
+  collectJsonFiles(path.join(R, base), base === 'pages').forEach((jsonFile) => {
+    checkJson(jsonFile);
+    if (base === 'pages') checkWxmlTags(jsonFile, problems);
   });
 });
 

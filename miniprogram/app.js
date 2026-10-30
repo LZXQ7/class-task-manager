@@ -6,6 +6,8 @@ const api = require('./utils/api');
 const mem = require('./utils/mem');
 const notice = require('./utils/notice');
 const theme = require('./utils/theme');
+/** 前端远程配置下发（2026-10-26）：启动拉取 / 本地缓存 / 按 key 读取，超管改库即生效、免审 */
+const remoteConfig = require('./utils/remote-config');
 /** 使用埋点（2026-10-16）：页面浏览 / 功能入口点击上报。页面经 getApp().track 调用。 */
 const track = require('./utils/track');
 
@@ -18,6 +20,18 @@ const ENV_ID = '<YOUR_ENV_ID>';
 const AUTH_RECHECK_MS = 20000;
 
 /**
+ * 远程配置拉取（2026-10-26）：config 下发。60s 节流（回前台频繁），失败静默回退本地缓存。
+ * 不阻塞启动、绝不影响主流程。
+ */
+let _lastCfgPull = 0;
+function pullRemoteConfig() {
+  const now = Date.now();
+  if (now - _lastCfgPull < 60000) return;
+  _lastCfgPull = now;
+  remoteConfig.loadRemoteConfig().catch(() => {});
+}
+
+/**
  * 身份缓存（v0.7.32 问题①）
  * ------------------------------------------------------------
  * 过去 `profile` 只在内存（globalData），冷启动首屏必为 null —— 于是「身份门控」的卡片
@@ -28,16 +42,16 @@ const AUTH_RECHECK_MS = 20000;
  * ⚠️ 解绑 / 身份失效（_handleUnbound）必须清掉，绝不能让人看到上一位成员的身份。
  */
 const PROFILE_CACHE_KEY = 'profileCache';
-/** 读缓存：{ profile, switched }（switched = 模拟态，见 utils/impersonate.js） */
+/** 读缓存：{ profile, switched, demo }（switched = 模拟态；demo = 切换体验版态，见 utils/impersonate.js） */
 function readCachedAuth() {
   try {
     const v = wx.getStorageSync(PROFILE_CACHE_KEY);
     return (v && typeof v === 'object' && v.profile) ? v : null;
   } catch (e) { return null; }
 }
-function writeCachedAuth(profile, switched) {
+function writeCachedAuth(profile, switched, demo) {
   try {
-    if (profile) wx.setStorageSync(PROFILE_CACHE_KEY, { profile: profile, switched: !!switched });
+    if (profile) wx.setStorageSync(PROFILE_CACHE_KEY, { profile: profile, switched: !!switched, demo: !!demo });
     else wx.removeStorageSync(PROFILE_CACHE_KEY);
   } catch (e) { /* 缓存失败不影响主流程 */ }
 }
@@ -65,6 +79,7 @@ App({
     /* 身份 */
     openid: '',
     bound: false,
+    demo: false,     // 切换体验版（演示态）标记：true 时不显示顶部「模拟中」横幅、按钮变为「切换正式版」
     profile: null,   // { id, name, role, groupTag, studentNoMasked, status }
     config: null,    // { name, termStart, totalWeeks, periodTime, currentWeek }
     /* 启动参数 */
@@ -76,7 +91,11 @@ App({
     /* 换班脏标记（1.0.4.4 #28）：在「我的」页同意/拒绝/撤销换班后置位，
        值日页 / 首页 / 我的 三处 onShow 检测后强制重拉并清标记，
        修复「换班同意后值日表不更新、须重进小程序才更新」的 bug。 */
-    dutyDirty: false
+    dutyDirty: false,
+    /* 当前查看班级（跨班视角）：班级信息页切班时写入，其余 Tab 跟随。
+       0 = 跟随本人本班（profile.classId）；非 0 = 显式查看的班级 id。
+       ⚠️ 仅超管/辅导员可跨班（普通成员无切班入口，恒为 0）；后端 resolveClassId 负责越权回落。 */
+    viewClassId: 0
   },
 
   onLaunch(options) {
@@ -95,6 +114,7 @@ App({
     if (cached) {
       this.globalData.profile = cached.profile || null;
       this.globalData.switched = !!cached.switched;
+      this.globalData.demo = !!cached.demo;
     }
     this._initSystemInfo();
     this._pickScene(options);
@@ -103,6 +123,7 @@ App({
     req.cloudInit();
     this._watchUnbound();
     this._ready = this._bootstrap(options);
+    pullRemoteConfig();   // 远程配置下发：启动即拉（60s 节流在内部）
   },
 
   /**
@@ -129,8 +150,9 @@ App({
     g.bound = false;
     g.profile = null;
     g.switched = false;
+    g.demo = false;
     g.authChecked = true;
-    writeCachedAuth(null, false);      // v0.7.32：身份缓存必须一起清，绝不能留上一位成员
+    writeCachedAuth(null, false, false);      // v0.7.32：身份缓存必须一起清，绝不能留上一位成员
     try { mem.clear(); } catch (e) {}
     try { notice.invalidate(); } catch (e) {}
     this._goBind();
@@ -219,6 +241,7 @@ App({
     }
     this._recheckAuth();
     this._checkUpdate();
+    pullRemoteConfig();   // 远程配置下发：回前台刷新（60s 节流在内部）
   },
 
   /**
@@ -381,9 +404,29 @@ App({
       g.profile = r && r.member ? r.member : null;
       g.config = r && r.config ? r.config : null;
       g.switched = !!(r && r.switched);   // 超管「切换测试账号」模拟态
+      g.demo = !!(r && r.demo);           // 演示态标记由 login 权威下发（免绑定 reviewDemo / 超管 switchDemo）
       g.authChecked = true;
-      writeCachedAuth(g.profile, g.switched);   // v0.7.32：落身份缓存（未绑定 → null 即清除）
-      if (!g.bound) {
+      writeCachedAuth(g.profile, g.switched, g.demo);   // v0.7.32：落身份缓存（未绑定 → null 即清除）
+
+      // 体验版（trial）演示态**不跨进程留存**（2026-10-29 需求②）：冷启动若仍处于演示身份
+      // （impersonation 映射还在），先清掉再回登录态 —— 保证「退出小程序再进 = 口令页」，
+      // 而不是自动落回演示班。进入演示只能由用户在口令页点「一键体验」显式触发。
+      if (this._isTrial() && g.demo) {
+        try {
+          await api.switchAccount({ memberId: 0 }, { toast: false });
+          const r2 = await api.login();
+          g.bound = !!(r2 && r2.bound);
+          g.profile = r2 && r2.member ? r2.member : null;
+          g.config = r2 && r2.config ? r2.config : g.config;
+          g.switched = !!(r2 && r2.switched);
+          g.demo = !!(r2 && r2.demo);
+          writeCachedAuth(g.profile, g.switched, g.demo);
+        } catch (e) {
+          console.warn('[app] 体验版清理演示态失败', e);
+        }
+      }
+
+      if (!g.bound && !g.demo) {
         this._goBind();
       } else {
         this._prefetchTabs();
@@ -445,6 +488,14 @@ App({
     }, 0);
   },
 
+  /** 是否体验版（trial）：未绑定微信号进体验版即自动进入演示态，不真绑定（2026-10-29） */
+  _isTrial() {
+    try {
+      const env = (wx.getAccountInfoSync && wx.getAccountInfoSync().miniProgram && wx.getAccountInfoSync().miniProgram.envVersion) || '';
+      return env === 'trial';
+    } catch (e) { return false; }
+  },
+
   /** 页面/组件可 await 的登录就绪 Promise */
   ready() {
     return this._ready || Promise.resolve(this.globalData);
@@ -458,7 +509,8 @@ App({
     g.profile = r && r.member ? r.member : null;
     g.config = r && r.config ? r.config : null;
     g.switched = !!(r && r.switched);
-    writeCachedAuth(g.profile, g.switched);   // v0.7.32：切换测试账号 / 恢复本人 后同步身份缓存
+    g.demo = !!(r && r.demo);   // 演示态标记由 login 权威下发，不再因非模拟态而被误清（2026-10-29）
+    writeCachedAuth(g.profile, g.switched, g.demo);   // v0.7.32：切换测试账号 / 恢复本人 后同步身份缓存
     return g;
   },
 

@@ -143,6 +143,14 @@ Page({
     pinBusy: false,
     pinCount: 0,
     pinLimit: 8,
+    /**
+     * 关注的学生常驻名单（v0.7.17 需求⑥）。
+     * 2026-10-27 从首页迁入：首页按用户要求只留「值日 / 课次 / 请假」，
+     * 这张卡是**成员的子集**，归位到成员页顶部最顺（钉人的按钮本来就在成员详情里）。
+     * 权限仍是**仅辅导员**（showPins = isCounselor，与后端 pinList / pinToggle 同口径）。
+     */
+    showPins: false,
+    pins: [],
 
     memberStats: null,
     members: [],
@@ -319,6 +327,8 @@ Page({
       canGrantPosition,
       isSuper,
       isCounselor: !!(p && p.groupTag === 'X'),
+      // 关注的学生：**仅辅导员**（与后端 pinList / pinToggle 同口径，见 check-staff-pin）
+      showPins: !!(p && p.groupTag === 'X'),
       isAdmin: !!(app && app.isAdmin && app.isAdmin()),
       canLeave: !!(app && app.canLeave && app.canLeave()),
       navTitle: name ? (name + ' · 成员') : '成员与分组'
@@ -331,6 +341,7 @@ Page({
         this.setData({
           isSuper: s2,
           isCounselor: !!(p2 && p2.groupTag === 'X'),
+          showPins: !!(p2 && p2.groupTag === 'X'),
           isAdmin: !!(app.isAdmin && app.isAdmin()),
           canManage: s2 || !!(p2 && p2.groupTag === 'X'),
           canRosterEdit: !!(app.canRosterEdit && app.canRosterEdit()),
@@ -357,6 +368,8 @@ Page({
     // 从详情回来时实时刷新统计
     this._loadStats();
     this._loadLeaveBoard();
+    // 关注的学生：在成员详情里刚钉的人，切回来就能看到（≤8 行的小查询，每次进页面重拉）
+    if (this.data.showPins) this._loadPins();
   },
 
   /** 全班 ⇄ 仅班委的过渡链在页面销毁后不该继续（guard 见 _applyFilter） */
@@ -1191,10 +1204,18 @@ _clockNow() {
   _loadMembers() {
     const kw = this.data.memberKw;
     const key = mem.keys.roster(this.data.classId, kw);
+    /**
+     * 接口档位随身份切换（2026-10-28）：
+     *   canManage（超管 / 辅导员）→ public='manage'：全量（含学号、绑定态、值日次数）
+     *   其余（普通成员 / 班委）    → public='read'：只有姓名 + 组别 + 职务
+     * 以前**恒用 manage**，普通成员一律 40003 → 名单空白且无任何提示
+     * （示例班级A 50 名 MEMBER 点「班级成员」就是这个现象）。
+     */
+    const readOnly = !this.data.canManage;
     // v0.7.32 问题①：同班回访先用**内存缓存**同步渲染（不闪骨架），再后台刷新（SWR）
     const cached = mem.read(key);
     if (cached && cached.length) this._applyMemberRows(cached, kw);
-    api.memberList(this._payload({ public: 'manage', kw }), { toast: false })
+    api.memberList(this._payload({ public: readOnly ? 'read' : 'manage', kw }), { toast: false })
       .then((list) => {
         // 2026-10-04 需求③：成员与分组**不显示教职工（辅导员）** —— 教职工的账号与绑定
         // 情况只在「班级管理 → 教职工管理」里维护。后端 list 的 manage 分支**不过滤 X**
@@ -1205,12 +1226,18 @@ _clockNow() {
         // 前端再判一次既是死代码，也会让人以为「前端兜住就行」。
         const rows = (list || []).filter(x => x.groupTag !== 'X').map(x => {
           const rt = util.roleTag(x);
+          /* 只读视图（public='read'）后端**故意不回 role / isSuper / studentNo / bound**：
+           * 那些是权限与隐私字段，全班可见没有收益。所以 util.roleTag 对只读行恒返回 null，
+           * 职务标签改由 position（公开职务）直接出 —— 班长 / 生活委员这类信息班里本来公开。 */
+          const roleText = readOnly ? (x.position || '') : (rt ? rt.text : '');
+          const roleTier = readOnly ? (x.position ? 'committee' : '') : (rt ? rt.tier : '');
           return Object.assign({}, x, {
             // 辅导员（X 组）不展示学号：seq 只用于排序，给一个大值让他留在列表末尾
             // （展示层由 groupTag==='X' 分支接管，不会出现「999 号」）
+            // 只读行没有 studentNo → seqOf 返回 0，整列同值 ⇒ 稳定排序保持后端「按学号」的原序。
             seq: x.groupTag === 'X' ? 999 : util.seqOf(x.studentNo),
-            roleTag: rt ? rt.text : '',
-            roleTier: rt ? rt.tier : '',
+            roleTag: roleText,
+            roleTier: roleTier,
             // 列表过渡的内联样式落点（v0.7.21 需求⑤）；wxml 用 style="{{item.lt}}"
             lt: ''
           });
@@ -1236,7 +1263,10 @@ _clockNow() {
     // 2026-10-04 需求②：「已绑定」不含辅导员（辅导员行已在上游滤掉，这里再兜一层）。
     // 2026-10-08：原式还排除了 !x.test（测试账号），现已随名单侧统一过滤一并删除 ——
     // 名单里恒无测试账号，这个条件恒为真，留着只会让人以为测试账号还能被处理。
-    if (!kw) patch.boundCount = rows.filter(x => x.bound && x.groupTag !== 'X').length;
+    // 2026-10-28：**只读身份（普通成员）不算这个数**。后端 read 分支不回 bound，
+    //   照算会得出 0 ⇒ 顶部「已绑定 0」红字，看起来像全班都没绑定（假的）。
+    //   给 null ⇒ 显示「—」，与「拿不到就不显示」一致。
+    if (!kw) patch.boundCount = this.data.canManage ? rows.filter(x => x.bound && x.groupTag !== 'X').length : null;
     // 「选择同学」的候选名单是**从 members 现算**的，而 leaveBoard 可能**先于** member.list
     // 返回 —— 那一次 _applyLeaveStat 里算出的 leaveCands 是空数组。名单后到时必须补算一次，
     // 否则弹层里「选择同学」一直是空的（同样表现为「只有去搜索框输序号才看得到人」，
@@ -1292,8 +1322,12 @@ _clockNow() {
    * 将来某个列表**刻意**放出测试账号时，班委口径会静默不一致。
    */
   _isCommittee(x) {
-    return !!x && (x.role === 'ADMIN' || x.role === 'MONITOR')
-      && x.groupTag !== 'X';
+    const byRole = !!x && (x.role === 'ADMIN' || x.role === 'MONITOR') && x.groupTag !== 'X';
+    if (byRole) return true;
+    /* 只读视角（public='read'，2026-10-28）：后端**不回 role**（权限字段不进公共名单），
+     * 班委改按 position 判 —— 职务本来就是班里公开的事。
+     * 不兜这一层，「仅班委 0」会显示成 0 人、点进去还是空列表（假数据）。 */
+    return !!(x && x.readOnly && String(x.position || '').trim());
   },
 
   /**
@@ -1384,6 +1418,35 @@ _clockNow() {
   onMDetailClose() { this.setData({ mDetailShow: false }); },
 
   /* ---------------- 主页关注（v0.7.17 需求⑥） ---------------- */
+
+  /**
+   * 关注的学生列表（2026-10-27 从首页迁入成员页）。
+   * 每次进页面都重拉（≤8 行的小查询），保证在详情里刚钉的人**切回来就能看到**。
+   */
+  _loadPins() {
+    api.pinList({}, { toast: false })
+      .then((r) => this.setData({
+        pins: (r && r.list) || [],
+        pinLimit: Number((r && r.limit) || 8)
+      }))
+      .catch(() => {});
+  },
+
+  /** 点关注的学生 → 直接展开他的成员详情（带 classId，辅导员跨班也能定位） */
+  onPinTap(e) {
+    const d = e.currentTarget.dataset || {};
+    const memberId = Number(d.id) || 0;
+    if (!memberId) return;
+    const classId = Number(d.classId) || 0;
+    const name = String(d.name || '');
+    // 已在本页（同班）就本地展开，不必再 navigate 一层
+    if (classId === Number(this.data.classId)) {
+      const m = this.data.members.find((x) => x.id === memberId);
+      // 已在本页（同班）就本地展开，不必再 navigate 一层（与深链 _openPendingMember 同一条路）
+      if (m) { this.onMemberRow({ currentTarget: { dataset: { id: memberId } } }); return; }
+    }
+    wx.navigateTo({ url: '/pages/roster/index?classId=' + classId + '&openMemberId=' + memberId + '&name=' + encodeURIComponent(name) });
+  },
 
   /**
    * 关注状态：`pinList` 最多 8 条，一次拉全量后本地判定，不为「这一条是否已关注」再开一个接口。

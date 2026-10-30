@@ -203,8 +203,13 @@ console.log('--- R2 导航关键路径上的同步 IPC ---');
     } else bad('syncActive 没有判重 —— 每次 onShow 都会白 setData 一次');
   }
 
-  // 四个 Tab 页统一走 app.setTabBar，且不得再各自 setData active
-  ['home', 'timetable', 'duty', 'mine'].forEach((p, i) => {
+  // Tab 页统一走 app.setTabBar，且不得再各自 setData active
+  // ⚠️ 顺序与数量一律从 app.json 的 tabBar.list 推导（2026-10-27 起是 5 个 Tab，
+  //    「班级信息」插在中间）。旧版写死 ['home','timetable','duty','mine']，
+  //    导航一调整就集体误报 —— 索引的真值来源只有 app.json 一处。
+  const tabKeys = (JSON.parse(read('app.json')).tabBar.list || [])
+    .map((it) => String(it.pagePath || '').replace(/^pages\//, '').replace(/\/index$/, ''));
+  tabKeys.forEach((p, i) => {
     const src = stripComments(read('pages/' + p + '/index.js'), 'js');
     const usesApi = new RegExp('app\\.setTabBar\\(' + i + '\\)').test(src);
     const legacy = /getTabBar\(\)\.setData\(\{\s*active/.test(src);

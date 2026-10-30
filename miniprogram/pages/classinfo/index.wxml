@@ -1,0 +1,145 @@
+<!-- 班级信息（框架图式层级聚合页）：根「班级概况」+ 4 个子卡 -->
+<!-- 防滚动穿透（与 home / duty 同一套方案）：弹层里的列表滑到下沿后，touchmove 会继续冒泡给
+     page，「在弹层里滑到底 → 后面的页面跟着一起滑」就是这么来的。
+     ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
+<page-meta page-style="{{classSheetShow ? 'overflow:hidden' : ''}}"></page-meta>
+
+<view class="page ci {{paReady ? (animSeq === 0 ? 'pa-first' : (animSeq === 1 ? 'pa-lite-a' : 'pa-lite-b')) : 'pa-hold'}} {{tClass}}">
+
+  <!-- NavBar（Tab 页无返回键，左上角放主题切换按钮） -->
+  <nav-bar id="ciNav" title="班级信息" />
+
+  <!-- 主内容滚动（spring-scroll 提供边界阻尼回弹；flex:1 填满导航栏以下区域） -->
+  <spring-scroll style="display:block;flex:1;min-height:0" class="ci-scroll" id="ciMain">
+
+    <!-- 根节点：班级概况（展示班级名 + 成员统计） -->
+    <view class="ci-hero card st-item st-1">
+      <view class="ci-hero-top">
+        <text class="ci-hero-label">班级概况</text>
+        <!-- 右上角的 grid 图标：对本班有管理权的人（超管 / 辅导员）是「班级管理」入口，
+             其余身份维持原来的纯装饰图标（首页精简后该入口曾一度全站消失）。 -->
+        <view wx:if="{{canManageClass}}" class="ci-manage" bindtap="goClasses"
+              hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+          <app-icon name="grid" variant="brand" size="{{28}}" />
+          <text class="ci-manage-t">班级管理</text>
+        </view>
+        <app-icon wx:else name="grid" variant="brand" size="{{36}}" />
+      </view>
+      <!-- 教职工切班（2026-10-28；当日二次调整为弹层）
+           曾经是横向滚动的 chips 条，用户反馈「左右滑动不太好」——
+           超管 5 个班要滑着找、只有 2 个班时又白占一整行高度。
+           现在收成「点班名 → 弹层选班」：
+             · 只有 1 个班 → 纯文本，不可点（切班对它毫无意义）；
+             · ≥2 个班   → 班名右侧挂「切换 ⌄」，点开 bottom-sheet 列出全部班级。
+           切完本卡里的班名 / 总人数 / A、B 组 / 下方班费金额一起刷新，
+           点进「班级成员」「班费」「作业」也会带着当前班 —— 不需要在子页面各挂一个切换器。 -->
+      <view
+        wx:if="{{classChips.length > 1}}"
+        class="ci-name-row"
+        bindtap="onClassSheetOpen"
+        hover-class="press-dim"
+        hover-start-time="0"
+        hover-stay-time="60"
+      >
+        <text class="ci-hero-name">{{className ? className : '未绑定班级'}}</text>
+        <view class="ci-name-switch">
+          <text class="ci-name-switch-t">切换</text>
+          <app-icon name="chevron-down" variant="gray" size="{{24}}" />
+        </view>
+      </view>
+      <text wx:else class="ci-hero-name">{{className ? className : '未绑定班级'}}</text>
+      <view class="ci-hero-stats">
+        <view class="ci-stat">
+          <text class="ci-stat-num">{{stats ? stats.total : '—'}}</text>
+          <text class="ci-stat-label">总人数</text>
+        </view>
+        <view class="ci-stat-divider"></view>
+        <view class="ci-stat">
+          <text class="ci-stat-num">{{stats ? stats.groupA : '—'}}</text>
+          <text class="ci-stat-label">A 组</text>
+        </view>
+        <view class="ci-stat-divider"></view>
+        <view class="ci-stat">
+          <text class="ci-stat-num">{{stats ? stats.groupB : '—'}}</text>
+          <text class="ci-stat-label">B 组</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 层级连线（纯视觉，提示框架图的「根 → 子节点」层级） -->
+    <view class="ci-connector"></view>
+
+    <!-- 子节点：4 个班级模块入口（「课程表」已于 2026-10-28 下线，见 index.js 头注释） -->
+    <view class="ci-list">
+      <view class="ci-item card st-item st-2" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="roster">
+        <view class="ci-item-ic"><app-icon name="people" variant="brand" size="{{40}}" /></view>
+        <view class="ci-item-main">
+          <text class="ci-item-name">班级成员</text>
+          <text class="ci-item-sub">成员名单与分组</text>
+        </view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+
+      <view class="ci-item card st-item st-3" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="fee">
+        <view class="ci-item-ic"><app-icon name="tag" variant="brand" size="{{40}}" /></view>
+        <view class="ci-item-main">
+          <text class="ci-item-name">班费</text>
+          <text class="ci-item-sub">{{feeTotal != null ? '当前班费 ¥' + feeTotal : '班费收支与余额'}}</text>
+        </view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+
+      <!-- 通知（2026-10-28）：不再随切班置灰 —— 后端 msgList 支持按班查看，
+           切到哪个班就看哪个班的通知（超管任意活动班 / 辅导员限绑定班）。 -->
+      <view class="ci-item card st-item st-4" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="notice">
+        <view class="ci-item-ic"><app-icon name="bell" variant="brand" size="{{40}}" /></view>
+        <view class="ci-item-main">
+          <text class="ci-item-name">通知</text>
+          <text class="ci-item-sub">班级通知与公告</text>
+        </view>
+        <!-- 未读角标（2026-10-27）：首页「查看通知」卡下线后，未读信号挂在这里。
+             别班未读数无从统计（角标口径是「发给我的」）→ 只在看本班时显示。 -->
+        <view wx:if="{{noticeUnacked && !isOtherClass}}" class="ci-item-badge">{{noticeUnacked}}</view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+
+      <view class="ci-item card st-item st-5" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="homework">
+        <view class="ci-item-ic"><app-icon name="check-circle" variant="green" size="{{40}}" /></view>
+        <view class="ci-item-main">
+          <text class="ci-item-name">作业</text>
+          <text class="ci-item-sub">作业布置与提交</text>
+        </view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+
+    </view>
+
+    <view class="ci-foot"></view>
+  </spring-scroll>
+
+  <!-- 班级选择弹层（2026-10-28）：替代原来的横向 chips 条。
+       每行「班名 + 当前选中打勾」，点一行即切并关闭。
+       高度由 JS 按班级数量算（clsSheetH），不写死 —— 2 个班和 5 个班不该一样高。 -->
+  <bottom-sheet
+    show="{{classSheetShow}}"
+    title="切换班级"
+    height="{{clsSheetH}}"
+    bind:close="onClassSheetClose"
+  >
+    <view class="cs-list">
+      <view
+        wx:for="{{classChips}}"
+        wx:key="id"
+        class="cs-row {{viewClassId === item.id ? 'on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="onClassPick"
+        hover-class="press-dim"
+        hover-start-time="0"
+        hover-stay-time="60"
+      >
+        <text class="cs-name">{{item.name}}</text>
+        <app-icon wx:if="{{viewClassId === item.id}}" name="check" variant="brand" size="{{36}}" />
+      </view>
+    </view>
+  </bottom-sheet>
+</view>

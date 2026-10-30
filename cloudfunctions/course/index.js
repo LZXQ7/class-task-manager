@@ -590,7 +590,7 @@ const routes = {
       const [rows] = await pool.query(
         `SELECT s.id, s.course_id, c.name, c.teacher, c.room,
                 s.day_of_week, s.period, s.group_scope, s.weeks, s.week_rule, s.note,
-                s.duty_count
+                s.duty_count, s.kind
            FROM session s JOIN course c ON c.id = s.course_id
           WHERE s.class_id = ?
           ORDER BY s.day_of_week, s.period, s.id`, [classId]
@@ -610,6 +610,10 @@ const routes = {
           // 🔴 必须回传 duty_count：不排值日的课（duty_count=0）在端上曾被写死成 2
           //   （SQL 漏取该列 ⇒ 端上无从得知），点开课次会显示「2 人值日」（2026-10-14）。
           dutyCount: r.duty_count == null ? 2 : Number(r.duty_count),
+          // kind（2026-10-28）：'COURSE' 大课 / 'CLEAN' 18:10 保洁课次。
+          // 班级信息页要用它把「今天几节课」里的保洁摘掉 —— 否则每天会多算一节
+          // （示例班级A每天 5 大课 + 1 保洁 ⇒ 显示「今天 6 节」，学生一看就知道错了）。
+          kind: r.kind === 'CLEAN' ? 'CLEAN' : 'COURSE',
           note: r.note || ''
         }))
       };
@@ -2193,7 +2197,11 @@ exports.main = async (event) => {
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
-    reviewDemo.denyDemo(ctx.member, action);   // 演示态：拦截破坏性动作（v1.0.6.4）
+    /* 演示态（生效班级为演示班，含免绑定 reviewDemo / 超管 switchDemo）：拦截破坏性动作
+       （v1.0.6.4，2026-10-29 扩展判定为「演示班」） */
+    if (await guard.isDemoMember(getPool(), ctx) && reviewDemo.isDeniedAction(action)) {
+      throw new BizError(40010, '演示模式：该操作不会真实执行');
+    }
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     if (route.auth && route.auth.needAdmin) guard.requireAdmin(ctx);
     if (route.auth && route.auth.needScheduleAuth) guard.requireScheduleAuth(ctx);

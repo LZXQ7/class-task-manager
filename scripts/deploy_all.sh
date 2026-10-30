@@ -26,3 +26,13 @@ for fn in $FNS; do
   fi
 done
 echo "=== 部署成功=$ok  失败=$bad ==="
+
+# 🔴 部署后自检（2026-10-29 事故钉子）：逐个 invoke 线上函数，揪出「包里丢了 node_modules」。
+#    事故回放：class(37MB) / course(50MB) 这两个**最大的包**用 --deployMode zip 上传时
+#    把 node_modules 丢了 ⇒ 线上 require('wx-server-sdk') 直接崩、函数 100% 失败，
+#    表现却是「班级管理暂无班级 / 班级信息页未绑定班级 / 首屏卡 6 秒」这种**业务层假象**，
+#    极难联想到部署问题。部署脚本自己报「deployed successfully」也照样是坏的。
+#    判据：触发不存在的 action，正常包回业务码 41001；缺依赖的包回 "Cannot find module"。
+#    坏掉的函数改用 `node scripts/deploy-fn-deps.js <fn>`（云端装依赖）重发。
+echo "=== 部署后自检：探测各函数依赖是否完整 ==="
+node "C:/Users/PC/WorkBuddy/LZXQ-WorkBuddy/scripts/probe-fn-modules.js"

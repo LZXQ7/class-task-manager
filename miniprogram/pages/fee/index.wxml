@@ -1,0 +1,144 @@
+<!-- 班费 / 团费（独立页，从首页底部弹层迁出；2026-10-27）
+     导航：nav-bar 带回退键（二级页，走系统转场，不用 st-item 入场，见 check-tab-enter ④）。
+     滚动：原生滚动（仿 homework，无 bottom-sheet，故无需 page-meta 锁页面滚动）。
+     切换：顶端 segmented 在 班费 / 团费 间切换（团费仅有权限者可见）；表单视图直接内联在页面内。 -->
+<view class="page fee-page page-fade {{tClass}}">
+
+  <nav-bar title="{{navTitle}}" show-back="{{true}}" />
+
+  <!-- 未绑定 -->
+  <block wx:if="{{unbound}}">
+    <view class="fee-wrap">
+      <empty-state
+        icon="cloud-off"
+        title="你还没有绑定班级"
+        desc="绑定后即可查看班费与消费明细"
+        btn-text="立即绑定"
+        bind:action="goBind"
+        padding="{{160}}"
+      />
+    </view>
+  </block>
+
+  <!-- 网络失败 -->
+  <block wx:elif="{{failed}}">
+    <view class="fee-wrap">
+      <empty-state
+        icon="cloud-off"
+        title="数据没加载出来"
+        desc="检查网络后重试"
+        btn-text="重新加载"
+        bind:action="onReload"
+        padding="{{160}}"
+      />
+    </view>
+  </block>
+
+  <!-- 加载骨架 -->
+  <block wx:elif="{{loading}}">
+    <view class="fee-wrap">
+      <skeleton type="card" rows="{{1}}" height="{{296}}" />
+    </view>
+  </block>
+
+  <block wx:else>
+    <!-- ⚠️ 容器必须自带左右 32rpx 内边距（.fee-wrap）。
+         历史事故：这里写的是 class="wrap" —— 但全站的 `.wrap{padding:24rpx 32rpx}`
+         只定义在 pages/home/index.wxss 里，**页面级样式不跨页生效**，
+         所以班费页拿到的只是 app.wxss 那条 `.wrap{flex-wrap:wrap}` 的 flex 工具类
+         ⇒ 一个内边距都没有，余额与消费明细全部贴屏幕左右边（用户报「不要贴边」，2026-10-27）。 -->
+    <view class="fee-wrap">
+
+      <!-- 班费/团费切换（团费仅有权限者可见） -->
+      <view wx:if="{{feeTabs.length > 1}}" class="fee-seg">
+        <segmented items="{{feeTabs}}" value="{{feeType}}" width="{{686}}" bind:change="onTypeSwitch" />
+      </view>
+
+      <!-- 跨班查看（仅辅导员且负责多于 1 个班） -->
+      <view wx:if="{{isCounselor && feeClassList.length > 1}}" class="fee-cls-switch">
+        <text class="fee-cls-label">查看班级</text>
+        <view class="fee-cls-chips">
+          <view wx:for="{{feeClassList}}" wx:key="id"
+                class="fee-cls-chip {{feeViewClassId === item.id ? 'on' : ''}}"
+                data-id="{{item.id}}" bindtap="onFeeClassPick"
+                hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+            {{item.name}}
+          </view>
+        </view>
+      </view>
+
+      <!-- 余额卡（两个视图都显示：填金额时要看得见还剩多少） -->
+      <view class="card fee-bal">
+        <text class="fee-bal-label">当前余额</text>
+        <text class="fee-bal-num">¥{{feeActive.balanceText}}</text>
+        <!-- 只读小字：总额 / 已消费，用来核对 -->
+        <text class="fee-bal-sub">总额 ¥{{feeActive.totalText}} · 已消费 ¥{{feeActive.expenseText}}</text>
+      </view>
+
+      <!-- 列表视图：消费明细 + 增加消费 -->
+      <block wx:if="{{feeView === 'list'}}">
+        <view class="fee-rec-head">消费明细</view>
+        <!-- 每条记录 = 一张独立卡片（.card 已带圆角/玻璃/降级，自身即裁切层，不会出现四角色斑） -->
+        <view class="card fee-rec {{feeCanManage ? 'has-ops' : ''}}" wx:for="{{feeActive.records}}" wx:key="id">
+          <view class="fee-rec-main">
+            <text class="fee-rec-amt">-¥{{item.amountText}}</text>
+            <text class="fee-rec-note" wx:if="{{item.note}}">{{item.note}}</text>
+          </view>
+          <view class="fee-rec-meta">
+            <text class="fee-rec-op">{{item.operatorName}}</text>
+            <text class="fee-rec-time">{{item.createdAt}}</text>
+          </view>
+          <view class="fee-rec-imgs" wx:if="{{item.images.length}}">
+            <view wx:for="{{item.images}}" wx:for-item="img" wx:for-index="imgIdx" wx:key="*this" class="fee-rec-img" data-id="{{item.id}}" data-idx="{{imgIdx}}" data-src="{{img}}" bindtap="onFeePreviewImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+              <image class="fee-rec-img-pic" src="{{img}}" mode="aspectFill" />
+            </view>
+          </view>
+          <!-- 仅管理人可见：追加图片（未满 9 张）/ 删除；view-only 用户完全看不到 -->
+          <view class="fee-rec-ops" wx:if="{{feeCanManage}}">
+            <view class="fee-rec-append" wx:if="{{item.images.length < 9}}" data-id="{{item.id}}" bindtap="onFeeAppendTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">追加图片</view>
+            <view class="fee-rec-del" data-id="{{item.id}}" bindtap="onFeeDeleteRecord" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">删除</view>
+          </view>
+        </view>
+        <view class="fee-rec-empty" wx:if="{{!feeActive.records.length}}">还没有消费记录</view>
+
+        <view class="np-actions" wx:if="{{feeCanManage}}">
+          <view class="np-btn primary" bindtap="onFeeAddOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">增加消费</view>
+        </view>
+      </block>
+
+      <!-- 表单视图：金额 / 备注 / 凭证图片 + 提交 -->
+      <block wx:if="{{feeView === 'form'}}">
+        <view class="np-field">
+          <view class="np-label">金额</view>
+          <input class="np-input" type="digit" value="{{feeAmount}}" placeholder="消费金额（元）" placeholder-class="f-ph" bindinput="onFeeAmountInput" />
+        </view>
+        <view class="np-field">
+          <view class="np-label">备注<text class="np-opt">选填</text></view>
+          <input class="np-input" value="{{feeNote}}" placeholder="例如：买卫生工具" placeholder-class="f-ph" maxlength="200" bindinput="onFeeNoteInput" />
+        </view>
+        <view class="np-field">
+          <view class="np-label">凭证图片<text class="np-opt">最多 9 张，选填</text></view>
+          <view class="np-imgs">
+            <view wx:for="{{feeImages}}" wx:key="*this" class="np-img">
+              <image class="np-img-pic" src="{{item}}" mode="aspectFill" />
+              <view class="np-img-x" data-i="{{index}}" bindtap="onFeeRemoveImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+                <app-icon name="close" variant="gray" size="{{24}}" />
+              </view>
+            </view>
+            <view wx:if="{{feeImages.length < 9}}" class="np-img np-img-add" bindtap="onFeePickImage" hover-class="np-abtn-hover" hover-start-time="0" hover-stay-time="60">
+              <app-icon name="plus" variant="brand" size="{{40}}" />
+              <text class="np-img-add-t">添加</text>
+            </view>
+          </view>
+        </view>
+        <view class="np-actions">
+          <view class="np-btn ghost" bindtap="onFeeFormBack" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">返回</view>
+          <view class="np-btn primary {{feeBusy ? 'off' : ''}}" bindtap="onFeeSubmit">{{feeBusy ? '提交中…' : '提交消费'}}</view>
+        </view>
+      </block>
+
+      <view class="page-foot-space"></view>
+    </view>
+  </block>
+
+</view>

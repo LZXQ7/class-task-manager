@@ -133,6 +133,9 @@ function makePool() {
       if (/^SELECT notice_id FROM notice_msg_class WHERE class_id = \?$/.test(s)) {
         return [db.class.filter(r => r.class_id === A[0])];
       }
+      // 2026-10-29：main 主链路新增演示态判定 guard.isDemoMember → 查演示班 id；
+      // 本用例没有演示班 ⇒ 回空数组，isDemoMember 判 false（放行）。
+      if (/^SELECT id FROM `class` WHERE is_demo = 1$/.test(s)) return [[]];
       throw new Error('FAKE-DB 未覆盖的查询: ' + s.slice(0, 140));
     }
   };

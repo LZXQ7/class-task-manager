@@ -134,7 +134,11 @@ function audit(src) {
     'loadSeqPrefix 必须排除 X 组：占位学号 STAFF… 会把 pfx/lens 顶成 2 →'
     + ' 整班判定为「前缀不可推导」→ 序号名册补学号**静默失效**');
 
-  const rosterBlk = between(m, "if (payload.public === 'roster')", "if (payload.public === 'manage')");
+  /* ⚠️ 右锚点必须用 `'read'` 分支，不能用 `'manage'`：2026-10-28 在 roster 与 manage 之间
+   * 插入了 public='read'（普通成员只读名单）分支，它同样含 `AND group_tag <> 'X'`。
+   * 若仍以 manage 为界，rosterBlk 会连带把 read 分支包进去 —— 变异测试「删掉 roster 的
+   * 排除 X」之后 read 分支还留着这句话，断言照样通过 ⇒ 门禁被自己的扩写废掉。 */
+  const rosterBlk = between(m, "if (payload.public === 'roster')", "if (payload.public === 'read')");
   need(rosterBlk.length > 0, 'roster-exists', '应能定位 list 的 roster 分支');
   need(rosterBlk.indexOf("AND group_tag <> 'X'") >= 0, 'roster-exclude-x',
     'roster 必须排除 X 组：教职工现在走独立绑定码入口，不该出现在学生选人名单里');
@@ -375,6 +379,8 @@ async function runtimeSelfTest() {
       isSuper(m) { return !!(m && m.role === 'ADMIN' && m.is_super === 1); },
       isCounselor(m) { return !!(m && m.group_tag === 'X'); },
       classIdOf(ctx) { const m = ctx && (ctx.member || ctx.realMember); return Number(m && m.class_id) || 1; },
+      // 2026-10-29：auth main 主链路新增演示态判定（免绑定 reviewDemo）⇒ 桩化，非演示身份一律放行
+      isDemoMember: async () => false,
       ADMIN_ROLES: ['ADMIN', 'MONITOR']
     };
     const req = (id) => {

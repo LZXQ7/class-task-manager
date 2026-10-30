@@ -17,8 +17,9 @@
  *   ④ **绝不顶掉真人**：当前微信已绑真人时报错要求先解绑，而不是覆盖 openid。
  *   ⑤ 口令恒定时间比较（防时序侧信道）。
  *
- * 变异自证（7 组，每组都必须被抓）：M1 去掉 is_super 锁 / M2 login 回传口令 / M3 前端去掉 wx:if /
- *   M4 顶掉真人绑定 / M5 去掉某函数的演示拦截 / M6 从拒绝清单删一条破坏性动作 / M7 绑定不置演示标记。
+ * 变异自证（12 组，每组都必须被抓）：M1 去掉 is_super 锁 / M2 login 回传口令 / M3 前端去掉 wx:if /
+ *   M4 顶掉真人绑定 / M5 去掉某函数的演示拦截 / M6 从拒绝清单删一条破坏性动作 / M7 绑定不置演示标记 /
+ *   M8 reviewDemoSet 去 needSuper / M9 口令固定 / M10 前端开关行去 isSuper / M11 拒绝清单删 reviewDemoSet / M12 口令改用 Math.random。
  * 退出码 0 = 过；非 0 = 有问题。
  */
 const fs = require('fs');
@@ -93,8 +94,9 @@ function judge(o) {
   push(/review_demo_on TINYINT NOT NULL DEFAULT 0/.test(c.sql));
   push(!/DEFAULT 1/.test(c.sql));
 
-  /* ③ 绑定目标锁死 is_super = 1（否则会绑到测试成员/测试管理员） */
-  push(/IS_TEST\(\)\} AND role = 'ADMIN' AND is_super = 1/.test(c.auth));
+  /* ③ 绑定目标锁死演示班超管（class_id = DEMO_CLASS_ID + is_super = 1）——
+   *    否则会把别的班的超管也当成演示身份绑进去，体验者看到的是真实数据 */
+  push(/class_id = \$\{DEMO_CLASS_ID\} AND role = 'ADMIN' AND is_super = 1/.test(c.auth));
 
   /* ④ 绝不顶掉真人。
    * ⚠️ 判据必须落在 **reviewDemo 自己的块里**，不能对全文件 grep「当前微信已绑定」——
@@ -114,13 +116,11 @@ function judge(o) {
   push(/safeEqual\(code, String\(row\.review_demo_code/.test(c.auth));
   push(/recordFail\(pool, ctx\.openid\)/.test(c.auth));
 
-  /* 前端：入口受布尔位控制 + 事件齐 + 样式有定义 */
-  push(/wx:if="\{\{reviewOn\}\}"/.test(c.bindWxml));
-  push(/bindtap="onReviewEnter"/.test(c.bindWxml) && /bindinput="onReviewCodeInput"/.test(c.bindWxml));
-  push(/onReviewEnter\(\)\s*\{/.test(c.bindJs));
-  push(/onReviewCodeInput\(e\)\s*\{/.test(c.bindJs));
-  push(/api\.reviewDemo\(\{ code \}/.test(c.bindJs));
-  push(/reviewOn: !!\(c && c\.reviewDemo\)/.test(c.bindJs));
+  /* 前端：2026-10-28→29 审核体验入口由「口令 + reviewOn 门控」改为「常驻 · 一键体验（quick）」；
+     体验版（trial）下入口隐藏、由 app._bootstrap 自动进演示态覆盖；口令通道仅存于后端（生产超管可用）。 */
+  push(/bindtap="onQuickDemo"/.test(c.bindWxml));
+  push(/onQuickDemo\(\)\s*\{/.test(c.bindJs));
+  push(/api\.reviewDemo\(\{ quick: true \}/.test(c.bindJs));
   push(/reviewDemo: C\('auth', 'reviewDemo'\)/.test(c.api));
   push(/\.bind-review\s*\{/.test(c.bindWxss));
   push(/\.bind-review-title\s*\{/.test(c.bindWxss));
@@ -148,7 +148,10 @@ function judge(o) {
   /* 5 个受影响函数的 main 都接了拦截（缺一个 = 该函数整类破坏性动作不受控） */
   ['auth', 'memberIdx', 'classIdx', 'mediaIdx', 'courseIdx'].forEach(function (k) {
     push(/const reviewDemo = require\('\.\/common\/review-demo'\)/.test(c[k]));
-    push(/reviewDemo\.denyDemo\(ctx\.member, action\)/.test(c[k]));
+    /* 2026-10-29：演示态判定由「is_review_demo 列」升级为「生效班级是否为演示班」——
+       5 个函数 main 统一改为 guard.isDemoMember(pool, ctx) && reviewDemo.isDeniedAction(action)。
+       仍钉死「每个受影响函数都接了拦截」，只是判据跟随实现口径（覆盖 reviewDemo 与 switchDemo）。 */
+    push(/guard\.isDemoMember\(getPool\(\), ctx\) && reviewDemo\.isDeniedAction\(action\)/.test(c[k]));
   });
   /* DB 列：演示态标记（默认关）+ 绑定成功置 1。
    * ⚠️ 判据必须落在 **reviewDemo 自己的块里**，不能对全文件 grep `is_review_demo = 1` ——
@@ -157,7 +160,10 @@ function judge(o) {
    *    与「变异锚点不唯一 = 假自证」同族）。 */
   push(/is_review_demo TINYINT NOT NULL DEFAULT 0/.test(c.sql));
   push(!!rd);
-  if (rd) push(/is_review_demo = 1/.test(rd[0]));
+  /* 2026-10-29：免绑定体验改为 impersonation 表映射 —— 不再写 openid、不置 is_review_demo，
+     演示态判定改由 guard.isDemoMember（生效班级=演示班）承担。这里钉死「reviewDemo 确实写入了
+     impersonation 映射」（否则演示身份无从成立、破坏性动作拦截也永不触发）。 */
+  if (rd) push(/INSERT INTO impersonation \(openid, member_id\)/.test(rd[0]));
 
   /* ⑦ 超管开关（2026-10-15 · v1.0.6.8）：开启即自动生成新口令，不再「我手写 + 用户跑 SQL」 */
   push(/reviewDemoStatus:\s*\{/.test(c.auth));
@@ -177,12 +183,14 @@ function judge(o) {
   /* 演示身份不得自己开关这道后门（连「只读一下口令」也不给） */
   push(/'auth\.reviewDemoSet'/.test(c.rd));
   push(/'auth\.reviewDemoStatus'/.test(c.rd));
-  /* 前端：「我的」页那一行仅超管可见 + handler 齐 + api 声明齐 */
-  push(/wx:if="\{\{isSuper\}\}" class="mn-row"[^>]*bindtap="onReviewToggle"/.test(c.mineWxml));
-  push(/onReviewToggle\(\)\s*\{/.test(c.mineJs));
-  push(/api\.reviewDemoSet\(\{ on \}/.test(c.mineJs));
-  push(/reviewDemoStatus: C\('auth', 'reviewDemoStatus'\)/.test(c.api));
-  push(/reviewDemoSet: C\('auth', 'reviewDemoSet'\)/.test(c.api));
+  /* 2026-10-29：超管「体验入口」开关 UI 已**移除** —— 口令输入早在 10-28 下线、该开关已无消费者
+     （「一键体验」覆盖了审核体验场景）。后端路由保留（无害、无前端引用），故只断言前端不再残留，
+     避免这个"死开关"被误加回来。 */
+  push(!/bindtap="onReviewToggle"/.test(c.mineWxml));
+  push(!/onReviewToggle\(\)\s*\{/.test(c.mineJs));
+  push(!/api\.reviewDemoSet\(\{ on \}/.test(c.mineJs));
+  push(!/reviewDemoStatus: C\('auth', 'reviewDemoStatus'\)/.test(c.api));
+  push(!/reviewDemoSet: C\('auth', 'reviewDemoSet'\)/.test(c.api));
 
   return n;
 }
@@ -196,16 +204,17 @@ console.log('');
 console.log('── 变异自证：改坏一处必须被抓到（内存副本，不落盘）');
 const MUT = [
   {
-    name: 'M1 去掉 is_super = 1（会把「测试成员/测试管理员」也当成演示身份绑进去）',
-    apply: () => ({ auth: src.auth.replace("IS_TEST()} AND role = 'ADMIN' AND is_super = 1", "IS_TEST()} AND role = 'ADMIN'") })
+    /* ⚠️ 该 SQL 在 auth 出现两处（reviewDemo / switchDemo）—— 必须全局替换，否则第二处兜底 ⇒ 抓不到。 */
+    name: 'M1 去掉 is_super = 1（会把演示班的「非超管管理员」也当成演示身份绑进去）',
+    apply: () => ({ auth: src.auth.replace(/class_id = \$\{DEMO_CLASS_ID\} AND role = 'ADMIN' AND is_super = 1/g, "class_id = ${DEMO_CLASS_ID} AND role = 'ADMIN'") })
   },
   {
     name: 'M2 login 把口令一起回传前端（布尔位变成明文口令 = 公开后门）',
     apply: () => ({ auth: src.auth.replace('reviewDemo: !!(await reviewDemoRow(pool))', 'reviewDemo: String((await reviewDemoRow(pool) || {}).review_demo_code || \'\')') })
   },
   {
-    name: 'M3 前端去掉 wx:if（开关关闭后入口仍渲染，审核员看到的是有后门的页）',
-    apply: () => ({ bindWxml: src.bindWxml.replace('<view wx:if="{{reviewOn}}" class="bind-review">', '<view class="bind-review">') })
+    name: 'M3 前端「一键体验」入口失联（bindtap 指向不存在的 handler）',
+    apply: () => ({ bindWxml: src.bindWxml.replace('bindtap="onQuickDemo"', 'bindtap="noop"') })
   },
   {
     name: 'M4 顶掉真人绑定（把「已绑定就报错」改成直接覆盖 openid）',
@@ -213,17 +222,17 @@ const MUT = [
   },
   {
     name: 'M5 去掉 member 函数 main 里的演示拦截（该函数破坏性动作不再受控）',
-    apply: () => ({ memberIdx: src.memberIdx.replace('reviewDemo.denyDemo(ctx.member, action);', '') })
+    apply: () => ({ memberIdx: src.memberIdx.replace('reviewDemo.isDeniedAction(action)', 'false') })
   },
   {
     name: 'M6 从拒绝清单里删掉 member.removeMember（删成员重新变成可执行）',
     apply: () => ({ rd: src.rd.replace("'member.removeMember',", '') })
   },
   {
-    /* ⚠️ 锚点必须唯一：只写 `is_review_demo = 1` 会先命中 reviewDemoSet 的
-       `WHERE is_review_demo = 1`，改了个不相干的地方 ⇒ 测的还是原文件（假自证）。 */
-    name: 'M7 reviewDemo 绑定不再置 is_review_demo=1（演示态失效，拦截永不触发）',
-    apply: () => ({ auth: src.auth.replace('is_review_demo = 1 WHERE id = ?', 'is_review_demo = 0 WHERE id = ?') })
+    /* 2026-10-29：演示态改由 impersonation 映射成立 —— 删掉 reviewDemo 写入 impersonation 那条，
+       等于没建立演示身份（拦截永不触发）。锚点用该 INSERT 的首现（reviewDemo 在 switchDemo 之前）。 */
+    name: 'M7 reviewDemo 不再写 impersonation 映射（演示态失效，拦截永不触发）',
+    apply: () => ({ auth: src.auth.replace('INSERT INTO impersonation (openid, member_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE member_id = VALUES(member_id)', 'DO NOTHING') })
   },
   {
     name: 'M8 reviewDemoSet 去掉 needSuper（任何已绑定成员都能开这道后门 / 拿到口令）',
@@ -234,8 +243,9 @@ const MUT = [
     apply: () => ({ auth: src.auth.replace('return \'LXQ-\' + out;', "return 'LXQ-FIXD-FIXD-FIXD-FIXD';") })
   },
   {
-    name: 'M10 前端开关行去掉 wx:if isSuper（普通成员也能开后门）',
-    apply: () => ({ mineWxml: src.mineWxml.replace('<view wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onReviewToggle">', '<view class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onReviewToggle">') })
+    /* 2026-10-29：开关 UI 已移除 ⇒ M10 改为「把死开关塞回来必须被抓」（防旧 UI 回流）。 */
+    name: 'M10 前端把已移除的「体验入口」死开关塞回（旧 UI 回流）',
+    apply: () => ({ mineWxml: src.mineWxml + '\n<view class="mn-row" bindtap="onReviewToggle">体验入口</view>' })
   },
   {
     name: 'M11 从拒绝清单删掉 auth.reviewDemoSet（演示身份可以自己换一条口令出来）',

@@ -133,6 +133,90 @@ const NOT_COUNSELOR = "group_tag <> 'X'";
 const IS_COUNSELOR = "group_tag = 'X'";
 
 /**
+ * 解析「通知按班级查看」的 classId（2026-10-28 需求）。
+ * ------------------------------------------------------------
+ * 背景：辅导员一人带五个班，原先 msgList 只有「我的可见性」一个口径 ——
+ *   学生看到的是「发给我的」，辅导员是 counselorOnly（只看到自己发的）。
+ *   于是班级信息页切到别班时，通知卡只能置灰（后端没有「别班通知」这个概念）。
+ *
+ * 现在给 msgList / msgRead / msgDelete 增加**可选** `classId`：
+ *   传了 → 只看/只操作「归属该班」的通知（超管任意活动班、辅导员限 staff_class）；
+ *   没传 → 走原来那套可见性，一个字节都没改（普通成员与所有老调用方零影响）。
+ *
+ * ⚠️ 越权时**静默回落 0**（而不是抛 403）：通知列表是「看」的入口，
+ *    前端带上一个过期的 classId 就白屏，比看到本班通知糟得多。
+ *    写操作（msgRead/msgDelete）同样回落 → 后面还有各自的可见性校验兜底。
+ * @returns {Promise<number>} 0 = 不启用班级视角
+ */
+async function resolveViewClassId(pool, ctx, payload) {
+  const wants = Number(payload && payload.classId) || 0;
+  if (!wants) return 0;
+  const me = (ctx && (ctx.member || ctx.realMember)) || {};
+  // 演示身份：仅允许演示班视角，屏蔽真实班级通知（2026-10-28 演示环境隔离）
+  if (await guard.isDemoMember(pool, ctx)) {
+    const own = guard.classIdOf(ctx);
+    return wants === own ? wants : 0;
+  }
+  if (guard.isSuper(me)) {
+    // 超管：任意**活动**班级（停用班的历史通知没人看，也不该被翻出来）
+    const [rows] = await pool.query('SELECT id FROM `class` WHERE id = ? AND is_active = 1 LIMIT 1', [wants]);
+    return rows.length ? wants : 0;
+  }
+  if (guard.isCounselor(me)) {
+    const ids = await guard.staffClassIds(pool, me);
+    return ids.includes(wants) ? wants : 0;
+  }
+  return 0;   // 普通成员 / 学生班委：没有跨班视角
+}
+
+/**
+ * 「这条通知我能不能动」—— msgRead / msgDelete 共用**同一份** SQL。
+ * ------------------------------------------------------------
+ * 原来是两处各写一遍同样的可见性判断（改一处忘另一处不会报错，只会
+ * 「列表里看得到、点删除报『通知不存在』」）。既然要加班级视角，就抽出来，
+ * 双份实现同步债在这里一次性清掉。
+ * @returns {Promise<boolean>}
+ */
+async function noticeTouchable(pool, ctx, payload, noticeId) {
+  const me = guard.requireBind(ctx);
+  const myClassId = guard.classIdOf(ctx);
+  const isSuper = guard.isSuper(ctx.member);
+  const viewClassId = await resolveViewClassId(pool, ctx, payload);
+  // 演示域隔离（2026-10-29）：演示身份只能动演示班通知；真实身份一律不可动演示班通知。
+  const isDemo = await guard.isDemoMember(pool, ctx);
+  const demoIds = await guard.demoClassIds(pool);
+  const demoIn = demoIds.length ? demoIds.map(() => '?').join(',') : null;
+  const demoDomain = demoIn
+    ? '(n.class_id IN (' + demoIn + ') OR (n.class_id = 0 AND EXISTS (SELECT 1 FROM notice_msg_class dc WHERE dc.notice_id = n.id AND dc.class_id IN (' + demoIn + '))))'
+    : '(1=0)';
+  const demoClause = isDemo ? 'AND ' + demoDomain : 'AND NOT ' + demoDomain;
+  const [vis] = await pool.query(
+    `SELECT n.id FROM notice_msg n
+      WHERE n.id = ? ${demoClause}
+        AND (
+          (? <> 0 AND (
+                (n.scope = 'ALL' AND (n.class_id = ? OR (n.class_id = 0 AND EXISTS (
+                      SELECT 1 FROM notice_msg_class nc WHERE nc.notice_id = n.id AND nc.class_id = ?))))
+             OR (n.scope <> 'ALL' AND EXISTS (
+                      SELECT 1 FROM notice_msg_target t JOIN member tm ON tm.id = t.member_id
+                      WHERE t.notice_id = n.id AND tm.class_id = ?))
+          ))
+       OR (? = 0 AND (
+                (? = 1)
+             OR n.publisher_id = ?
+             OR (n.scope = 'ALL' AND (n.class_id = ? OR (n.class_id = 0 AND EXISTS (
+                      SELECT 1 FROM notice_msg_class nc WHERE nc.notice_id = n.id AND nc.class_id = ?))))
+             OR (n.scope IN ('COMMITTEE','POSITION','PICK') AND EXISTS (
+                      SELECT 1 FROM notice_msg_target t WHERE t.notice_id = n.id AND t.member_id = ?))
+          ))
+        )`,
+    [noticeId, ...demoIds, ...demoIds, viewClassId, viewClassId, viewClassId, viewClassId,
+      viewClassId, isSuper ? 1 : 0, me.id, myClassId, myClassId, me.id]
+  );
+  return vis.length > 0;
+}
+
+/**
  * 通知模板的关键词字段名。必须与公众平台所选模板的关键词**数量与类型**一致，
  * 换模板只改环境变量、不动代码。
  *   TEMPLATE_NOTICE           订阅消息模板 ID（未配置 → 不推送，前端入口同步降级）
@@ -410,6 +494,8 @@ const routes = {
       }
 
       const pool = getPool();
+      // 演示域隔离（2026-10-29）：演示身份只能发布到本演示班，绝不外溢真实班级（防虚拟数据污染真实班）。
+      const isDemo = await guard.isDemoMember(pool, ctx);
       /*
        * 目标班级（2026-09-26 需求④：「全体」= 发布者本班，绝不默认外溢到所有班级）
        *   · 普通班委：恒为本班，忽略 payload.classIds（防伪造越权）
@@ -419,6 +505,8 @@ const routes = {
        * 现在要发多班，前端必须把「全部班级 / 各班」展开成显式 id 列表传过来。
        */
       let classIds = (Array.isArray(payload.classIds) ? payload.classIds : []).map(Number).filter(Boolean);
+      // 演示身份：锁定本演示班，忽略前端传来的任何班级（含真实班），绝不外溢
+      if (isDemo) classIds = [];
       const canCrossClass = isCounselor || isSuper;
       // v0.7.16：教职工只能发到自己被绑定的班级（staff_class），越界的 id 直接剔除
       if (isCounselor && !isSuper && classIds.length) {
@@ -485,6 +573,13 @@ const routes = {
         if (!memberIds.length) throw new BizError(41001, '所选职位没有可接收的成员');
       }
 
+      // 演示身份：PICK 指定的成员也只限本演示班（防虚拟数据指向真实成员）
+      // 同时补 NOT_TEST —— 铁律：任何人员过滤一律不显示测试账号（本查询只回 id 做内部裁剪，
+      // 但门禁按「FROM member 无过滤痕迹」判，必须留痕；且上游 PICK/COMMITTEE/POSITION 已过滤，这里纯防御）。
+      if (isDemo && memberIds.length) {
+        const [dm] = await pool.query('SELECT id FROM member WHERE id IN (' + memberIds.map(() => '?').join(',') + ') AND class_id = ? AND ' + NOT_TEST(), memberIds.concat([myClassId]));
+        memberIds = dm.map(r => Number(r.id));
+      }
       if (!content) throw new BizError(41001, '请填写通知内容');
       // 标题选填：订阅消息推送时若标题为空，用内容前 20 字或兜底文案
       const pushTitle = title || content.slice(0, 20) || '班级通知';
@@ -546,6 +641,15 @@ const routes = {
       // 「仅发班委」通知对班委（role=ADMIN、非超管、非辅导员）与超管可见，且发布人自己恒可见
       const meIsCommittee = (ctx.member.role === 'ADMIN' && ctx.member.is_super !== 1 && ctx.member.group_tag !== 'X');
       const pool = getPool();
+      // 演示域隔离（2026-10-29）：生效身份为演示成员 ⇒ 只看演示班通知；
+      // 真实身份 ⇒ 一律剔除演示班通知（绝不混入虚拟数据）。复用 guard.isDemoMember / demoClassIds。
+      const isDemo = await guard.isDemoMember(pool, ctx);
+      const demoIds = await guard.demoClassIds(pool);
+      const demoIn = demoIds.length ? demoIds.map(() => '?').join(',') : null;
+      const demoDomain = demoIn
+        ? '(n.class_id IN (' + demoIn + ') OR (n.class_id = 0 AND EXISTS (SELECT 1 FROM notice_msg_class dc WHERE dc.notice_id = n.id AND dc.class_id IN (' + demoIn + '))))'
+        : '(1=0)';
+      const demoClause = isDemo ? 'AND ' + demoDomain : 'AND NOT ' + demoDomain;
       // 多班级可见性：
       //   · 超管看全部；发布人看自己发的
       //   · scope=ALL → 班级命中（n.class_id=我的班，或 notice_msg_class 里含我的班）
@@ -553,6 +657,10 @@ const routes = {
       // 辅导员例外（2026-09-26 需求②）：辅导员只负责发布、不接收通知，故**只看得见自己发的**。
       //   否则他 class_id=1，会被「本班全体」通知误伤（他本不该是收件人）。
       const counselorOnly = isCounselor ? 1 : 0;
+      /* 班级视角（2026-10-28 需求）：管理端按班看通知。
+       * 传了 classId 且有权（超管任意活动班 / 辅导员限绑定班）→ viewClassId > 0，
+       * 只看「归属该班」的通知；没传 → 走下面 ② 那段原口径，行为与改造前逐字一致。 */
+      const viewClassId = await resolveViewClassId(pool, ctx, payload);
       const [rows] = await pool.query(
         `SELECT n.id, n.title, n.content, n.images, n.link_url, n.link_name, n.scope, n.need_ack, n.popup, n.created_at,
                 n.class_id, n.publisher_id,
@@ -571,22 +679,48 @@ const routes = {
      JOIN member m ON m.id = n.publisher_id
      LEFT JOIN notice_msg_read r ON r.notice_id = n.id AND r.member_id = ?
      LEFT JOIN notice_popup_seen ps ON ps.notice_id = n.id AND ps.member_id = ?
-    WHERE (? = 0 OR n.publisher_id = ?)
-      AND (
-            (? = 1)
-            OR n.publisher_id = ?
-            OR (n.scope = 'ALL' AND (n.class_id = ? OR n.class_id = 0 AND EXISTS (
-                  SELECT 1 FROM notice_msg_class nc WHERE nc.notice_id = n.id AND nc.class_id = ?)))
-            OR (n.scope IN ('COMMITTEE','POSITION','PICK') AND EXISTS (
-                  SELECT 1 FROM notice_msg_target t WHERE t.notice_id = n.id AND t.member_id = ?))
-            OR (n.scope = 'COMMITTEE' AND (? = 1))
+    WHERE (
+            /* ① 班级视角：该班归属的通知
+             *    ALL          → class_id 命中，或跨班通知在 notice_msg_class 里命中
+             *    其它 scope   → 目标成员里有人在该班（COMMITTEE/POSITION/PICK 都是按人发的）
+             *    ⚠️ 这里**不受 counselorOnly 限制**：辅导员在别班是「看」而不是「收」。
+             *    ⚠️ 这里**也不给「自己发布的」开裸口子**（第一版犯过，生产库验证抓到的）：
+             *       超管在 示例班级A 发过通知，切到 2601 时那两条也会跟着出现 ——
+             *       因为「publisher_id = 我」单独成一支，没被班级归属收窄。
+             *       自己发到该班的通知本来就能被上面的归属条件命中，不需要额外一支。
+             *    ⚠️ 本段位于**模板字符串**内：注释里绝不能出现反引号（会提前结束字符串，
+             *       本地 node --check 报 missing )，而云端只回一句 SyntaxError）。 */
+            (? <> 0 AND (
+                  (n.scope = 'ALL' AND (n.class_id = ? OR (n.class_id = 0 AND EXISTS (
+                        SELECT 1 FROM notice_msg_class nc WHERE nc.notice_id = n.id AND nc.class_id = ?))))
+               OR (n.scope <> 'ALL' AND EXISTS (
+                        SELECT 1 FROM notice_msg_target t JOIN member tm ON tm.id = t.member_id
+                        WHERE t.notice_id = n.id AND tm.class_id = ?))
+            ))
+            /* ② 原「我可见的」口径（逐字保留）：没传 classId 时走这里 */
+         OR (? = 0 AND (
+                  (? = 0 OR n.publisher_id = ?)
+              AND (
+                    (? = 1)
+                 OR n.publisher_id = ?
+                 OR (n.scope = 'ALL' AND (n.class_id = ? OR n.class_id = 0 AND EXISTS (
+                       SELECT 1 FROM notice_msg_class nc WHERE nc.notice_id = n.id AND nc.class_id = ?)))
+                 OR (n.scope IN ('COMMITTEE','POSITION','PICK') AND EXISTS (
+                       SELECT 1 FROM notice_msg_target t WHERE t.notice_id = n.id AND t.member_id = ?))
+                 OR (n.scope = 'COMMITTEE' AND (? = 1))
+              )
+            ))
           )
       AND NOT EXISTS (SELECT 1 FROM notice_msg_delete d WHERE d.notice_id = n.id AND d.member_id = ?)
       -- 只看「绑定之后」发布的通知：bind_time 是绑定时刻（存量成员上线时统一置基线），
       -- 发布早于绑定的（含历史测试通知）一律不显示（2026-09-25 用户定）
       AND n.created_at > COALESCE((SELECT bind_time FROM member WHERE id = ?), '2000-01-01')
+      ${demoClause}
     ORDER BY n.id DESC LIMIT 100`,
-  [me.id, me.id, counselorOnly, me.id, isSuper ? 1 : 0, me.id, myClassId, myClassId, me.id, meIsCommittee ? 1 : 0, me.id, me.id]
+  [me.id, me.id,
+   viewClassId, viewClassId, viewClassId, viewClassId,
+   viewClassId, counselorOnly, me.id, isSuper ? 1 : 0, me.id, myClassId, myClassId, me.id, meIsCommittee ? 1 : 0,
+   me.id, me.id, ...demoIds, ...demoIds]
 );
       /*
        * 「与我相关」判定（2026-10-24 用户反馈：超管虽因 oversight 看得到**全部**通知，
@@ -608,9 +742,14 @@ const routes = {
       const myClassNotices = new Set(myClassRows.map(r => Number(r.notice_id)));
       const out = [];
       for (const r of rows) {
-        // 谁能看回执：发布人自己，或超级管理员
-        const canSeeAck = (r.publisher_id === me.id) || isSuper;
+        // 谁能看回执：发布人自己、超级管理员，或正在「按班管理」的辅导员（viewClassId>0）
+        // —— 管理端要能看出这个班到底谁都确认了，只给内容等于没法催。
+        const canSeeAck = (r.publisher_id === me.id) || isSuper || viewClassId > 0;
         const isPublisher = r.publisher_id === me.id;
+        // 与我相关（红点口径）：ALL 看我的班；COMMITTEE 看班委身份或指定我；其余看指定我。
+        const forMe = r.scope === 'ALL'
+          ? (Number(r.class_id) === myClassId || myClassNotices.has(r.id))
+          : (r.scope === 'COMMITTEE' ? (meIsCommittee || myTargets.has(r.id)) : myTargets.has(r.id));
         let ackList = [];
         if (canSeeAck) {
           const [ackRows] = await pool.query(
@@ -642,9 +781,12 @@ const routes = {
           isPublisher: isPublisher,
           // forMe：是否「与我相关」（红色角标口径）。超管可见性短路看得到全部，
           // 但只有发给自己（全班(我的班) / 指定到我 / 我是班委的班委通知）才该亮红点。
-          forMe: r.scope === 'ALL'
-            ? (Number(r.class_id) === myClassId || myClassNotices.has(r.id))
-            : (r.scope === 'COMMITTEE' ? (meIsCommittee || myTargets.has(r.id)) : myTargets.has(r.id)),
+          forMe: forMe,
+          // canAck：确认按钮的**唯一**口径（2026-10-28）。
+          // 与改造前 `needAck && !acked && !isPublisher` 完全等价（forMe 为真时）——
+          // 只是把「按班管理时看到的别班通知」也挡在按钮之外：辅导员不是收件人，
+          // 点确认只会给自己留一行无意义的回执（ackCount 里 X 组本来就不计数）。
+          canAck: !!r.need_ack && !isPublisher && !r.acked && forMe,
           ackList
         });
       }
@@ -663,20 +805,7 @@ const routes = {
       const noticeId = Number(payload.noticeId);
       if (!noticeId) throw new BizError(41001, '参数错误');
       const pool = getPool();
-      const myClassId = guard.classIdOf(ctx);
-      const isSuper = guard.isSuper(ctx.member);
-      const [vis] = await pool.query(
-        `SELECT n.id FROM notice_msg n
-          WHERE n.id = ?
-            AND ((? = 1)
-                 OR n.publisher_id = ?
-                 OR (n.scope = 'ALL' AND (n.class_id = ? OR (n.class_id = 0 AND EXISTS (
-                       SELECT 1 FROM notice_msg_class nc WHERE nc.notice_id = n.id AND nc.class_id = ?))))
-                 OR (n.scope IN ('COMMITTEE','POSITION','PICK') AND EXISTS (
-                       SELECT 1 FROM notice_msg_target t WHERE t.notice_id = n.id AND t.member_id = ?)))`,
-        [noticeId, isSuper ? 1 : 0, me.id, myClassId, myClassId, me.id]
-      );
-      if (!vis.length) throw new BizError(41001, '通知不存在或无权删除');
+      if (!(await noticeTouchable(pool, ctx, payload, noticeId))) throw new BizError(41001, '通知不存在或无权删除');
       await pool.query(
         'INSERT IGNORE INTO notice_msg_delete (notice_id, member_id) VALUES (?, ?)',
         [noticeId, me.id]
@@ -761,20 +890,7 @@ const routes = {
       const noticeId = Number(payload.noticeId);
       if (!noticeId) throw new BizError(41001, '参数错误');
       const pool = getPool();
-      const myClassId = guard.classIdOf(ctx);
-      const isSuper = guard.isSuper(ctx.member);
-      const [vis] = await pool.query(
-        `SELECT n.id FROM notice_msg n
-          WHERE n.id = ?
-            AND ((? = 1)
-                 OR n.publisher_id = ?
-                 OR (n.scope = 'ALL' AND (n.class_id = ? OR (n.class_id = 0 AND EXISTS (
-                       SELECT 1 FROM notice_msg_class nc WHERE nc.notice_id = n.id AND nc.class_id = ?))))
-                 OR (n.scope IN ('COMMITTEE','POSITION','PICK') AND EXISTS (
-                       SELECT 1 FROM notice_msg_target t WHERE t.notice_id = n.id AND t.member_id = ?)))`,
-        [noticeId, isSuper ? 1 : 0, me.id, myClassId, myClassId, me.id]
-      );
-      if (!vis.length) throw new BizError(41001, '通知不存在或无权查看');
+      if (!(await noticeTouchable(pool, ctx, payload, noticeId))) throw new BizError(41001, '通知不存在或无权查看');
       await pool.query('INSERT IGNORE INTO notice_msg_read (notice_id, member_id) VALUES (?, ?)', [noticeId, me.id]);
       return {};
     }
@@ -894,7 +1010,11 @@ exports.main = async (event) => {
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
-    reviewDemo.denyDemo(ctx.member, action);   // 演示态：拦截破坏性动作（v1.0.6.4）
+    /* 演示态（生效班级为演示班，含免绑定 reviewDemo / 超管 switchDemo）：拦截破坏性动作
+       （v1.0.6.4，2026-10-29 扩展判定为「演示班」） */
+    if (await guard.isDemoMember(getPool(), ctx) && reviewDemo.isDeniedAction(action)) {
+      throw new BizError(40010, '演示模式：该操作不会真实执行');
+    }
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     if (route.auth && route.auth.needAdmin) guard.requireAdmin(ctx);
     const data = await route.handler(payload, ctx);

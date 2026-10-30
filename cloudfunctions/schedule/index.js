@@ -1208,8 +1208,145 @@ async function loadRules(pool, classId) {
     avoidBackToBack: !!r.avoid_back_to_back,
     cronEnabled: !!r.cron_enabled,
     cronWeekday: r.cron_weekday || 0,
-    cronHour: r.cron_hour || 20
+    cronHour: r.cron_hour || 20,
+    makeupDays: (r.makeup_days === undefined || r.makeup_days === null) ? 3 : Number(r.makeup_days)
   };
+}
+
+/* ---------------- 排班岗位槽（2026-10-28） ----------------
+ * 背景：各班生活委员的值日制度不同（每节换人 / 一人包全天 / 某人固定周几），
+ * 原先"按课程节次排"写死在 generate 主循环里，改制度就得改代码。
+ * 做法：把"要排哪些岗位"抽成 duty_slot 表让生活委员自己填，系统只负责在
+ * 每个槽上按序号轮转取人。
+ *
+ * ⚠️ 兼容铁律：**槽位表为空 = 未启用槽位制 = 完全走原逻辑**。
+ *    现有班级一条记录都没有，生成行为与改动前逐字节一致。
+ */
+
+/** 读某班的槽位模板；返回空数组表示未启用 */
+async function loadSlots(conn, classId) {
+  const [rows] = await conn.query(
+    "SELECT id, weekday, `period`, need_n, fixed_seq, kind, sort_order FROM duty_slot WHERE class_id = ? ORDER BY sort_order, weekday, `period`",
+    [Number(classId) || 1]
+  );
+  return rows.map(r => ({
+    id: Number(r.id),
+    weekday: Number(r.weekday),
+    /* null = 承包全天（当天所有节次共用这一批人） */
+    period: r.period === null ? null : Number(r.period),
+    needN: Math.max(1, Number(r.need_n) || 1),
+    /* 固定某人的学号序号；null = 参与轮转 */
+    fixedSeq: r.fixed_seq === null ? null : Number(r.fixed_seq),
+    kind: r.kind === 'CLEAN' ? 'CLEAN' : 'NORMAL',
+    sortOrder: Number(r.sort_order) || 0
+  }));
+}
+
+/**
+ * 给一个课次匹配槽位。匹配优先级：
+ *   ① CLEAN 课次 → 优先找 CLEAN 专用槽（大扫除单独成槽，不消耗常规轮转）
+ *   ② 精确 (星期, 节次)
+ *   ③ 同星期的「全天槽」(period = null)
+ * 都匹配不到 → null（该课次回落原逻辑，不会被吞掉）
+ *
+ * ⚠️ weekday 用 **slot.day（实际生效的星期）**，不是 session.day_of_week ——
+ *    调休 MOVE 后后者不变，用它会排到错误的那天。
+ */
+function slotOf(slots, weekday, period, kind) {
+  if (!slots || !slots.length) return null;
+  const wd = Number(weekday);
+  const pd = Number(period);
+  if (kind === 'CLEAN') {
+    const c = slots.find(x => x.kind === 'CLEAN' && x.weekday === wd && (x.period === null || x.period === pd));
+    if (c) return c;
+  }
+  return slots.find(x => x.kind !== 'CLEAN' && x.weekday === wd && x.period === pd)
+    || slots.find(x => x.kind !== 'CLEAN' && x.weekday === wd && x.period === null)
+    || null;
+}
+
+/**
+ * 保洁课次是「事实」、岗位槽是「配置」—— 两者必须同时存在才排得出值日。
+ *
+ * 生活委员在弹层里勾了「每天 18:10 打扫主教室」，只写 duty_slot 是不够的：
+ * 生成主循环遍历的是 session，没有 CLEAN 课次就一天也排不出来。而全系统
+ * **没有任何入口能新建 CLEAN 课次**（后台 addSession 写死 'COURSE'、
+ * course/upsert 不写 kind、课表导入明确只管 COURSE），所以在这里补齐。
+ *
+ * 幂等：该天已有 CLEAN 课次就跳过（绝不动用户已配好的保洁，例如周二的
+ * 4 人大扫除）；主教室留空时课次名退化成「打扫主教室」。
+ * @returns {Promise<number>} 本次新建的课次条数
+ */
+async function ensureCleanSessions(conn, classId, weekdays, needN) {
+  const days = Array.from(new Set((weekdays || []).map(Number).filter(d => d >= 1 && d <= 7)));
+  if (!days.length) return 0;
+  const [had] = await conn.query(
+    "SELECT DISTINCT day_of_week FROM session WHERE class_id = ? AND kind = 'CLEAN'", [classId]
+  );
+  const hadSet = new Set(had.map(r => Number(r.day_of_week)));
+  const missing = days.filter(d => !hadSet.has(d));
+  if (!missing.length) return 0;
+  const [roomRows] = await conn.query('SELECT main_room FROM `class` WHERE id = ? LIMIT 1', [classId]);
+  const room = String((roomRows[0] && roomRows[0].main_room) || '').trim();
+  /* 复用本班已有保洁课次引用的课程；没有才新建。
+   * 与后台「同课不同教室 = 两条 course 行」口径一致，避免把别的教室的
+   * 保洁课程名字覆盖掉。 */
+  const [ex] = await conn.query(
+    "SELECT c.id FROM session s JOIN course c ON c.id = s.course_id WHERE s.class_id = ? AND s.kind = 'CLEAN' LIMIT 1",
+    [classId]
+  );
+  let courseId = ex[0] ? Number(ex[0].id) : 0;
+  if (!courseId) {
+    const [ins] = await conn.query(
+      'INSERT INTO course (class_id, name, teacher, room, course_type, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+      [classId, '打扫' + (room || '主教室'), '', room, 'ALL', 0]
+    );
+    courseId = Number(ins.insertId);
+  }
+  const n = Math.min(10, Math.max(1, Number(needN) || 1));
+  for (const d of missing) {
+    /* period=4 就是 18:10 —— class.period_time 里第 4 节是 16:30–18:10，
+     * 系统里 CLEAN 一律排在第 4 节之后、第 5 节之前，前端文案统一显示「18 点前」。
+     * 不要写成 5 或 null：展示顺序与轮转顺序都按 period 排（见 rotatePlan.sort）。 */
+    await conn.query(
+      "INSERT INTO session (class_id, course_id, kind, week_rule, weeks, day_of_week, period, group_scope, duty_count) " +
+      "VALUES (?, ?, 'CLEAN', 'ALL', '', ?, 4, NULL, ?)",
+      [classId, courseId, d, n]
+    );
+  }
+  return missing.length;
+}
+
+/**
+ * 主教室改名：把本班 CLEAN 课次引用的 course 名 / 房间同步成新主教室。
+ *
+ * 🔴 与后台 admin-web · lib/mod-course.js 的 syncMainRoomCleaning **同口径**：
+ *    「大扫除」房间在前（410大扫除），「打扫」房间在后（打扫410），两者互斥。
+ *    改一处必须同步另一处，否则后台改和小程序改会给同一批课次起两个名字。
+ *
+ * 幂等：已是目标名 / 房间就跳过。主教室**清空**时直接返回 —— 保留原课次名，
+ * 不能退化成「打扫」（把 410 抹成空字符串是纯损失，没有收益）。
+ */
+async function renameCleanRoom(conn, classId, room) {
+  const next = String(room == null ? '' : room).trim();
+  if (!next) return 0;
+  /* ⚠️ SQL 必须是**单个字面量**且自带 class_id：check-class-isolation 逐字面量扫描，
+   *    拆成 "…FROM session…" + "WHERE s.class_id…" 两段会被判成「列课次没按班过滤」。 */
+  const [rows] = await conn.query(
+    "SELECT DISTINCT c.id, c.name, c.room FROM session s JOIN course c ON c.id = s.course_id WHERE s.class_id = ? AND s.kind = 'CLEAN'",
+    [classId]
+  );
+  let n = 0;
+  for (const c of rows) {
+    let name = null;
+    if (/大扫除/.test(c.name)) name = next + '大扫除';
+    else if (/打扫/.test(c.name)) name = '打扫' + next;
+    if (!name) continue;                                     // 非主教室保洁课次，跳过
+    if (name === c.name && (c.room || '') === next) continue;  // 已是目标，跳过（幂等）
+    await conn.query('UPDATE course SET name = ?, room = ? WHERE id = ?', [name, next, c.id]);
+    n += 1;
+  }
+  return n;
 }
 
 async function loadPublish(pool, wk, classId) {
@@ -1544,6 +1681,17 @@ const routes = {
         roster.sort((a, b) => (a.seq - b.seq) || (a.id - b.id));
         const seqById = new Map(roster.map(r => [r.id, r.seq]));
         const seqGroupOf = new Map(roster.map(r => [r.seq, r.group === 'B' ? 'B' : 'A']));
+        /* 岗位槽模板（2026-10-28）：空数组 = 未启用槽位制，下面完全走原逻辑。
+         * 与 sessions 同一个事务快照读，保证本次生成看到的是同一份制度。 */
+        const slots = await loadSlots(conn, classId);
+        /* 保洁（18:10 打扫主教室）一旦配过槽，本班保洁的排班权就**完全交给槽位**：
+         * 没配的星期一律不排，而不是回落到 duty_count 硬排 2 人。
+         * 否则生活委员在弹层里取消某天后，那天仍会冒出值日，用户以为设置没生效。 */
+        const cleanMode = slots.some(x => x.kind === 'CLEAN');
+        /* 同一 (日期, 槽) 只取一次人 —— 一人包全天时当天每节都要写同一个人，
+         * 不能每节重新轮转一次（那会退化成「每节换人」）。
+         * key = `${classDate}|${slotId}`，value = 该槽这批人（roster 元素）。 */
+        const slotCache = new Map();
         /* 轮转起点 = 本周快照（重复生成同一周 ⇒ 幂等）；无快照则接着全局游标。 */
         curStart = await loadWeekCursors(conn, classId, wk, loadCursors(cfg));
         const state = buildState(roster, curStart);
@@ -1640,8 +1788,24 @@ const routes = {
            *   手动排过的人已经占了这个课次的坑，自动生成只**补剩下的空缺**。
            *   旧实现直接取 `s.duty_count` 无视已有手动行 ⇒ 手动排 2 人的课次又被自动追加 2 人 = 4 人。*/
           const alreadyFilled = (manualFilled[Number(s.id)] || new Set()).size;
-          // 🔴 duty_count=0 = 「不排值日」（如书香校园）：?? 窄化让 0 保持 0（|| 1 会把 0 误当 1 排 1 人）
-          const n = Math.max(0, Number(s.duty_count ?? 1) - alreadyFilled);
+          /* ── 槽位模式（2026-10-28）─────────────────────────────────
+           * 本课次匹配到岗位槽时按槽取人，一套逻辑覆盖三种制度：
+           *   全天槽(period=null) → 当天所有课次复用 slotCache 同一批人
+           *   精确槽(period=n)     → 每节各一槽，等价于原「每节换人」
+           *   固定槽(fixedSeq)     → 直接指定，不推进轮转游标
+           * 匹配不到槽 → 走下面的原逻辑（槽位与自由排班可共存）。 */
+          const slotRec = slots.length ? slotOf(slots, slot.day, slot.period, s.kind) : null;
+          /* 保洁由槽位定义：配了 CLEAN 槽的班，保洁课次只认 CLEAN 槽 ——
+           * 没配到槽、或只蹭到普通课次槽（那种槽的人已经在上大课值日了），都不排。 */
+          if (s.kind === 'CLEAN' && cleanMode && (!slotRec || slotRec.kind !== 'CLEAN')) continue;
+          /* 🔴 人数口径（两条规则，别混）：
+           *   ① duty_count = 0 = 课次级显式「不排值日」（书香校园那类，生产库现有 5 节）
+           *      —— 最具体的设置，连槽位也不排，否则用户给那天建了槽就把「不排」冲掉了；
+           *   ② 其余一律以槽位 needN 为准：duty_count 只是课次级默认值（生产库 80 节全是 2），
+           *      拿它兜底会把 needN=3/4 截成 2 人 —— 用户在弹层里填的人数当场失效。 */
+          // duty_count=0 = 「不排值日」：?? 窄化让 0 保持 0（|| 1 会把 0 误当 1 排 1 人）
+          const dc = Number(s.duty_count ?? 1);
+          const n = Math.max(0, (dc === 0 ? 0 : (slotRec ? slotRec.needN : dc)) - alreadyFilled);
           /* 手动排满（或超额）⇒ 这个课次整个跳过：一行都不动，
            * 轮转游标也**不为它前进**（它没消耗轮转名额，是手工插队的）。 */
           if (n <= 0) { keptManualSessions += 1; continue; }
@@ -1668,7 +1832,58 @@ const routes = {
             });
             chosen.forEach(m => { m.mark += 1; });
           }
-          if (chosen.length < n) {
+          if (slotRec) {
+            const ck = classDate + '|' + slotRec.id;
+            let people = slotCache.get(ck);
+            if (!people) {
+              if (slotRec.fixedSeq) {
+                /* 固定人槽：不参与轮转，也不推进游标 —— 「这个岗位本来就是他的」 */
+                const fm = roster.find(r => Number(r.seq) === Number(slotRec.fixedSeq));
+                people = fm ? [fm] : [];
+                if (!fm) {
+                  warnings.push({
+                    type: 'SLOT_FIXED_MISSING',
+                    sessionId: s.id,
+                    dayOfWeek: slot.day,
+                    period: slot.period,
+                    message: '周' + (DAY_TEXT[slot.day - 1] || '?') + ' 的固定值日生（序号 ' + slotRec.fixedSeq + '）不在名册，本周跳过'
+                  });
+                }
+              } else {
+                const p = pickBySeq(roster, s.group_scope, slotRec.needN, state, {
+                  avoidSeqs: toSeqSet(exclude, seqById),
+                  busySeqs: toSeqSet(blocks.busy, seqById),
+                  inBatchSeqs: toSeqSet(inBatch, seqById),
+                  avoidSameDay: !!rules.avoidSameDay,
+                  softSeqs: toSeqSet(assignedWeek, seqById)
+                });
+                if (p.wrapped) roundReset = true;
+                people = p.chosen;
+                if (p.short > 0) {
+                  warnings.push({
+                    type: 'SHORTAGE',
+                    sessionId: s.id,
+                    dayOfWeek: slot.day,
+                    period: slot.period,
+                    need: slotRec.needN,
+                    left: roster.length,
+                    message: '周' + (DAY_TEXT[slot.day - 1] || '?') + ' 岗位槽候选不足（还需 ' + p.short + ' 人）'
+                  });
+                }
+              }
+              slotCache.set(ck, people);
+            }
+            /* 只补「本课次还缺的名额」：手动排过的人已在 chosen 里，不重复追加。
+             * 🔴 名额要减掉 chosen.length（「沿用上周」已占的坑），
+             *    n 只减过 alreadyFilled（手动排的人），两者不是一回事，
+             *    直接 slice(0, n) 会超员（沿用 2 人 + 槽位再塞 2 人 = 4 人）。 */
+            const add = people
+              .filter(m => !chosen.some(x => x.id === m.id))
+              .filter(m => !(manualFilled[Number(s.id)] || new Set()).has(m.id))
+              .slice(0, Math.max(0, n - chosen.length));
+            add.forEach(m => { m.mark += 1; });
+            chosen = chosen.concat(add);
+          } else if (chosen.length < n) {
             // 自动排班 = 按序号连续轮转（排到 56 自动回绕开新一轮）
             const picked = pickBySeq(roster, s.group_scope, n - chosen.length, state, {
               avoidSeqs: toSeqSet(exclude, seqById),
@@ -2474,16 +2689,143 @@ const routes = {
       const classId = guard.classIdOf(ctx);
       const r = payload.rules || {};
       const b = v => (v === true || v === 1 || v === '1') ? 1 : 0;
-      // 多班级：每班一行 schedule_rules（id 无业务含义，按 class_id 定位）
+      const rawMd = Number(r.makeupDays);
+      const makeupDays = (rawMd >= 0 && rawMd <= 60) ? rawMd : 3;
+      // 多班级：每班一行 schedule_rules（uk_class 唯一索引，按 class_id upsert）
       await pool.query(
-        `INSERT INTO schedule_rules (class_id, sort_by_count, avoid_same_day, avoid_back_to_back, cron_enabled, cron_weekday, cron_hour)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO schedule_rules (class_id, sort_by_count, avoid_same_day, avoid_back_to_back, cron_enabled, cron_weekday, cron_hour, makeup_days)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE sort_by_count=VALUES(sort_by_count), avoid_same_day=VALUES(avoid_same_day),
            avoid_back_to_back=VALUES(avoid_back_to_back), cron_enabled=VALUES(cron_enabled),
-           cron_weekday=VALUES(cron_weekday), cron_hour=VALUES(cron_hour)`,
-        [classId, b(r.sortByCount), b(r.avoidSameDay), b(r.avoidBackToBack), b(r.cronEnabled), Number(r.cronWeekday) || 0, Number(r.cronHour) || 20]
+           cron_weekday=VALUES(cron_weekday), cron_hour=VALUES(cron_hour), makeup_days=VALUES(makeup_days)`,
+        [classId, b(r.sortByCount), b(r.avoidSameDay), b(r.avoidBackToBack), b(r.cronEnabled), Number(r.cronWeekday) || 0, Number(r.cronHour) || 20, makeupDays]
       );
       return loadRules(pool, classId);
+    }
+  },
+
+  /* ---------------- 排班岗位槽（2026-10-28） ----------------
+   * 权限与 setRules 同域（scheduleAuth = 超管 | 本班生活委员）：
+   * 谁能排班，谁就该能定自己班的制度。
+   * 语义是**整体覆盖** —— 前端一次提交该班全部槽位，后端事务内先删后插。
+   * ⚠️ 改槽位**只影响之后新生成的周**；已生成/已发布的周原样保留
+   *    （值日记录是既成事实，重排会让「上周谁值过日」说不清）。
+   */
+  getSlots: {
+    auth: { scheduleAuth: true },
+    /* 返回 { slots, mainRoom } —— mainRoom 和槽位一起给，是因为「18:10 打扫
+     * 哪个教室」本来就是这套排班规则的一部分，生活委员在同一张弹层里配。
+     * ⚠️ 前端两种形状都要吃得下（数组 / {slots}），改形状不留兼容会白屏。 */
+    handler: async (payload, ctx) => {
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const [roomRows] = await pool.query('SELECT main_room FROM `class` WHERE id = ? LIMIT 1', [classId]);
+      return {
+        slots: await loadSlots(pool, classId),
+        mainRoom: String((roomRows[0] && roomRows[0].main_room) || '').trim()
+      };
+    }
+  },
+
+  setSlots: {
+    auth: { scheduleAuth: true },
+    handler: async (payload, ctx) => {
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const raw = Array.isArray(payload.slots) ? payload.slots : [];
+      /* 上限 200：一个班一周最多 7 天 × 十几个节次，200 足够，
+       * 主要是防「误把整个数组塞进来」造成一次写几千行。 */
+      if (raw.length > 200) throw new BizError(41001, '岗位槽过多（上限 200 个）');
+      const clean = [];
+      for (let i = 0; i < raw.length; i += 1) {
+        const it = raw[i] || {};
+        const weekday = Number(it.weekday);
+        if (!(weekday >= 1 && weekday <= 7)) {
+          throw new BizError(41001, '第 ' + (i + 1) + ' 个岗位的星期不合法（应为 1–7）');
+        }
+        /* period 留空 = 承包全天。⚠️ 不能用 `!period` 判断 —— 0 是非法值但
+         * 「留空」必须是 null，这里显式区分 null/undefined/'' 三种空。 */
+        const hasPeriod = it.period !== null && it.period !== undefined && it.period !== '';
+        const period = hasPeriod ? Number(it.period) : null;
+        if (hasPeriod && !(period >= 1 && period <= 12)) {
+          throw new BizError(41001, '第 ' + (i + 1) + ' 个岗位的节次不合法（应为 1–12，或留空表示全天）');
+        }
+        const needN = Math.min(10, Math.max(1, Number(it.needN) || 1));
+        const hasFixed = it.fixedSeq !== null && it.fixedSeq !== undefined
+          && it.fixedSeq !== '' && Number(it.fixedSeq) > 0;
+        const fixedSeq = hasFixed ? Number(it.fixedSeq) : null;
+        const kind = it.kind === 'CLEAN' ? 'CLEAN' : 'NORMAL';
+        /* sort_order 用下标：前端列表顺序即生成时的遍历顺序，避免另传一遍 */
+        clean.push({ weekday, period, needN, fixedSeq, kind, sortOrder: i });
+      }
+      /* 主教室（2026-10-28）：与槽位一起提交，因为「18:10 打扫哪个教室」就是
+       * 这套排班规则的一部分。语义与 patch 一致 —— **字段缺省 = 不改**，
+       * 传 '' = 清空（课次名保留原样，见 renameCleanRoom）。 */
+      const hasRoom = payload.mainRoom !== undefined;
+      const mainRoom = hasRoom ? String(payload.mainRoom == null ? '' : payload.mainRoom).trim().slice(0, 32) : '';
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        /* 关掉「18:10 打扫」开关前的原状态，必须在大局覆盖前读 ——
+         * 决定要不要停掉已建的保洁课次（见下面的 hadClean 分支）。 */
+        const [beforeClean] = await conn.query(
+          "SELECT COUNT(*) AS n FROM duty_slot WHERE class_id = ? AND kind = 'CLEAN'", [classId]
+        );
+        const hadClean = Number((beforeClean[0] || {}).n) > 0;
+        const [beforeRoom] = await conn.query('SELECT main_room FROM `class` WHERE id = ? LIMIT 1', [classId]);
+        const roomBefore = String((beforeRoom[0] && beforeRoom[0].main_room) || '').trim();
+        /* 🔴 必须**先改 class.main_room 再建课次**：ensureCleanSessions 是按
+         *    class.main_room 给新课程命名的，顺序反了会把新主教室名写丢，
+         *    只能等下面 renameCleanRoom 补，而那条只在「值变化」时才会跑。 */
+        if (hasRoom && mainRoom !== roomBefore) {
+          await conn.query('UPDATE `class` SET main_room = ? WHERE id = ?', [mainRoom || null, classId]);
+        }
+        await conn.query('DELETE FROM duty_slot WHERE class_id = ?', [classId]);
+        for (const s of clean) {
+          await conn.query(
+            "INSERT INTO duty_slot (class_id, weekday, `period`, need_n, fixed_seq, kind, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [classId, s.weekday, s.period, s.needN, s.fixedSeq, s.kind, s.sortOrder]
+          );
+        }
+        /* 保洁槽要排出值日，必须先有 18:10 的 CLEAN 课次 —— 同一事务内补齐，
+         * 避免「槽写进去了、课次没建」导致下次生成静默少一天保洁。 */
+        const cleanSlots = clean.filter(s => s.kind === 'CLEAN');
+        if (cleanSlots.length) {
+          await ensureCleanSessions(conn, classId, cleanSlots.map(s => s.weekday), cleanSlots[0].needN);
+          /* 之前被「关掉开关」置 0 的保洁课次要恢复，否则重新打开也一天不排。
+           * 只捞 duty_count=0 的行，不覆盖用户单独调过的人数。 */
+          await conn.query(
+            "UPDATE session SET duty_count = ? WHERE class_id = ? AND kind = 'CLEAN' AND duty_count = 0",
+            [cleanSlots[0].needN, classId]
+          );
+        } else if (hadClean) {
+          /* 🔴 用户主动关掉了保洁开关。光删槽不够：课次还在，生成时会回落按
+           * duty_count 排人 —— 用户以为关了，值日照样冒出来。
+           * 处理：所有保洁课次 duty_count 置 0（= 既有语义「这节不排值日」）。
+           * ⚠️ 不删课次：它可能已经被 duty / session_shift 引用，删了会留下孤儿行，
+           *    而留着只是课表里多一条没人排的保洁，无害且可在后台删。 */
+          await conn.query(
+            "UPDATE session SET duty_count = 0 WHERE class_id = ? AND kind = 'CLEAN'", [classId]
+          );
+        }
+        /* 主教室变了 → 已建保洁课次的名称 / 房间跟着改（否则值日表里还是
+         * 「打扫410」，而生活委员刚把它改成了别的教室）。放在补建之后：
+         * 新建的那条已经用新名字了，这里只负责改旧的。 */
+        if (hasRoom && mainRoom && mainRoom !== roomBefore) {
+          await renameCleanRoom(conn, classId, mainRoom);
+        }
+        await conn.commit();
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
+      }
+      const [afterRoom] = await pool.query('SELECT main_room FROM `class` WHERE id = ? LIMIT 1', [classId]);
+      return {
+        slots: await loadSlots(pool, classId),
+        mainRoom: String((afterRoom[0] && afterRoom[0].main_room) || '').trim()
+      };
     }
   },
 

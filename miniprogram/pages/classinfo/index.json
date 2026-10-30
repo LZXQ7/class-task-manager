@@ -1,0 +1,11 @@
+{
+  "navigationStyle": "custom",
+  "backgroundColor": "#F5F6F8",
+  "initialRenderingCache": "static",
+  "usingComponents": {
+    "app-icon": "../../components/app-icon/index",
+    "nav-bar": "../../components/nav-bar/index",
+    "spring-scroll": "../../components/spring-scroll/index",
+    "bottom-sheet": "../../components/bottom-sheet/index"
+  }
+}

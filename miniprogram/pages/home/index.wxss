@@ -95,8 +95,7 @@
   justify-content: space-between;
 }
 .hero-peers { display: flex; flex-direction: row; align-items: center; }
-.hero-peer + .hero-peer { margin-left: -16rpx; }   /* 叠放姓名牌，重叠 8pt */
-.hero-peer-text { margin-left: 24rpx; font-size: 24rpx; color: rgba(255, 255, 255, 0.70); }
+.hero-peer-text { font-size: 24rpx; line-height: 34rpx; color: rgba(255, 255, 255, 0.70); }
 .hero.plain .hero-peer-text,
 .hero.small .hero-peer-text,
 .hero.leave .hero-peer-text { color: #86909C; }
@@ -109,220 +108,6 @@
 /* ============================================================
  * 以下为功能弹层 / 列表样式，追加在骨架之后
  * ============================================================ */
-
-/* ============ 发布通知（管理员） ============
- * 2026-09-25 统一 UI：原来 .np 没有左右内边距 → 表单直接贴屏幕边、看着很挤（用户反馈）。
- * 现在统一为：左右 32rpx（与页面其它卡片一致）、每个 .np-field 之间 28rpx、
- * 标签 26rpx #4E5969 + 可选「选填」小灰字，输入控件一律 92rpx / 圆角 16rpx / #F7F8FA 底。
- * ⚠️ segmented 的 width 参数写死 686rpx = 750 - 32*2，改这里的内边距必须同步改 wxml。 */
-.np { padding: 8rpx 32rpx 40rpx; }
-.np-field { margin-top: 28rpx; }
-.np-field:first-child { margin-top: 4rpx; }
-
-.np-label {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  margin-bottom: 12rpx;
-  font-size: 26rpx;
-  color: #4E5969;
-}
-.np-opt {
-  margin-left: 10rpx;
-  font-size: 22rpx;
-  color: #86909C;
-}
-
-.np-input {
-  height: 92rpx;
-  padding: 0 24rpx;
-  background: #F7F8FA;
-  border-radius: 32rpx;
-  font-size: 28rpx;
-  color: #1D2129;
-  box-sizing: border-box;
-}
-.np-input-2 { margin-top: 12rpx; }
-.np-link-detecting {
-  display: block;
-  margin-top: 12rpx;
-  font-size: 24rpx;
-  color: #86909C;
-  line-height: 32rpx;
-}
-.np-textarea {
-  width: 100%;
-  height: 240rpx;
-  padding: 22rpx 24rpx;
-  background: #F7F8FA;
-  border-radius: 32rpx;
-  font-size: 28rpx;
-  line-height: 44rpx;
-  color: #1D2129;
-  box-sizing: border-box;
-}
-
-/* 「指定成员」的搜索 + 名单，整体收进一块浅底面板，跟上面的输入控件区分开 */
-.np-panel {
-  padding: 20rpx 20rpx 8rpx;
-  background: #F5F6F8;
-  border: 2rpx solid #F2F3F5;
-  border-radius: 32rpx;
-}
-/* §42 隔离提示：picker 顶部说明「测试账号与辅导员不接收」—— 避免用户疑惑「为什么看不到 XX」 */
-.np-pick-hint {
-  padding: 0 8rpx 16rpx;
-  font-size: 22rpx;
-  line-height: 32rpx;
-  color: #86909C;
-}
-.np-search {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  height: 72rpx;
-  padding: 0 20rpx;
-  background: #FFFFFF;
-  border-radius: 999rpx;
-}
-.np-search-input {
-  flex: 1;
-  min-width: 0;
-  margin-left: 12rpx;
-  font-size: 26rpx;
-  color: #1D2129;
-}
-.np-picked { margin-left: 8rpx; font-size: 24rpx; color: #3370FF; }
-/* 一键选组（需求④）：A / B / 清空 */
-.np-abtns {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-top: 16rpx;
-}
-.np-abtn {
-  margin: 0 12rpx 12rpx 0;
-  padding: 0 24rpx;
-  height: 56rpx;
-  line-height: 56rpx;
-  font-size: 24rpx;
-  font-weight: 500;
-  color: #3370FF;
-  background: #DCE8FF;
-  border-radius: 999rpx;
-}
-.np-abtn.ghost { color: #4E5969; background: #FFFFFF; border: 2rpx solid #E5E6EB; }
-.np-abtn.on { color: #FFFFFF; background: #3370FF; padding: 0 34rpx; }
-.np-abtn-hover { opacity: 0.7; }
-/* 小图形网格：每个成员一个头像圆点（显示序号），比长列表紧凑得多（需求④）。
-   ⚠️ scroll-y 必须给显式 height（max-height 不算，check-count-align ①-b），
-   否则滚不动、手势穿透到后面的页面 */
-.np-grid-scroll {
-  margin-top: 16rpx;
-  height: 560rpx;
-  box-sizing: border-box;
-}
-.np-grid {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-.np-cell {
-  width: 96rpx;
-  margin: 0 12rpx 16rpx 0;
-  padding: 12rpx 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  border-radius: 32rpx;
-  box-sizing: border-box;
-}
-/* 成员网格是**固定 96rpx 宽**的头像格（border-box，改 padding 不改外宽），
-   所以它只吃 .chip-motion.on 的轻微顶起（scale 1.04），不参与「挤开」——
-   强行让 50+ 个格子逐个改宽度会整片重排，低端机点一下卡一下。 */
-.np-cell.on { background: #DCE8FF; }
-.np-cell-hover { background: #F2F3F5; }
-.np-cell-name {
-  margin-top: 8rpx;
-  max-width: 96rpx;
-  font-size: 20rpx;
-  line-height: 26rpx;
-  color: #4E5969;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.np-switch {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  padding: 24rpx;
-  background: #F7F8FA;
-  border-radius: 32rpx;
-}
-.np-switch-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.np-switch-title { font-size: 28rpx; color: #1D2129; }
-.np-switch-sub { margin-top: 6rpx; font-size: 22rpx; line-height: 32rpx; color: #86909C; }
-
-.np-actions { display: flex; flex-direction: row; margin-top: 40rpx; }
-.np-btn {
-  flex: 1;
-  height: 88rpx;
-  line-height: 88rpx;
-  text-align: center;
-  border-radius: 32rpx;
-  font-size: 28rpx;
-  /* 发布/取消按钮按下反馈（v0.7.14 · #4/#5①）：缩放 + 淡入回弹，点下去「实」一点 */
-  transition: opacity .1s ease, transform .1s ease;
-}
-.np-btn.ghost { flex: 0 0 200rpx; background: #F2F3F5; color: #4E5969; margin-right: 16rpx; }
-.np-btn.primary { background: #3370FF; color: #FFFFFF; font-weight: 600; }
-.np-btn.primary.off { background: #A8C1FF; }
-.np-btn:active { opacity: 0.85; transform: scale(0.975); }
-
-/* ---------- 配图（v0.7.14） ---------- */
-.np-imgs {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 16rpx;
-  margin-top: 8rpx;
-}
-.np-img {
-  position: relative;
-  width: 160rpx;
-  height: 160rpx;
-  border-radius: 32rpx;
-  overflow: hidden;
-  background: #F2F3F5;
-}
-.np-img-pic { width: 100%; height: 100%; display: block; }
-.np-img-x {
-  position: absolute;
-  top: 4rpx;
-  right: 4rpx;
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.np-img-add {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border: 2rpx dashed #C9CDD4;
-  color: #86909C;
-  font-size: 22rpx;
-  gap: 4rpx;
-}
-.np-img-add-t { margin-top: 2rpx; }
 
 /* ---------- 语音条 ---------- */
 .voice-bar {
@@ -382,10 +167,11 @@
 }
 .course-row:last-child { border-bottom: none; }
 .course-row.mine { background: #F7F8FA; }
-/* 选修课行（2026-10-16 首页并入本人选修课）：极淡蓝底 + 左侧蓝色条，
-   与课表页 PERSONAL_BG(#EAF1FF) 同一色系，让两处一眼同源。
+/* 选修课行（2026-10-16 首页并入本人选修课）：**浅蓝强调底** + 左侧蓝色条 ——
+   2026-10-29 三轮定稿：先 #F7FAFF（近白，像白块）→ 透明（无区分）→ 现 #D6E4FF
+   （比课表页 PERSONAL_BG #EAF1FF 更深一档，蓝色更明确、强调可辨，深色文字仍清晰）。
    🔴 不加 tappable：它不驱动值日、也没有课堂情况名单 ⇒ 纯展示行。 */
-.course-row.personal { background: #F7FAFF; }
+.course-row.personal { background: #D6E4FF; }
 .course-row.personal .course-bar { background: #3370FF; opacity: 0.45; }
 .course-bar {
   position: absolute;
@@ -533,112 +319,8 @@
   margin-right: 12rpx;
 }
 
-/* ---------- 发布通知 · 金山文档链接预警 ---------- */
-.np-link-hint { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: #D46B08; }
-
 /* ---------- 发布通知 · 多班级选班（§43 需求⑥） ---------- */
-.np-classes {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  margin-top: 4rpx;
-}
-.np-cls {
-  margin: 0 12rpx 12rpx 0;
-  padding: 0 24rpx;
-  height: 56rpx;
-  line-height: 56rpx;
-  font-size: 24rpx;
-  font-weight: 500;
-  color: #3370FF;
-  background: #DCE8FF;
-  border-radius: 999rpx;
-}
-/* ⚠️ .on 补的那点 padding 是「挤开动画」的另一半：
-   app.wxss 的 .chip-motion 负责过渡 padding（邻项才会跟着让位），
-   这里负责给出**变宽后的目标值**。只加 class 不给目标值 = 宽度没变 = 动画看不见。 */
-.np-cls.on { color: #FFFFFF; background: #3370FF; padding: 0 34rpx; }
-.np-cls.ghost { color: #4E5969; background: #F2F3F5; }
-.np-cls-tip { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: #86909C; }
-/* 「按职位」预设职位：一键选择的圆角 chip（与 .np-cls 同刻度，蓝底浅色） */
-.np-chips {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  margin-top: 4rpx;
-}
-.np-chip {
-  margin: 0 12rpx 12rpx 0;
-  padding: 0 22rpx;
-  height: 56rpx;
-  line-height: 56rpx;
-  font-size: 24rpx;
-  font-weight: 500;
-  color: #3370FF;
-  background: #DCE8FF;
-  border-radius: 999rpx;
-}
-/* 同 .np-cls.on：变宽的目标值（0 22rpx → 0 32rpx） */
-.np-chip.on { color: #FFFFFF; background: #3370FF; padding: 0 32rpx; }
-.np-pos-tip { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: #86909C; }
-
-/* ---------- 关注的学生（v0.7.17 需求⑥，仅辅导员 / 超管） ----------
- * 一行一位学生：头像 + （姓名 + 班级）+ 最新备注摘要 + 备注条数。
- * 备注摘要限一行省略号 —— 首页是「一眼找到人」，不是读备注的地方，
- * 完整内容点进成员详情看（那里版式也是为阅读设计的）。 */
-.pin-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  padding: 20rpx 28rpx;
-}
-/* 行间分割线用相邻兄弟（+）：第一行紧跟在 .card-head 的底边之后，不必再画一条 */
-.pin-row + .pin-row { border-top: 2rpx solid rgba(242, 243, 245, 0.9); }
-.pin-info {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin-left: 20rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 6rpx;
-}
-.pin-line1 { display: flex; flex-direction: row; align-items: center; }
-.pin-name { font-size: 30rpx; font-weight: 500; color: #1D2129; }
-.pin-class {
-  margin-left: 12rpx;
-  padding: 2rpx 12rpx;
-  font-size: 22rpx;
-  color: #3370FF;
-  background: #F0F5FF;
-  border-radius: 16rpx;
-}
-.pin-note {
-  font-size: 25rpx;
-  color: #86909C;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.pin-cnt {
-  flex: 0 0 auto;
-  min-width: 34rpx;
-  height: 34rpx;
-  line-height: 34rpx;
-  padding: 0 8rpx;
-  margin-right: 12rpx;
-  text-align: center;
-  font-size: 22rpx;
-  color: #4E5969;
-  background: #F2F3F5;
-  border-radius: 17rpx;
-}
-.pin-empty {
-  padding: 44rpx 32rpx;
-  text-align: center;
-  font-size: 25rpx;
-  line-height: 1.7;
-  color: #86909C;
-}
+/* .np-link-hint（金山文档链接预警）已于 2026-10-27 随发布表单提升到 app.wxss */
 
 /* ---------- 更新公告（v0.7.25）：主页弹层 ---------- */
 .an-view {
@@ -850,112 +532,58 @@
   border-radius: 999rpx;
 }
 
-/* ============ 班费 / 团费（2026-10-14） ============ */
-/* 卡片区块：一行两卡的弹性布局；小卡片本身复用全局 .card 玻璃材质（深色自适应） */
-.fee-block { padding: 0; background: transparent; border: none; box-shadow: none; overflow: visible; }
-/* 班费/团费跨班查看切换条（v0.7.43）：超管/辅导员切班看其他班的钱 */
-.fee-cls-switch { display: flex; flex-direction: row; align-items: center; margin-bottom: 16rpx; }
-.fee-cls-label { font-size: 22rpx; color: var(--text-3); margin-right: 16rpx; flex-shrink: 0; }
-.fee-cls-chips { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
-.fee-cls-chip {
-  font-size: 24rpx;
-  line-height: 36rpx;
-  padding: 6rpx 20rpx;
-  border-radius: 18rpx;
-  color: var(--text-2);
-  background: var(--bg-fill);
-  border: 1rpx solid transparent;
-}
-.fee-cls-chip.on { color: #3370FF; background: rgba(51,112,255,0.12); border-color: rgba(51,112,255,0.4); font-weight: 600; }
-.fee-row { display: flex; flex-direction: row; gap: 16rpx; }
-.fee-card {
-  flex: 1;
-  min-width: 0;
-  padding: 28rpx 28rpx 24rpx;
-  display: flex;
-  flex-direction: column;
-}
-.fee-card.readonly { opacity: 1; }
-.fee-card.tappable:active { opacity: 0.94; transform: scale(0.985); transition: opacity .1s ease, transform .1s ease; }
-.fee-card-top { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
-.fee-card-left { display: flex; flex-direction: row; align-items: center; }
-.fee-name { font-size: 28rpx; font-weight: 600; color: var(--text-1); }
-.fee-tag {
-  margin-left: 12rpx;
-  font-size: 20rpx;
-  line-height: 30rpx;
-  padding: 2rpx 10rpx;
-  border-radius: 16rpx;
-}
-.fee-tag.manage { color: #3370FF; background: rgba(51,112,255,0.12); }
-.fee-tag.view { color: var(--text-3); background: var(--bg-fill); }
-.fee-balance { margin-top: 16rpx; font-size: 52rpx; line-height: 64rpx; font-weight: 700; color: var(--text-1); }
-.fee-sub { margin-top: 8rpx; font-size: 22rpx; line-height: 30rpx; color: var(--text-3); }
-
-/* 弹层：余额 / 总额 / 消费登记 / 明细 */
-.fee-bal-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20rpx 0 28rpx;
-  border-bottom: 2rpx solid var(--bg-fill);
-}
-.fee-bal-label { font-size: 24rpx; color: var(--text-3); }
-.fee-bal-num { margin-top: 8rpx; font-size: 64rpx; line-height: 76rpx; font-weight: 700; color: var(--text-1); }
-/* 余额下方的只读小字（总额 / 已消费）：列表视图用来核对，不占地方也不抢主数字的视觉重心 */
-.fee-bal-sub { margin-top: 10rpx; font-size: 22rpx; line-height: 30rpx; color: var(--text-3); }
-
-.fee-total-row { display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
-.fee-total-input { flex: 1; }
-.fee-total-save {
-  flex: 0 0 auto;
-  height: 72rpx;
-  line-height: 72rpx;
-  padding: 0 32rpx;
-  border-radius: 20rpx;
-  background: var(--brand);
-  color: #FFFFFF;
-  font-size: 26rpx;
-  font-weight: 600;
-}
-.fee-total-save:active { opacity: 0.85; }
-.fee-total-readonly { font-size: 32rpx; font-weight: 600; color: var(--text-1); }
-
-/* 消费明细 */
-.fee-rec-head { margin-top: 32rpx; font-size: 28rpx; font-weight: 600; color: var(--text-1); }
-.fee-rec {
-  position: relative;
-  padding: 20rpx 0 20rpx;
-  border-bottom: 2rpx solid var(--bg-fill);
-}
-.fee-rec-main { display: flex; flex-direction: row; align-items: baseline; }
-.fee-rec-amt { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
-.fee-rec-note { margin-left: 16rpx; font-size: 26rpx; color: var(--text-2); }
-.fee-rec-meta { margin-top: 6rpx; display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
-.fee-rec-op { font-size: 22rpx; color: var(--text-3); }
-.fee-rec-time { font-size: 22rpx; color: var(--text-3); }
-.fee-rec-imgs { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; margin-top: 14rpx; }
-.fee-rec-img { width: 120rpx; height: 120rpx; border-radius: 24rpx; overflow: hidden; background: var(--bg-fill); }
-.fee-rec-img-pic { width: 100%; height: 100%; display: block; }
-.fee-rec-del {
-  font-size: 24rpx;
-  color: #F53F3F;
-  padding: 4rpx 8rpx;
-}
-.fee-rec-del:active { opacity: 0.6; }
-.fee-rec-ops {
-  position: absolute;
-  top: 20rpx;
-  right: 0;
+/* ---------- 作业提交播报（2026-10-28，取代原远程配置横幅） ----------
+ * 一条浅蓝提示条：左边小铃铛，右边一行滚动文字。
+ * 生命周期：出现 → 逐条上滚 → 播完淡出并塌陷高度（.home-feed-out）→ wx:if 整体移除。
+ * 🔴 左右 32rpx（全站标准，见 .wrap），绝不贴边。 */
+.home-feed {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 20rpx;
+  gap: 12rpx;
+  margin: 16rpx 32rpx 0;
+  padding: 18rpx 28rpx;
+  background: #F0F5FF;
+  border: 2rpx solid #DCE8FF;
+  border-radius: 24rpx;
+  overflow: hidden;
+  /* 收起靠 max-height 塌陷 —— 不能写 height:auto（WXSS 里 auto 不参与过渡）。
+     80rpx = padding 18×2 + 行高 40 + border 2×2，写实测值，写大了收尾会先「空一段」。 */
+  max-height: 80rpx;
+  opacity: 1;
+  /* ⚠️ 必须写**一行**：check-wxss 把「属性值换行」判成「漏了分号」（它对多行 transition
+     的值不友好）。下面 .home-feed-track 的单属性过渡同理只写一行。 */
+  transition: max-height 0.28s ease, margin-top 0.28s ease, padding 0.28s ease, opacity 0.22s ease, border-width 0.28s ease;
 }
-.fee-rec-append {
-  font-size: 24rpx;
-  color: #3370FF;
-  padding: 4rpx 8rpx;
+.home-feed-out {
+  max-height: 0;
+  margin-top: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 0;
+  opacity: 0;
 }
-.fee-rec-append:active { opacity: 0.6; }
-.fee-rec-empty { margin-top: 24rpx; font-size: 26rpx; color: var(--text-3); text-align: center; }
+.home-feed-hover { background: #E3EDFF; }
+
+/* 只装一行的高度窗口：多出来的裁掉，track 上移时上一条自然滚出去 */
+.home-feed-body {
+  flex: 1;
+  min-width: 0;
+  height: 40rpx;
+  overflow: hidden;
+}
+.home-feed-track {
+  transition: transform 0.42s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.home-feed-line {
+  height: 40rpx;
+  line-height: 40rpx;
+  font-size: 26rpx;
+  color: #245BDB;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 人名加粗、「提交了《…》」常规 —— 一眼分得清「谁」和「交了什么」 */
+.home-feed-name { font-weight: 600; }
+.home-feed-text { font-weight: 400; }

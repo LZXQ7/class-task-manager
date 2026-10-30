@@ -64,10 +64,23 @@ Page({
     failed: false,
     list: [],
     remindOn: false,
+    /**
+     * 顶部标题（2026-10-28）：从班级信息页按班进来时显示「示例班级C 通知」，
+     * 让人一眼知道这份列表只属于这个班；不带 classId 进来仍是「通知」。
+     */
+    navTitle: '通知',
+    /** 当前按班查看的 id / 短名（0 = 不按班，老口径「我可见的全部通知」） */
+    viewClassId: 0,
+    viewClassName: '',
     /** 顶部「开启服务通知」提示条：只在模板就绪 + 未开启 + 总开关没关时显示 */
     showSubTip: false,
     /** 「清空全部通知」入口（2026-09-25）：仅测试超管（99 段）可见，真实超管不可清线上数据 */
     canClear: false,
+    /**
+     * 「发布通知」入口（2026-10-27 归位）：仅**有发布权**的人可见 —— 超管 / 班委（isAdmin）
+     * ∨ 辅导员。原先这个入口在首页管理员卡片里，首页精简后归到通知页（发与看同一处）。
+     */
+    canPublish: false,
 
     /* 回收站（v0.7.13 需求②）：右下角常驻入口 + 弹层里的已删列表 */
     recycleShow: false,
@@ -87,24 +100,83 @@ Page({
     viewerAnim: false
   },
 
-  onLoad() {
+  onLoad(options) {
     theme.mount(this);   // 深色模式（C-4）：挂 t-light / t-dark 到本页根节点
     this._refreshSubTip();
     const app = getApp();
     if (app.track) app.track.pageView('notice');
     const p = (app.globalData && app.globalData.profile) || {};
     const s = !!(app && app.isSuper && app.isSuper());
-    this.setData({ isSuper: s, canClear: !!(s && p.test) });
+    // 发布通知入口（2026-10-27 归位）：入口随发布能力走 —— 超管 / 班委（isAdmin）
+    // ∨ 辅导员（groupTag='X'）。与发布页 onNoticeOpen 里的范围口径同一套身份判定。
+    // 演示态（体验版「一键体验」进入演示班）下放开入口：让审核 / 评委账号也能走完整发布流程；
+    // 生产环境普通成员仍不可见，逻辑不变。
+    const isDemo = !!(app && app.globalData && app.globalData.demo);
+    const canPublish = isDemo || !!(app && app.isAdmin && app.isAdmin()) || !!(p && p.groupTag === 'X');
+    this.setData({ isSuper: s, canClear: !!(s && p.test), canPublish });
+
+    /* 按班查看（2026-10-28 需求）：从班级信息页切到某个班后点「通知」会带
+     * `?classId=xx&name=示例班级C`。带班进来 = 只看这个班的通知（后端 msgList 有班级视角）；
+     * 不带 = 老口径「我可见的全部通知」，普通成员/首页入口完全不变。 */
+    const q = options || {};
+    const vc = Number(q.classId) || 0;
+    let vn = '';
+    if (q.name) {
+      try { vn = decodeURIComponent(String(q.name)); }
+      catch (e) { vn = String(q.name); }
+    }
+    this._viewClassId = vc;
+
     // 缓存优先：**只要缓存里有就先同步渲染**，不再因 FRESH_MS 过期退回骨架。
     // 过期与否只影响「要不要后台再拉一次」，不影响首屏（解决「打开很慢」）。
-    const cached = notice.read(0);
+    // 缓存按班级分槽（classId=0 是全局槽）：按班看时不能拿全局列表先顶，否则会闪一下别班的通知。
+    const cached = notice.read(0, vc);
     if (cached) {
       this.setData({ loading: false, list: withSwipe(notice.toItems(cached)) });
     }
     // 需求⑤：一进通知页就把「未读游标」推到最新 —— 返回首页 / 我的，红点立刻消失。
     // 用缓存先推一次（同步渲染的那份就是用户此刻看到的），网络回来后再推一次。
-    if (cached) notice.markSeen(cached, this._memberId());
+    if (cached && this._shouldAdvanceSeen()) notice.markSeen(cached, this._memberId());
+    this.setData({ viewClassId: vc, viewClassName: vn, navTitle: vn ? vn + ' · 通知' : '通知' });
     this.load();
+  },
+
+  onShow() {
+    const app = getApp();
+    const gView = Number(app.globalData.viewClassId) || 0;
+    // 班级信息页切班联动：全局「当前查看班级」非空时优先跟随；否则保持 onLoad 的 URL 班。
+    // 仅在发生切换时重拉，避免每次切 Tab 都打接口。
+    if (gView && gView !== Number(this._viewClassId)) {
+      this._viewClassId = gView;
+      this.setData({ viewClassId: gView, viewClassName: '', navTitle: '通知' });
+      this.load();
+    }
+  },
+
+  /**
+   * 是否允许推进「未读游标」（2026-10-28）。
+   * 游标是**单值**（storage 里一条），只有列表口径 = 角标口径时才能推：
+   *   · 不带 classId  → 列表就是角标口径 ✔
+   *   · 带本班 classId → 该班通知正是 forMe 的集合（别班不会进 forMe）✔
+   *   · 带别班 classId → 列表与「我的红点」无关，推了会把别班未读一起吞掉 ✘
+   */
+  _shouldAdvanceSeen() {
+    const vc = Number(this._viewClassId) || 0;
+    if (!vc) return true;
+    const p = (getApp().globalData && getApp().globalData.profile) || {};
+    return vc === (Number(p.classId) || 0);
+  },
+
+  /**
+   * 单条通知的请求参数（2026-10-28）。
+   * 按班查看时必须把 classId 一起带上：msgRead / msgDelete 的「这条你能不能动」
+   * 判定与 msgList 共用 noticeTouchable，只认 noticeId 的话，别班通知会
+   * 「列表里看得见、点确认报无权查看」。
+   */
+  _noticeArg(id) {
+    const arg = { noticeId: id };
+    if (this._viewClassId) arg.classId = this._viewClassId;
+    return arg;
   },
 
   /** 当前成员 id（未读游标按成员隔离；profile 尚未就绪时回落 0） */
@@ -145,11 +217,15 @@ Page({
     // 已经有内容就别再退回骨架：刷新过程对用户应当是无感的
     const hasContent = !!(this.data.list && this.data.list.length);
     this.setData({ loading: !hasContent, failed: false });
-    api.msgList({}, { toast: false })
+    // 班级视角（2026-10-28）：带 classId 时后端只回该班归属的通知（超管任意活动班 /
+    // 辅导员限绑定班，越权时后端静默回落成老口径，不会白屏）
+    const vc = Number(this._viewClassId) || 0;
+    api.msgList(vc ? { classId: vc } : {}, { toast: false })
       .then((list) => {
         this._retriedOnce = false;
-        notice.write(list);
-        notice.markSeen(list, this._memberId());   // 需求⑤：拿到最新列表后同步推进未读游标
+        notice.write(list, vc);
+        // 需求⑤：拿到最新列表后同步推进未读游标（仅当列表口径 = 角标口径，见 _shouldAdvanceSeen）
+        if (this._shouldAdvanceSeen()) notice.markSeen(list, this._memberId());
         // 列表整批换掉 → 堆叠从头算（不重置的话，旧的第几层会挂到新列表上）
         this._passed = 0;
         this.setData({ loading: false, list: withSwipe(notice.toItems(list)) }, () => {
@@ -180,7 +256,7 @@ Page({
     const id = Number(e.currentTarget.dataset.id);
     if (this._acking) return;
     this._acking = true;
-    api.msgRead({ noticeId: id }, { loading: '处理中' })
+    api.msgRead(this._noticeArg(id), { loading: '处理中' })
       .then(() => {
         this._acking = false;
         util.toast('已确认收到');
@@ -210,7 +286,7 @@ Page({
     const index = Number(e.currentTarget.dataset.index);
     if (this._deleting) return;
     this._deleting = true;
-    const req = api.msgDelete({ noticeId: id }, { toast: false });
+    const req = api.msgDelete(this._noticeArg(id), { toast: false });
     Promise.all([
       req,
       new Promise((resolve) => { this._flyToTrash(index, resolve); })
@@ -637,6 +713,20 @@ Page({
   /** 跳转失败（非用户取消）时的兜底：复制链接到浏览器打开 */
   _copyLink(url) {
     wx.setClipboardData({ data: url, success: () => util.toast('已复制链接，可在浏览器打开') });
+  },
+
+  /**
+   * 打开发布通知（2026-10-27 归位）：入口从首页管理员卡片搬到本页，
+   * 表单本身迁成独立页 pages/notice/publish（整页表单，走系统转场）。
+   */
+  onNoticeOpen() {
+    const app = getApp();
+    if (app && app.track) app.track.action('notice_publish');
+    /* 按班查看时把班带进发布页（2026-10-28）：在 2601 的通知页点「发布」，
+     * 原来会默认发到自己的主班（示例班级A）—— 看起来发成功了，其实发错班。
+     * 发布页读 ?classId= 把它预选成「发送班级」。 */
+    const url = '/pages/notice/publish/index' + (this._viewClassId ? '?classId=' + this._viewClassId : '');
+    wx.navigateTo({ url });
   },
 
   /** 开启微信服务通知（一次性订阅，点一次得 1 条额度） */

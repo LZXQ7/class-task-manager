@@ -51,12 +51,11 @@ const FUNCTIONS = [
 const WHITELIST = [
   {
     fn: 'auth',
-    find: "IS_TEST()} AND role = 'ADMIN' AND is_super = 1",
-    reason: '「审核体验入口」（auth.reviewDemo，2026-10-11）：微信审核驳回 3.3.3「登录受限」后新增的旁路，' +
-      '凭审核口令把身份绑到**99 段测试超管**（库里唯一那条 role=ADMIN + is_super=1 的测试账号，id=69）。' +
-      '这是**唯一一条按测试段反查身份**的 SQL，与 switchAccount 的 JS 侧 isTestNo 同源；' +
-      '它取的是「我自己要冒充的那个账号」，不是给用户看的**人员列表** ⇒ 不违反铁律。' +
-      '注意别写成 role 任意 —— 必须锁死 is_super = 1，否则会把测试成员/测试管理员也当成演示身份。'
+    find: "class_id = ${DEMO_CLASS_ID} AND role = 'ADMIN' AND is_super = 1",
+    reason: '「审核体验入口」（auth.reviewDemo，2026-10-28 改为锁定演示班 104）：凭审核口令把身份绑到' +
+      '**演示班 104（全虚拟数据）的唯一超管**（库里 class_id=104 且 role=ADMIN + is_super=1 的那条，id=250 赵子涵）。' +
+      '这是**按 class_id 反查单一演示超管**的 SQL，取的是「要冒充的那个账号」，不是给用户看的**人员列表** ⇒ 不违反铁律。' +
+      '注意别写成 role 任意 —— 必须锁死 is_super = 1，否则会把演示班的非超管管理员也当成演示身份绑进去。'
   },
   {
     fn: 'auth',

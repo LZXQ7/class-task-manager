@@ -398,6 +398,11 @@ module.exports = {
   firstChar, maskNo, avatarColor, seqOf, clockNow,
   dutyStatus, DUTY_STATUS, whenText, CLEAN_WHEN, courseColor, COURSE_COLORS,
   sortClasses, majorRank, fmtRoom,
+  /* ⚠️ classNameOf 必须显式导出：它是 sortClasses 的内部比较器，但页面（班级信息页取班级名）
+   *    也要单独用它。此前漏在 exports 外面 ⇒ 调用处拿到 undefined ⇒ TypeError，
+   *    而调用方又挂在 `.catch(()=>{})` 后面，异常被静默吞掉 ⇒ 班级名恒为空、页面显示「未绑定班级」。
+   *    同类事故（fee 页 setData 写错变量名被 catch 吞）同源，见 MEMORY「吞异常」条目。 */
+  classNameOf,
   toast, confirm, confirmStrict, throttleTap, randPath, pad, roleTag, POSITIONS, GRANTED_POSITIONS,
   feeRights
 };

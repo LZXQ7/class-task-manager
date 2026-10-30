@@ -215,9 +215,10 @@ console.log('\n── 自证：拆掉任一环必被抓（变异必抓 + 好样�
   const m4 = Object.assign({}, SRC, { mineJson: SRC.mineJson.replace(/"notice-bar"\s*:\s*"[^"]*"\s*,?/, '') });
   chk(m4.mineJson !== SRC.mineJson && audit(m4).length > 0, '变异 4：我的页漏注册 notice-bar → 被抓住');
 
-  // 变异 5：recover() 改回原地刷新（不 reLaunch）
+  // 变异 5：recover() 改回原地刷新（不 reLaunch）。
+  // ⚠️ 2026-10-29：recover() 现按「是否未绑定」分流到 bind/home，锚点改用正则匹配整个 reLaunch 调用。
   const m5 = Object.assign({}, SRC, {
-    impersonate: SRC.impersonate.replace('wx.reLaunch({ url: \'/pages/home/index\' });', '// noop')
+    impersonate: SRC.impersonate.replace(/wx\.reLaunch\([^)]*\);/, '// noop')
   });
   chk(m5.impersonate !== SRC.impersonate && audit(m5).length > 0, '变异 5：recover() 不再 reLaunch → 被抓住');
 
@@ -227,9 +228,11 @@ console.log('\n── 自证：拆掉任一环必被抓（变异必抓 + 好样�
   });
   chk(m6.auth !== SRC.auth && audit(m6).length > 0, '变异 6：switchAccount 用 ctx.member 鉴权 → 被抓住');
 
-  // 变异 7：impersonation 不再按调用者 openid 键（会波及真人）
+  // 变异 7：impersonation 不再按调用者 openid 键（会波及真人）。
+  // ⚠️ 2026-10-29：guard.getContext 现有 **两处** 同形 impersonation 查询（已绑定 / 未绑定分支）⇒
+  //    必须全局替换，否则第一处被改、第二处仍在，审计照样能搜到 ⇒ 变异抓不到（假自证）。
   const m7 = Object.assign({}, SRC, {
-    guard: SRC.guard.replace('FROM impersonation WHERE openid = ?', 'FROM impersonation WHERE member_id = ?')
+    guard: SRC.guard.replace(/FROM impersonation WHERE openid = \?/g, 'FROM impersonation WHERE member_id = ?')
   });
   chk(m7.guard !== SRC.guard && audit(m7).length > 0, '变异 7：impersonation 查询不再按 openid 键 → 被抓住');
 }

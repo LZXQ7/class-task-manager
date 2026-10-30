@@ -52,12 +52,8 @@ Page({
     staffError: '',
     staffBinding: false,
 
-    /* 审核体验入口（2026-10-11 · v1.0.6.3）：微信审核「登录受限」用的旁路。
-       ⚠️ reviewDemo 只来自 login 下发的**布尔位**（app.globalData.config.reviewDemo），
-          真口令由超管填在 mp 后台「审核备注」里，审核员在小程序里手输 ——
-          所以这里只存输入值，页面里永远不出现口令本身。 */
-    reviewOn: false,
-    reviewCode: '',
+    /* 参赛演示 · 一键体验（2026-10-28，参赛临时入口）：免口令直达演示班 104。
+       reviewError 仅在后端 DEMO_QUICK_OPEN=false（赛后关闭）时回填提示。 */
     reviewError: '',
     reviewEntering: false
   },
@@ -79,17 +75,7 @@ Page({
         if (c2 && c2.bindOpen === false) this.setData({ bindClosed: true });
       }).catch(() => {});
     }
-    /*
-     * 审核体验入口的可见性（2026-10-11 · v1.0.6.3）—— 与 bindClosed 完全同一套时序：
-     * onLoad 这一刻 login 可能还没回来（config 为 null），所以先读一次、ready 后再补查一次。
-     * 开关关闭时 reviewOn 恒 false ⇒ wxml 的 wx:if 不渲染，审核员看到的就是干净的口令页。
-     */
-    const syncReview = () => {
-      const c = getApp().globalData.config;
-      this.setData({ reviewOn: !!(c && c.reviewDemo) });
-    };
-    syncReview();
-    if (app.ready) app.ready().then(syncReview).catch(() => {});
+    // 参赛演示 · 一键体验入口（2026-10-28）：始终可见，不再依赖 reviewOn 门控（见 wxml）。
     const scene = app.globalData.scene || '';
     if (scene) this._resolveScene(scene);
 
@@ -322,8 +308,7 @@ Page({
     }
     if (this.data.binding) return;
     this.setData({ binding: true });
-    // 头像不再绑定即采集：getUserProfile 已被微信回收（只能拿到灰头像），
-    // 绑定后到「我的」页点头像，经微信 chooseAvatar 面板选择上传。
+    // 头像不再绑定即采集：绑定后到「我的」页点头像，从相册/拍摄选一张图设为头像（不再取微信头像）。
     this._doBind('');
   },
 
@@ -363,35 +348,23 @@ Page({
       });
   },
 
-  /* ---------------- 审核体验入口（2026-10-11 · v1.0.6.3） ---------------- */
+  /* ---------------- 参赛演示 · 一键体验（2026-10-28，参赛临时入口） ---------------- */
   /**
-   * 微信审核驳回「存在登录受限问题」（运营规范 3.3.3）用的旁路。
-   *
-   * 为什么必须单开一条路：常规绑定是**三步**（班级口令 → 名单选人 → 学号后 4 位），
-   * 审核员一步都过不了 —— 他没有口令，且名单里根本没有他的名字。所以「在首页填个口令」
-   * 这种改法并不能解决问题，必须是一条**一键直达**的通道。
-   * 后端 auth.reviewDemo 校验口令后，把身份绑到 99 段测试超管（测试账号唯一真源），
-   * 口令错仍计入 openid 失败次数并可锁，防爆破。
+   * 参赛提交用：评委 / 第一个使用者**无需口令**一键进入演示班 104（全虚拟测试数据）。
+   * 后端 auth.reviewDemo 走 quick 通道（DEMO_QUICK_OPEN 常量开关），跳过口令与开关门控。
+   * 赛后移除（见 README §14）。
    */
-  onReviewCodeInput(e) {
-    this.setData({ reviewCode: String((e && e.detail && e.detail.value) || ''), reviewError: '' });
-  },
-
-  onReviewEnter() {
-    const code = String(this.data.reviewCode || '').trim();
-    if (!code) {
-      this.setData({ reviewError: '请输入审核口令' });
-      return;
-    }
+  onQuickDemo() {
     if (this.data.reviewEntering) return;
     this.setData({ reviewEntering: true, reviewError: '' });
-    api.reviewDemo({ code }, { toast: false })
+    api.reviewDemo({ quick: true }, { toast: false })
       .then(() => {
         this.setData({ reviewEntering: false });
-        wx.showToast({ title: '已进入体验账号', icon: 'none', duration: 1200 });
+        wx.showToast({ title: '已进入演示班', icon: 'none', duration: 1200 });
         // 置位再跳转：否则 onShow / app.ready() 的迟到回调会把人又拉回绑定页
         this._leavingBind = true;
         const app = getApp();
+        app.globalData.demo = true;   // 演示态标记：不显示顶部横幅、按钮变「切换正式版」
         app.refreshAuth()
           .then(() => { setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 1000); })
           .catch(() => { setTimeout(() => wx.switchTab({ url: '/pages/home/index' }), 1000); });
@@ -399,7 +372,7 @@ Page({
       .catch((e) => {
         this.setData({
           reviewEntering: false,
-          reviewError: (e && e.errMsg) || '体验口令不正确'
+          reviewError: (e && e.errMsg) || '体验入口未开放'
         });
       });
   },

@@ -33,6 +33,7 @@
         />
         <view wx:if="{{tokenError}}" class="bind-err">{{tokenError}}</view>
         <view wx:else class="bind-help">口令或邀请码由生活委员发放，也可扫邀请码自动填入</view>
+        <view class="bind-note">本小程序仅通过班级口令绑定，无需手机号、头像、昵称等授权</view>
       </view>
 
       <view
@@ -98,38 +99,27 @@
       bindtap="onEnterStaff"
     >我是老师 / 辅导员</view>
 
-    <!-- ======== 审核体验入口（2026-10-11 · v1.0.6.3） ========
-         微信审核「存在登录受限问题」（运营规范 3.3.3）的整改项：审核员没有班级口令、
-         名单里也没有他的名字，三步绑定一步都过不了。这里给一条一键直达的旁路，
-         凭审核口令进入 99 段测试超管（后端 auth.reviewDemo）。
-         ⚠️ 开关关闭时 reviewOn=false，本区块**整块不渲染** —— 审核员看到的是干净的口令页。
-         ⚠️ 页面里不出现口令：口令由超管填在 mp 后台「审核备注」，审核员在此手输。 -->
-    <view wx:if="{{reviewOn}}" class="bind-review">
-      <view class="bind-review-title">审核体验入口</view>
-      <view class="bind-review-help">仅供微信审核体验使用，请填写审核备注中提供的口令</view>
-      <input
-        class="bind-input bind-input-review {{reviewError ? 'err' : ''}}"
-        type="text"
-        value="{{reviewCode}}"
-        password="{{false}}"
-        maxlength="64"
-        placeholder="审核口令"
-        placeholder-class="bind-ph"
-        bindinput="onReviewCodeInput"
-        confirm-type="done"
-        bindconfirm="onReviewEnter"
-      />
-      <view wx:if="{{reviewError}}" class="bind-err">{{reviewError}}</view>
+    <!-- ======== 一键体验（演示入口，2026-10-28） ========
+         评委 / 第一个使用者**无需班级口令、无需体验口令**，一键进入演示班 104
+         （全虚拟测试数据，不含任何真实学生信息）。
+         ⚠️ 该入口始终可见；赛后由开发者移除（见 README §14）。
+         ⚠️ 后端由 `auth` 的 DEMO_QUICK_OPEN 常量统一开关，设 false 重部署即彻底关闭。 -->
+    <!-- 2026-10-29：体验版同样保留「一键体验」—— 用户从「我的 → 返回登录页」回到口令页后，
+         需要一键重新进入演示态；若在体验版隐藏它，口令页就再也回不到演示。 -->
+    <view class="bind-review">
+      <view class="bind-review-title">一键体验</view>
+      <view class="bind-review-help">无需口令，点击即进入演示班（全虚拟测试数据，不含任何真实学生信息）。退出演示：我的 → 返回登录页。</view>
       <view
-        class="bind-primary {{reviewCode.length > 0 && !reviewEntering ? '' : 'disabled'}}"
+        class="bind-primary {{!reviewEntering ? '' : 'disabled'}}"
         hover-class="press-dim"
         hover-start-time="0"
         hover-stay-time="60"
-        bindtap="onReviewEnter"
+        bindtap="onQuickDemo"
       >
-        <text wx:if="{{!reviewEntering}}">进入体验</text>
+        <text wx:if="{{!reviewEntering}}">一键体验（无需口令）</text>
         <view wx:else class="bind-spinner"></view>
       </view>
+      <view wx:if="{{reviewError}}" class="bind-err">{{reviewError}}</view>
     </view>
 
     <!-- 隐私合规（2026-09-25 审核要求）：不得默认同意，必须用户主动勾选后才可使用。

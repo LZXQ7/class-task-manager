@@ -363,13 +363,43 @@
 }
 .ai-err-btn:active { opacity: 0.6; }
 
-/* 自检面板 */
+/* 自检面板（2026-10-28 改为默认收起）
+ * 收起态 = 一行「自检结果 · 结论 · 展开」，点整行切换；
+ * 明细在 .ai-diag-body 里，展开才渲染（wx:if，不是隐藏），列表长度不受影响。 */
 .ai-diag {
   margin-top: 20rpx;
   padding: 18rpx 22rpx;
   background: #F7F8FA;
   border-radius: 24rpx;
 }
+.ai-diag-hd {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.ai-diag-hd-t {
+  flex-shrink: 0;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+.ai-diag-hd-s {
+  flex: 1;
+  margin: 0 12rpx;
+  font-size: 22rpx;
+  color: #86909C;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ai-diag-arrow {
+  flex-shrink: 0;
+  padding: 8rpx 0 8rpx 8rpx;
+  font-size: 22rpx;
+  color: #3370FF;
+}
+.ai-diag-arrow:active { opacity: 0.6; }
+.ai-diag-body { margin-top: 14rpx; }
 .ai-diag-row { display: flex; margin-bottom: 8rpx; }
 .ai-diag-k {
   flex-shrink: 0;
@@ -518,3 +548,245 @@
 }
 /* 弹层内列表：日期卡自带左右 32rpx 外边距，这里只补上下留白 */
 .dt-ended-list { padding: 8rpx 0 24rpx; }
+
+/* ---------- 排班方式 · 岗位槽（2026-10-28） ----------
+ * 生活委员自定义「哪天 / 第几节 / 几个人」。
+ * period 选「全天」= 承包一整天；选具体节次 = 该节单独一个岗位。
+ * 保存只影响之后新生成的周。 */
+
+/* 「一键生成」弹层里的入口行 */
+.ai-slot {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 20rpx;
+  padding: 20rpx 24rpx;
+  background: #F7F8FA;
+  border-radius: 16rpx;
+}
+.ai-slot:active { opacity: 0.85; }
+.ai-slot-k { flex: 0 0 auto; font-size: 26rpx; color: var(--text-2, #4E5969); }
+.ai-slot-v { flex: 1; text-align: right; font-size: 26rpx; color: var(--text-3, #86909C); }
+.ai-slot-go { flex: 0 0 auto; margin-left: 12rpx; font-size: 26rpx; color: var(--brand, #3370FF); }
+
+/* 弹层容器 */
+.sl { padding: 8rpx 0 0; }
+.sl-tip {
+  margin: 0 24rpx 20rpx;
+  padding: 20rpx 24rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--text-2, #4E5969);
+  background: var(--brand-light, #F0F5FF);
+  border-radius: 16rpx;
+}
+
+/* 小标题（适用星期 / 岗位）：分组用，弱于正文、强于表头 */
+.sl-sec {
+  margin: 0 24rpx 12rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--text-2, #4E5969);
+}
+.sl-sec-note {
+  margin-left: 8rpx;
+  font-weight: 400;
+  color: var(--text-3, #86909C);
+}
+
+/* 适用星期 chips：勾中的每一天都套用下面这组岗位（一次设定，不用逐天重复填）。
+ * 固定 7 个，用 flex:1 均分一行 —— 写死 min-width 在 750rpx 里塞 7 个必然换行。 */
+.sl-days {
+  display: flex;
+  flex-direction: row;
+  margin: 0 24rpx 24rpx;
+}
+.sl-day {
+  flex: 1;
+  height: 64rpx;
+  line-height: 64rpx;
+  margin-right: 8rpx;
+  font-size: 24rpx;
+  text-align: center;
+  color: var(--text-2, #4E5969);
+  background: var(--bg-fill, #F2F3F5);
+  border-radius: 32rpx;
+}
+.sl-day:last-child { margin-right: 0; }
+.sl-day.on {
+  font-weight: 600;
+  color: var(--brand, #3370FF);
+  background: var(--brand-light, #F0F5FF);
+  box-shadow: inset 0 0 0 2rpx var(--brand, #3370FF);
+}
+.sl-day:active { opacity: 0.85; }
+
+/* 表头：与数据行同栅格（节次 200 + 人数 flex + 删除 60），保证列对齐 */
+.sl-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 24rpx 12rpx;
+  font-size: 22rpx;
+  color: var(--text-3, #86909C);
+}
+.sl-h-pd { width: 200rpx; }
+.sl-h-num { flex: 1; text-align: center; }
+.sl-h-del { width: 60rpx; }
+
+.sl-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0 24rpx 12rpx;
+  padding: 12rpx 16rpx;
+  background: var(--bg-fill, #F2F3F5);
+  border-radius: 16rpx;
+}
+.sl-pick { width: 200rpx; }
+.sl-cell {
+  height: 64rpx;
+  line-height: 64rpx;
+  font-size: 26rpx;
+  text-align: center;
+  color: var(--text-1, #1D2129);
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 12rpx;
+}
+.sl-num {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+.sl-step {
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  text-align: center;
+  font-size: 32rpx;
+  color: var(--brand, #3370FF);
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 12rpx;
+}
+.sl-step:active { opacity: 0.7; }
+.sl-num-v {
+  min-width: 56rpx;
+  text-align: center;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text-1, #1D2129);
+}
+.sl-del {
+  width: 60rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #F53F3F;
+}
+.sl-del:active { opacity: 0.7; }
+
+.sl-empty {
+  margin: 0 24rpx;
+  padding: 40rpx 24rpx;
+  text-align: center;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--text-3, #86909C);
+  background: #F7F8FA;
+  border-radius: 16rpx;
+}
+
+.sl-add {
+  margin: 8rpx 24rpx 0;
+  height: 80rpx;
+  line-height: 80rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: var(--brand, #3370FF);
+  background: #F0F5FF;
+  border-radius: 16rpx;
+}
+.sl-add:active { opacity: 0.85; }
+
+/* 底部操作条：复用全局 .btn / .btn-ghost / .f-actions，这里只补弹层内留白。
+ * ⚠️ f-cancel / f-save 必须在**本页** wxss 里定义 —— WXSS 是页面级作用域，
+ *    光靠别页的类名等于没样式（check-wxss 会直接判「用了但没定义」）。 */
+.sl .f-actions { padding: 16rpx 24rpx 24rpx; }
+.sl .f-cancel, .sl .f-save { flex: 1; }
+
+/* 岗位列表容器：只补上下留白，纵向滚动交给 bottom-sheet 自己处理 */
+.sl-list { padding: 0 0 8rpx; }
+
+/* ── 主教室（2026-10-28）────────────────────────────────────
+ * 18:10 保洁打扫的房间，落库 class.main_room（与后台「班级设置」同一字段）。
+ * 形状抄 .sl-row：左右 24rpx、灰底圆角 16rpx，高度对齐 .sl-cell 的 64rpx，
+ * 让「主教室」和上面的岗位行看起来是同一套表单，不是外挂一个输入框。 */
+.sl-sec-gap { margin-top: 28rpx; }
+.sl-room {
+  margin: 0 24rpx 24rpx;
+  padding: 0 20rpx;
+  background: var(--bg-fill, #F2F3F5);
+  border-radius: 16rpx;
+}
+.sl-room-inp {
+  /* ⚠️ 小程序 input 不给 width 会按内容收缩（不是块级满宽），必须显式 100% */
+  width: 100%;
+  height: 84rpx;
+  font-size: 28rpx;
+  color: var(--text-1, #1D2129);
+}
+.sl-room-ph {
+  font-size: 26rpx;
+  color: var(--text-3, #86909C);
+}
+
+/* ── 18:10 打扫主教室（2026-10-28）────────────────────────────
+ * 独立卡片，与大课岗位明显分区：上半永远是「标题 + 摘要 + 开关」，
+ * 打开后才展开星期 / 人数，收起时弹层不会因为多一块而变长。 */
+.sl-clean {
+  margin: 24rpx 24rpx 0;
+  padding: 20rpx 24rpx 8rpx;
+  background: #F7F8FA;
+  border-radius: 16rpx;
+}
+.sl-clean-hd {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20rpx;
+}
+.sl-clean-txt {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  padding-right: 16rpx;
+}
+.sl-clean-t {
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-1, #1D2129);
+}
+.sl-clean-s {
+  margin-top: 4rpx;
+  font-size: 23rpx;
+  line-height: 1.4;
+  color: var(--text-3, #86909C);
+}
+.sl-clean-body {
+  padding-bottom: 16rpx;
+}
+/* 卡片内不再重复 24rpx 外边距（否则右侧会缩进成两级），底色也换白以便与卡片区分 */
+.sl-clean-body .sl-sec { margin: 0 0 12rpx; }
+.sl-clean-body .sl-days { margin: 0 0 8rpx; }
+.sl-clean-body .sl-list { padding: 0; }
+.sl-clean-body .sl-row { margin: 0 0 12rpx; background: var(--bg-card, #FFFFFF); }
+.sl-clean-tip {
+  margin-top: 16rpx;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: var(--text-3, #86909C);
+}

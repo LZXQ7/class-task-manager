@@ -65,6 +65,15 @@
   line-height: 32rpx;
   color: #86909C;
 }
+.bind-note {
+  margin-top: 12rpx;
+  padding: 16rpx 20rpx;
+  font-size: 22rpx;
+  line-height: 32rpx;
+  color: #4E5969;
+  background: rgba(31, 35, 41, 0.04);
+  border-radius: 12rpx;
+}
 .bind-help.center { text-align: center; }
 .bind-err {
   margin-top: 16rpx;

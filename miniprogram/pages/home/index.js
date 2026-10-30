@@ -10,6 +10,16 @@ const notice = require('../../utils/notice');
 const request = require('../../utils/request');
 const impersonate = require('../../utils/impersonate');
 const theme = require('../../utils/theme');
+/* ⚠️ 本页**不再** require remote-config（2026-10-28）：顶部横幅从「远程配置下发的
+ *    静态欢迎语」改成「作业提交播报」。远程配置本身仍在 app.js 的 onLaunch/onShow
+ *    全局拉取（60s 节流），机制没有停用，只是首页不再消费 homeBanner。 */
+
+/* 作业提交播报的节奏（毫秒）：每条停留 2.4s（够读一行「张三 提交了《XXX》」），
+ * 播完最后一条也停 2.4s 再收起 —— 收起太快会像闪了一下就没了。
+ * 单次最多播 5 条：再多用户要站在首页等十几秒，那就不是「播报」而是「刷屏」。 */
+const FEED_STEP_MS = 2400;
+const FEED_OUT_MS = 260;
+const FEED_PLAY_MAX = 5;
 
 /**
  * Hero 卡 = 纯提醒：只告诉你「今天你值日」以及在哪一节、和谁一起，
@@ -27,13 +37,15 @@ const HERO = {
 /** 数据新鲜度窗口：切换回首页时，只要在这个窗口内拉过数据，就直接复用、不再发起请求 */
 const STALE_MS = 20000;
 
-/** 「按职位」预设职位：辅导员发通知时一键选择。
- *  取值统一从 `utils/util.js` 的 POSITIONS 取（与云函数 member 的 POSITIONS 同源，
- *  由门禁 scripts/check-positions-sync.js 强制比对），这里不再各写一份。 */
-const NOTICE_POSITION_PRESETS = util.POSITIONS;
-
 Page({
   data: {
+    /* 作业提交播报（2026-10-28）：取代原「远程配置横幅」。
+     * show=横条可见；out=收尾淡出；queue=已排好的播报队列（正序，旧的先播）；
+     * idx=当前播到第几条（track 据此 translateY 上滚）。 */
+    hwFeedShow: false,
+    hwFeedOut: false,
+    hwFeedQueue: [],
+    hwFeedIdx: 0,
     statusBarHeight: 20,
     loading: true,
     failed: false,
@@ -63,17 +75,8 @@ Page({
     adminTier: '',
     /** 是否可查看班级（超管 / 辅导员，多班级 §43） */
     canViewClass: false,
-    /** 班费/团费跨班查看：**仅辅导员**的可查看班级列表（=staffClassIds）；其余身份恒空 */
-    feeClassList: [],
-    /** 当前选中的查看班级（0=本人/主班；辅导员/超管切班查看其他班时填该班 id） */
-    feeViewClassId: 0,
     /** 教职工（辅导员）视角：隐藏学生功能块（v0.7.16 需求⑥⑨） */
     isCounselor: false,
-    /** 「关注的学生」卡可见（v0.7.17 需求⑥）：与成员详情的「固定到主页」按钮同口径 */
-    showPins: false,
-    /** 固定到主页的学生（≤ pinLimit 条）：{ memberId, name, classId, className, latestNote, noteCount } */
-    pins: [],
-    pinLimit: 8,
     currentWeek: 1,
     /** Tab 入场动画序号：0 = 还没进过（播完整版），之后在 1 / 2 之间轮换（轻量版），见 utils/page-anim.js */
     animSeq: 0,
@@ -90,52 +93,6 @@ Page({
     playing: false,
     /** 查看通知入口角标 = 待确认数（同步读缓存，不阻塞首屏） */
     noticeUnacked: 0,
-
-    /* 发布通知（管理员） */
-    noticeShow: false,
-    noticeTitle: '',
-    noticeContent: '',
-    noticeLinkUrl: '',
-    noticeLinkName: '',
-    noticeLinkDetecting: false,
-    noticeLinkError: '',
-    /** 金山文档链接预警：小程序内无法直达，提示管理员改用腾讯文档 */
-    noticeLinkHint: '',
-    noticeScope: 'ALL',
-    noticeScopeItems: [{ key: 'ALL', text: '全体成员' }, { key: 'PICK', text: '指定成员' }],
-    noticeNeedAck: false,
-    /** 发布时附带「一次性弹窗」（v1.0.5）：收件人首页弹一次、看过不再弹 */
-    noticePopup: false,
-    /* 配图（v0.7.14）：本地临时路径数组，提交时直传云存储后转成 fileID 传给后端 */
-    noticeImages: [],
-    noticeMembers: [],
-    /** 勾选的成员：{ [memberId]: true } —— 用对象而不是数组，WXML 里好判断选中态 */
-    noticePick: {},
-    noticePickedCount: 0,
-    noticePickAllA: false,
-    noticePickAllB: false,
-    noticeKw: '',
-    noticeBusy: false,
-    /** 多班级（§43 需求⑥）：可选班级列表（辅导员跨班发送） */
-    noticeClasses: [],
-    noticeClassIds: [],
-    noticeAllClasses: false,
-    /**
-     * 班级高亮表 {classId: true}。
-     * ⚠️ 必须在 JS 里预先算好：WXML 表达式**不支持方法调用**（`arr.indexOf(x)` 恒为假），
-     *    写成 `noticeClassIds.indexOf(item.id) >= 0` 会导致选了班级却**永不落 `on`**（即「选了没高亮」）。
-     */
-    noticeClassPicked: {},
-    /** 仅辅导员账号显示「发送班级」区（超管不再显示） */
-    noticeShowClasses: false,
-    /** 按职位发布：positions 逗号分隔（由预设 chip 勾选生成） */
-    noticePositions: '',
-    /** 预设职位（辅导员「按职位」一键选择，口径 = member.position 实际的 7 种） */
-    noticePosPresets: [],
-    /** 当前已选的预设职位（用于高亮） */
-    noticePosPicked: {},
-    /** 已选职位个数（用于提示文案） */
-    noticePosPickedCount: 0,
 
     /* 首页请假卡（1.0.5 追加，需求①②）：班委/超管看本班请假人数；辅导员看各班总数 */
     showLeaveHome: false,
@@ -189,32 +146,6 @@ Page({
     /** 弹层内「加载中…」（v0.7.32 问题②：点开即弹，名单后台再刷新） */
     leaveHomeLoading: false,
 
-    /* ---- 班费 / 团费（2026-10-14） ---- */
-    /** 班费管理权（点开 + 消费）：班长兼团支书 / 副班长 / 生活委员 / 超管；普通成员 view-only */
-    feeCanManageClass: false,
-    /** 团费管理权：班长兼团支书 / 超管 */
-    feeCanManageLeague: false,
-    /** 团费卡对所有人可见（view-only 或管理），恒为 true；旧「仅管理人可见」口径已废弃 */
-    showLeagueCard: true,
-    /* 🔴 总额设置权（班费 = 超管 / 生活委员；团费 = 超管 / 班长兼团支书）已迁到「我的」页
-        —— 这里不再判定也不再展示设置框，避免出现两处入口改同一个值。 */
-    /** 班费汇总（{ total, expenseTotal, balance, totalText, expenseText, balanceText, records:[] }） */
-    feeClass: { total: 0, expenseTotal: 0, balance: 0, totalText: '0', expenseText: '0', balanceText: '0', records: [] },
-    feeLeague: { total: 0, expenseTotal: 0, balance: 0, totalText: '0', expenseText: '0', balanceText: '0', records: [] },
-    /** 弹层状态 */
-    feeShow: false,
-    feeActive: { total: 0, expenseTotal: 0, balance: 0, totalText: '0', expenseText: '0', balanceText: '0', records: [] },
-    feeType: 'class',
-    feeActiveName: '班费',
-    feeCanManage: false,
-    /** 弹层视图：'list' = 余额 + 消费明细 + 增加消费按钮；'form' = 金额 / 备注 / 凭证图片 / 提交。
-        2026-10-14 需求：表单不再常驻，点「增加消费」才进表单，避免长表单把明细挤到屏幕外。 */
-    feeView: 'list',
-    /** 消费表单：金额 / 备注 / 图片（云存储 fileID 数组，最多 9 张） */
-    feeAmount: '',
-    feeNote: '',
-    feeImages: [],
-    feeBusy: false
   },
 
   onLoad() {
@@ -227,14 +158,25 @@ Page({
   },
 
   /**
-   * 请假时段翻面定时器的清理（2026-10-09 需求①）。
-   * 🔴 必须有：`_scheduleLeaveWindowTimer` 排的是**最长可跨小时的** setTimeout，
-   *    不清就会在页面切走/销毁后仍触发 `_loadLeaveHome` —— 对已销毁实例 setData，
-   *    报错 + 泄漏闭包（与 bottom-sheet `_resizeEndTimer` 同一个坑）。
-   *    onShow 里的 `_loadLeaveHome` 会重新排一条链，所以清掉不影响功能。
+   * 离开页面时的全部清理（2026-10-28 合并③）。
+   * 🔴 为什么必须只有这一处：Page 定义里**同名生命周期后者覆盖前者** ——
+   *    本页曾经在 onUnload 下面还写了一个 `onHide`（停播放器 / 清 _doneTimer），
+   *    结果是**本函数整块被静默顶掉**，`_leaveWinTimer` 从来没被 onHide 清过：
+   *    Tab 页切走只触发 onHide、不触发 onUnload，所以那个跨小时定时器会一直在后台
+   *    跑完，再对一个隐藏页（甚至已销毁实例）setData。合并后两拨清理都在这里。
+   *    另：不要在别处再写第二个 onHide / onUnload，`check-lifecycle-unique.js` 守着。
+   *
+   * `_scheduleLeaveWindowTimer` 排的是**最长可跨小时的** setTimeout，
+   * onShow 里的 `_loadLeaveHome` 会重新排一条链，所以清掉不影响功能。
    */
   onHide() {
     if (this._leaveWinTimer) { clearTimeout(this._leaveWinTimer); this._leaveWinTimer = null; }
+    if (this._doneTimer) { clearTimeout(this._doneTimer); this._doneTimer = null; }
+    /* 播报定时器（2026-10-28）：切走 Tab 必须停 —— 不停的话它会在后台一条条
+     * setData 到隐藏页上，回来看时已经播完、游标也写了，等于这段播报被吞掉。
+     * 停下不写游标（见 _endHwFeed），下次进来从头播。 */
+    if (this._feedTimer) { clearTimeout(this._feedTimer); this._feedTimer = null; }
+    if (this._audio) { this._audio.stop(); this.setData({ playing: false }); }
   },
 
   // ⚠️⚠️ **本页原有 onUnload 在下方（带 theme.unmount）** —— 别在这里再写一个！
@@ -246,6 +188,9 @@ Page({
     const app = getApp();
     if (app.track) app.track.pageView('home');
     app.setTabBar(0);
+    /* 作业提交播报（2026-10-28）：这里原来读的是 remoteConfig 下发的静态欢迎语。
+     * 播报统一由 load() 起（见那边的注释）：它的调用点就在下面几行，
+     * 放在 onShow 会与 load 重复发一次请求。 */
     // v0.7.31：不再立即播 —— 等「身份(app.ready) + 首屏数据(loading=false)」就绪、或 READY_MS 兜底超时再统一开播
     pageAnim.playReady(this, getApp());
     const p = this._applyIdentity();
@@ -290,18 +235,12 @@ Page({
     // 这里强制跳过 STALE_MS 重拉一次，班委专属卡片（admin-card）立即出现。
     const rosterDirty = !!(app.globalData && app.globalData.rosterDirty);
     if (app.globalData) app.globalData.rosterDirty = false;
-    this.load(identityChanged || swapDirty || dutyDirty || rosterDirty);
-    /*
-     * 班费 / 团费：与通知角标同一套口径 —— **每次 onShow 独立重拉一次**。
-     * ⚠️ 不能只挂在 load() 的 .then 里：load 有 STALE_MS（20s）缓存早退 ——
-     *    切回首页且数据"新鲜"时它连请求都不发，那条路径上班费永远不刷新。
-     *    于是「在『我的』改了班费总额 → 回到首页看到旧值，要等好一会儿才变」
-     *    （2026-10-15 实踩）。班费是低频小额查询，每次进首页拉一次可以接受。
-     * feeDirty：我的页刚改过总额时置位（同 swapDirty 的套路），这里跳过去重窗口强制拉。
-     */
-    const feeDirty = !!(app.globalData && app.globalData.feeDirty);
-    if (app.globalData) app.globalData.feeDirty = false;
-    this._loadFee(feeDirty);
+    // 🔴 全局「当前查看班级」联动：在班级信息页切到 104 后回首页，必须按新班重拉
+    //    （否则 STALE_MS 缓存早退会留住上一次的 3 班卡片）。
+    const gView = Number(app.globalData.viewClassId) || 0;
+    const classChanged = gView !== (this._shownViewClassId || 0);
+    this._shownViewClassId = gView;
+    this.load(identityChanged || swapDirty || dutyDirty || rosterDirty || classChanged);
     // 今日课次灰化计时器：即便 load 命中 STALE_MS 缓存直接 return（数据已在），也要续排到点翻面
     this._scheduleDoneTimer();
     // 请假卡：onShow 已重拉（_applyIdentity → _loadLeaveHome）；这里再补排一条时段翻面定时器
@@ -322,6 +261,16 @@ Page({
     }
   },
 
+  /** 当前查看的班级 id：全局「当前查看班级」优先，否则回落本人本班 profile.classId。
+   *  普通成员无切班入口（全局恒为 0）⇒ 回落本班；超管/辅导员切班后全局非 0 ⇒ 跟随。 */
+  viewClassId() {
+    const app = getApp();
+    const gView = Number(app.globalData.viewClassId) || 0;
+    if (gView) return gView;
+    const p = (app.globalData.profile) || {};
+    return Number(p.classId) || 0;
+  },
+
   /** 后台静默重拉通知列表 → 更新缓存与角标（失败静默，不打扰用户） */
   _refreshNoticeBadge(meId) {
     api.msgList({}, { toast: false })
@@ -330,6 +279,128 @@ Page({
         this.setData({ noticeUnacked: notice.unackedCount(list, meId) });
       })
       .catch(() => {});
+  },
+
+  /* ============================================================
+   * 作业提交播报（2026-10-28 用户需求）
+   * ------------------------------------------------------------
+   * 顶部原来那条「欢迎使用……请按时提交作业」是远程配置下发的静态文案，
+   * 天天同一句。改成动态播报：**本班有同学交了作业，就在这条横条里
+   * 滚动展示一遍「张三 提交了《XXX》」，播完自动收起**，等下一次新提交再出现。
+   *
+   * 三个关键口径：
+   *   ① **谁看过算数** —— 游标落在本地 storage（键含 成员id + 班级id），
+   *      换班 / 换号各记各的；**第一次没游标只记基线不播**（否则新装用户
+   *      一进首页就被灌 5 条别人的历史提交，像出了 bug）。
+   *   ② **播完才推进游标** —— 中途切走（onHide 停表）就不算看过，下次重播；
+   *      反过来说，播报只播一次、播完即消失，不会每次进首页重复刷。
+   *   ③ **能不能看** 由后端判（班委 / 超管 / 辅导员），普通成员静默拿空数组。
+   *      播报内容就是「谁交了」，属于提交名单信息，首页不该绕过那道权限。
+   * ============================================================ */
+
+  /** 拉一次播报数据并按游标决定播不播 */
+  _loadHwFeed() {
+    const app = getApp();
+    if (!app || !app.globalData) return;
+    const p = app.globalData.profile || {};
+    const m = this.data.member || {};
+    const meId = Number(m.id || p.id || 0);
+    // 🔴 按「当前查看班级」分槽记游标（铁律47：游标键含 meId+classId），切班后播报不串班
+    const classId = this.viewClassId();
+    // 身份还没就绪就不拉：拿不到成员/班级就没法分槽记游标，宁可不播
+    if (!meId) return;
+    this._feedKey = 'hwfeed:' + meId + ':' + classId;
+
+    api.homeworkFeed({ classId }, { toast: false })
+      .then((r) => {
+        const list = (r && r.list) || [];
+        if (!list.length) return;                 // 最近没人交：什么都不做
+        const newest = Number(list[0].at) || 0;   // 后端已按时间倒序
+        if (!newest) return;
+
+        let prev = 0;
+        try { prev = Number(wx.getStorageSync(this._feedKey) || 0); } catch (e) { prev = 0; }
+        if (!prev) { this._feedSetCursor(newest); return; }   // ① 首次只记基线
+
+        const fresh = list.filter(x => (Number(x.at) || 0) > prev);
+        if (!fresh.length) return;
+        this._playHwFeed(this._feedBuild(fresh));
+      })
+      .catch((e) => {
+        /* 未绑定（40001/40002）本来就没有播报 —— 首页此时画的是「你还没有绑定班级」，
+         * 报一条红字日志只会污染排查。其余失败必须落日志：
+         * 云函数挂掉时静默会被误判成「没人交作业」，这条线就永远查不出来。 */
+        if (e && (e.errCode === 40001 || e.errCode === 40002)) return;
+        console.error('[home] homeworkFeed 拉取失败', e);
+      });
+  },
+
+  /**
+   * 把后端行整理成播放队列（**正序**，旧的先播）。
+   * 同一人同一份作业只留最近一条：被打回后重交会刷新 updated_at，
+   * 后端因此会返回两条 —— 播成「张三交了 / 张三交了」就太蠢了。
+   */
+  _feedBuild(list) {
+    const seen = {};
+    const out = [];
+    for (const x of list) {                    // list 是倒序（新的在前）
+      const k = x.memberId + '-' + x.homeworkId;
+      if (seen[k]) continue;
+      seen[k] = 1;
+      out.push({
+        key: x.id || (k + '-' + x.at),
+        memberName: x.memberName || '同学',
+        homeworkTitle: x.homeworkTitle || '',
+        at: Number(x.at) || 0
+      });
+    }
+    return out.slice(0, FEED_PLAY_MAX).reverse();
+  },
+
+  /** 逐条滚动播放；播完最后一条再收起（_endHwFeed） */
+  _playHwFeed(queue) {
+    if (!queue || !queue.length) return;
+    if (this._feedTimer) { clearTimeout(this._feedTimer); this._feedTimer = null; }
+    let i = 0;
+    const show = () => {
+      this.setData({ hwFeedIdx: i, hwFeedShow: true, hwFeedOut: false });
+      i += 1;
+      this._feedTimer = setTimeout(() => {
+        if (i < queue.length) show();
+        else this._endHwFeed(queue);
+      }, FEED_STEP_MS);
+    };
+    show();
+  },
+
+  /** 收尾：淡出 + 塌陷高度，然后整体移除（游标在这时才推进） */
+  _endHwFeed(queue) {
+    this.setData({ hwFeedOut: true });
+    this._feedTimer = setTimeout(() => {
+      this.setData({ hwFeedShow: false, hwFeedOut: false, hwFeedQueue: [], hwFeedIdx: 0 });
+      this._feedTimer = null;
+      const last = queue[queue.length - 1];
+      if (last) this._feedSetCursor(Number(last.at) || 0);
+    }, FEED_OUT_MS);
+  },
+
+  /** 写「已播到哪」的游标（秒）。storage 异常不影响播报，吞掉但打日志 */
+  _feedSetCursor(at) {
+    if (!this._feedKey || !at) return;
+    try { wx.setStorageSync(this._feedKey, Number(at) || 0); }
+    catch (e) { console.error('[home] 播报游标写入失败', e); }
+  },
+
+  /** 点播报条 → 去看作业（点开即视为已读，游标立刻推进，避免回来又播一遍） */
+  onHwFeedTap() {
+    const app = getApp();
+    if (app && app.track) app.track.action('home_feed_tap');
+    const q = this.data.hwFeedQueue || [];
+    const last = q[q.length - 1];
+    if (last) this._feedSetCursor(Number(last.at) || 0);
+    if (this._feedTimer) { clearTimeout(this._feedTimer); this._feedTimer = null; }
+    this.setData({ hwFeedShow: false, hwFeedOut: false, hwFeedQueue: [], hwFeedIdx: 0 });
+    wx.navigateTo({ url: '/pages/homework/index', fail: () => {} });
   },
 
   /** 身份指纹：任一维度变化都视为换了身份，需要重拉数据 */
@@ -356,10 +427,8 @@ Page({
     const canViewClass = !!(app && app.isSuper && app.isSuper()) || !!(p && p.groupTag === 'X');
     // v0.7.16：教职工（辅导员）视角 —— 首页隐藏学生功能（值日 Hero / 今日明日课次 / 提醒胶囊）
     const isCounselor = !!(p && p.groupTag === 'X');
-    // 「关注的学生」卡片（v0.7.18 需求①）：**仅辅导员**可见。
-    // 上一版跟着 canViewClass（超管 ∨ 辅导员），超管也会看到这张卡 —— 已按用户口径收紧，
-    // 与后端 pinList / pinToggle 的「仅辅导员」一致。
-    const showPins = isCounselor;
+    // 「关注的学生」卡片已于 2026-10-27 迁到**成员页**（首页只留值日 / 课次 / 请假），
+    // 判定式与数据加载都随卡片一起走（见 pages/roster/index.js 的 showPins / _loadPins）。
     // 首页请假卡（1.0.5 追加）：班委/超管看本班请假人数、辅导员看各班总数 —— 一律可见，
     // 普通同学不可见（决策④）。辅导员只读（leaveHomeMode='counselor'），班委/超管可撤销。
     const canLeave = !!(app && app.canLeave && app.canLeave());
@@ -371,32 +440,16 @@ Page({
     // ⚠️ 辅导员（X 组）**不**给：他们的视角是隐藏学生功能的（见上面 isCounselor 注释），
     //    首页连今日课次都看不到，自然也不该有这个弹窗。
     const canCourseInfo = canLeave && !isCounselor;
-    // 班费 / 团费权限（2026-10-14）：判定统一走 util.feeRights —— 与后端 fee 云函数同口径，
-    // 且与我的页共用同一份实现（早先在本页直接比对职位字面量，两个页面各写一份判定式，
-    // 「这里能设置、我的页却不显示」之类的漂移迟早出现）。
-    const feeR = util.feeRights({
-      isSuper: !!(app && app.isSuper && app.isSuper()),
-      position: p ? p.position : ''
-    });
-    const feeCanManageClass = feeR.canManageClass;
-    const feeCanManageLeague = feeR.canManageLeague;
-    const showLeagueCard = feeR.showLeagueCard;   // 团费卡仅能管团费者可见
     const patch = {
-      canViewClass, isCounselor, showPins,
+      canViewClass, isCounselor,
       canLeave,
       showLeaveHome,
       canCourseInfo,
       leaveHomeMode: isCounselor ? 'counselor' : 'class',
-      feeCanManageClass, feeCanManageLeague,
-      showLeagueCard
     };
     if (rt) { patch.adminTag = rt.text; patch.adminTier = rt.tier; }
     this.setData(patch);
-    if (showPins) this._loadPins();
     if (showLeaveHome) this._loadLeaveHome();
-    // 班费/团费跨班查看（v0.7.43）：**仅辅导员**可切班看其负责班级的钱（超管走班级管理，不在此列）。
-    // 仅首次拉班级列表（切班态本人保留，不重置）；列表回来后若未选班则默认本人主班/第一班并强制拉一次。
-    if (isCounselor && !this.data.feeClassList.length) this._loadFeeClassList();
     // 模拟态护栏（v1.0.5）：每次套用身份都同步一次顶部横幅，登录晚到时也能补上
     impersonate.sync(this);
     return p;
@@ -408,18 +461,9 @@ Page({
   },
 
   /**
-   * 关注的学生列表（v0.7.17 需求⑥）。
-   * 每次进首页都重拉（≤8 行的小查询），保证在成员详情里刚钉的人**切回来就能看到** ——
-   * 和「我的」页计数用同一套 SWR 口径：旧值先显示、后台静默刷新。
+   * 关注的学生列表：2026-10-27 已随卡片迁入**成员页**（pages/roster），
+   * 见 roster/index.js 的 _loadPins —— 首页不再持有这份数据与查询。
    */
-  _loadPins() {
-    api.pinList({}, { toast: false })
-      .then((r) => this.setData({
-        pins: (r && r.list) || [],
-        pinLimit: Number((r && r.limit) || 8)
-      }))
-      .catch(() => {});
-  },
 
   /* ---------------- 首页请假卡（1.0.5 追加，需求①②） ----------------
    * 班委/超管：**走已部署的 leaveBoard**（与「成员与分组」同源，返回 { date, list, stat }）——
@@ -428,12 +472,12 @@ Page({
    * 点击卡 → 班委/超管打开可撤销的名单弹层；辅导员点某班 → 拉该班名单（只读）。 */
   _loadLeaveHome() {
     if (this.data.leaveHomeMode === 'counselor') {
-      api.leaveSummary({}, { toast: false })
+      api.leaveSummary({ classId: this.viewClassId() }, { toast: false })
         .then((r) => { if (r && r.classes) this.setData({ leaveHomeClasses: util.sortClasses(r.classes || []) }); })
         .catch(() => {});
       return;
     }
-    api.leaveBoard({}, { toast: false })
+    api.leaveBoard({ classId: this.viewClassId() }, { toast: false })
       .then((r) => { if (r) this._setLeaveHomeClass(r); })
       .catch(() => {});
   },
@@ -949,16 +993,7 @@ Page({
     wx.navigateTo({ url: '/pages/roster/index?openLeave=1' });
   },
 
-  /** 点关注的学生 → 直接进他的成员详情（带 classId，辅导员跨班也能定位） */
-  onPinTap(e) {
-    const d = e.currentTarget.dataset || {};
-    const memberId = Number(d.id) || 0;
-    if (!memberId) return;
-    const qs = 'classId=' + (Number(d.classId) || 0) +
-      '&openMemberId=' + memberId +
-      '&name=' + encodeURIComponent(String(d.name || ''));
-    wx.navigateTo({ url: '/pages/roster/index?' + qs });
-  },
+  /** 点关注的学生 → 2026-10-27 随卡片迁入成员页，见 pages/roster/index.js 的 onPinTap */
 
   onUnload() {
     theme.unmount(this);   // 深色模式（C-4）：摘掉主题订阅，否则 setData 到已销毁实例
@@ -970,10 +1005,9 @@ Page({
     if (this._leaveWinTimer) { clearTimeout(this._leaveWinTimer); this._leaveWinTimer = null; }
   },
 
-  onHide() {
-    if (this._doneTimer) { clearTimeout(this._doneTimer); this._doneTimer = null; }
-    if (this._audio) { this._audio.stop(); this.setData({ playing: false }); }
-  },
+  /* ⚠️ 本页的 onHide 在文件上方（与 _leaveWinTimer 的说明写在一起）——
+   *    2026-10-28 之前这里还有第二个 onHide，把上面那个整块顶掉了（定时器泄漏）。
+   *    合并后只有一个，别在这里再补。 */
 
   _renderDate() {
     const d = new Date();
@@ -984,6 +1018,11 @@ Page({
   },
 
   load(force) {
+    /* 作业提交播报（2026-10-28）：**必须放在 STALE_MS 早退之前**。
+     * 播报是「刚刚有人交作业」的即时信号，跟着首屏缓存跳过一次就失去意义了
+     * （用户切回首页看到的是 20s 前的数据，但播报不该跟着一起过期）。
+     * 请求本身 toast:false、失败静默，不挡首屏渲染。 */
+    this._loadHwFeed();
     /*
      * 需求①「切换页面若无变化则无需重载」：Tab 切换回来时，只要上一次数据还很新鲜
      * （STALE_MS 内拉过），就直接复用已渲染的内容、连请求都不发 —— 切回来「秒显」。
@@ -1003,7 +1042,7 @@ Page({
     if (!hasContent) this.setData({ loading: true, failed: false });
     // 🔴 选修课（personal_course）与 dutyToday 是两条独立链路，并行拉以免拖慢首屏；
     //    任一失败都不阻断另一条（catch 内已兜成空数组）。
-    const pToday = api.dutyToday({}, { toast: false });
+    const pToday = api.dutyToday({ classId: this.viewClassId() }, { toast: false });
     const pPersonal = this._loadPersonalCourses();
     return Promise.all([pToday, pPersonal])
       .then(([r]) => {
@@ -1062,8 +1101,6 @@ Page({
         if (tb && tb.data && tb.data.dot !== dotNext) tb.setData({ dot: dotNext });
         // 主页弹层（不阻塞首屏）：先看「通知一次性弹窗」，再看「更新公告」，未读才弹
         this._loadPopups();
-        // 班费 / 团费：不阻塞首屏，后台拉取余额与明细
-        this._loadFee();
       })
       .catch((e) => {
         const code = e && e.errCode;
@@ -1262,10 +1299,17 @@ Page({
     // 拿不到时退回本地按 termStart 算（weekOfDate 依赖 tt 模块的 _termStart，
     // 首页没有 setClass 过，只有兜底默认值，故不能作为首选）。
     const week = Number(weekNo) || tt.weekOfDate(util.todayStr());
+    // 节次时间表（2026-10-29）：personal_course 只存 period（第几节），没有 start/end；
+    // 从班级 config.periodTime（[{period,start,end}]）按节次补上，时间列才不会退化成「第N节」。
+    const cfgPt = (getApp().globalData.config && getApp().globalData.config.periodTime) || [];
+    const ptMap = {};
+    cfgPt.forEach(pt => { if (pt && pt.period != null) ptMap[Number(pt.period)] = pt; });
     (personal || []).forEach(p => {
       if (Number(p.dayOfWeek) !== dow) return;                     // 只并目标日（今日或明日）
       if (!week) return;                                           // 周次算不出来就不显示（宁缺毋滥）
       if (!tt.matchesWeeks(p.weeks || '', week, p.weekRule || 'ALL')) return;   // 周次不命中就不显示
+      const periodNo = Number(p.period) || 0;
+      const pt = ptMap[periodNo];
       out.push({
         sessionId: 0,           // 个人课次没有 session 身份 ⇒ 不参与值日 / 调课
         pid: Number(p.id) || 0,
@@ -1278,7 +1322,8 @@ Page({
         weeks: p.weeks || '',
         groupScope: null,       // 无分组语义，任何分组视图都显示
         isPersonal: true,       // 供 wxml 加「选修」角标、避免被误认成值日
-        periodTime: null        // 保洁课次同样为 null；首页时间列会回退成「第N节」
+        // 有节次时间就显示时段（与全班课一致）；节次表缺该节才退回 null → wxml 显示「第N节」
+        periodTime: pt && pt.start && pt.end ? { start: pt.start, end: pt.end } : null
       });
     });
     // 唯一汇合点：全班课次（去重后）+ 本次并入的选修课一起补 key，
@@ -1456,8 +1501,9 @@ Page({
     return n;
   },
 
-  /* goDuty 已随首页「本周值日」快捷入口一起下线：值日本来就有底部 Tab */
-  goTimetable() { wx.switchTab({ url: '/pages/timetable/index' }); },
+  /* goDuty / goTimetable 都已随首页对应快捷入口下线（2026-10-28）：
+     值日和课表本来都有底部 Tab，从卡片再 switchTab 一次只是「换了个 tab、
+     画面没变化」，纯多余入口。要回来时记得连 wxml 的入口一起加。 */
 
   goMine() { wx.switchTab({ url: '/pages/mine/index' }); },
 
@@ -1482,637 +1528,6 @@ Page({
     wx.navigateTo({
       url: '/pages/homework/index',
       fail: () => wx.switchTab({ url: '/pages/mine/index' })
-    });
-  },
-
-  /* ---------------- 发布通知（管理员） ---------------- */
-  /** 每次打开都重置表单：上一次填了一半的内容不该被下一次悄悄带上 */
-  onNoticeOpen() {
-    // 「班级管理」（2026-09-25 需求③ + §41 重构）：发布范围按身份不同
-    //   · 班委：只能发同班 → 「本班成员」(ALL) 或「指定成员」(PICK，限本班)
-    //   · 辅导员：可「班级发送」或「仅发班委」或「按职位」（可跨班），不开放任意 PICK
-    //   · 超管：全体成员 / 指定成员 / 仅发班委 / 按职位（可跨班）
-    const app = getApp();
-    if (app.track) app.track.action('notice_publish');
-    const p = (app.globalData && app.globalData.profile) || null;
-    const isSuper = !!(app && app.isSuper && app.isSuper());
-    const isCounselor = !!(p && p.groupTag === 'X');
-    const isCommittee = !isSuper && !isCounselor && !!(p && (p.role === 'ADMIN' || p.role === 'MONITOR'));
-    let items, scope;
-    if (isCommittee) {
-      items = [{ key: 'ALL', text: '本班成员' }, { key: 'PICK', text: '指定成员' }];
-      scope = 'ALL';
-    } else if (isCounselor) {
-      items = [
-        { key: 'ALL', text: '班级发送' },
-        { key: 'COMMITTEE', text: '仅发班委' },
-        { key: 'POSITION', text: '按职位' }
-      ];
-      scope = 'ALL';
-    } else {
-      items = [
-        { key: 'ALL', text: '全体成员' },
-        { key: 'PICK', text: '指定成员' },
-        { key: 'COMMITTEE', text: '仅发班委' },
-        { key: 'POSITION', text: '按职位' }
-      ];
-      scope = 'ALL';
-    }
-    // 发布范围默认「本班」（2026-09-26 需求④）：以前默认 noticeAllClasses=true →
-    // 空数组被后端解释成「全部启用班级」，于是想发本班的人把通知发成了全校各班。
-    // 现在默认只勾本班，要发多班必须显式点「全部班级」或逐个点班。
-    const myClassId = Number((p && p.classId) || 1) || 1;
-    this.setData({
-      noticeShow: true,
-      noticeTitle: '', noticeContent: '', noticeLinkUrl: '', noticeLinkName: '', noticeImages: [],
-      noticeLinkDetecting: false, noticeLinkError: '', noticeLinkHint: '',
-      noticeScope: scope, noticeScopeItems: items, noticeNeedAck: false, noticePopup: false,
-      noticeMembers: [], noticePick: {}, noticePickedCount: 0,
-      noticePickAllA: false, noticePickAllB: false, noticeKw: '', noticeBusy: false,
-      noticeClasses: [], noticeClassIds: [myClassId], noticeAllClasses: false, noticeClassPicked: {},
-      noticeShowClasses: isCounselor,
-      noticePositions: '', noticePosPresets: NOTICE_POSITION_PRESETS,
-      noticePosPicked: {}, noticePosPickedCount: 0
-    });
-    // 仅辅导员可跨班发送：拉班级列表（默认只勾本班，列表回来后高亮本班）
-    if (isCounselor) this._loadNoticeClasses();
-  },
-  onNoticeClose() { this.setData({ noticeShow: false }); },
-  onNoticeTitle(e) { this.setData({ noticeTitle: e.detail.value }); },
-  onNoticeContent(e) { this.setData({ noticeContent: e.detail.value }); },
-
-  /** 配图（v0.7.14）：chooseMedia 压缩后只存本地路径，提交时再直传云存储（避开云函数 60s 与 VPC 下载慢） */
-  onNoticePickImage() {
-    const left = 3 - this.data.noticeImages.length;
-    if (left <= 0) { util.toast('图片最多 3 张'); return; }
-    wx.chooseMedia({
-      count: left,
-      mediaType: ['image'],
-      sizeType: ['compressed'],
-      sourceType: ['album', 'camera'],
-      success: (r) => {
-        const add = (r.tempFiles || []).map(f => f.tempFilePath).filter(Boolean).slice(0, left);
-        if (add.length) this.setData({ noticeImages: this.data.noticeImages.concat(add) });
-      }
-    });
-  },
-  onNoticeRemoveImage(e) {
-    const i = Number(e.currentTarget.dataset.i);
-    const arr = this.data.noticeImages.slice();
-    if (i >= 0 && i < arr.length) { arr.splice(i, 1); this.setData({ noticeImages: arr }); }
-  },
-  onNoticeLink(e) { this._onNoticeLinkInput(String(e.detail.value || '')); },
-
-  /** 拉取可选班级列表（仅辅导员），默认勾选「全部班级」 */
-  _loadNoticeClasses() {
-    api.classList({ all: true }, { toast: false })
-      .then((list) => {
-        const classes = util.sortClasses((list || []).filter(c => c.isActive !== false));
-        this.setData({
-          noticeClasses: classes,
-          noticeClassPicked: this._clsPickedMap(this.data.noticeAllClasses, this.data.noticeClassIds)
-        });
-      })
-      .catch(() => this.setData({ noticeClasses: [], noticeClassPicked: {} }));
-  },
-
-  /**
-   * 班级高亮表。WXML 不能调方法，所以在这里算好 {classId: true}。
-   * all=true 时把所有可选班级都点亮（「全部班级」态）。
-   */
-  _clsPickedMap(all, ids) {
-    const map = {};
-    if (all) {
-      (this.data.noticeClasses || []).forEach(c => { map[Number(c.id)] = true; });
-    } else {
-      (ids || []).forEach(id => { map[Number(id)] = true; });
-    }
-    return map;
-  },
-
-  /**
-   * 「全部班级」= **显式全选**（把每个班 id 都铺进 noticeClassIds）。
-   * ⚠️ 不能再用「清空 id 列表 + 后端兜底」的写法：后端已改成「classIds 缺省 = 本班」
-   *   （需求④），空数组只代表本班，会静默漏发。
-   */
-  onNoticeToggleAllClasses() {
-    const ids = (this.data.noticeClasses || []).map(c => Number(c.id));
-    if (!ids.length) { util.toast('班级列表还没加载出来'); return; }
-    this.setData({ noticeAllClasses: true, noticeClassIds: ids, noticeClassPicked: this._clsPickedMap(true, ids) });
-  },
-  /** 「清空」= 一个班都不选（发布时会被拦下并提示） */
-  onNoticeClearClasses() {
-    this.setData({ noticeAllClasses: false, noticeClassIds: [], noticeClassPicked: {} });
-  },
-  /** 点某个班：全选态下 = 取消该班；非全选态 = 增删；选满则标记为「全部班级」态 */
-  onNoticeToggleClass(e) {
-    const id = Number(e.currentTarget.dataset.id);
-    const allIds = (this.data.noticeClasses || []).map(c => Number(c.id));
-    const ids = (this.data.noticeAllClasses ? allIds : this.data.noticeClassIds).slice();
-    const idx = ids.indexOf(id);
-    if (idx >= 0) ids.splice(idx, 1); else ids.push(id);
-    const isAll = allIds.length > 0 && ids.length === allIds.length;
-    this.setData({
-      noticeClassIds: ids,
-      noticeAllClasses: isAll,
-      noticeClassPicked: this._clsPickedMap(false, ids)
-    });
-  },
-  /** 点预设职位：加入 / 移除（一键选择，7 个预设以外不接受手输） */
-  onNoticePosPreset(e) {
-    const p = String((e.currentTarget.dataset && e.currentTarget.dataset.pos) || '');
-    if (!p) return;
-    const cur = String(this.data.noticePositions || '').split(/[,，、\s]+/).map(s => s.trim()).filter(Boolean);
-    const idx = cur.indexOf(p);
-    if (idx >= 0) cur.splice(idx, 1); else cur.push(p);
-    this.setData({
-      noticePositions: cur.join(','),
-      noticePosPicked: this._posPickedOf(cur.join(',')),
-      noticePosPickedCount: cur.length
-    });
-  },
-  /** 由职位字符串算出「已选预设」高亮表 */
-  _posPickedOf(text) {
-    const list = String(text || '').split(/[,，、\s]+/).map(s => s.trim()).filter(Boolean);
-    const picked = {};
-    (this.data.noticePosPresets || []).forEach(p => { if (list.indexOf(p) >= 0) picked[p] = true; });
-    return picked;
-  },
-
-  /**
-   * 在线文档链接自动检测标题：输入停止 600ms 后调 ai-proxy.title 抓 <title>，
-   * 回填到「显示名」（用户已手填就不覆盖）。用 token 防抖 + 乱序丢弃。
-   */
-  _onNoticeLinkInput(url) {
-    const token = (this._linkToken = (this._linkToken || 0) + 1);
-    const patch = { noticeLinkUrl: url };
-    // 金山文档（kdocs.cn）小程序没有「直达指定文档」的公开路径，且其「最近」列表只显示
-    // 用户自己打开过的文档 → 接收同学点开也找不到。发布时就提示管理员改用腾讯文档。
-    patch.noticeLinkHint = /^https:\/\/(www\.)?kdocs\.cn\//i.test(url.trim())
-      ? '金山文档链接无法在小程序内直达，接收同学需复制链接到浏览器打开。建议改用腾讯文档链接'
-      : '';
-    if (!url) {
-      patch.noticeLinkName = '';
-      patch.noticeLinkDetecting = false;
-      patch.noticeLinkError = '';
-      this.setData(patch);
-      return;
-    }
-    const valid = /^https:\/\//i.test(url.trim());
-    patch.noticeLinkDetecting = valid;
-    this.setData(patch);
-    if (!valid) return;
-    clearTimeout(this._linkTimer);
-    this._linkTimer = setTimeout(() => {
-      api.linkTitle({ url: url.trim() }, { toast: false })
-        .then((r) => {
-          if (token !== this._linkToken) return;   // 已经继续输入了，丢弃旧结果
-          const title = String((r && r.title) || '').trim();
-          this.setData({
-            noticeLinkDetecting: false,
-            noticeLinkError: '',
-            noticeLinkName: this.data.noticeLinkName.trim() ? this.data.noticeLinkName : (title || this.data.noticeLinkName)
-          });
-        })
-        .catch((e) => {
-          if (token !== this._linkToken) return;
-          // 检测失败不打扰用户：显示名留空，提交时后端会兜底「在线文档」
-          this.setData({ noticeLinkDetecting: false, noticeLinkError: String((e && e.errMsg) || '') });
-        });
-    }, 600);
-  },
-  onNoticeLinkName(e) { this.setData({ noticeLinkName: e.detail.value }); },
-  onNoticeAck(e) { this.setData({ noticeNeedAck: !!e.detail.value }); },
-  /** 一次性弹窗开关（v1.0.5） */
-  onNoticePopupChange(e) { this.setData({ noticePopup: !!e.detail.value }); },
-
-  /**
-   * ⚠️ segmented 组件 emit 的是 `{ key }`（见 components/segmented/index.js），
-   * **不是** `{ value }`。曾经写成 `String(e.detail.value)` → 拿到 `"undefined"` 字符串：
-   * 于是 noticeScope 既不是 'ALL' 也不是 'PICK'，不但名单不展开、连 segmented 的高亮也不动，
-   * 看起来就是「点『指定成员』没反应，再点『全体成员』也没反应」（用户 2026-09-25 反馈）。
-   * 门禁：scripts/check-segmented.js
-   */
-  onNoticeScope(e) {
-    const scope = String((e.detail && e.detail.key) || 'ALL');
-    this.setData({ noticeScope: scope });
-    // 名单懒加载：切到「指定成员」才去拉，避免每次打开弹层都多一次请求
-    // （COMMITTEE / POSITION 不展开选人面板，接收人由服务端按班委集合 / 职位算定）
-    if (scope === 'PICK' && !this.data.noticeMembers.length) this._loadNoticeMembers();
-  },
-
-  onNoticeKw(e) {
-    this.setData({ noticeKw: String(e.detail.value || '') });
-    this._loadNoticeMembers();
-  },
-
-  _loadNoticeMembers() {
-    api.memberList({ public: 'manage', kw: this.data.noticeKw }, { toast: false })
-      .then((list) => {
-        /*
-         * 选人名单。测试账号与辅导员都不接收通知，但**两者都不是这里在过滤**：
-         *   测试账号（学号 0000000000xx）：member.list 已按 2026-10-08 铁律在服务端滤掉
-         *     （「所有人员列表一律不显示测试账号」，含超管）——前端再补一层只会是死代码，
-         *     且会让人误以为「前端滤了就够」，下次改后端就漏。
-         *   辅导员（groupTag=X）：仍需前端过滤（这是业务口径，不是隐私口径，服务端不禁）。
-         * 后端 msgPublish PICK 仍同步拦截，防直接 POST 绕过。
-         * 学号仅展示末两位（需求④）：前端按学号后两位算序号，与后端 seqOf 一致
-         */
-        const rows = (list || [])
-          .filter(x => x.status !== 'DISABLED')
-          .filter(x => x.groupTag !== 'X')                                  // 辅导员不接收
-          .map(x => Object.assign({}, x, { seq: util.seqOf(x.studentNo) }))
-          .sort((a, b) => a.seq - b.seq); // 按 1-56 顺序排列
-        // 同步 pick：丢弃已被过滤掉（不可接收）的成员勾选，避免点了发布按钮还以为发了
-        const validIds = new Set(rows.map(r => r.id));
-        const cleanPick = {};
-        Object.keys(this.data.noticePick).forEach(k => { if (validIds.has(Number(k))) cleanPick[k] = true; });
-        this.setData(Object.assign({ noticeMembers: rows }, this._syncPick(cleanPick, rows)));
-      })
-      .catch(() => this.setData({ noticeMembers: [] }));
-  },
-
-  onNoticePick(e) {
-    const id = Number(e.currentTarget.dataset.id);
-    const pick = Object.assign({}, this.data.noticePick);
-    if (pick[id]) delete pick[id]; else pick[id] = true;
-    this.setData(this._syncPick(pick));
-  },
-
-  /** A/B 组一键切换：点击全选，再次点击取消全选 */
-  onPickGroup(e) {
-    const tag = String((e.currentTarget.dataset && e.currentTarget.dataset.tag) || '');
-    if (tag !== 'A' && tag !== 'B') return;
-    const groupIds = (this.data.noticeMembers || [])
-      .filter(m => m.groupTag === tag)
-      .map(m => m.id);
-    if (!groupIds.length) return;
-    const pick = Object.assign({}, this.data.noticePick);
-    const allSelected = groupIds.every(id => pick[id]);
-    if (allSelected) {
-      groupIds.forEach(id => delete pick[id]);
-    } else {
-      groupIds.forEach(id => pick[id] = true);
-    }
-    this.setData(this._syncPick(pick));
-  },
-
-  /** 清空已选 */
-  onClearPick() {
-    this.setData(this._syncPick({}));
-  },
-
-  /** 同步 pick 计数与 A/B 组全选状态（按钮需要视觉反馈） */
-  _syncPick(pick, members) {
-    members = members || this.data.noticeMembers || [];
-    const idsA = members.filter(m => m.groupTag === 'A').map(m => m.id);
-    const idsB = members.filter(m => m.groupTag === 'B').map(m => m.id);
-    return {
-      noticePick: pick,
-      noticePickedCount: Object.keys(pick).length,
-      noticePickAllA: idsA.length > 0 && idsA.every(id => pick[id]),
-      noticePickAllB: idsB.length > 0 && idsB.every(id => pick[id])
-    };
-  },
-
-  onNoticeSubmit() {
-    if (this.data.noticeBusy) return;
-    const title = String(this.data.noticeTitle).trim();
-    const content = String(this.data.noticeContent).trim();
-    if (!content) { util.toast('请填写通知内容'); return; }
-    const scope = this.data.noticeScope;
-    const memberIds = Object.keys(this.data.noticePick).map(Number);
-    if (scope === 'PICK' && !memberIds.length) { util.toast('请至少选择一位接收成员'); return; }
-    // 多班级（需求④）：**一律显式传班级 id**。后端把「空数组」解释成「发布者本班」，
-    // 所以想跨班就必须把 id 铺开传过去（辅导员「全部班级」按钮已改成显式全选）。
-    // 非辅导员（班委 / 超管）恒为本班 —— 前端也只放本班一个 id，后端还会再兜一次。
-    const classIds = (this.data.noticeAllClasses
-      ? (this.data.noticeClasses || []).map(c => Number(c.id))
-      : this.data.noticeClassIds
-    ).slice();
-    if (this.data.noticeShowClasses && !classIds.length) {
-      util.toast('请至少选择一个发送班级'); return;
-    }
-    const positions = scope === 'POSITION'
-      ? String(this.data.noticePositions || '').split(/[,，、\s]+/).map(s => s.trim()).filter(Boolean)
-      : [];
-    if (scope === 'POSITION' && !positions.length) { util.toast('请至少选择一个职位'); return; }
-    this.setData({ noticeBusy: true });
-    // 配图先直传云存储（本地路径 → fileID），再随发布一起提交；无图则跳过上传
-    const localImgs = this.data.noticeImages.slice();
-    Promise.resolve()
-      .then(() => {
-        if (!localImgs.length) return [];
-        wx.showLoading({ title: '上传图片 0/' + localImgs.length, mask: true });
-        let done = 0;
-        return Promise.all(localImgs.map((p, i) =>
-          request.uploadFile('notice/' + Date.now() + '-' + i + '-' + Math.floor(Math.random() * 10000) + '.jpg', p)
-            .then((id) => { done++; wx.showLoading({ title: '上传图片 ' + done + '/' + localImgs.length, mask: true }); return id; })
-            .catch(() => { throw new Error('图片上传失败'); })
-        ));
-      })
-      .then((fileIds) => {
-        wx.hideLoading();
-        return api.msgPublish({
-          title,
-          content,
-          images: fileIds,
-          linkUrl: String(this.data.noticeLinkUrl).trim(),
-          linkName: String(this.data.noticeLinkName).trim(),
-          scope,
-          memberIds,
-          classIds,
-          positions,
-          needAck: this.data.noticeNeedAck,
-          popup: this.data.noticePopup
-        }, { loading: '发布中' });
-      })
-      .then((r) => {
-        this.setData({ noticeBusy: false, noticeShow: false });
-        // v0.7.16（需求④）：发布成功立刻失效通知缓存 —— 自己与接收端下一次 onShow
-        // 都会强制重拉列表 / 角标，不再等 15s TTL 自然过期
-        notice.invalidate();
-        const push = (r && r.push) || {};
-        let msg = '通知已发布';
-        if (push.skipped) msg += '（微信提醒待模板上线）';
-        else if (push.sent) msg += '，已提醒 ' + push.sent + ' 人';
-        util.toast(msg);
-      })
-      .catch(() => { wx.hideLoading(); this.setData({ noticeBusy: false }); });
-  },
-
-  /* ---------------- 班费 / 团费（2026-10-14） ----------------
-   * 卡片：班费全员可见；团费仅超管 / 班长兼团支书可见（首页左右一排两卡）。
-   * 权限：班费管理 = 班长兼团支书 / 副班长 / 生活委员 / 超管；团费管理 = 班长兼团支书 / 超管。
-   *       普通成员（及无管理职位的班委）班费卡仅展示、不可点开。
-   * 总额设置：班费 = 超管 / 生活委员；团费 = 超管 / 班长兼团支书。
-   * 图片：消费图片客户端直传云存储，提交时与金额一起上报 fileID；最多 9 张。 */
-  _fmtMoney(n) {
-    const v = Number(n) || 0;
-    const sign = v < 0 ? '-' : '';
-    const s = Math.abs(v).toFixed(2).replace(/\.?0+$/, '');
-    return sign + s;
-  },
-  _fmtFund(f) {
-    f = f || {};
-    return {
-      total: Number(f.total) || 0,
-      expenseTotal: Number(f.expenseTotal) || 0,
-      balance: Number(f.balance) || 0,
-      totalText: this._fmtMoney(f.total),
-      expenseText: this._fmtMoney(f.expenseTotal),
-      balanceText: this._fmtMoney(f.balance),
-      records: (f.records || []).map(rec => ({
-        id: rec.id,
-        amount: Number(rec.amount) || 0,
-        amountText: this._fmtMoney(rec.amount),
-        note: rec.note || '',
-        images: rec.images || [],
-        createdAt: rec.createdAt || '',
-        operatorName: rec.operatorName || ''
-      }))
-    };
-  },
-  /**
-   * 班费 / 团费：拉取余额与明细（不阻塞首屏）。
-   * 调用点有三类：
-   *   · onShow：每次进首页都拉（不受 load 的 STALE_MS 早退影响，见 onShow 注释）；
-   *   · load() 的 .then：登录晚于 onShow 完成时补一次（那时 onShow 那次是未绑定态）；
-   *   · 写操作之后（登记消费 / 删记录 / 点开弹层）：**强制**拉，跳过去重。
-   * 前两类会连着各来一次，所以这里去重：请求中跳过、2s 内刚拉过跳过。
-   * ⚠️ 写操作必须传 force —— 否则「刚提交完、2 秒内刚拉过」会被去重吃掉，看起来像没保存。
-   * @param {boolean} [force] 强制刷新（跳过去重窗口）
-   */
-  _loadFee(force) {
-    if (this.data.unbound) return;
-    const now = Date.now();
-    if (!force) {
-      if (this._feeLoading) return;
-      if (this._feeLoadedAt && now - this._feeLoadedAt < 2000) return;
-    }
-    this._feeLoading = true;
-    this._feeLoadedAt = now;
-    // 跨班查看：把当前选中的查看班级带给后端（0/空=本人主班，resolveClassId 回退）
-    const viewCid = Number(this.data.feeViewClassId) || 0;
-    const arg = viewCid ? { classId: viewCid } : {};
-    api.feeSummary(arg, { toast: false })
-      .then((r) => {
-        const feeClass = this._fmtFund(r && r.class);
-        const feeLeague = this._fmtFund(r && r.league);
-        const patch = { feeClass, feeLeague };
-        // 弹层打开时同步当前激活对象，避免余额 / 明细显示旧值
-        if (this.data.feeShow) patch.feeActive = this.data.feeType === 'class' ? feeClass : feeLeague;
-        this.setData(patch);
-      })
-      .catch(() => {})
-      .then(() => { this._feeLoading = false; });
-  },
-  /**
-   * 班费/团费跨班查看（v0.7.43）：拉「可查看班级」列表 —— **仅辅导员**（=staffClassIds）。
-   * 仅 _applyIdentity 首次触发；选中班级本人保留不重置。
-   * 默认选中：若当前 feeViewClassId 不在列表内（含初始 0），优先本人主班，否则第一班并强制重拉一次费用。
-   */
-  _loadFeeClassList() {
-    api.classList({ all: true }, { toast: false })
-      .then((list) => {
-        const arr = Array.isArray(list) ? list : [];
-        const ids = arr.map(c => Number(c.id));
-        const oldSel = Number(this.data.feeViewClassId) || 0;
-        let sel = oldSel;
-        if (!ids.includes(sel)) {
-          // 默认停在本人主班（若主班在可看范围内），否则落到第一班
-          const own = Number((getApp() && getApp().globalData && getApp().globalData.profile || {}).classId) || 0;
-          sel = ids.includes(own) ? own : (arr.length ? ids[0] : 0);
-        }
-        const patch = { feeClassList: arr, feeViewClassId: sel };
-        this.setData(patch);
-        // 默认班与更新前不一致（如从 0 落到第一班/主班）时，强制拉一次该班的钱
-        if (sel && sel !== oldSel) this._loadFee(true);
-      })
-      .catch(() => {});
-  },
-  /** 班费/团费切班：选中某个可查看班级后立即重拉该班的钱 */
-  onFeeClassPick(e) {
-    const id = Number(e.currentTarget.dataset.id) || 0;
-    if (!id || id === Number(this.data.feeViewClassId)) return;
-    this.setData({ feeViewClassId: id });
-    this._loadFee(true);
-  },
-  onFeeTap(e) {
-    const type = e.currentTarget.dataset.type; // 'class' | 'league'
-    if (getApp().track) getApp().track.action('fee_open', type);
-    const canManage = !!(type === 'class' ? this.data.feeCanManageClass : this.data.feeCanManageLeague);
-    // 2026-10-15：班费/团费卡对所有已绑定成员可点。管理人 = 管理（可增删/补图）；
-    // 其余成员 = view-only（仅查看，无法修改）。后端 getSummary 本就对所有成员返回，这里只是放开入口。
-    const fund = type === 'class' ? this.data.feeClass : this.data.feeLeague;
-    this.setData({
-      feeShow: true,
-      feeType: type,
-      feeActiveName: type === 'class' ? '班费' : '团费',
-      feeCanManage: canManage,
-      feeActive: fund,
-      // 每次点开都回到列表视图（上次停在表单视图的话，会把明细挤看不见）
-      feeView: 'list',
-      feeAmount: '',
-      feeNote: '',
-      feeImages: [],
-      feeBusy: false
-    });
-    // 点开就拉一次最新值：别人（另一位班委）刚登记过消费时，卡片数据可能还是上一次 onShow 的
-    this._loadFee(true);
-  },
-  onFeeClose() { this.setData({ feeShow: false, feeView: 'list' }); },
-  /** 列表视图 → 表单视图（点「增加消费」） */
-  onFeeAddOpen() {
-    if (!this.data.feeCanManage) return; // 仅查看：不允许进表单
-    this.setData({ feeView: 'form' });
-  },
-  /** 给「已有消费记录」补图（仅管理人；当前图数 < 9 才能补）。选图即上传追加，不进表单。 */
-  onFeeAppendTap(e) {
-    if (!this.data.feeCanManage) return;
-    const id = Number(e.currentTarget.dataset.id);
-    if (!id) return;
-    const rec = (this.data.feeActive && this.data.feeActive.records || []).find(r => Number(r.id) === id);
-    if (!rec) return;
-    const cur = (rec.images && rec.images.length) || 0;
-    const left = 9 - cur;
-    if (left <= 0) { util.toast('图片最多 9 张'); return; }
-    wx.chooseMedia({
-      count: left, mediaType: ['image'], sizeType: ['compressed'], sourceType: ['album', 'camera'],
-      success: (r) => {
-        const local = (r.tempFiles || []).map(f => f.tempFilePath).filter(Boolean).slice(0, left);
-        if (!local.length) return;
-        this._uploadAndAppend(id, local);
-      }
-    });
-  },
-  _uploadAndAppend(id, local) {
-    wx.showLoading({ title: '上传图片 0/' + local.length, mask: true });
-    let done = 0;
-    Promise.all(local.map((p, i) =>
-      request.uploadFile('fee/' + Date.now() + '-' + i + '-' + Math.floor(Math.random() * 10000) + '.jpg', p)
-        .then((fid) => { done++; wx.showLoading({ title: '上传图片 ' + done + '/' + local.length, mask: true }); return fid; })
-        .catch(() => { throw new Error('图片上传失败'); })
-    ))
-      .then((fileIds) => {
-        wx.hideLoading();
-        return api.feeAppendImages({ type: this.data.feeType, id, images: fileIds });
-      })
-      .then(() => {
-        wx.hideLoading();
-        util.toast('已补充图片');
-        this._loadFee(true); // 刷新明细，新图立即显示
-      })
-      .catch(() => { wx.hideLoading(); });
-  },
-  /** 表单视图 → 列表视图（点「返回」）；已填的内容清空，避免返回后再填出现残留 */
-  onFeeFormBack() {
-    this.setData({ feeView: 'list', feeAmount: '', feeNote: '', feeImages: [] });
-  },
-  onFeeAmountInput(e) { this.setData({ feeAmount: String(e.detail.value || '') }); },
-  onFeeNoteInput(e) { this.setData({ feeNote: String(e.detail.value || '') }); },
-  onFeePickImage() {
-    const left = 9 - this.data.feeImages.length;
-    if (left <= 0) { util.toast('图片最多 9 张'); return; }
-    wx.chooseMedia({
-      count: left, mediaType: ['image'], sizeType: ['compressed'], sourceType: ['album', 'camera'],
-      success: (r) => {
-        const add = (r.tempFiles || []).map(f => f.tempFilePath).filter(Boolean).slice(0, left);
-        if (add.length) this.setData({ feeImages: this.data.feeImages.concat(add) });
-      }
-    });
-  },
-  onFeeRemoveImage(e) {
-    const i = Number(e.currentTarget.dataset.i);
-    const arr = this.data.feeImages.slice();
-    if (i >= 0 && i < arr.length) { arr.splice(i, 1); this.setData({ feeImages: arr }); }
-  },
-  /**
-   * 预览消费凭证图（v0.7.43）：取**该条记录的全部图片**一起进原生预览器，
-   * 点任意一张即**直接打开该张**，并可左右滑动查看其余图片（无需退出重开）。
-   *
-   * 🔴 定位口径（2026-10-16 收紧，替代「靠 wx:for-index 下标」的旧写法）：
-   *    **以被点击图片自身（data-src）为准**，在整条记录的图片数组里 `indexOf` 反查下标。
-   *    data-src 是逐项绑定的（每张缩略图各自持有自己的图），不受嵌套 `wx:for` 下标命名影响；
-   *    嵌套 `wx:for` 内外两层默认都叫 `index`，一旦取错就永远定位到第一张
-   *    ——用户看到的正是「明明点第 3 张，却从第 1 张滑过去」。用图片自身反查可彻底规避。
-   *    `data-idx` 仅作兜底（反查不到时才用）。
-   * 🔴 `wx.previewImage` 的 `current` 是**图片链接字符串（不是下标）**，且必须命中 `urls`
-   *    里的某个元素，否则会静默回退到第一张。这里用「目标图换算后的链接」在 urls 里
-   *    indexOf 定位，保证 current 一定命中。
-   */
-  onFeePreviewImage(e) {
-    const ds = e.currentTarget.dataset;
-    const recId = Number(ds.id);
-    const tapped = ds.src || '';
-    const rec = ((this.data.feeActive && this.data.feeActive.records) || [])
-      .find(r => Number(r.id) === recId);
-    const imgs = (rec && rec.images && rec.images.length) ? rec.images.slice()
-      : (tapped ? [tapped] : []);
-    if (!imgs.length) return;
-    // 目标下标：优先用被点击图片在整条记录里的真实位置；查不到才退回 data-idx
-    let idx = tapped ? imgs.indexOf(tapped) : -1;
-    if (idx < 0) idx = Math.max(0, Number(ds.idx) || 0);
-    if (idx >= imgs.length) idx = imgs.length - 1;
-    const needCloud = imgs.some(u => typeof u === 'string' && u.indexOf('cloud://') === 0);
-    if (!needCloud) {
-      wx.previewImage({ urls: imgs, current: imgs[idx] });
-      return;
-    }
-    request.getTempFileURL(imgs).then((map) => {
-      const resolved = imgs.map(u => (map && map[u]) || '');
-      const urls = resolved.filter(Boolean);
-      if (!urls.length) { util.toast('图片预览失败'); return; }
-      // current 必须命中 urls：用目标图链接定位，失败再按下标夹取
-      let i = urls.indexOf(resolved[idx]);
-      if (i < 0) i = Math.min(idx, urls.length - 1);
-      wx.previewImage({ urls, current: urls[i] });
-    }).catch(() => util.toast('图片预览失败'));
-  },
-  onFeeSubmit() {
-    if (this.data.feeBusy) return;
-    const amount = Number(this.data.feeAmount);
-    if (!Number.isFinite(amount) || amount <= 0) { util.toast('请填写大于 0 的金额'); return; }
-    const localImgs = this.data.feeImages.slice();
-    this.setData({ feeBusy: true });
-    Promise.resolve()
-      .then(() => {
-        if (!localImgs.length) return [];
-        wx.showLoading({ title: '上传图片 0/' + localImgs.length, mask: true });
-        let done = 0;
-        return Promise.all(localImgs.map((p, i) =>
-          request.uploadFile('fee/' + Date.now() + '-' + i + '-' + Math.floor(Math.random() * 10000) + '.jpg', p)
-            .then((id) => { done++; wx.showLoading({ title: '上传图片 ' + done + '/' + localImgs.length, mask: true }); return id; })
-            .catch(() => { throw new Error('图片上传失败'); })
-        ));
-      })
-      .then((fileIds) => {
-        wx.hideLoading();
-        return api.feeAddExpense({ type: this.data.feeType, amount, note: this.data.feeNote.trim(), images: fileIds });
-      })
-      .then(() => {
-        wx.hideLoading();
-        util.toast('已登记消费');
-        // 提交成功回到列表视图 —— 用户要看到刚记的那条进明细了，停在表单会以为没成功
-        this.setData({ feeBusy: false, feeView: 'list', feeAmount: '', feeNote: '', feeImages: [] });
-        // force：刚写完必须立刻拉新值，不能被「2 秒内刚拉过」的去重吃掉
-        this._loadFee(true);
-      })
-      .catch(() => { wx.hideLoading(); this.setData({ feeBusy: false }); });
-  },
-  onFeeDeleteRecord(e) {
-    const id = Number(e.currentTarget.dataset.id);
-    if (!id) return;
-    wx.showModal({
-      title: '删除记录',
-      content: '删除后余额会回退，且图片会一并删除，确定吗？',
-      confirmText: '删除', confirmColor: '#F53F3F',
-      success: (r) => {
-        if (!r.confirm) return;
-        api.feeDeleteRecord({ type: this.data.feeType, id })
-          .then(() => { util.toast('已删除'); this._loadFee(true); })
-          .catch(() => {});
-      }
     });
   },
 

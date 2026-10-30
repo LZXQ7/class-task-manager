@@ -3460,7 +3460,7 @@ import_batch_item (id, batch_id, member_id, action('INSERT'|'UPDATE'), prev_name
 ### 1. 多班级系统（§43 主线）
 
 - **背景**：从单班（示例班级A）扩展为多班级；超管 / 辅导员需跨班管理；通知需支持多目标。
-- **数据模型**：新建 `class` 表（id / name / join_token / invite_code / term_start / total_weeks / bind_open / period_time / is_active）；12 张业务表（member / course / session / duty / duty_log / swap_request / leave_request / notice / notice_msg / notice_msg_target / notice_msg_read / notice_msg_delete）+ `schedule_rules` / `session_shift` 加 `class_id`（默认 1）；`schedule_publish` 主键改 `(class_id, week)`；新建 `notice_msg_class`（跨班通知目标班）。
+- **数据模型**：新建 `class` 表（id / name / join_token / invite_code / term_start / total_weeks / bind_open / period_time / is_active / **is_demo**）；12 张业务表（member / course / session / duty / duty_log / swap_request / leave_request / notice / notice_msg / notice_msg_target / notice_msg_read / notice_msg_delete）+ `schedule_rules` / `session_shift` 加 `class_id`（默认 1）；`schedule_publish` 主键改 `(class_id, week)`；新建 `notice_msg_class`（跨班通知目标班）。
 - **存量兼容**：所有存量数据 `class_id=1`；`class` 表 id=1 缺失时 `week.getConfig` 回退 `class_config`。
 - **后端**：`common/week.js`（`getConfig(pool,classId)` / `loadSessionShifts(pool,classId)`）、`common/guard.js`（`classIdOf` / `isCounselor`）；`auth` / `member` / `course` / `duty` / `export` / `schedule` / `cron-weekly` / `adjust` / `media` / `poster` 全部按 `class_id` 隔离。
 - **新增云函数**：`cloudfunctions/class`（action `list` / `detail` / `create` / `update` / `setActive`；口令 6 位随机、邀请码 `CLS26A` 序号自增，服务端保证唯一）。

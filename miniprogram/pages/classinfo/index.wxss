@@ -1,0 +1,239 @@
+/* P5 · 班级信息（框架图式层级聚合页） */
+.ci {
+  padding-bottom: 40rpx;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.ci-scroll { display: block; }
+
+/* 根节点：班级概况 */
+.ci-hero {
+  margin: 24rpx 32rpx 0;
+  padding: 32rpx;
+  background: var(--glass-bg);
+  border: 1rpx solid var(--glass-edge);
+  border-radius: 40rpx;
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ci-hero { background: rgba(255, 255, 255, 0.9); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ci-hero { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+.ci-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ci-hero-label {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #86909C;
+}
+/* 「班级管理」入口（右上角胶囊）：与子卡图标块同色系（#F0F5FF 底 + 品牌蓝字），
+   保持卡片内既有视觉刻度；深色模式与 .ci-item-ic 走同一口径。 */
+.ci-manage {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 20rpx;
+  background: var(--brand-light);
+  border-radius: 999rpx;
+}
+.ci-manage-t {
+  margin-left: 8rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  font-weight: 500;
+  color: var(--brand);
+}
+/* 教职工切班（2026-10-28；当日二次调整为弹层）
+ * 曾经是横向滚动的胶囊条 —— 超管 5 个班要滑着找、只有 2 个班时又白占一整行，
+ * 用户反馈「左右滑动不太好」。现在班名自己就是入口：右侧挂一个「切换 ⌄」小胶囊，
+ * 点开 bottom-sheet 选班（.cs-row 那套）。
+ * 颜色全走令牌（--text-2 / --bg-fill / --brand），DARK_MODE_ENABLED 打开后
+ * 不用再补一份深色块 —— 这正是当初 hero 里硬编码 #1D2129 埋下的隐患。 */
+.ci-name-row {
+  display: flex;
+  /* ⚠️ 必须是 flex-start 而不是 center：班名长达 11 个字（「示例专业A1班」），
+   * 375px 屏上会折成两行。居中会让「切换」胶囊悬在两行中间靠右的空隙里，看着像掉出来的元素；
+   * 顶部对齐后它跟在**第一行末尾**，读起来就是「这个班名可以切换」。 */
+  align-items: flex-start;
+  margin-top: 20rpx;
+}
+/* 班名可伸缩并允许降宽换行，胶囊 flex:none 保证不被挤扁 */
+.ci-name-row .ci-hero-name {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+.ci-name-switch {
+  display: flex;
+  align-items: center;
+  flex: none;
+  /* 7rpx = (60rpx 行高 − 46rpx 胶囊高) / 2，把胶囊垂直居中到班名的**第一行** */
+  margin: 7rpx 0 0 16rpx;
+  padding: 6rpx 14rpx 6rpx 18rpx;
+  background: var(--bg-fill, #F2F3F5);
+  border-radius: 999rpx;
+}
+.ci-name-switch-t {
+  margin-right: 4rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: var(--text-2, #4E5969);
+}
+/* 2026-10-28：`.ci-item-off`（切到别班时把「通知」子卡置灰）已删除 ——
+ * 通知支持按班查看后，四张子卡在哪个班都可用，没有不可用态了。 */
+
+.ci-hero-name {
+  display: block;
+  margin-top: 20rpx;
+  font-size: 44rpx;
+  line-height: 60rpx;
+  font-weight: 700;
+  color: #1D2129;
+}
+.ci-hero-stats {
+  display: flex;
+  align-items: center;
+  margin-top: 28rpx;
+}
+.ci-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.ci-stat-num {
+  font-size: 44rpx;
+  line-height: 56rpx;
+  font-weight: 700;
+  color: #1D2129;
+}
+.ci-stat-label {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #86909C;
+}
+.ci-stat-divider {
+  width: 2rpx;
+  height: 48rpx;
+  background: #F2F3F5;
+}
+
+/* 层级连线（纯视觉）：从「班级概况」向下汇入 6 个子节点的主干 */
+.ci-connector {
+  width: 2rpx;
+  height: 28rpx;
+  margin: 0 auto;
+  background: #E5E6EB;
+}
+
+/* 子节点：6 个班级模块入口 */
+.ci-list {
+  padding: 0 32rpx;
+  display: flex;
+  flex-direction: column;
+}
+.ci-item {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 32rpx;
+  margin-top: 16rpx;
+  background: var(--glass-bg);
+  border: 1rpx solid var(--glass-edge);
+  border-radius: 32rpx;
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ci-item { background: rgba(255, 255, 255, 0.9); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ci-item { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+.ci-item-ic {
+  flex-shrink: 0;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: #F0F5FF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ci-item-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+.ci-item-name {
+  font-size: 32rpx;
+  line-height: 46rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+.ci-item-sub {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #86909C;
+  /* 副标题现在可能是动态摘要（课程表：「今天 5 节 · 本周 20 节」，2026-10-28），
+     字数不定 ⇒ 单行省略，避免换行把整行卡片顶高、六张卡高度参差 */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* 未读通知角标（2026-10-27）：首页「查看通知」卡下线后，红点挂在班级信息的通知子卡上 */
+.ci-item-badge {
+  flex-shrink: 0;
+  min-width: 34rpx;
+  height: 34rpx;
+  padding: 0 10rpx;
+  margin-right: 12rpx;
+  line-height: 34rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #FFFFFF;
+  background: #F53F3F;
+  border-radius: 17rpx;
+}
+.ci-foot {
+  height: 180rpx;
+}
+
+/* ---------------- 班级选择弹层（2026-10-28） ----------------
+ * 弹层 body 自己不带左右留白（与 duty 页的 .sl-* 同一口径），这里补 32rpx。
+ * 行高 96rpx 是触控下限的稳妥值（视觉 48px），与成员页名单行同一刻度。 */
+.cs-list {
+  padding: 0 32rpx;
+}
+.cs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 96rpx;
+  padding: 0 8rpx;
+}
+/* 相邻行加分隔线：用 `+`（小程序支持），不用 `~`（真机 fatal） */
+.cs-row + .cs-row {
+  border-top: 1rpx solid var(--bg-fill, #F2F3F5);
+}
+.cs-name {
+  font-size: 30rpx;
+  line-height: 44rpx;
+  color: var(--text-1, #1D2129);
+}
+.cs-row.on .cs-name {
+  font-weight: 600;
+  color: var(--brand, #3370FF);
+}

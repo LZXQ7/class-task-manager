@@ -4,10 +4,13 @@
     "pages/timetable/index",
     "pages/duty/index",
     "pages/mine/index",
+    "pages/classinfo/index",
+    "pages/fee/index",
     "pages/bind/index",
     "pages/manual/index",
     "pages/doc/index",
     "pages/notice/index",
+    "pages/notice/publish/index",
     "pages/webview/index",
     "pages/roster/index",
     "pages/classes/index",
@@ -32,6 +35,7 @@
     "list": [
       { "pagePath": "pages/home/index", "text": "首页" },
       { "pagePath": "pages/timetable/index", "text": "课程表" },
+      { "pagePath": "pages/classinfo/index", "text": "班级信息" },
       { "pagePath": "pages/duty/index", "text": "值日" },
       { "pagePath": "pages/mine/index", "text": "我的" }
     ]

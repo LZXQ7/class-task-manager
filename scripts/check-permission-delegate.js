@@ -82,7 +82,10 @@ console.log('\n── ② 排班域（排班域路由必须声明 scheduleAuth�
 // 16（原排班域） + 5（需求 D 下半：aiSettingGet / Save / Test / Clear / Models 同属排班域）
 // ⚠️ 新增排班域路由时必须同步这个数 —— 漏声明 scheduleAuth 会让新路由裸奔，
 //    本门禁就是为此而存在的（2026-09-27 加 AI 设置 4 条时它确实翻红提醒了）。
-eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 21, 'schedule 排班域路由数');
+/* 21 → 23（2026-10-28）：新增排班岗位槽 getSlots / setSlots 两个排班域路由。
+ * 二者都是 `auth: { scheduleAuth: true }`（超管 | 本班生活委员），
+ * 与 setRules 同域 —— 谁能排班，谁就能定自己班的制度。 */
+eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 23, 'schedule 排班域路由数');
 eq(count(ADJ, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 2, 'adjust 排班域路由数');
 
 /** 派发器接线（源码入 → 失败码出） */

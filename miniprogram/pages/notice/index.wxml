@@ -3,7 +3,7 @@
 
   <!-- 非 Tab 二级页：左上角必须有返回键（show-back） -->
   <!-- sheet-open：弹层打开时隐藏返回键（会被弹层左上角透出来，详见 nav-bar 的 sheetOpen 属性） -->
-  <nav-bar title="通知" show-back="{{true}}" sheet-open="{{recycleShow || viewerShow}}" />
+  <nav-bar title="{{navTitle}}" show-back="{{true}}" sheet-open="{{recycleShow || viewerShow}}" />
 
   <!-- 微信服务通知授权入口：只在「模板上线 + 未开启 + 总开关没关」时显示，
        微信通知正常（已授权）的用户不再看到这一行 -->
@@ -12,6 +12,15 @@
     <text class="nt-tiptext">开启后，班委发布通知会同时给你的微信发一条服务通知</text>
     <view wx:if="{{remindOn}}" class="nt-tipdone">已开启</view>
     <view wx:else class="nt-tipbtn" bindtap="onRemind">开启</view>
+  </view>
+
+  <!-- 发布通知入口（2026-10-27 归位）：原挂在首页管理员卡片，首页只留「值日 / 课次 / 请假」后
+       归到通知页 —— 发通知与看通知在同一处，比在首页翻管理员卡片好找。
+       仅超管 / 班委 / 辅导员可见（canPublish，与发布页的范围口径同一套身份判定）。 -->
+  <view wx:if="{{canPublish}}" class="nt-publish card" bindtap="onNoticeOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+    <app-icon name="edit" variant="brand" size="{{36}}" />
+    <text class="nt-publish-t">发布班级通知</text>
+    <app-icon name="arrow-right" variant="gray" size="{{28}}" />
   </view>
 
   <skeleton wx:if="{{loading}}" type="card" rows="{{3}}" height="{{220}}" />
@@ -29,8 +38,8 @@
   <empty-state
     wx:elif="{{!list.length}}"
     icon="empty-box"
-    title="还没有通知"
-    desc="班委发布的通知会出现在这里"
+    title="{{viewClassName ? '这个班还没有通知' : '还没有通知'}}"
+    desc="{{viewClassName ? viewClassName + ' 的通知会显示在这里' : '班委发布的通知会出现在这里'}}"
     padding="{{140}}"
   />
 
@@ -131,11 +140,14 @@
           </view>
         </view>
 
-        <!-- 回执可见性（需求②）：仅发布人本人 / 超管能看确认人数与确认人序号。
+        <!-- 回执可见性（需求②）：仅发布人本人 / 超管 / 按班管理的辅导员能看确认人数与确认人序号。
              与「确认收到」按钮**共存**而不是互斥（旧版 wx:if/wx:elif 互斥导致看不到按钮）。
              ⚠️ 发布者本人不显示按钮（isPublisher 由后端返回）：自己发的通知不需要自己确认，
-             「已收到 x/y」的分母也已排除发布者（56 人班级 → 0/55） -->
-        <view wx:if="{{item.canSeeAck || (item.needAck && !item.acked && !item.isPublisher)}}" class="nt-foot">
+             「已收到 x/y」的分母也已排除发布者（56 人班级 → 0/55）
+             ⚠️ canAck（2026-10-28）：后端算好「我是不是这条通知的收件人」。按班管理时看到的
+                 别班通知 canAck=false → 不渲染确认按钮（辅导员不是收件人，点了也只是给自己
+                 留一行无意义回执）。`!== false` 兜底：后端未部署时字段缺失 → 退回老条件。 -->
+        <view wx:if="{{item.canSeeAck || (item.needAck && !item.acked && !item.isPublisher && item.canAck !== false)}}" class="nt-foot">
           <view wx:if="{{item.canSeeAck}}" class="nt-ackinfo">
             <text class="nt-acknum">已收到 {{item.ackText}}</text>
             <view wx:if="{{item.ackSeqPreview}}" class="nt-acklist">
@@ -143,7 +155,7 @@
               <text wx:if="{{item.ackMore}}" class="nt-ackmore">+{{item.ackMore}}</text>
             </view>
           </view>
-          <view wx:if="{{item.needAck && !item.acked && !item.isPublisher}}" class="nt-btn" data-id="{{item.id}}" bindtap="onAck">确认收到</view>
+          <view wx:if="{{item.needAck && !item.acked && !item.isPublisher && item.canAck !== false}}" class="nt-btn" data-id="{{item.id}}" bindtap="onAck">确认收到</view>
         </view>
       </view>
       </view>

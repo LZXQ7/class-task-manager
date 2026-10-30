@@ -43,6 +43,53 @@ const DAY_TEXT = ['一', '二', '三', '四', '五', '六', '日'];
  * 另外旧版直接用 `getDateOfWeekDay` 算日期，不看校历、不看临时调课，
  * 会自动给中秋节 / 国庆当天排值日，也不认「这周这节课不上」。这些现在都补齐了。
  */
+/* ---------------- 排班岗位槽（2026-10-28） ----------------
+ * ⚠️ 与 schedule 云函数的 loadSlots / slotOf **必须同口径**。
+ *    项目已有「schedule.generate / buildCleaningPlan / cron-weekly.generateWeek
+ *    三处同口径，改一处必须同步」的约定 —— 本函数是第四处。
+ *    槽位表为空 ⇒ 返回空数组 ⇒ generateWeek 完全走原逻辑，现有班级零影响。
+ */
+async function loadSlots(conn, classId) {
+  const [rows] = await conn.query(
+    "SELECT id, weekday, `period`, need_n, fixed_seq, kind, sort_order FROM duty_slot WHERE class_id = ? ORDER BY sort_order, weekday, `period`",
+    [Number(classId) || 1]
+  );
+  return rows.map(r => ({
+    id: Number(r.id),
+    weekday: Number(r.weekday),
+    /* null = 承包全天（当天所有节次共用这一批人） */
+    period: r.period === null ? null : Number(r.period),
+    needN: Math.max(1, Number(r.need_n) || 1),
+    /* 固定某人的学号序号；null = 参与轮转 */
+    fixedSeq: r.fixed_seq === null ? null : Number(r.fixed_seq),
+    kind: r.kind === 'CLEAN' ? 'CLEAN' : 'NORMAL',
+    sortOrder: Number(r.sort_order) || 0
+  }));
+}
+
+/**
+ * 给一个课次匹配槽位。匹配优先级：
+ *   ① CLEAN 课次 → 优先找 CLEAN 专用槽（大扫除单独成槽，不消耗常规轮转）
+ *   ② 精确 (星期, 节次)
+ *   ③ 同星期的「全天槽」(period = null)
+ * 都匹配不到 → null（该课次回落原逻辑，不会被吞掉）
+ *
+ * ⚠️ weekday 用 **slot.day（实际生效的星期）**，不是 session.day_of_week ——
+ *    调休 MOVE 后后者不变，用它会排到错误的那天。
+ */
+function slotOf(slots, weekday, period, kind) {
+  if (!slots || !slots.length) return null;
+  const wd = Number(weekday);
+  const pd = Number(period);
+  if (kind === 'CLEAN') {
+    const c = slots.find(x => x.kind === 'CLEAN' && x.weekday === wd && (x.period === null || x.period === pd));
+    if (c) return c;
+  }
+  return slots.find(x => x.kind !== 'CLEAN' && x.weekday === wd && x.period === pd)
+    || slots.find(x => x.kind !== 'CLEAN' && x.weekday === wd && x.period === null)
+    || null;
+}
+
 async function generateWeek(pool, wk, classId) {
   const cfg = await week.getConfig(pool, classId);
   if (wk > cfg.totalWeeks) return { skipped: true, reason: 'week overflow' };
@@ -109,6 +156,14 @@ async function generateWeek(pool, wk, classId) {
      * 与 schedule.generate / buildCleaningPlan 三处同口径，改一处必须同步另两处。 */
     const manualFilled = {};
     const seqGroupOf = new Map(roster.map(r => [r.seq, r.group === 'B' ? 'B' : 'A']));
+    /* 岗位槽模板（2026-10-28）：空数组 = 未启用槽位制，下面完全走原逻辑 */
+    const slots = await loadSlots(conn, classId);
+    /* 保洁（18:10 打扫主教室）一旦配过槽，本班保洁的排班权就**完全交给槽位**：
+     * 没配的星期一律不排，而不是回落到 duty_count 硬排 2 人（与 schedule.generate 同口径） */
+    const cleanMode = slots.some(x => x.kind === 'CLEAN');
+    /* 同一 (日期, 槽) 只取一次人 —— 一人包全天时当天每节要写同一个人，
+     * 不能每节重新轮转（那会退化成「每节换人」）。 */
+    const slotCache = new Map();
     manualRows.forEach(m => {
       const date = String(m.class_date).slice(0, 10);
       (assignedByDate[date] = assignedByDate[date] || new Set()).add(Number(m.member_id));
@@ -148,29 +203,75 @@ async function generateWeek(pool, wk, classId) {
     for (const { s, slot, classDate } of rotatePlan) {
       // 名额 = 应排人数 − 已被手动排班占用的人数；排满则整课次跳过（游标也不为它前进）
       const alreadyFilled = (manualFilled[Number(s.id)] || new Set()).size;
+      /* ── 槽位模式（2026-10-28）──
+       * 匹配到岗位槽就按槽取人，否则走原逻辑。三种制度：
+       *   全天槽(period=null) → 当天所有课次复用 slotCache 同一批人
+       *   精确槽(period=n)     → 每节各一槽，等价于原「每节换人」
+       *   固定槽(fixedSeq)     → 直接指定，不推进游标 */
+      const slotRec = slots.length ? slotOf(slots, slot.day, slot.period, s.kind) : null;
+      /* 保洁由槽位定义：配了 CLEAN 槽的班，保洁课次只认 CLEAN 槽 ——
+       * 没配到槽、或只蹭到普通课次槽（那种槽的人已经在上大课值日了），都不排。 */
+      if (s.kind === 'CLEAN' && cleanMode && (!slotRec || slotRec.kind !== 'CLEAN')) continue;
+      /* 🔴 人数口径（与 schedule.generate 逐字同口径）：
+       *   ① duty_count = 0 = 课次级显式「不排值日」（书香校园那类）—— 连槽位也不排；
+       *   ② 其余以槽位 needN 为准：duty_count 是课次级默认值（多数 2），拿它兜底会截断 needN。 */
       // duty_count=0 = 不排值日：?? 窄化让 0 保持 0（|| 1 会把 0 误当 1 排 1 人）
-      const n = Math.max(0, Number(s.duty_count ?? 1) - alreadyFilled);
+      const dc = Number(s.duty_count ?? 1);
+      const n = Math.max(0, (dc === 0 ? 0 : (slotRec ? slotRec.needN : dc)) - alreadyFilled);
       if (n <= 0) continue;
       const blocks = await loadDayBlocks(conn, classDate);
       // 取人 = 与超管手动「一键生成」完全同源（`common/schedule-core.js` 的 pickBySeq）。
       // 旧版这里的 rotationPick 已被删除（v0.7.31 轮转位置彻底改成显式游标）。
-      const picked = pickBySeq(roster, s.group_scope, n, state, {
-        avoidSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
-        busySeqs: toSeqSet(blocks.busy, seqById),
-        inBatchSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
-        avoidSameDay: !!avoidSameDay,
-        // 本周已值过日的人（含手动排班）优先不排，没人时才用
-        softSeqs: toSeqSet(assignedWeek, seqById)
-      });
-      if (picked.wrapped) roundReset = true;
-      picked.chosen.forEach(m => { assignedWeek.add(m.id); });
-      // duty_count 是统计口径（累计值日次数），每排一人 +1，须与实际 duty 行对称
-      picked.chosen.forEach(m => { m.mark += 1; });
-      if (picked.short > 0) {
-        warnings.push('周' + (DAY_TEXT[slot.day - 1] || '?') + '第' + slot.period
-          + '节候选不足（还需 ' + picked.short + ' 人）');
+      let chosenM;
+      if (slotRec) {
+        const ck = classDate + '|' + slotRec.id;
+        let people = slotCache.get(ck);
+        if (!people) {
+          if (slotRec.fixedSeq) {
+            const fm = roster.find(r => Number(r.seq) === Number(slotRec.fixedSeq));
+            people = fm ? [fm] : [];
+            if (!fm) {
+              warnings.push('周' + (DAY_TEXT[slot.day - 1] || '?')
+                + ' 的固定值日生（序号 ' + slotRec.fixedSeq + '）不在名册，本周跳过');
+            }
+          } else {
+            const p = pickBySeq(roster, s.group_scope, slotRec.needN, state, {
+              avoidSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
+              busySeqs: toSeqSet(blocks.busy, seqById),
+              inBatchSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
+              avoidSameDay: !!avoidSameDay,
+              softSeqs: toSeqSet(assignedWeek, seqById)
+            });
+            if (p.wrapped) roundReset = true;
+            if (p.short > 0) {
+              warnings.push('周' + (DAY_TEXT[slot.day - 1] || '?') + ' 岗位槽候选不足（还需 ' + p.short + ' 人）');
+            }
+            people = p.chosen;
+          }
+          slotCache.set(ck, people);
+        }
+        /* 只补本课次名额：手动排过的人已在 manualFilled 里，不能重复追加 */
+        chosenM = people.filter(m => !(manualFilled[Number(s.id)] || new Set()).has(m.id)).slice(0, n);
+      } else {
+        const picked = pickBySeq(roster, s.group_scope, n, state, {
+          avoidSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
+          busySeqs: toSeqSet(blocks.busy, seqById),
+          inBatchSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
+          avoidSameDay: !!avoidSameDay,
+          // 本周已值过日的人（含手动排班）优先不排，没人时才用
+          softSeqs: toSeqSet(assignedWeek, seqById)
+        });
+        if (picked.wrapped) roundReset = true;
+        if (picked.short > 0) {
+          warnings.push('周' + (DAY_TEXT[slot.day - 1] || '?') + '第' + slot.period
+            + '节候选不足（还需 ' + picked.short + ' 人）');
+        }
+        chosenM = picked.chosen;
       }
-      for (const m of picked.chosen) {
+      chosenM.forEach(m => { assignedWeek.add(m.id); });
+      // duty_count 是统计口径（累计值日次数），每排一人 +1，须与实际 duty 行对称
+      chosenM.forEach(m => { m.mark += 1; });
+      for (const m of chosenM) {
         try {
           const ins = await conn.query(
             `INSERT IGNORE INTO duty (class_id, session_id, week, class_date, member_id, status, source)

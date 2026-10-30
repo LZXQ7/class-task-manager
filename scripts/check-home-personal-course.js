@@ -139,6 +139,28 @@ pin('⑨ 明日星期跨周回绕（周日→1，否则永远匹配不上）', (
   need(/return \(util\.todayWeekday\(\) % 7\) \+ 1;/.test(JS), '明日星期未回绕');
 });
 
+/* ---------- ⑩ 选修课补全节次时间（2026-10-29 用户反馈：手动课显示「第x节」而非时间） ---------- */
+pin('⑩ 选修课从班级节次表补 periodTime（否则时间列退化成「第N节」）', () => {
+  const body = methodBody('_mergePersonalCourses', '_loadPersonalCourses');
+  need(/config\.periodTime/.test(body), '未读取班级 config.periodTime');
+  need(/ptMap\[/.test(body), '未按节次建时间映射（period → {start,end}）');
+  need(/periodTime:\s*[\s\S]{0,120}?start:\s*pt\.start/.test(body), '未用节次时间构造 periodTime.start');
+  need(/periodTime:\s*[\s\S]{0,120}?end:\s*pt\.end/.test(body), '未用节次时间构造 periodTime.end');
+  need(!/periodTime:\s*null\s*,?\s*\n/.test(body), 'periodTime 仍被写死为 null');
+});
+
+/* ---------- ⑪ 选修课行要有可辨识的浅蓝强调底（2026-10-29 二次反馈：要颜色区分，但别是白） ---------- */
+pin('⑪ 选修课行有可辨识的浅蓝底（不是白色 / 不是透明）', () => {
+  const m = WXSS.match(/\.course-row\.personal\s*\{([^}]*)\}/);
+  need(m, '找不到 .course-row.personal 样式');
+  const decl = m[1].match(/background(?:-color)?\s*:\s*([^;]+);/);
+  need(decl, '选修课行缺 background（需要浅蓝强调）');
+  const bg = decl[1].replace(/!important/g, '').trim();
+  const low = bg.toLowerCase();
+  need(!/^(transparent|none|inherit)$/.test(low), '选修课行需要有颜色（不能透明），实得 ' + bg);
+  need(low !== '#fff' && low !== '#ffffff' && low !== 'white' && low !== '#f7faff', '选修课行不能是白色/近白，实得 ' + bg);
+});
+
 console.log('');
 if (fails.length) {
   console.log('[FAIL] ' + fails.length + ' 项未过');

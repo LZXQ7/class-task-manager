@@ -66,6 +66,43 @@
     </view>
   </view>
 
+  <!-- 关注的学生（v0.7.17 需求⑥；2026-10-27 从首页迁入成员页）
+       首页按用户要求只留「值日 / 课次 / 请假」，这张卡是**成员的子集**、钉人按钮也在本页详情里，
+       所以归位到成员页顶部。仅辅导员可见（showPins = isCounselor，与后端 pinList / pinToggle 同口径）。
+       一行一位学生：头像 + （姓名 + 班级）+ 最新备注摘要 + 备注条数，点开直接进他的详情。 -->
+  <view wx:if="{{showPins}}" class="pin-card">
+    <view class="pin-head">
+      <text class="pin-title">关注的学生</text>
+      <text class="pin-sub">{{pins.length}}/{{pinLimit}}</text>
+    </view>
+    <block wx:if="{{pins.length}}">
+      <view
+        wx:for="{{pins}}"
+        wx:key="memberId"
+        class="pin-row"
+        data-id="{{item.memberId}}"
+        data-class-id="{{item.classId}}"
+        data-name="{{item.name}}"
+        hover-class="press-dim"
+        hover-start-time="0"
+        hover-stay-time="60"
+        bindtap="onPinTap"
+      >
+        <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{72}}" />
+        <view class="pin-info">
+          <view class="pin-line1">
+            <text class="pin-name">{{item.name}}</text>
+            <text wx:if="{{item.className}}" class="pin-class">{{item.className}}</text>
+          </view>
+          <text class="pin-note">{{item.latestNote ? item.latestNote : '还没有备注，点开可以记录'}}</text>
+        </view>
+        <text wx:if="{{item.noteCount}}" class="pin-cnt">{{item.noteCount}}</text>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+    </block>
+    <view wx:else class="pin-empty">在成员详情里点「固定到主页」，需要长期关注的学生就会出现在这里</view>
+  </view>
+
   <view wx:if="{{memberStats && (memberStats.groupA - memberStats.groupB >= 2 || memberStats.groupB - memberStats.groupA >= 2)}}" class="rb-warn">
     <notice-bar type="warning" text="两组人数相差较大，建议手动调整以保证轮转公平" />
   </view>
@@ -119,7 +156,9 @@
       </view>
       <!-- 辅导员（X 组）不展示学号（需求①）：教职工的学号只是入库占位，展示会误导 -->
       <view wx:if="{{item.groupTag === 'X'}}" class="mb-sub"><text>辅导员 · 不参与值日轮转</text></view>
-      <view wx:else class="mb-sub"><text>{{item.seq}} 号 · 值日</text><text class="cnt-num">{{item.dutyCount}}</text><text>次</text></view>
+      <!-- 只读身份（普通成员）：后端不回学号与值日次数（2026-10-28），这一行没有可显示的内容，
+           整行不出 —— 否则会显示「0 号 · 值日 次」这种半截文案 -->
+      <view wx:elif="{{!item.readOnly}}" class="mb-sub"><text>{{item.seq}} 号 · 值日</text><text class="cnt-num">{{item.dutyCount}}</text><text>次</text></view>
     </view>
     <!-- X = 教职工（辅导员）：青色「辅导员」头衔，不显示 A/B 组；其余按职位头衔显示（超管金 / 班委蓝） -->
     <view wx:if="{{item.groupTag === 'X'}}" class="mb-tag counselor">{{item.roleTag || '辅导员'}}</view>
@@ -143,8 +182,12 @@
     <view wx:if="{{mDetail}}" class="mb-detail">
       <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" label="{{true}}" label-size="{{34}}" />
       <view class="mb-detail-grid">
-        <text>{{mDetail.groupTag === 'X' ? '教职工（不参与分组与值日轮转）' : '学号 ' + mDetail.seq + ' 号'}}</text>
-        <view><text>{{mDetail.groupTag === 'X' ? '辅导员' : mDetail.groupTag + ' 组'}} · 值日</text><text class="cnt-num">{{mDetail.dutyCount}}</text><text>次</text></view>
+        <!-- 只读身份（普通成员）后端不回学号 / 值日次数 ⇒ 不拼「学号 0 号」「值日 次」这种半截文案 -->
+        <text>{{mDetail.groupTag === 'X' ? '教职工（不参与分组与值日轮转）' : (mDetail.readOnly ? '班级成员' : '学号 ' + mDetail.seq + ' 号')}}</text>
+        <view>
+          <text>{{mDetail.groupTag === 'X' ? '辅导员' : mDetail.groupTag + ' 组'}}</text>
+          <block wx:if="{{!mDetail.readOnly}}"><text> · 值日</text><text class="cnt-num">{{mDetail.dutyCount}}</text><text>次</text></block>
+        </view>
         <text wx:if="{{isSuper || isCounselor}}" class="{{mDetail.bound ? 'bound' : ''}}">微信 {{mDetail.bound ? '已绑定' : '未绑定'}}</text>
       </view>
       <view wx:if="{{mDetail.roleTag}}" class="mb-detail-role {{mDetail.roleTier}}">{{mDetail.roleTag}}<block wx:if="{{mDetail.isSuper}}"> · 可解绑账号、安排值日</block></view>

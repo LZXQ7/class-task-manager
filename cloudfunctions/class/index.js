@@ -90,7 +90,10 @@ const routes = {
       const isCounselorNow = guard.isCounselor(me);
       let sql = 'SELECT * FROM `class`';
       const args = [];
-      if (isSuperNow) {
+      if (await guard.isDemoMember(pool, ctx)) {
+        // 演示身份：仅渲染演示班列表，屏蔽真实班级（2026-10-28 演示环境隔离）
+        sql += ' WHERE is_demo = 1';
+      } else if (isSuperNow) {
         if (!payload.all) sql += ' WHERE is_active = 1';
       } else if (isCounselorNow) {
         // v0.7.16：教职工只看到自己被绑定的班级（staff_class；无映射回退主班）
@@ -115,6 +118,10 @@ const routes = {
       const pool = getPool();
       const me = ctx.member || ctx.realMember;
       const cid = Number(payload.classId) || guard.classIdOf(ctx);
+      // 演示身份：仅可查看演示班，屏蔽真实班级（2026-10-28 演示环境隔离）
+      if (await guard.isDemoMember(pool, ctx) && cid !== guard.classIdOf(ctx)) {
+        throw new BizError(40003, '演示模式仅可查看演示班级');
+      }
       if (cid !== guard.classIdOf(ctx) && !(guard.isSuper(me) || guard.isCounselor(me))) {
         throw new BizError(40003, '仅超级管理员或辅导员可查看其它班级');
       }
@@ -290,7 +297,11 @@ exports.main = async (event) => {
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
-    reviewDemo.denyDemo(ctx.member, action);   // 演示态：拦截破坏性动作（v1.0.6.4）
+    /* 演示态（生效班级为演示班，含免绑定 reviewDemo / 超管 switchDemo）：拦截破坏性动作
+       （v1.0.6.4，2026-10-29 扩展判定为「演示班」） */
+    if (await guard.isDemoMember(getPool(), ctx) && reviewDemo.isDeniedAction(action)) {
+      throw new BizError(40010, '演示模式：该操作不会真实执行');
+    }
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     if (route.auth && route.auth.needAdmin) guard.requireAdmin(ctx);
     if (route.auth && route.auth.needSuper) guard.requireSuper(ctx);

@@ -16,7 +16,7 @@ const week = require('./common/week');
 const { BizError, ok, fail } = require('./common/resp');
 
 const DAY_MS = 86400000;
-const EXPIRED_MAKEUP_DAYS = 3; // 补录窗口
+// 补录窗口天数改由 schedule_rules.makeup_days 远程配置（默认 3）。见 confirm 内读取。
 
 /**
  * 值日状态的**分桶**（唯一来源）。
@@ -85,7 +85,7 @@ const routes = {
     handler: async (payload, ctx) => {
       const me = guard.requireBind(ctx);
       const pool = getPool();
-      const classId = guard.classIdOf(ctx);
+      const classId = await guard.resolveClassId(pool, ctx, payload);
       const cfg = await week.getConfig(pool, classId);
       const periods = week.periodMap(cfg);
       const today = week.todayStr();
@@ -103,14 +103,14 @@ const routes = {
       const [clsRows] = await pool.query('SELECT name FROM `class` WHERE id = ?', [classId]);
       const className = (clsRows.length ? clsRows[0].name : '') || '';
 
-      const [myRows] = await pool.query(
-        `SELECT d.*, s.day_of_week, s.period, s.group_scope, s.kind AS sessionKind, c.name AS courseName, c.room, c.teacher
-           FROM duty d
-           JOIN session s ON s.id = d.session_id
-           JOIN course c ON c.id = s.course_id
-          WHERE d.member_id = ? AND d.class_date = ?
-          ORDER BY s.period LIMIT 1`, [me.id, today]
-      );
+        const [myRows] = await pool.query(
+          `SELECT d.*, s.day_of_week, s.period, s.group_scope, s.kind AS sessionKind, c.name AS courseName, c.room, c.teacher
+             FROM duty d
+             JOIN session s ON s.id = d.session_id
+             JOIN course c ON c.id = s.course_id
+            WHERE d.member_id = ? AND d.class_id = ? AND d.class_date = ?
+            ORDER BY s.period LIMIT 1`, [me.id, classId, today]
+        );
       let myDuty = null;
       if (myRows.length) {
         const d = myRows[0];
@@ -284,8 +284,11 @@ const routes = {
       if (!['PENDING', 'ONGOING', 'EXPIRED'].includes(eff)) throw new BizError(41001, '当前状态不可确认');
       const dateStr = String(duty.class_date).slice(0, 10);
       const today = week.todayStr();
-      if (eff === 'EXPIRED' && new Date(today + 'T00:00:00+08:00').getTime() - new Date(dateStr + 'T00:00:00+08:00').getTime() > EXPIRED_MAKEUP_DAYS * DAY_MS) {
-        throw new BizError(40007, '已超过可补录时间');
+      // 补录窗口天数：远程配置 schedule_rules.makeup_days（默认 3），超管后台可调，免代码改。
+      const [[mdRow]] = await pool.query('SELECT makeup_days FROM schedule_rules WHERE class_id = ?', [classId]);
+      const makeupDays = (mdRow && Number(mdRow.makeup_days) >= 0) ? Number(mdRow.makeup_days) : 3;
+      if (eff === 'EXPIRED' && new Date(today + 'T00:00:00+08:00').getTime() - new Date(dateStr + 'T00:00:00+08:00').getTime() > makeupDays * DAY_MS) {
+        throw new BizError(40007, '已超过可补录时间（' + makeupDays + ' 天内可补录）');
       }
       await pool.query("UPDATE duty SET status = 'DONE', done_at = ? WHERE id = ?", [week.nowStamp(), dutyId]);
       await pool.query(

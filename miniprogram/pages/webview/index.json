@@ -1,4 +1,7 @@
 {
   "navigationStyle": "default",
-  "navigationBarTitleText": "在线文档"
+  "navigationBarTitleText": "在线文档",
+  "usingComponents": {
+    "app-icon": "/components/app-icon/index"
+  }
 }

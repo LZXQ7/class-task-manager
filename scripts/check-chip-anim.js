@@ -74,10 +74,12 @@ console.log('\n── ② 每一族多选标签：挂了 class + 给了变宽目
 
 /** 全站的多选 / 选择类标签。kind: grow = 真的变宽挤开邻项；pop = 固定宽，只顶起 */
 const CHIPS = [
-  { page: 'home', cls: 'np-cls', kind: 'grow', what: '发布通知 · 发送班级' },
-  { page: 'home', cls: 'np-chip', kind: 'grow', what: '发布通知 · 按职位' },
-  { page: 'home', cls: 'np-abtn', kind: 'grow', what: '发布通知 · A/B 组一键选' },
-  { page: 'home', cls: 'np-cell', kind: 'pop', what: '发布通知 · 成员网格' },
+  // ⚠️ 2026-10-27 归位：发布通知从首页弹层搬到 pages/notice/publish（整页表单），
+  //    page 字段要跟着走，否则「在 wxml 里有使用」永远查不到（0 处 → 假红）。
+  { page: 'notice/publish', cls: 'np-cls', kind: 'grow', what: '发布通知 · 发送班级' },
+  { page: 'notice/publish', cls: 'np-chip', kind: 'grow', what: '发布通知 · 按职位' },
+  { page: 'notice/publish', cls: 'np-abtn', kind: 'grow', what: '发布通知 · A/B 组一键选' },
+  { page: 'notice/publish', cls: 'np-cell', kind: 'pop', what: '发布通知 · 成员网格' },
   { page: 'roster', cls: 'mb-chip', kind: 'grow', what: '名册 · 全班/仅班委筛选' },
   { page: 'timetable', cls: 'f-chip', kind: 'grow', what: '课表表单 · 分组/星期/节次/周次/调课' },
   { page: 'timetable', cls: 'wk-chip', kind: 'pop', what: '课表 · 周次选择' }
@@ -105,7 +107,10 @@ function occurrences(wxml, cls) {
 
 CHIPS.forEach((c) => {
   const wxml = read('pages/' + c.page + '/index.wxml');
-  const wxss = read('pages/' + c.page + '/index.wxss');
+  // ⚠️ .np-* 已于 2026-10-27 提升为**全局**（app.wxss，班费页 / 发布页共用）：
+  //    只查页面 wxss 会找不到定义 → padding 取不到值 → 假红。
+  //    拼接顺序 = 页面在前、app 在后（同特异性**页面胜出**，与小程序真实的层叠顺序一致）。
+  const wxss = read('pages/' + c.page + '/index.wxss') + '\n' + read('app.wxss');
   const occ = occurrences(wxml, c.cls);
   chk(occ.length > 0, c.page + ' · .' + c.cls + '（' + c.what + '）在 wxml 里有使用（' + occ.length + ' 处）');
   const missing = occ.filter((rest) => !/\bchip-motion\b/.test(rest));

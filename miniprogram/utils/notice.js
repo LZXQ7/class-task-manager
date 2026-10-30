@@ -147,13 +147,44 @@ function slot() {
   const app = typeof getApp === 'function' ? getApp() : null;
   if (!app) return null;
   if (!app.globalData) app.globalData = {};
-  if (!app.globalData.noticeCache) app.globalData.noticeCache = { list: null, at: 0 };
+  if (!app.globalData.noticeCache) app.globalData.noticeCache = { list: null, at: 0, byClass: {} };
+  // 老版本写下的对象没有 byClass（热更新时内存里的老对象还在）→ 补上，别让下面取 undefined 崩
+  if (!app.globalData.noticeCache.byClass) app.globalData.noticeCache.byClass = {};
   return app.globalData.noticeCache;
 }
 
-/** 写入缓存（存**原始行**，视图模型每次现算，避免把派生字段也缓存下来） */
-function write(rawList) {
+/**
+ * 取某个班对应的缓存槽（2026-10-28）。
+ * classId = 0 → 全局槽（= 「我可见的全部通知」，首页角标读的就是它）；
+ * classId > 0 → 该班的独立槽（从班级信息页按班进通知页时用）。
+ *
+ * ⚠️ 为什么必须分开：按班看时列表只有该班的通知，写进全局槽会把首页角标的
+ *    计数口径污染成「上一个看过的班」；反过来，全局列表（可能含多个班）也不能
+ *    拿来当某个班的列表先渲染 —— 那就是「切了班却看到别的班通知」。
+ */
+function slotOf(classId, create) {
   const s = slot();
+  if (!s) return null;
+  const key = Number(classId) || 0;
+  if (!key) return s;
+  if (!s.byClass[key] && create) s.byClass[key] = { list: null, at: 0 };
+  return s.byClass[key];
+}
+
+/** 对所有已有内容的槽跑一遍（删除 / 确认后要同步每一份缓存） */
+function eachSlot(fn) {
+  const s = slot();
+  if (!s) return;
+  if (s.list) fn(s);
+  Object.keys(s.byClass || {}).forEach((k) => {
+    const one = s.byClass[k];
+    if (one && one.list) fn(one);
+  });
+}
+
+/** 写入缓存（存**原始行**，视图模型每次现算，避免把派生字段也缓存下来） */
+function write(rawList, classId) {
+  const s = slotOf(classId, true);
   if (!s) return;
   s.list = rawList || [];
   s.at = Date.now();
@@ -161,10 +192,10 @@ function write(rawList) {
 
 /**
  * 取缓存里的原始行；没有、或超过 maxAgeMs（默认 FRESH_MS）则返回 null。
- * 传 0 表示不限时间（只判有没有）。
+ * 传 0 表示不限时间（只判有没有）。第二个参数是班级视角的 classId（0 = 全局）。
  */
-function read(maxAgeMs) {
-  const s = slot();
+function read(maxAgeMs, classId) {
+  const s = slotOf(classId, false);
   if (!s || !s.list) return null;
   const maxAge = maxAgeMs === undefined ? FRESH_MS : maxAgeMs;
   if (maxAge > 0 && Date.now() - s.at > maxAge) return null;
@@ -173,31 +204,34 @@ function read(maxAgeMs) {
 
 /** 确认收到之后就地更新缓存里那一行，避免返回列表页时角标又跳回去 */
 function patchAcked(noticeId) {
-  const s = slot();
-  if (!s || !s.list) return;
-  s.list = s.list.map(x => (x.id === noticeId ? Object.assign({}, x, {
-    acked: true,
-    ackCount: (Number(x.ackCount) || 0) + 1
-  }) : x));
+  eachSlot((s) => {
+    s.list = s.list.map(x => (x.id === noticeId ? Object.assign({}, x, {
+      acked: true,
+      ackCount: (Number(x.ackCount) || 0) + 1,
+      canAck: false
+    }) : x));
+  });
 }
 
 /** 从缓存里移除一条（删除自己收到的通知后调用，避免返回列表页它又冒出来） */
 function removeFromCache(noticeId) {
-  const s = slot();
-  if (!s || !s.list) return;
-  s.list = s.list.filter(x => x.id !== noticeId);
+  eachSlot((s) => {
+    s.list = s.list.filter(x => x.id !== noticeId);
+  });
 }
 
 /**
  * 清空缓存（v0.7.16 需求④）：发布通知的一端在发布成功后调用 ——
  * 下一次任何人 onShow / 进通知页都会强制重拉，配合各页角标的 SWR 刷新，
  * 把「通知到了但红点不动」的感知延迟压到一次切页以内。
+ * 发布到任意班都可能影响任意槽，所以**所有槽一起清**。
  */
 function invalidate() {
   const s = slot();
   if (!s) return;
   s.list = null;
   s.at = 0;
+  s.byClass = {};
 }
 
 module.exports = {

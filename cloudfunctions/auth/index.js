@@ -17,7 +17,20 @@ const { BizError, ok, fail } = require('./common/resp');
 /* 测试账号唯一真源（见 common/test-account.js）。
  * ⚠️ auth 是**唯一**允许出现测试账号的地方 —— 登录身份解析 + 「切换测试账号」调试入口。
  *    任何人员列表都不许在这里出现（由 scripts/check-test-account-hidden.js 兜住）。 */
-const { isTestNo, IS_TEST } = require('./common/test-account');
+const { isTestNo } = require('./common/test-account');
+
+/* 演示班 id（2026-10-28）：体验入口开启后，体验者凭随机口令进入**该班**（全虚拟数据）。
+ * 之前体验入口绑的是「超管当前班」（真实班 示例班级A），体验者看到的是真实数据；
+ * 现在锁定演示班 104，避免污染真实班级、且恰好满足「进入即见虚拟数据」的需求。 */
+const DEMO_CLASS_ID = 104;
+
+/**
+ * 参赛临时免口令通道（2026-10-28）：默认开启，供评委 / 第一个使用者**无需口令**一键进入
+ * 演示班 104（全虚拟测试数据，不含任何真实学生信息）。
+ * ⚠️ 仅为参赛评审便利临时开放 —— 赛后设为 `false` 并重新部署 `auth` 云函数即可彻底关闭，
+ *    不留后门。演示班 104 与真实班级完全隔离，体验者全程只见虚拟数据。
+ */
+const DEMO_QUICK_OPEN = true;
 
 const TOKEN_MAX_FAIL = 5;  // 口令错误 5 次锁 10 分钟
 const TOKEN_LOCK_MIN = 10;
@@ -198,6 +211,9 @@ const routes = {
         bound: !!m,
         // 超管「切换测试账号」模拟态标记：true 时前端显示「恢复本人」入口
         switched: !!ctx.impersonated,
+        // 演示态（体验版 / 免绑定预览）标记：true 时前端不显示「模拟中」横幅、按钮变为「切换正式版」。
+        // 判定口径与 guard 一致：生效身份 is_review_demo 或所属班级为演示班（2026-10-29）。
+        demo: await guard.isDemoMember(pool, ctx),
         role: m ? m.role : null,
         classId,
         member: m ? {
@@ -424,18 +440,27 @@ const routes = {
     handler: async (payload, ctx) => {
       const pool = getPool();
       await assertNotLocked(pool, ctx.openid);
-      const row = await reviewDemoRow(pool);
-      if (!row) throw new BizError(40009, '体验入口未开放');
-      const code = String(payload.code || '').trim();
-      if (!safeEqual(code, String(row.review_demo_code || '').trim())) {
-        await logFail(pool, ctx.openid, 'review', '');
-        const fails = await recordFail(pool, ctx.openid);
-        if (fails >= BIND_MAX_FAIL) await lockFor(pool, ctx.openid, BIND_LOCK_MIN);
-        throw new BizError(40004, '体验口令不正确');
+      /*
+       * 参赛临时免口令通道（2026-10-28）：payload.quick 且 DEMO_QUICK_OPEN 开启时，
+       * 跳过口令校验与 `review_demo_on` 开关门控，直接绑定演示班 104 超管。
+       * 仍保留「演示身份是共享的、被占用直接顶掉」与「绝顶真人不自动解绑」的既有安全约束。
+       * 非 quick 路径（原有审核体验入口，凭口令）保持原逻辑不变。
+       */
+      const quick = !!payload.quick && DEMO_QUICK_OPEN;
+      if (!quick) {
+        const row = await reviewDemoRow(pool);
+        if (!row) throw new BizError(40009, '体验入口未开放');
+        const code = String(payload.code || '').trim();
+        if (!safeEqual(code, String(row.review_demo_code || '').trim())) {
+          await logFail(pool, ctx.openid, 'review', '');
+          const fails = await recordFail(pool, ctx.openid);
+          if (fails >= BIND_MAX_FAIL) await lockFor(pool, ctx.openid, BIND_LOCK_MIN);
+          throw new BizError(40004, '体验口令不正确');
+        }
       }
       const [rows] = await pool.query(
         `SELECT id, name, class_id FROM member
-          WHERE ${IS_TEST()} AND role = 'ADMIN' AND is_super = 1 AND status <> 'DISABLED'
+          WHERE class_id = ${DEMO_CLASS_ID} AND role = 'ADMIN' AND is_super = 1 AND status <> 'DISABLED'
           ORDER BY id LIMIT 1`
       );
       const t = rows[0];
@@ -453,12 +478,19 @@ const routes = {
         'UPDATE member SET openid = NULL WHERE id = ? AND openid IS NOT NULL AND openid <> ?',
         [t.id, ctx.openid]
       );
-      // 绑定成功即打「演示态」标记（v1.0.6.4）：此后该身份调用破坏性动作会被
-      // common/review-demo 的 denyDemo 拦下（抛 40010）。关闭脚本会把它与 openid 一起清零。
-      await pool.query('UPDATE member SET openid = ?, bind_time = NOW(), is_review_demo = 1 WHERE id = ?', [ctx.openid, t.id]);
+      /*
+       * 🔴 免绑定体验（2026-10-29）：不再「真绑定」——
+       *   改为与 switchDemo 完全一致的 impersonation 表映射，不写 openid、不置 is_review_demo、
+       *   绝不顶掉 / 解绑真实账号。演示态判定改由 guard.isDemoMember（生效班级 = 演示班）承担，
+       *   关闭 / 退出即清 impersonation，用户回到未绑定态（落回绑定页），满足「体验版无需绑定」。
+       */
+      await pool.query(
+        'INSERT INTO impersonation (openid, member_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE member_id = VALUES(member_id)',
+        [ctx.openid, t.id]
+      );
       await clearFails(pool, ctx.openid);
       console.log(JSON.stringify({ fn: 'auth', action: 'reviewDemo', memberId: Number(t.id), demo: true }));
-      return { memberId: Number(t.id), name: t.name, demo: true };
+      return { switched: true, memberId: Number(t.id), name: t.name, demo: true };
     }
   },
 
@@ -519,9 +551,9 @@ const routes = {
         console.log(JSON.stringify({ fn: 'auth', action: 'reviewDemoSet', on: false, by: ctx.member.id }));
         return { on: false, code: '' };
       }
-      // 先自检再动手：拿不到班级就别踢人、也别清表（否则会留下「人已下线但后门还开着」的中间态）
-      const classId = Number(ctx.member && ctx.member.class_id) || 0;
-      if (!classId) throw new BizError(40009, '无法确定所属班级');
+      // 先自检再动手：体验入口锁定演示班 104（全虚拟数据），
+      // 不再绑「超管当前班」，否则体验者进去看到的是真实班级的数据。
+      const classId = DEMO_CLASS_ID;
       const code = newReviewCode();
       await kickDemo();
       await closeAll();
@@ -567,15 +599,25 @@ const routes = {
   switchAccount: {
     auth: null,
     handler: async (payload, ctx) => {
-      const me = ctx.realMember;
-      if (!me || !guard.isSuper(me)) throw new BizError(40003, '仅超级管理员可切换测试账号');
       const memberId = Number(payload.memberId || 0);
       const pool = getPool();
+      /*
+       * 恢复本人 / 退出演示（memberId=0）：**任何人**都可清自己这一行 ——
+       * 该操作只会撤销「映射到别人」的模拟身份，绝不授予任何权限，故无需超管鉴权。
+       * 🔴 这条分支必须放在 realMember 校验**之前**：免绑定体验（reviewDemo）的调用者
+       *   realMember 为空（openid 未真绑定），若先判 super 会直接 40003 ⇒ 进退不出体验版（2026-10-29）。
+       */
       if (!memberId) {
         await pool.query('DELETE FROM impersonation WHERE openid = ?', [ctx.openid]);
-        console.log(JSON.stringify({ fn: 'auth', action: 'switchAccount', back: true, member: me.id }));
+        /* 自愈（2026-10-29）：10-28 之前的 reviewDemo 曾「真绑定」openid 到演示班 104（is_review_demo=1）。
+           这类历史污染点「切换正式版」时一并清掉 —— 只命中「绑到本 openid 且被标记为演示身份」的行，
+           真实学生（is_review_demo=0）绝不会被波及，也绝不改任何人的真实绑定。 */
+        await pool.query('UPDATE member SET openid = NULL, is_review_demo = 0 WHERE openid = ? AND is_review_demo = 1', [ctx.openid]);
+        console.log(JSON.stringify({ fn: 'auth', action: 'switchAccount', back: true }));
         return { switched: false };
       }
+      const me = ctx.realMember;
+      if (!me || !guard.isSuper(me)) throw new BizError(40003, '仅超级管理员可切换测试账号');
       const [rows] = await pool.query('SELECT * FROM member WHERE id = ? LIMIT 1', [memberId]);
       const t = rows[0];
       if (!t) throw new BizError(41001, '目标账号不存在');
@@ -587,6 +629,38 @@ const routes = {
       );
       console.log(JSON.stringify({ fn: 'auth', action: 'switchAccount', from: me.id, to: memberId }));
       return { switched: true, memberId, name: t.name };
+    }
+  },
+
+  /**
+   * 超管「切换体验版」（参赛临时便利，2026-10-28）：从「我的 → 更多」一键 impersonate 到
+   * 演示班 104 超管（全虚拟数据），**无需第二账号、不解绑真实身份**。
+   * 复用与「切换测试账号」完全相同的 impersonation 表 —— 顶部「恢复本人」横幅与恢复动作
+   * 自动生效（guard.getContext 按 impersonation 映射生效身份），无需另写恢复逻辑。
+   * 与 reviewDemo 的本质区别：reviewDemo 是**真绑定** openid 到 104 超管、且受「已绑定真人即报错(40006)」
+   *   铁律约束（给未绑定的评委用）；本动作只改生效身份映射，超管随时可一键恢复本人，
+   *   不会顶掉 / 解绑真实账号。
+   * ⚠️ 仅超管可触发；演示班 104 与真实班级完全隔离，体验者全程只见虚拟数据。
+   */
+  switchDemo: {
+    auth: null,
+    handler: async (payload, ctx) => {
+      const me = ctx.realMember;
+      if (!me || !guard.isSuper(me)) throw new BizError(40003, '仅超级管理员可切换体验版');
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT id, name, class_id FROM member
+          WHERE class_id = ${DEMO_CLASS_ID} AND role = 'ADMIN' AND is_super = 1 AND status <> 'DISABLED'
+          ORDER BY id LIMIT 1`
+      );
+      const t = rows[0];
+      if (!t) throw new BizError(40009, '演示账号未就绪，请联系管理员');
+      await pool.query(
+        'INSERT INTO impersonation (openid, member_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE member_id = VALUES(member_id)',
+        [ctx.openid, t.id]
+      );
+      console.log(JSON.stringify({ fn: 'auth', action: 'switchDemo', from: me.id, to: t.id }));
+      return { switched: true, memberId: t.id, name: t.name, demo: true };
     }
   },
 
@@ -634,7 +708,11 @@ exports.main = async (event) => {
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
-    reviewDemo.denyDemo(ctx.member, action);   // 演示态：拦截破坏性动作（v1.0.6.4）
+    /* 演示态（生效班级为演示班，含免绑定 reviewDemo / 超管 switchDemo）：拦截破坏性动作
+       （v1.0.6.4，2026-10-29 扩展判定为「演示班」；原 is_review_demo 列已不再由 reviewDemo 写入） */
+    if (await guard.isDemoMember(getPool(), ctx) && reviewDemo.isDeniedAction(action)) {
+      throw new BizError(40010, '演示模式：该操作不会真实执行');
+    }
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     if (route.auth && route.auth.needAdmin) guard.requireAdmin(ctx);
     if (route.auth && route.auth.needSuper) guard.requireSuper(ctx);

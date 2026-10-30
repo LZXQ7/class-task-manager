@@ -8,6 +8,7 @@
  *   submit   提交作业（覆盖式重交；截止后仅被打回者可交）
  *   review   批量批阅（多选标记 DONE / REJECT，REJECT 即打回）
  *   delete   删除作业（侧滑删除；仅发布者本人或超管，级联删记录与云存储文件）
+ *   feed     首页顶部「提交播报」数据源（2026-10-28）：最近 24h 谁交了哪份作业
  *   purge    清理截止满 N 天的文件实体（由 cron-weekly 定时调用）
  *
  * 🔴 存储铁律（个人版云存储仅 2GB）：
@@ -505,13 +506,77 @@ async function del(payload, ctx) {
   return { id: hwId, files: fileIds.length };
 }
 
+/* ============================================================
+ * 首页「提交播报」（2026-10-28 用户需求）
+ * ============================================================
+ * 背景：首页顶部原来是远程配置下发的一条静态欢迎语（app_config.homeBanner），
+ *      天天同一句话，零信息量。改为「作业动态」—— 有同学交了作业就在那行
+ *      滚动播一遍「张三 提交了《XXX》」，播完自动收起，等下一次新提交再出现。
+ *
+ * 为什么只给能看名单的角色：播报的内容就是「谁交了」，属于提交名单信息。
+ *   普通成员在 homework.detail 里**看不到别人的提交状态**（isPrivileged 之外
+ *   只回自己那一行），首页把同样的信息播出来等于绕过那道权限。
+ *   所以 committee / super / counselor 才有播报；普通成员静默拿空数组。
+ *   ⚠️ 静默而不是抛 403：首页是首屏，多一个错误态比少一条播报糟得多。
+ *
+ * 时间窗口 24h + 最多 6 条：播报是「刚刚发生了什么」，不是历史回顾；
+ *   积压十几条会让人在首页站着等半分钟。
+ */
+const FEED_HOURS = 24;
+const FEED_MAX = 6;
+
+async function feed(payload, ctx) {
+  guard.requireBind(ctx);
+  const m = ctx.member;
+  const role = roleOf(m);
+  if (role !== 'committee' && role !== 'super' && role !== 'counselor') {
+    return { list: [], now: Math.floor(Date.now() / 1000) };
+  }
+  const pool = getPool();
+  const classId = await guard.resolveClassId(pool, ctx, payload);
+
+  /* 「最近动作时间」= GREATEST(submitted_at, updated_at)：
+   * 首次提交只改 submitted_at，重交走 ON DUPLICATE KEY UPDATE 只刷 updated_at，
+   * 只认 submitted_at 会让「被打回后重交」不播（那恰恰是最该播的一次）。 */
+  const [rows] = await pool.query(
+    `SELECT s.id, s.member_id, s.homework_id,
+            m.name AS memberName, h.title AS hwTitle,
+            UNIX_TIMESTAMP(GREATEST(s.submitted_at, s.updated_at)) AS actAt
+       FROM homework_submit s
+       JOIN member m ON m.id = s.member_id
+       JOIN homework h ON h.id = s.homework_id
+      WHERE s.class_id = ?
+        AND ` + NOT_TEST('m') + `
+        AND GREATEST(s.submitted_at, s.updated_at) >= DATE_SUB(NOW(), INTERVAL ? HOUR)
+      ORDER BY actAt DESC, s.id DESC
+      LIMIT ?`,
+    [classId, FEED_HOURS, FEED_MAX]
+  );
+
+  return {
+    list: rows.map(x => ({
+      id: Number(x.id) || 0,
+      memberId: Number(x.member_id) || 0,
+      memberName: String(x.memberName || ''),
+      homeworkId: Number(x.homework_id) || 0,
+      // 标题只用于展示，超长由前端单行截断（varchar(64) 最长也就两行）
+      homeworkTitle: String(x.hwTitle || ''),
+      /* at = 绝对秒（UNIX_TIMESTAMP 与 Math.floor(Date.now()/1000) 同一基准，
+       * 不受服务器 +08:00 墙钟影响）—— 前端拿它当「已播到哪」的游标。 */
+      at: Number(x.actAt) || 0
+    })),
+    now: Math.floor(Date.now() / 1000)
+  };
+}
+
 const routes = {
   publish: { auth: { needBind: true }, handler: publish },
   list: { auth: { needBind: true }, handler: list },
   detail: { auth: { needBind: true }, handler: detail },
   submit: { auth: { needBind: true }, handler: submit },
   review: { auth: { needBind: true }, handler: review },
-  delete: { auth: { needBind: true }, handler: del }
+  delete: { auth: { needBind: true }, handler: del },
+  feed: { auth: { needBind: true }, handler: feed }
 };
 
 exports.main = async (event) => {

@@ -132,7 +132,8 @@
     audit:     { title: '操作审计', render: renderAudit },
     leave:     { title: '请假',     render: renderLeave },
     binding:   { title: '绑定',     render: renderBinding },
-    usage:     { title: '使用统计', render: renderUsage }
+    usage:     { title: '使用统计', render: renderUsage },
+    rules:     { title: '排班规则', render: renderRules }
   };
 
   /* ---------------- 刷新后恢复现场（2026-10-18 用户要求） ----------------
@@ -933,9 +934,11 @@
           '</tr></thead><tbody>' +
           rows.map(function (r) {
             return '<tr>' +
-              '<td>' + esc(r.name) +
-              ' <span class="muted-note">' + esc(r.studentNo || '') +
-              (r.groupTag && r.groupTag !== 'X' ? ' · ' + esc(r.groupTag) + ' 组' : '') + '</span></td>' +
+              '<td class="td-member">' +
+              '<div class="m-name">' + esc(r.name) + '</div>' +
+              '<div class="m-sub">' + esc(r.studentNo || '') +
+              (r.groupTag && r.groupTag !== 'X' ? ' · ' + esc(r.groupTag) + ' 组' : '') + '</div>' +
+              '</td>' +
               '<td>' + esc(String(r.classId)) + '</td>' +
               '<td>' + esc(r.startDate) + (r.startDate !== r.endDate ? ' ~ ' + esc(r.endDate) : '') + '</td>' +
               '<td>' + leaveTimeText(r.startTime, r.endTime) + '</td>' +
@@ -1333,6 +1336,49 @@
     });
   }
 
+  /* ---------------- 排班规则（远程配置入口，改它不用重新发版 / 送审小程序） ---------------- */
+  var WEEKDAY_TEXT = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  function renderRules(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+    api('/api/schedule-rules?classId=' + state.classId).then(function (d) {
+      if (!d.ok) { host.innerHTML = errHtml(d); return; }
+      var r = d.data || {};
+      var wdOpts = WEEKDAY_TEXT.map(function (t, i) {
+        return '<option value="' + i + '"' + (Number(r.cronWeekday) === i ? ' selected' : '') + '>' + t + '</option>';
+      }).join('');
+      host.innerHTML =
+        '<div class="card">' +
+        '<div class="card-hd">排班规则 · 本班（改这里不用重新发版 / 送审小程序）</div>' +
+        '<div style="padding:16px 16px 4px">' +
+        '<div class="muted-note" style="padding:0 0 14px">下面这些参数在一键排班、定时自动排班、补录时都会实时读取；改完点保存即刻生效，无需改代码。</div>' +
+        fld('补录窗口（天）', '<input type="number" id="r-makeup" min="0" max="60" value="' + (r.makeupDays === 0 ? 0 : (Number(r.makeupDays) || 3)) + '"><div class="muted-note" style="padding:6px 0 0">值日过期后多少天内仍可补录「完成」。原本写死 3 天。</div>') +
+        fld('同一人同一天不重复排', '<select id="r-avoid"><option value="1"' + (r.avoidSameDay ? ' selected' : '') + '>开启</option><option value="0"' + (!r.avoidSameDay ? ' selected' : '') + '>关闭</option></select><div class="muted-note" style="padding:6px 0 0">开启后同一天多节课只给同一人排一次。</div>') +
+        fld('定时自动排班', '<select id="r-cron"><option value="1"' + (r.cronEnabled ? ' selected' : '') + '>开启</option><option value="0"' + (!r.cronEnabled ? ' selected' : '') + '>关闭</option></select><div class="muted-note" style="padding:6px 0 0">每周到点自动生成下周值日。</div>') +
+        fld('自动排班 · 周几', '<select id="r-wd">' + wdOpts + '</select>') +
+        fld('自动排班 · 几点', '<input type="number" id="r-hr" min="0" max="23" value="' + (Number(r.cronHour) || 20) + '">') +
+        '<div style="padding:2px 0 16px"><button class="btn btn-primary" id="r-save">保存规则</button></div>' +
+        '</div></div>' +
+        '<div class="card muted-note">' +
+        '<strong>另外两处也在后台改、同样无需送审：</strong><br>' +
+        '· <strong>谁不参与值日</strong> → 到「成员」页编辑该成员，把「不排值日」设为<strong>是</strong>（写 member.duty_off，一键排班与定时排班都会自动跳过，且不受轮转影响）。<br>' +
+        '· <strong>保洁排第几节</strong> → 到「课程表」页编辑保洁课次（kind=CLEAN）的节次即可，算法按课表顺序排，不是写死的。' +
+        '</div>';
+      $('#r-save', host).onclick = function () {
+        var body = {
+          classId: state.classId,
+          makeupDays: Number($('#r-makeup', host).value),
+          avoidSameDay: $('#r-avoid', host).value === '1',
+          cronEnabled: $('#r-cron', host).value === '1',
+          cronWeekday: Number($('#r-wd', host).value),
+          cronHour: Number($('#r-hr', host).value)
+        };
+        api('/api/schedule-rules', { method: 'POST', body: body }).then(function (res) {
+          toast(res.ok ? '已保存，即刻生效' : res.errMsg, res.ok ? 'ok' : 'err');
+        });
+      };
+    });
+  }
+
   function openPwDialog(id) {
     var dlg = document.createElement('div');
     dlg.className = 'dlg-mask';
@@ -1402,8 +1448,11 @@
     roster: '名册', notice: '通知', bind: '班级绑定', webview: '网页', doc: '文档',
     fee_open: '班费/团费', notice_open: '打开通知', notice_publish: '发布通知',
     homework_open: '打开作业',
+    /* 2026-10-28：首页「作业提交播报」被点开（跳作业页）。
+     * 缺这条映射统计页会裸奔成 home_feed_tap，门禁 check-admin-web 会判死。 */
+    home_feed_tap: '点开作业播报',
     class_open: '打开班级', roster_open: '打开名册', leave_open: '打开请假',
-    about: '关于', switch_account: '切换账号'
+    about: '关于', switch_account: '切换账号', switch_demo: '切换体验版'
   };
   /** 事件显示名：fee_open 再按 ref（class|league）细分「班费」「团费」 */
   function eventLabel(r) {
