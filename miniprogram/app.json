@@ -14,8 +14,7 @@
     "pages/roster/index",
     "pages/classes/index",
     "pages/homework/index",
-    "pages/homework/detail",
-    "pages/homework/publish"
+    "pages/homework/detail"
   ],
   "window": {
     "navigationStyle": "custom",

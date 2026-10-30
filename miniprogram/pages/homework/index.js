@@ -61,10 +61,6 @@ Page({
     return Object.assign(p, extra || {});
   },
 
-  onPublish() {
-    wx.navigateTo({ url: '/pages/homework/publish?classId=' + this.data.classId });
-  },
-
   onOpen(e) {
     const id = Number(e.currentTarget.dataset.id);
     if (!id) return;

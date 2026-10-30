@@ -64,11 +64,4 @@
 
   <view style="height:40rpx"></view>
 
-  <!-- 底部「发布作业」入口（仅班委/超管 canReview 可见；固定悬浮，列表留白已避让，见 index.js onPublish） -->
-  <view class="hw-publish" wx:if="{{canReview}}">
-    <view class="btn" hover-class="btn-hover" bindtap="onPublish">
-      <app-icon class="hw-pub-ico" name="plus" variant="white" size="{{32}}" />
-      <text>发布作业</text>
-    </view>
-  </view>
 </view>
