@@ -715,20 +715,6 @@ Page({
     wx.setClipboardData({ data: url, success: () => util.toast('已复制链接，可在浏览器打开') });
   },
 
-  /**
-   * 打开发布通知（2026-10-27 归位）：入口从首页管理员卡片搬到本页，
-   * 表单本身迁成独立页 pages/notice/publish（整页表单，走系统转场）。
-   */
-  onNoticeOpen() {
-    const app = getApp();
-    if (app && app.track) app.track.action('notice_publish');
-    /* 按班查看时把班带进发布页（2026-10-28）：在 2601 的通知页点「发布」，
-     * 原来会默认发到自己的主班（示例班级A）—— 看起来发成功了，其实发错班。
-     * 发布页读 ?classId= 把它预选成「发送班级」。 */
-    const url = '/pages/notice/publish/index' + (this._viewClassId ? '?classId=' + this._viewClassId : '');
-    wx.navigateTo({ url });
-  },
-
   /** 开启微信服务通知（一次性订阅，点一次得 1 条额度） */
   onRemind() {
     if (this.data.remindOn) { util.toast('已开启'); return; }

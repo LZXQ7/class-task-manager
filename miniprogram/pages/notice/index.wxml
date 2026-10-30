@@ -14,15 +14,6 @@
     <view wx:else class="nt-tipbtn" bindtap="onRemind">开启</view>
   </view>
 
-  <!-- 发布通知入口（2026-10-27 归位）：原挂在首页管理员卡片，首页只留「值日 / 课次 / 请假」后
-       归到通知页 —— 发通知与看通知在同一处，比在首页翻管理员卡片好找。
-       仅超管 / 班委 / 辅导员可见（canPublish，与发布页的范围口径同一套身份判定）。 -->
-  <view wx:if="{{canPublish}}" class="nt-publish card" bindtap="onNoticeOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
-    <app-icon name="edit" variant="brand" size="{{36}}" />
-    <text class="nt-publish-t">发布班级通知</text>
-    <app-icon name="arrow-right" variant="gray" size="{{28}}" />
-  </view>
-
   <skeleton wx:if="{{loading}}" type="card" rows="{{3}}" height="{{220}}" />
 
   <empty-state
