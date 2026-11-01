@@ -151,7 +151,7 @@
                  选修课仍保留 bindtap：onCourseTap 里有 `if (s.isPersonal) return` 守卫，
                  不会弹课堂情况；tappable 只是视觉提示，由 .personal 样式单独关掉按压反馈。 -->
             <view wx:for="{{sessions}}" wx:key="key" wx:for-index="ci"
-              class="course-row tappable {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}} {{item.isPersonal ? 'personal' : ''}}"
+              class="course-row tappable {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}} {{item.isPersonal ? 'personal' : ''}} {{item.current ? 'current' : ''}}"
               bindtap="onCourseTap" data-idx="{{ci}}"
               hover-class="{{item.isPersonal ? '' : 'press-dim'}}" hover-start-time="0" hover-stay-time="60">
               <view class="course-bar {{item.isMine ? 'on' : ''}}"></view>
@@ -166,6 +166,7 @@
                 <text wx:if="{{item.groupScope}}" class="tag {{item.groupScope === 'A' ? 'ga' : 'gb'}}">{{item.groupScope}} 组</text>
                 <view wx:else class="tag all">全体</view>
               </block>
+              <view wx:if="{{item.current}}" class="tag now">进行中</view>
             </view>
           </block>
           <block wx:else>
@@ -177,7 +178,7 @@
                （onCourseTap 里对 isPersonal 直接 return）⇒ 点了没反应反而像坏了，
                不如做成纯展示行。 -->
             <view wx:for="{{sessions}}" wx:key="key"
-              class="course-row {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}} {{item.isPersonal ? 'personal' : ''}}">
+              class="course-row {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}} {{item.isPersonal ? 'personal' : ''}} {{item.current ? 'current' : ''}}">
               <view class="course-bar {{item.isMine ? 'on' : ''}}"></view>
               <view class="course-side">
                 <text class="course-time">{{item.periodTime ? item.periodTime.start + '-' + item.periodTime.end : '第' + item.period + '节'}}</text>
@@ -191,6 +192,7 @@
                 <text wx:if="{{item.groupScope}}" class="tag {{item.groupScope === 'A' ? 'ga' : 'gb'}}">{{item.groupScope}} 组</text>
                 <view wx:else class="tag all">全体</view>
               </block>
+              <view wx:if="{{item.current}}" class="tag now">进行中</view>
             </view>
           </block>
         </block>

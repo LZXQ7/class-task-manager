@@ -241,7 +241,8 @@ Page({
     const classChanged = gView !== (this._shownViewClassId || 0);
     this._shownViewClassId = gView;
     this.load(identityChanged || swapDirty || dutyDirty || rosterDirty || classChanged);
-    // 今日课次灰化计时器：即便 load 命中 STALE_MS 缓存直接 return（数据已在），也要续排到点翻面
+    // 今日课次灰化/进行中计时器：先按当前时刻刷新一遍（回前台可能跨过上课/下课点），再续排到点翻面
+    this._refreshDoneFlags();
     this._scheduleDoneTimer();
     // 请假卡：onShow 已重拉（_applyIdentity → _loadLeaveHome）；这里再补排一条时段翻面定时器
     // —— onHide 清过它，即便本次重拉失败，也能在下一个刷新点自愈（19:00–20:40 这类时段）。
@@ -1033,6 +1034,21 @@ Page({
       return;
     }
     /*
+     * 冷启动瞬时缓存（2026-11-01 修「首页加载慢」）：本地还没有内存数据（_hasData 仍 false，
+     * 即首次进首页 / 被杀后重进）时，先读上次成功写入的课次快照**同步秒显**，再后台刷新。
+     * 这样冷启动首屏不再等云函数（1~3s 冷启动），用户立刻看到上次的课表/值日；
+     * 真实数据回来后原地覆盖，几乎无感。仅当「无内存数据且无缓存」才走骨架屏。
+     * ⚠️ 解绑(_handleUnbound)已清缓存 ⇒ 不会串显上一位成员的数据。
+     */
+    if (!this._hasData) {
+      const snap = this._readHomeCache();
+      if (snap) {
+        this.setData(Object.assign({ loading: false, failed: false, unbound: false }, snap));
+        this._hasData = true;          // 已可秒显，避免下面再弹骨架
+        this._paintedFromCache = true;
+      }
+    }
+    /*
      * 页面实例在 Tab 切换时**不会销毁**，data 里还是上一次的内容 ——
      * 所以「切回首页闪一下骨架」纯粹是自己造成的：无条件 `loading: true` 会把
      * 屏幕上的内容整页替换成骨架，等云函数回来再换回去。
@@ -1042,7 +1058,7 @@ Page({
     if (!hasContent) this.setData({ loading: true, failed: false });
     // 🔴 选修课（personal_course）与 dutyToday 是两条独立链路，并行拉以免拖慢首屏；
     //    任一失败都不阻断另一条（catch 内已兜成空数组）。
-    const pToday = api.dutyToday({ classId: this.viewClassId() }, { toast: false });
+    const pToday = api.dutyToday({ classId: this.viewClassId() }, { toast: false, retry: 2 });
     const pPersonal = this._loadPersonalCourses();
     return Promise.all([pToday, pPersonal])
       .then(([r]) => {
@@ -1064,7 +1080,7 @@ Page({
         }
         this._hasData = true;
         this._lastLoad = Date.now();
-        this.setData({
+        const patch = {
           loading: false,
           failed: false,
           unbound: false,
@@ -1092,6 +1108,14 @@ Page({
           member: r.member || null,
           currentWeek: r.currentWeek || 1,
           weekText: '第 ' + (r.currentWeek || 1) + ' 周'
+        };
+        this.setData(patch);
+        // 冷启动瞬时缓存（2026-11-01）：成功即落盘，下次进首页秒显，不再等云函数冷启动
+        this._writeHomeCache({
+          myDuty: patch.myDuty, hero: patch.hero, heroSub: patch.heroSub, periodText: patch.periodText,
+          sessions: patch.sessions, tomorrowSessions: patch.tomorrowSessions, tomorrowText: patch.tomorrowText,
+          pendingSwapCount: patch.pendingSwapCount, unreadNotice: patch.unreadNotice, isAdmin: patch.isAdmin,
+          classFullName: patch.classFullName, member: patch.member, currentWeek: patch.currentWeek, weekText: patch.weekText
         });
         // 今日课次「已上完」灰化：数据落盘后排一个到点自动翻面的计时器
         this._scheduleDoneTimer();
@@ -1104,12 +1128,12 @@ Page({
       })
       .catch((e) => {
         const code = e && e.errCode;
-        this.setData({
-          loading: false,
-          unbound: code === 40001 || code === 40002,
-          // 已经有内容时刷新失败不把整页打成错误态（对用户应当无感）
-          failed: !hasContent && code !== 40001 && code !== 40002
-        });
+        const unbound = code === 40001 || code === 40002;
+        // 已秒显了缓存内容（_paintedFromCache）/ 已有内容 ⇒ 刷新失败对用户无感，保持显示不打错误屏；
+        // 完全没内容（首次且无缓存）才弹「数据没加载出来 · 重新加载」。
+        const failed = !hasContent && !this._paintedFromCache && !unbound;
+        if (unbound) { try { wx.removeStorageSync(this._homeCacheKey()); } catch (e2) {} }
+        this.setData({ loading: false, unbound, failed });
       });
   },
 
@@ -1333,9 +1357,27 @@ Page({
 
   /** 拉「我」的选修课（仅本人可见），写进 this._personalCourses 供今日/明日两处合并 */
   _loadPersonalCourses() {
-    return api.electiveList({}, { toast: false })
+    return api.electiveList({}, { toast: false, retry: 2 })
       .then((r) => { this._personalCourses = (r && r.list) || []; })
       .catch(() => { this._personalCourses = []; });
+  },
+
+  /* ---------------- 首页冷启动瞬时缓存（2026-11-01 修「首页加载慢」） ----------------
+   * 首屏门控的 dutyToday 云函数冷启动要 1~3s，且偶发超时。把上次成功课次快照落本地，
+   * 冷启动（无内存数据）先同步秒显，再后台刷新 —— 用户立刻看到上次的课表/值日，几乎无感。
+   * 按班级隔离；解绑(_handleUnbound)已清缓存，不会串显上一位成员数据。 */
+  _homeCacheKey() {
+    return 'homeSnap:' + (this.viewClassId() || 0);
+  },
+  _readHomeCache() {
+    try {
+      const v = wx.getStorageSync(this._homeCacheKey());
+      if (v && typeof v === 'object') return v;
+    } catch (e) { /* 读不到就用在线数据 */ }
+    return null;
+  },
+  _writeHomeCache(snap) {
+    try { wx.setStorageSync(this._homeCacheKey(), snap); } catch (e) { /* 写失败不影响在线渲染 */ }
   },
 
   /* ---------------- 今日课次「已上完」灰化（2026-09-29 需求） ----------------
@@ -1350,23 +1392,41 @@ Page({
     const nowMin = now.getHours() * 60 + now.getMinutes();
     return (Number(m[1]) * 60 + Number(m[2])) <= nowMin;
   },
-  _markDone(sessions) {
-    return (sessions || []).map(s => Object.assign({}, s, { done: this._doneAt(s) }));
+  /* 是否「正在进行中」：start ≤ now < end。仅对今日 sessions 调用（明日永不 current）。
+   * 与 _doneAt 互补：done = now ≥ end；current = start ≤ now < end；时间互斥不会同真。 */
+  _currentAt(s) {
+    if (!s || !s.periodTime || !s.periodTime.start || !s.periodTime.end) return false;
+    const sm = /^(\d{1,2}):(\d{2})$/.exec(s.periodTime.start);
+    const em = /^(\d{1,2}):(\d{2})$/.exec(s.periodTime.end);
+    if (!sm || !em) return false;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const startMin = Number(sm[1]) * 60 + Number(sm[2]);
+    const endMin = Number(em[1]) * 60 + Number(em[2]);
+    return startMin <= nowMin && nowMin < endMin;
   },
-  /* 计时器到点/前台切回时，只重算「今日」sessions 的 done，真正翻面了才 setData（开销极小） */
+  _markDone(sessions) {
+    return (sessions || []).map(s => Object.assign({}, s, {
+      done: this._doneAt(s),
+      current: this._currentAt(s),
+    }));
+  },
+  /* 计时器到点/前台切回时，只重算「今日」sessions 的 done 与 current，真正翻面了才 setData（开销极小） */
   _refreshDoneFlags() {
     const sessions = this.data.sessions || [];
     if (!sessions.length) return;
     let changed = false;
     const next = sessions.map((s) => {
       const done = this._doneAt(s);
-      if (done !== !!s.done) changed = true;
-      return done === s.done ? s : Object.assign({}, s, { done });
+      const current = this._currentAt(s);
+      if (done !== !!s.done || current !== !!s.current) changed = true;
+      return (done === s.done && current === s.current) ? s : Object.assign({}, s, { done, current });
     });
     if (changed) this.setData({ sessions: next });
   },
-  /* 排下一个「到点翻面」的定时器：算最近一节还没上完的课的下课时刻，到点后再评估+续排。
-   * 全部已上完 ⇒ 不排；切走/卸载由 onHide/onUnload 清掉。_scheduleDoneTimer 自身先清旧计时器，
+  /* 排下一个「到点翻面」的定时器：算最近一次需要翻面的时刻——
+   * ① 还没开始的课：到上课点 ⇒ current 亮；② 进行中的课：到下课点 ⇒ current 灭 / done 亮。
+   * 全部已上完且都已开始 ⇒ 不排；切走/卸载由 onHide/onUnload 清掉。_scheduleDoneTimer 自身先清旧计时器，
    * 所以在 load 的 .then 与 onShow 里重复调用也不会叠出多个。 */
   _scheduleDoneTimer() {
     if (this._doneTimer) { clearTimeout(this._doneTimer); this._doneTimer = null; }
@@ -1374,19 +1434,28 @@ Page({
     if (!sessions.length) return;
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
+    const off = now.getSeconds() * 1000 + now.getMilliseconds();
     let nextMs = Infinity;
     sessions.forEach((s) => {
-      if (s.done || !s.periodTime || !s.periodTime.end) return;
-      const m = /^(\d{1,2}):(\d{2})$/.exec(s.periodTime.end);
-      if (!m) return;
-      const endMin = Number(m[1]) * 60 + Number(m[2]);
-      if (endMin > nowMin) {
-        const fire = (endMin - nowMin) * 60000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+      if (!s.periodTime || !s.periodTime.start || !s.periodTime.end) return;
+      const sm = /^(\d{1,2}):(\d{2})$/.exec(s.periodTime.start);
+      const em = /^(\d{1,2}):(\d{2})$/.exec(s.periodTime.end);
+      if (!sm || !em) return;
+      const startMin = Number(sm[1]) * 60 + Number(sm[2]);
+      const endMin = Number(em[1]) * 60 + Number(em[2]);
+      // ① 还没开始：到上课点翻面（current 亮）
+      if (startMin > nowMin) {
+        const fire = (startMin - nowMin) * 60000 - off;
+        if (fire < nextMs) nextMs = fire;
+      }
+      // ② 进行中（未上完）：到下课点翻面（current 灭 / done 亮）
+      if (!s.done && endMin > nowMin) {
+        const fire = (endMin - nowMin) * 60000 - off;
         if (fire < nextMs) nextMs = fire;
       }
     });
-    if (!isFinite(nextMs)) return;            // 全部已上完，无需再排
-    const delay = Math.max(1000, nextMs);     // 至少 1s，避免 0ms 抖动；否则睡到下一节下课
+    if (!isFinite(nextMs)) return;            // 全部已上完且都已开始，无需再排
+    const delay = Math.max(1000, nextMs);     // 至少 1s，避免 0ms 抖动
     this._doneTimer = setTimeout(() => {
       this._doneTimer = null;
       this._refreshDoneFlags();

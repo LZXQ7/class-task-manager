@@ -19,6 +19,10 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const SCH = path.join(root, 'cloudfunctions/schedule/index.js');
 const CRON = path.join(root, 'cloudfunctions/cron-weekly/index.js');
+/* 2026-10-31 收口：loadSlots / slotOf 已从两个 index.js 提到 common/schedule-core.js（单一真源）。
+ * 旧断言「两份逐字一致」已经没有对象可查（两边都改成 require 了），会稳定假红；
+ * 改为断言「真源在 core 里有定义 + 两条链路都从 core 引入」—— 这才是防漂移的正确口径。 */
+const CORE = path.join(root, 'cloudfunctions/common/schedule-core.js');
 
 let pass = 0;
 let fail = 0;
@@ -39,21 +43,19 @@ function buildFn(src) {
 
 const s1 = fs.readFileSync(SCH, 'utf8');
 const s2 = fs.readFileSync(CRON, 'utf8');
+const sCore = fs.readFileSync(CORE, 'utf8');
 
-console.log('── ① 两份实现逐字一致');
+console.log('── ① 单一真源：slotOf / loadSlots 定义在 core，两条链路都从 core 引入');
 ['loadSlots', 'slotOf'].forEach((fn) => {
-  const a = pickFn(s1, fn);
-  const b = pickFn(s2, fn);
-  ok(!!a, 'schedule 内含 ' + fn);
-  ok(!!b, 'cron-weekly 内含 ' + fn);
-  /* ⚠️ 行尾风格必须归一：schedule/index.js 是 CRLF、cron-weekly/index.js 是 LF，
-   *    「逐字一致」针对的是**代码内容**，不该因为换行符不同就判死。 */
-  const norm = (t) => (t || '').replace(/\r\n/g, '\n').trim();
-  ok(!!a && !!b && norm(a) === norm(b), fn + ' 两份逐字一致（忽略行尾符）');
+  ok(!!pickFn(sCore, fn), 'common/schedule-core.js 内含 ' + fn + ' 的实现');
+  const importRe = /require\('\.\/common\/schedule-core'\)/;
+  const nameRe = new RegExp('\\b' + fn + '\\b');
+  ok(importRe.test(s1) && nameRe.test(s1), 'schedule 从 common/schedule-core 引入 ' + fn + '（不再本地复制）');
+  ok(importRe.test(s2) && nameRe.test(s2), 'cron-weekly 从 common/schedule-core 引入 ' + fn + '（不再本地复制）');
 });
 
 console.log('── ② slotOf 匹配优先级');
-const slotOf = buildFn(pickFn(s1, 'slotOf'));
+const slotOf = buildFn(pickFn(sCore, 'slotOf'));
 const slots = [
   { id: 1, weekday: 1, period: null, kind: 'NORMAL' },   // 周一全天槽
   { id: 2, weekday: 2, period: 3, kind: 'NORMAL' },      // 周二第 3 节
@@ -109,12 +111,15 @@ ok(slotOf(userSlots, 1, 8, 'NORMAL').id === 18,
 
 /* 人数口径：槽位 needN 必须压过 session.duty_count（后者是课次级默认值，生产库 80 节全是 2），
  * 但 duty_count=0（课次级「不排值日」，生产库 5 节书香校园）必须优先 —— 连槽位也不排。
- * 旧写法 Number(s.duty_count ?? 1) 会把 needN=3/4 截成 2，也会让 duty_count=0 吞掉整个槽。 */
+ * 旧写法 Number(s.duty_count ?? 1) 会把 needN=3/4 截成 2，也会让 duty_count=0 吞掉整个槽。
+ * 2026-10-31：该口径已收口到 common/schedule-core.js 的 resolveNeed（单一真源），
+ *   两个 index.js 只负责调用 ⇒ 断言改指向 core，避免「改了位置就假红」。 */
 const needExpr = 'dc === 0 ? 0 : (slotRec ? slotRec.needN : dc)';
-ok(/const dc = Number\(s\.duty_count \?\? 1\);/.test(s1), 'schedule：duty_count 用 ?? 窄化（0 保持 0）');
-ok(/const dc = Number\(s\.duty_count \?\? 1\);/.test(s2), 'cron-weekly：同上');
-ok(s1.indexOf(needExpr) >= 0, 'schedule：duty_count=0 不排 / 其余以槽位 needN 为准');
-ok(s2.indexOf(needExpr) >= 0, 'cron-weekly：同上');
+ok(/const dc = Number\(\(session && session\.duty_count\) \?\? 1\);/.test(sCore),
+  'core.resolveNeed：duty_count 用 ?? 窄化（0 保持 0）');
+ok(sCore.indexOf(needExpr) >= 0, 'core.resolveNeed：duty_count=0 不排 / 其余以槽位 needN 为准');
+ok(/\bresolveNeed\b/.test(s1) && /\bresolveNeed\b/.test(s2),
+  'schedule 与 cron-weekly 都调用 resolveNeed（每节人数口径只有一处实现）');
 ok(s1.indexOf('.slice(0, Math.max(0, n - chosen.length))') >= 0,
   'schedule：槽位追加名额扣掉「沿用上周」已占的坑（防超员）');
 

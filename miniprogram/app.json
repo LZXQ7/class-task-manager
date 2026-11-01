@@ -33,7 +33,7 @@
     "list": [
       { "pagePath": "pages/home/index", "text": "首页" },
       { "pagePath": "pages/timetable/index", "text": "课程表" },
-      { "pagePath": "pages/classinfo/index", "text": "班级信息" },
+      { "pagePath": "pages/classinfo/index", "text": "信息" },
       { "pagePath": "pages/duty/index", "text": "值日" },
       { "pagePath": "pages/mine/index", "text": "我的" }
     ]

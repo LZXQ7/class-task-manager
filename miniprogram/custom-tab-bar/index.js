@@ -16,7 +16,7 @@ const { get } = require('../utils/icons');
 const TABS = [
   { key: 'home', text: '首页', url: '/pages/home/index', icon: 'tab-home' },
   { key: 'timetable', text: '课程表', url: '/pages/timetable/index', icon: 'tab-timetable' },
-  { key: 'classinfo', text: '班级信息', url: '/pages/classinfo/index', icon: 'tab-classinfo' },
+  { key: 'classinfo', text: '信息', url: '/pages/classinfo/index', icon: 'tab-classinfo' },
   { key: 'duty', text: '值日', url: '/pages/duty/index', icon: 'tab-duty' },
   { key: 'mine', text: '我的', url: '/pages/mine/index', icon: 'tab-mine' }
 ];

@@ -69,7 +69,8 @@ pin('③ electiveList 与 dutyToday 并行拉取（不串行多等一个 RTT）'
   need(/const pToday = api\.dutyToday\(/.test(JS), 'dutyToday 未拆成独立 promise');
   need(/const pPersonal = this\._loadPersonalCourses\(\)/.test(JS), '选修课未并行发起');
   need(/Promise\.all\(\[pToday, pPersonal\]\)/.test(JS), '未用 Promise.all 并行');
-  need(JS.includes("api.electiveList({}, { toast: false })"), '选修课未走 api.electiveList');
+  // 须以 toast:false 调用（容许多带 retry 等选项，不卡死字面量）
+  need(/api\.electiveList\(\{\}, \{[^}]*toast: false/.test(JS), '选修课未走 api.electiveList（须 toast:false）');
   // 选修课失败必须兜空、不阻断 dutyToday
   need(/_loadPersonalCourses\(\)[\s\S]*?\.catch\(\(\) => \{ this\._personalCourses = \[\]; \}\)/.test(JS), '选修课失败未兜空数组');
 });

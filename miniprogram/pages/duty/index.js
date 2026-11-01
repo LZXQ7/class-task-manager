@@ -1188,6 +1188,8 @@ Page({
     this._invalidateManual();
     api.scheduleAiApply({
       week: this.data.week,
+      // 把原始 AI 指令文本一并带上：服务端据此重新解析「X号替换Y号」替班，保证落库与预览一致
+      text: this.data.aiText,
       plan: this.data.aiPlan.map(p => ({ sessionId: p.sessionId, memberSeqs: p.memberSeqs })),
       // 「保持原样」的课次必须显式告诉服务端，否则会被当成空计划重排
       unchanged: this.data.aiPlan.filter(p => p.kept).map(p => p.sessionId),

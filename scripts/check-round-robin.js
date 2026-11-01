@@ -225,5 +225,61 @@ check('一键生成 / 每周自动生成都不再「全员 mark>0 → 全班清�
   !/roster\.every\([^)]*mark\s*>\s*0/.test(stripComments(SCHED_SRC))
   && !/roster\.every\([^)]*mark\s*>\s*0/.test(stripComments(CRON_SRC)));
 
+/* ============================================================
+ * 第 8 部分：AI 排班链路与 generate/cron 同口径（2026-10-30 修复自证）
+ * ============================================================ */
+console.log('\n=== 第 8 部分：AI 排班 × 不排值日 / 排班方式 / 不重复 ===');
+/* 直接 require 生产内核（resolveNeed / fillByRotation 已收口到 schedule-core，纯函数无云依赖） */
+const { resolveNeed: _rn, fillByRotation: _fbr } = require(path.join(ROOT, 'cloudfunctions/common/schedule-core'));
+
+// R1：课级不排值日（duty_count=0）→ 应排人数 = 0（之前 AI 用 `|| 1` 误成 1，设了不排仍安排）
+check('不排值日 duty_count=0 → 0 人（AI 不再误排）', _rn({ duty_count: 0 }, [], 0, 1, 2, 'NORMAL') === 0);
+// R2：有槽位时以 needN 为准（之前 AI 压根不读 duty_slot，排班方式改了无效）
+check('排班方式槽位 needN=3 覆盖默认 duty_count=2',
+  _rn({ duty_count: 2 }, [{ weekday: 3, period: 4, needN: 3, kind: 'NORMAL' }], 0, 3, 4, 'NORMAL') === 3);
+// R3：无槽位回落 duty_count
+check('无槽位 → 回落 duty_count=2', _rn({ duty_count: 2 }, [], 0, 3, 4, 'NORMAL') === 2);
+// R4：减手动已排（alreadyFilled）
+check('已手动排 1 人 → 自动只补 1 人', _rn({ duty_count: 2 }, [], 1, 3, 4, 'NORMAL') === 1);
+// R5：同日不重复（avoidSameDay + busySeqs=day 硬护栏，旧版只有 softSeqs，会软放过）
+{
+  const r = [{ id: 1, seq: 2, group: 'A' }, { id: 2, seq: 4, group: 'A' }, { id: 3, seq: 6, group: 'A' }, { id: 4, seq: 8, group: 'A' }];
+  const st = buildState(r, { A: 0, B: 0 });
+  const usedInPlan = new Set();
+  const day = new Set();
+  const p1 = _fbr(r, 'A', 1, st, { usedInPlan, day, avoidSameDay: true, busySeqs: day }).picked.map(m => m.seq);
+  const p2 = _fbr(r, 'A', 1, st, { usedInPlan, day, avoidSameDay: true, busySeqs: day }).picked.map(m => m.seq);
+  check('同日第二节不再排第一节已排的人（53/55 类反复排的根因）', p1[0] === 2 && p2[0] !== 2, 'p1=' + p1 + ' p2=' + p2);
+}
+// R6：跨天全局唯一（usedInPlan 跨天护栏，旧版兜底会把已排过的人重新拎回来）
+{
+  const r = [{ id: 1, seq: 2, group: 'A' }, { id: 2, seq: 4, group: 'A' }, { id: 3, seq: 6, group: 'A' }, { id: 4, seq: 8, group: 'A' }];
+  const st = buildState(r, { A: 0, B: 0 });
+  const usedInPlan = new Set([2]);
+  const day2 = new Set();           // 第二天是另一天，day 里不含 2
+  const p = _fbr(r, 'A', 1, st, { usedInPlan, day: day2, avoidSameDay: true, busySeqs: day2 }).picked.map(m => m.seq);
+  check('跨天仍不重复排已排过的人（usedInPlan 护栏生效）', p[0] !== 2, 'p=' + p + ' used=' + [...usedInPlan]);
+}
+// R7：同天不重复规则关闭时（avoidSameDay=false）仍有 softSeqs 软避让，已排的人优先不排（防硬化回归）
+{
+  const r = [{ id: 1, seq: 2, group: 'A' }, { id: 2, seq: 4, group: 'A' }, { id: 3, seq: 6, group: 'A' }, { id: 4, seq: 8, group: 'A' }];
+  const st = buildState(r, { A: 0, B: 0 });
+  const usedInPlan = new Set();
+  const day = new Set([2]);         // 2 号这天已排过（existing duty）
+  const p = _fbr(r, 'A', 1, st, { usedInPlan, day, avoidSameDay: false, busySeqs: day, softSeqs: day }).picked.map(m => m.seq);
+  check('规则关闭时 softSeqs 仍软避让同日已排的人（优先不排 2 号）', p[0] !== 2, 'p=' + p + ' day=2');
+}
+
+/* ---- 卫生：三路径同口径，AI 不再用旧写法 ---- */
+check('schedule 不再用 `duty_count || 1` 误把不排值日当排 1 人（剥注释后）',
+  !/duty_count\s*\|\|\s*1/.test(stripComments(SCHED_SRC)));
+check('schedule 已收口 resolveNeed（与 generate/cron 同口径）', /resolveNeed\(/.test(SCHED_SRC));
+check('cron-weekly 已收口 resolveNeed', /resolveNeed\(/.test(CRON_SRC));
+check('fillByRotation 兜底不再撤掉 usedInPlan（仍按跨天唯一护栏，剥注释后）',
+  !/avoidSeqs:\s*new Set\(picked/.test(stripComments(SCHED_SRC)));
+check('schedule / cron-weekly 的 loadSlots / slotOf 已收口到 common/schedule-core（无本地副本，剥注释后）',
+  !/async function loadSlots\s*\(/.test(stripComments(SCHED_SRC)) && !/async function loadSlots\s*\(/.test(stripComments(CRON_SRC))
+  && !/function slotOf\s*\(/.test(stripComments(SCHED_SRC)) && !/function slotOf\s*\(/.test(stripComments(CRON_SRC)));
+
 console.log('\n' + (fail === 0 ? '全部通过 ✅' : fail + ' 项失败 ❌'));
 process.exit(fail === 0 ? 0 : 1);

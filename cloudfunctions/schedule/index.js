@@ -15,7 +15,8 @@ const { BizError, ok, fail } = require('./common/resp');
 const {
   pickBySeq, buildState, loadDayBlocks, loadCursors, saveCursors, toSeqSet,
   loadWeekCursors, saveWeekCursors, syncGlobalCursors, dropWeekCursorsFrom,
-  bumpCursorForManual
+  bumpCursorForManual, resolveNeed, loadSlots, slotOf, fillByRotation,
+  parseSubMap, parseStartSeqs, applyStartFrom, validatePlan
 } = require('./common/schedule-core');
 /* 测试账号唯一真源（见 common/test-account.js）。铁律：所有人员列表一律不展示，
  * 唯一例外是「超管手动排班」三处（名册 / 手动加人 / 换人）—— 需求④：把测试账号
@@ -88,17 +89,21 @@ const DEFAULT_AI_PROMPT = [
   '7. 【一轮里每人最多排一次】同一个人绝对不能出现在两个课次里，即使这两天不是同一天。',
   '   排班像发号一样一直往后走：本周从「最小的、还没排过的号」开始连续取号，',
   '   下周接着从本周用到的最大号之后继续；直到全班 56 人都排过一次，才重新从 1 号开始。',
-  '   dutyCountThisRound ≥ 1 的同学本轮已经排过，不要再给他们排（除非同组可用的人真的不够）。',
+  '   dutyCountThisRound ≥ 1 的同学本轮已经排过，程序会自动跳过他们，不要再给他们排',
+  '   （除非同组可用的人真的不够）。⚠️ 不要把他们写进 skipSeqs —— 见规则 A。',
   '',
-  '# 三句最常见的口语该怎么理解（务必照此执行）',
+  '# 四句最常见的口语该怎么理解（务必照此执行）',
   'A. 「A 组 23 号之前全部排过了」「b 组 20 号之前全部排过了」这类话 = 这些同学本轮已排过，',
-  '   本次不要再给他们排。请把它们写进 skipSeqs。注意分别按组判断：A 组的条件是 group="A" 且 seq<=23，',
-  '   B 组的条件是 group="B" 且 seq<=20。',
+  '   本次不要再给他们排。⚠️ 这类情况**不要写进 skipSeqs**：轮转游标本来就从他们之后开始排，',
+  '   程序会自动跳过；写进 skipSeqs 会把他们从候选池里删掉，反而导致后面的课次排不满。',
+  '   按组判断的话也一样：A 组看 group="A" 且 seq<=23，B 组看 group="B" 且 seq<=20。',
   'B. 「从周四第二节开始排」这类话 = 周四第二节**之前**的所有课次保持原样、不要重排；',
   '   把那些 sessionId 写进 unchanged 数组，只给周四第二节及之后的课次出 memberSeqs。',
   '   「周四第二节」= dayText 为「周四」或日期是周四，且 period >= 2（含第 2 节本身）。',
   'C. 「一直往后排」「这周排到 40 号，下周从 41 号继续」= 使用者在陈述轮转规则，',
   '   程序本身就会照做。你不用为此做任何额外处理（既不用写 unchanged，也不用写 skipSeqs）。',
+  'D. 「A 组从 53 开始」「b 组从 52 开始」= 只是指定**本轮起点**，程序会把该组游标直接推到 52 / 51，',
+  '   你什么都不用做 —— 尤其【不要】写进 skipSeqs（写了会把 1~51 号踢出候选池，后面的课次就排不满了）。',
   '',
   '# 输出要求',
   '只输出一个严格 JSON 对象，不要输出任何解释文字，不要用 Markdown 代码块包裹。结构如下：',
@@ -115,7 +120,9 @@ const DEFAULT_AI_PROMPT = [
   '  ⚠️ 这只是你的理解：程序会按「课次先后 + 序号从小到大」重新配对，顺序写偏了不影响结果，',
   '  但**不许漏课次、不许编造序号、不许把「本轮跳过」的人写进来**。',
   '- unchanged：使用者要求「从某处开始排」时，该处之前那些**保持不动**的课次 sessionId。没有就返回空数组。',
-  '- skipSeqs：本轮不再给这些人排（使用者点名跳过的、或说「N 号之前都排过了」的）。没有就返回空数组。',
+  '- skipSeqs：**只有使用者明确点名「这个人本周/本次不值日」时**才写（如「5 号这周不值日」）。',
+  '  ⚠️ 「N 号之前都排过了」「本轮已排过的人」一律【不要】写进这里 —— 程序已经知道，',
+  '  写了反而会把候选池抽干、造成大片课次排不满。没有就返回空数组。',
   '  注意：skipSeqs 里的人【绝对不要】写进 assignments（系统会自动排除，但请直接别列，以免浪费）。',
   '- notes：给使用者看的一句话说明。'
 ].join('\n');
@@ -406,12 +413,19 @@ async function buildAiContext(pool, wk, classId) {
   const cfg = await week.getConfig(pool, classId);
   const cal = await week.loadCalendar(pool);
   const shifts = await week.loadSessionShifts(pool);
+  // 岗位槽（排班方式）：AI 链路必须与一键生成/cron 读同一份 duty_slot，否则改排班方式 AI 不生效
+  const slots = await loadSlots(pool, classId);
+  // 同天不重复规则（schedule_rules.avoid_same_day）：与一键生成同口径
+  const [ruleRows] = await pool.query(
+    'SELECT avoid_same_day FROM schedule_rules WHERE class_id = ? ORDER BY id LIMIT 1', [classId]
+  );
+  const avoidSameDay = !!(ruleRows[0] && ruleRows[0].avoid_same_day);
 
   const [rawSessions] = await pool.query(
-    `SELECT s.id, s.day_of_week, s.period, s.group_scope, s.duty_count, s.weeks, s.week_rule,
+    `SELECT s.id, s.day_of_week, s.period, s.group_scope, s.duty_count, s.weeks, s.week_rule, s.kind,
             c.name AS courseName, c.room
        FROM session s JOIN course c ON c.id = s.course_id
-      WHERE s.class_id = ? AND s.kind <> 'CLEAN'
+      WHERE s.class_id = ?
       ORDER BY s.day_of_week, s.period`, [classId]
   );
 
@@ -449,6 +463,11 @@ async function buildAiContext(pool, wk, classId) {
    * leave_request 了 —— 请假的同学照常排上，之后自己在小程序里申请换班。 */
 
   const sessions = [];
+  /* 保洁课次：**不进 AI 上下文**（避免模型把它当普通课次调动），但必须和课程值日
+   * 走**同一条轮转流**（见 validatePlan 的 items 合并）。旧实现把保洁摘到整周课程
+   * 排完之后再补，导致保洁只能捡周尾号 —— 用户 2026-10-31 实锤：周二第 2 节 9、11，
+   * 下午打扫 410 却从 35 号起。 */
+  const cleanSessions = [];
   for (const s of rawSessions) {
     if (!week.matchesWeeks(s.weeks, wk, s.week_rule)) continue;
     // 临时调课优先：OFF → 本周不上；MOVE → 用调课后的星期 / 节次
@@ -457,7 +476,7 @@ async function buildAiContext(pool, wk, classId) {
     const date = week.classDateOf(cfg, wk, slot.day, cal);
     if (!date) continue;   // 法定放假且无调课 → 本周不上
     const dayDuties = duties.filter(d => String(d.class_date).slice(0, 10) === date);
-    sessions.push({
+    const row = {
       sessionId: s.id,
       date,
       dayOfWeek: slot.day,
@@ -466,18 +485,29 @@ async function buildAiContext(pool, wk, classId) {
       course: s.courseName,
       room: s.room || '',
       groupScope: s.group_scope || null,
-      dutyCount: s.duty_count || 1,
-      existingDutySeqs: dayDuties.filter(d => d.session_id === s.id).map(d => seqById.get(d.member_id)).filter(Boolean),
-      busySameDaySeqs: dayDuties.map(d => seqById.get(d.member_id)).filter(Boolean)
-    });
+      // 🔴 每节应排人数单一真源：duty_count=0=不排值日（?? 窄化，0 保持 0）、否则取槽位 needN；
+      //    之前 AI 用 `|| 1` 把不排值日误排成 1 人，且不读 duty_slot（排班方式改了无效）
+      dutyCount: resolveNeed(s, slots, 0, slot.day, slot.period, s.kind === 'CLEAN' ? 'CLEAN' : 'NORMAL'),
+      /* ⚠️ 2026-10-31 修复（用户截图「示例成员56、示例成员56 + 大面积未排」）：
+       *   AI 预览的「已有值日」**只取 MANUAL**（用户手动预排的人），与 generate 的
+       *   「DELETE AUTO / 保留 MANUAL」口径一致（见 writePlan / generate 的 DELETE 语句）。
+       *   旧实现把 AUTO 也塞进来 → validatePlan 会「原样保留」上一次自动生成的旧安排
+       *   （脏数据里的重复行被原样带出），并把它们的序号全量并入去重集合把候选池抽干
+       *   （症状：大片「未排 / 候选人不足」）。AUTO 本就该整批重建，不能当既有保留。 */
+      existingDutySeqs: dayDuties.filter(d => d.session_id === s.id && d.source === 'MANUAL').map(d => seqById.get(d.member_id)).filter(Boolean),
+      busySameDaySeqs: dayDuties.filter(d => d.source === 'MANUAL').map(d => seqById.get(d.member_id)).filter(Boolean)
+    };
+    if (s.kind === 'CLEAN') cleanSessions.push(row); else sessions.push(row);
   }
 
   return {
-    cfg, roster, sessions,
+    cfg, roster, sessions, cleanSessions,
     seqById, idBySeq,
     /* 取人状态（会被 validatePlan 就地推进：游标前进、roundUsed 增补）。
      * 生成结束后由调用方 saveWeekCursors + syncGlobalCursors 落库。 */
     state,
+    // 同天不重复规则（与一键生成同口径）；fillByRotation 据此硬护栏，避免 53/55 类反复排
+    avoidSameDay,
     // 本次生成的起点游标（写快照时用：start 只在首次生成时写入，保证重复生成幂等）
     startCursors: { A: start.A, B: start.B },
     weekStart: sessions.length ? sessions[0].date : week.weekStart(cfg.termStart, wk)
@@ -485,193 +515,6 @@ async function buildAiContext(pool, wk, classId) {
 }
 
 /**
- * 生成 → 可直接落库的排班计划。
- *
- * ## 分工（2026-09-24 定稿）
- * **AI 只决定「哪些课次不动」和「哪些人本轮跳过」；「谁配到哪节课」一律由本地按
- * 「日期 + 节次」的先后顺序取最小可用号决定。**
- *
- * 为什么不让模型定配对 —— 模型会给出「人对了、顺序错了」的答案。用户报的例子：
- * 输入「A 组 23 号之前全部排过了，B 组 24 号之前全部排过了」，模型确实挑对了 24 个人
- * （A 组最小的 10 个、B 组最小的 14 个，两两不重复），却把 B 组最后两个号
- * （50 示例成员50、52 示例成员52）配给了**最早的** B 组课（周一第 4 节），
- * 把 46、48 放到了最晚的周四第 5 节。校验器当时只管「不重复 / 分组 / 请假 / 跳过」，
- * 不排顺序，于是原样落库。现在顺序由本地负责，结果可复现、可解释：
- * 同一个输入，周一第 4 节必然是最小的可用 B 组号。
- *
- * ## 本地强制的硬规则
- *   ① 分组课只排对应组；② 请假不排；③ 当天不重复；④ 序号必须存在；
- *   ⑤ **一轮里每人最多排一次**（跨天全局唯一）—— 2026-09-24 线上事故的根因，
- *      当时只查了「同课次内重复」和「同一天重复」，跨天重复被直接放行；
- *   ⑥ **顺序**：非「保持原样」的课次，按时间先后依次取最小可用号（见 fillByRotation）。
- */
-function validatePlan(ctx, raw) {
-  const warnings = [];
-  let wrappedAny = false;   // 本次是否开过新一轮（56 人全排完 → 从最小序号继续）
-  const sessions = ctx.sessions;
-  const byId = new Map(sessions.map(s => [s.sessionId, s]));
-  const rosterBySeq = new Map(ctx.roster.map(r => [r.seq, r]));
-  /**
-   * AI 建议的人选：**只用于事后给一句解释，完全不参与配对**。
-   * 保留解析是为了在「AI 想用的号」和「本地按顺序排出来的号」不一致时提示使用者，
-   * 免得以为自己的要求被吞了。
-   */
-  const suggested = new Set();
-  (Array.isArray(raw && raw.assignments) ? raw.assignments : []).forEach((it) => {
-    const sid = Number(it && it.sessionId);
-    if (!byId.has(sid)) { warnings.push('AI 返回了不存在的课次 #' + sid + '，已忽略'); return; }
-    (Array.isArray(it.memberSeqs) ? it.memberSeqs : []).forEach((v) => {
-      const q = Number(v);
-      if (rosterBySeq.has(q)) suggested.add(q);
-    });
-  });
-
-  // 使用者要求「从某处开始排」：unchanged 里的课次保持原样，
-  // 既不重排、也不参与本次挑选（对应的成员照旧）
-  const keptIds = new Set(
-    (Array.isArray(raw && raw.unchanged) ? raw.unchanged : [])
-      .map(Number).filter(sid => byId.has(sid))
-  );
-
-  // 使用者要求「本轮跳过」的人：视为已用掉名额，本周不排
-  const skipSeqs = (Array.isArray(raw && raw.skipSeqs) ? raw.skipSeqs : [])
-    .map(Number).filter(n => rosterBySeq.has(n));
-
-  const usedSameDay = {};       // date -> Set(seq)
-  /**
-   * 本次计划内已排过的人（**跨天全局唯一**）。
-   *
-   * 「按序号一直往后排」= 一轮里每人只排一次：这周排到 40 号，下周第一节就从 41 号继续，
-   * 直到 56 人全部排完才清零重来。模型只负责理解语言，这条硬规则必须在本地强制——
-   * 2026-09-24 的线上事故就是 AI 把同一个人写进了两个课次（示例成员25/示例成员26各出现 3 次），
-   * 而当时的校验器只查「同一课次内重复」和「同一天重复」，跨天重复直接放行。
-   */
-  const usedInPlan = new Set();
-  const plan = [];
-
-  // 先按「日期 + 节次」排出处理顺序，保证同日去重的判定与真实占用一致
-  const ordered = sessions.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.period - b.period));
-
-  ordered.forEach(s => {
-    // ① 「保持原样」的课次：原样回填当前成员，不参与本次挑选
-    if (keptIds.has(s.sessionId)) {
-      const dayKeep = (usedSameDay[s.date] = usedSameDay[s.date] || new Set(s.busySameDaySeqs));
-      const keep = s.existingDutySeqs.slice(0, s.dutyCount);
-      /* 保持原样的人同样占掉本轮/本次的名额，后面的课次不能再选他们。
-       * ⚠️ 必须同时写进 ctx.state.used：轮转内核靠它判「本轮已排」，
-       *    只写 usedInPlan（本次计划内）的话，序号在游标之后的这类人
-       *    会被后续课次当成「本轮还没排过」再排一次。 */
-      keep.forEach(q => {
-        dayKeep.add(q);
-        usedInPlan.add(q);
-        const r = rosterBySeq.get(q);
-        if (r && ctx.state && ctx.state.used) ctx.state.used[r.group === 'B' ? 'B' : 'A'].add(q);
-      });
-      plan.push({
-        sessionId: s.sessionId,
-        date: s.date,
-        period: s.period,
-        dayText: s.dayText,
-        course: s.course,
-        room: s.room,
-        groupScope: s.groupScope,
-        dutyCount: s.dutyCount,
-        memberSeqs: keep,
-        memberIds: keep.map(q => ctx.idBySeq.get(q)),
-        names: keep.map(q => (rosterBySeq.get(q) || {}).name || ''),
-        reason: '保持原样',
-        kept: true,
-        rejected: []
-      });
-      return;
-    }
-  });
-
-  /**
-   * 轮转取人 —— 与 `schedule.generate` / `cron-weekly` **共用同一个内核**
-   * （`common/round-robin.js` 的 pickBySeq），三条链路必然给出同一份名单。
-   *
-   * 「按序号一直往后排」的完整含义：一轮 = 本组每人各值一次；本周排到 47 号，
-   * 下周就从 49 号继续；排到 56 → 回绕从头开始。
-   * 轮转位置由 `ctx.state`（游标 + 本轮已排集合）承载，本函数只叠加本次的约束。
-   *
-   * @returns {{picked:Array, wrapped:boolean}} wrapped = 本次发生过回绕（开过新一轮）
-   */
-  const fillByRotation = (s, day, need) => {
-    // 请假不再过滤（2026-10-07 口径）：请假的同学照常被排上，之后自己找人换班
-    const opt = { softSeqs: day, skipSeqs: new Set(skipSeqs) };
-    let res = pickBySeq(ctx.roster, s.groupScope, need, ctx.state,
-      Object.assign({ avoidSeqs: usedInPlan }, opt));
-    let picked = res.chosen;
-    /* 极端兜底：本组本轮所有人都排过了（名额多于人数）→ 放开「跨天唯一」，
-     * 只保证本节不重复。内核会在这种情况下自动开新一轮从最小序号续上。 */
-    if (res.short > 0) {
-      const extra = pickBySeq(ctx.roster, s.groupScope, res.short, ctx.state,
-        Object.assign({}, opt, { avoidSeqs: new Set(picked.map(r => r.seq)) }));
-      picked = picked.concat(extra.chosen);
-    }
-    picked.forEach(r => { day.add(r.seq); usedInPlan.add(r.seq); });
-    return { picked, wrapped: res.wrapped };
-  };
-
-  /**
-   * 其余课次（非「保持原样」）：**按课次时间先后依次取最小可用号**。
-   *
-   * 这是「顺序」的唯一来源：先排周一第 2 节，再排周一第 3 节……所以周一的号一定小于周二。
-   * 同一组内（同一 groupScope）更是严格递增 —— 后一节课拿到的号必然大于前一节课的号，
-   * 也就是使用者要的「一路往后排，排到 56 再从头来」。
-   * AI 给的人选在这里完全不参与，只用于事后解释（见下面的 suggested / aiOnly）。
-   */
-  ordered.forEach((s) => {
-    if (keptIds.has(s.sessionId)) return;
-    const day = (usedSameDay[s.date] = usedSameDay[s.date] || new Set(s.busySameDaySeqs));
-    const { picked, wrapped } = fillByRotation(s, day, s.dutyCount);
-    if (wrapped) wrappedAny = true;
-    if (picked.length < s.dutyCount) {
-      warnings.push('周' + s.dayText.replace('周', '') + '第' + s.period + '节候选人不足（还差 '
-        + (s.dutyCount - picked.length) + ' 人）');
-    }
-    plan.push({
-      sessionId: s.sessionId, date: s.date, period: s.period, dayText: s.dayText,
-      course: s.course, room: s.room, groupScope: s.groupScope, dutyCount: s.dutyCount,
-      memberSeqs: picked.map(r => r.seq),
-      memberIds: picked.map(r => ctx.idBySeq.get(r.seq)),
-      names: picked.map(r => r.name),
-      reason: '',
-      rejected: []
-    });
-  });
-
-  // 兜底自检：一轮里每人只排一次。正常情况下这里永远不该命中；
-  // 一旦命中说明上面的取号逻辑有漏洞（或真的候选人不足被放宽），必须让使用者看见。
-  const seenOnce = new Set();
-  const repeated = [];
-  plan.forEach(p => p.memberSeqs.forEach(q => {
-    if (seenOnce.has(q)) repeated.push(q); else seenOnce.add(q);
-  }));
-
-  if (skipSeqs.length) warnings.push('本轮跳过 ' + skipSeqs.join('、') + ' 号');
-  if (keptIds.size) warnings.push('有 ' + keptIds.size + ' 个课次按你的要求保持原样');
-  // AI 的建议号和本地按顺序排出来的号不一致时给一句解释，免得使用者以为自己的要求被吞了
-  const localSeqs = new Set();
-  const keptSeqs = new Set();
-  plan.forEach(p => p.memberSeqs.forEach(q => { (p.kept ? keptSeqs : localSeqs).add(q); }));
-  const aiOnly = Array.from(suggested).filter(q => !localSeqs.has(q) && !keptSeqs.has(q));
-  if (aiOnly.length) {
-    warnings.push('AI 建议的 ' + aiOnly.sort((a, b) => a - b).join('、')
-      + ' 号与「按课次先后取最小可用号」的顺位不一致，已按序号顺序重新配对'
-      + '（否则会出现「靠后的号排在靠前的课次」）');
-  }
-  if (wrappedAny) {
-    warnings.push('本轮 56 人已轮到一遍，已开启新一轮，按序号继续往后排');
-  }
-  if (repeated.length) {
-    warnings.push('注意：' + Array.from(new Set(repeated)).sort((a, b) => a - b).join('、') + ' 号在本次计划里被排了多次（候选人数不够，属放宽处理）');
-  }
-
-  plan.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.period - b.period));
-  return { plan, warnings, skipSeqs, notes: String((raw && raw.notes) || '').slice(0, 120) };
-}
 
 /* ============================================================
  * AI 临时调课 · 上下文与校验
@@ -1224,46 +1067,7 @@ async function loadRules(pool, classId) {
  */
 
 /** 读某班的槽位模板；返回空数组表示未启用 */
-async function loadSlots(conn, classId) {
-  const [rows] = await conn.query(
-    "SELECT id, weekday, `period`, need_n, fixed_seq, kind, sort_order FROM duty_slot WHERE class_id = ? ORDER BY sort_order, weekday, `period`",
-    [Number(classId) || 1]
-  );
-  return rows.map(r => ({
-    id: Number(r.id),
-    weekday: Number(r.weekday),
-    /* null = 承包全天（当天所有节次共用这一批人） */
-    period: r.period === null ? null : Number(r.period),
-    needN: Math.max(1, Number(r.need_n) || 1),
-    /* 固定某人的学号序号；null = 参与轮转 */
-    fixedSeq: r.fixed_seq === null ? null : Number(r.fixed_seq),
-    kind: r.kind === 'CLEAN' ? 'CLEAN' : 'NORMAL',
-    sortOrder: Number(r.sort_order) || 0
-  }));
-}
-
-/**
- * 给一个课次匹配槽位。匹配优先级：
- *   ① CLEAN 课次 → 优先找 CLEAN 专用槽（大扫除单独成槽，不消耗常规轮转）
- *   ② 精确 (星期, 节次)
- *   ③ 同星期的「全天槽」(period = null)
- * 都匹配不到 → null（该课次回落原逻辑，不会被吞掉）
- *
- * ⚠️ weekday 用 **slot.day（实际生效的星期）**，不是 session.day_of_week ——
- *    调休 MOVE 后后者不变，用它会排到错误的那天。
- */
-function slotOf(slots, weekday, period, kind) {
-  if (!slots || !slots.length) return null;
-  const wd = Number(weekday);
-  const pd = Number(period);
-  if (kind === 'CLEAN') {
-    const c = slots.find(x => x.kind === 'CLEAN' && x.weekday === wd && (x.period === null || x.period === pd));
-    if (c) return c;
-  }
-  return slots.find(x => x.kind !== 'CLEAN' && x.weekday === wd && x.period === pd)
-    || slots.find(x => x.kind !== 'CLEAN' && x.weekday === wd && x.period === null)
-    || null;
-}
+// loadSlots / slotOf 已收口到 common/schedule-core.js（与 cron-weekly 共用，单一真源，2026-10-30）
 
 /**
  * 保洁课次是「事实」、岗位槽是「配置」—— 两者必须同时存在才排得出值日。
@@ -1803,9 +1607,8 @@ const routes = {
            *      —— 最具体的设置，连槽位也不排，否则用户给那天建了槽就把「不排」冲掉了；
            *   ② 其余一律以槽位 needN 为准：duty_count 只是课次级默认值（生产库 80 节全是 2），
            *      拿它兜底会把 needN=3/4 截成 2 人 —— 用户在弹层里填的人数当场失效。 */
-          // duty_count=0 = 「不排值日」：?? 窄化让 0 保持 0（|| 1 会把 0 误当 1 排 1 人）
-          const dc = Number(s.duty_count ?? 1);
-          const n = Math.max(0, (dc === 0 ? 0 : (slotRec ? slotRec.needN : dc)) - alreadyFilled);
+          // 每节应排人数单一真源 resolveNeed：duty_count=0=不排值日，否则取槽位 needN，再减手动已排
+          const n = resolveNeed(s, slots, alreadyFilled, slot.day, slot.period, s.kind);
           /* 手动排满（或超额）⇒ 这个课次整个跳过：一行都不动，
            * 轮转游标也**不为它前进**（它没消耗轮转名额，是手工插队的）。 */
           if (n <= 0) { keptManualSessions += 1; continue; }
@@ -2137,10 +1940,24 @@ const routes = {
         try { raw = parseJsonLoose(r.content); } catch (e) {
           throw new BizError(40010, 'AI 返回的不是合法 JSON，请重试或把描述写得更明确');
         }
-        const v = validatePlan(ctx2, raw);
+        // 「X号替换Y号」类替班指令从使用者自由文本里解析（仅 AI 指令临时说，无持久配置）
+        const subMap = parseSubMap(text, ctx2.roster.map(r => r.seq));
+        /* 「A组从53开始 / B组从52开始」这类**起点**指令确定性解析并推进游标：
+         * 不能指望模型 —— 它会把这句理解成「53 号之前都排过了」，写进 skipSeqs 把候选池抽干
+         * （2026-10-31 用户截图：19 节里 16 节「未排」）。游标只前进不后退。 */
+        const bumped = applyStartFrom(ctx2, parseStartSeqs(text, ctx2.roster));
+        const v = validatePlan(ctx2, raw, subMap);
+        if (bumped.length) {
+          v.warnings.unshift('已按你的要求把轮转起点移到 ' + bumped.join(' / ') + ' 号');
+        }
         // 保洁不进 AI 上下文（避免模型把它当普通课次调动），但预览里必须能看到它，
         // 否则用户会以为「没有安排打扫 410」。这里 dryRun 复算一次应用后的保洁结果。
-        const cleaningRows = await previewCleaning(pool, wk, ctx2, v);
+        /* 保洁已并入同一条轮转流（validatePlan 返回的 cleaningPlan），直接用它 ——
+         * 不再「课程排完再补一遍」，否则保洁只能捡周尾号。
+         * 兜底：上下文里没有 cleanSessions 时才走旧的 previewCleaning（结果等价为空）。 */
+        const cleaningRows = (v.cleaningPlan && v.cleaningPlan.length)
+          ? v.cleaningPlan
+          : await previewCleaning(pool, wk, ctx2, v);
         console.log(JSON.stringify({
           fn: 'schedule', action: 'aiPlan', week: wk, ms: Date.now() - t0,
           sessions: ctx2.sessions.length, kept: v.plan.filter(p => p.kept).length,
@@ -2182,6 +1999,10 @@ const routes = {
         const pool = getPool();
         const classId = guard.classIdOf(ctx);
         const built = await buildAiContext(pool, wk, classId);
+        // 替班指令（「X号替换Y号」）从使用者原始文本里重新解析，确保落库与预览一致
+        const subMap = parseSubMap(payload.text || '', built.roster.map(r => r.seq));
+        // 起点指令（「A组从53开始」）同样重放，落库结果必须与预览一致
+        applyStartFrom(built, parseStartSeqs(payload.text || '', built.roster));
         // 服务端二次校验：客户端传来的序号必须重新过一遍硬规则
         const v = validatePlan(built, {
           assignments: incoming.map(p => ({ sessionId: p.sessionId, memberSeqs: p.memberSeqs || [] })),
@@ -2192,13 +2013,12 @@ const routes = {
           skipSeqs: Array.isArray(payload.skipSeqs) ? payload.skipSeqs : [],
           notes: ''
         });
-        const created = await writePlan(pool, wk, built, v.plan, v.skipSeqs, ctx.member.id);
-        // 保洁不在 AI 计划里，但共用同一轮转池 —— 落完 AI 计划后把本周保洁补齐。
-        // 起点跟着 AI 计划：只有计划真正开始排的那天 / 节次之后的保洁才补，
-        // 否则会与「从周四第二节开始排」这类要求自相矛盾。
-        // ⚠️ 必须把 validatePlan 推进过的 built.state 传进去（保洁接着课程值日排）。
-        const startFrom = planStartBoundary(v.plan);
-        const cleanCreated = await fillCleaningByRotation(pool, wk, ctx.member.id, startFrom, classId, built.state);
+        /* 保洁已并进同一条轮转流（v.cleaningPlan），与课程值日一起由 writePlan 落库。
+         * 旧实现是「落完课程再补一遍保洁」，导致保洁只能捡整周课程排完后的周尾号
+         * （用户 2026-10-31 实锤：周二第 2 节 9、11，下午打扫 410 却从 35 号起）。 */
+        const cleanPlan = Array.isArray(v.cleaningPlan) ? v.cleaningPlan : [];
+        const created = await writePlan(pool, wk, built, v.plan.concat(cleanPlan), v.skipSeqs, ctx.member.id);
+        const cleanCreated = cleanPlan.length;
         /* 游标落库：课程值日 + 保洁都排完之后，state 才是这一周的最终游标。
          * 先写本周快照（start 只在首次落 ⇒ 重复应用幂等），再对齐全局游标。 */
         const endCursors = { A: built.state.cursors.A, B: built.state.cursors.B };

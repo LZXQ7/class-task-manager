@@ -28,6 +28,11 @@ const SRC = fs.readFileSync(path.join(ROOT, 'cloudfunctions/schedule/index.js'),
 const RR_PATH = path.resolve(ROOT, 'cloudfunctions/common/round-robin');
 const { pickBySeq, buildState } = require(RR_PATH);
 
+// 2026-10-31：validatePlan 已收口到 common/schedule-core.js（单一真源），直接 require 真源码模块
+const CORE_PATH = path.resolve(ROOT, 'cloudfunctions/common/schedule-core.js');
+const coreSrc = fs.readFileSync(CORE_PATH, 'utf8');
+const core = require(CORE_PATH);
+
 let pass = 0;
 let fail = 0;
 function check(name, ok, extra) {
@@ -35,13 +40,14 @@ function check(name, ok, extra) {
   else { fail += 1; console.log('FAIL  ' + name + (extra ? '   → ' + extra : '')); }
 }
 
-function extractFn(name) {
-  const start = SRC.indexOf('function ' + name + '(');
+function extractFn(name, src) {
+  src = src || SRC;
+  const start = src.indexOf('function ' + name + '(');
   if (start < 0) throw new Error('找不到函数 ' + name);
-  const end = SRC.indexOf('\n}', start);
-  return SRC.slice(start, end + 2);
+  const end = src.indexOf('\n}', start);
+  return src.slice(start, end + 2);
 }
-const validatePlan = new Function('pickBySeq', 'buildState', extractFn('validatePlan') + '\n return validatePlan;')(pickBySeq, buildState);
+const validatePlan = core.validatePlan;
 
 /* ---------------- 真实名册（2026-09-24 从库导出，56 人，奇=A 偶=B） ---------------- */
 const ROSTER_TEXT = `01 示例成员01 A|02 示例成员02 B|03 示例成员03 A|04 示例成员04 B|05 示例成员05 A|06 示例成员06 B|
@@ -353,13 +359,13 @@ check('告警里说明「有 N 个课次保持原样」',
  * §4 代码卫生
  * ============================================================ */
 console.log('\n=== §4 代码卫生 ===');
-const body = extractFn('validatePlan');
+const body = extractFn('validatePlan', coreSrc);
 check('validatePlan 里不再按 AI 的人选配课次（没有 itemBySession）',
   body.indexOf('itemBySession') < 0);
 check('validatePlan 里不再有「回头点本轮已排过的人」那套 hasFresh 判断',
   body.indexOf('hasFresh') < 0);
 check('存在「按课次时间先后取号」的第二轮遍历',
-  /ordered\.forEach\(\(s\) => \{\s*\n\s*if \(keptIds\.has\(s\.sessionId\)\) return;/.test(body));
+  /items\.forEach\(\(s\) => \{\s*\n\s*if \(keptIds\.has\(s\.sessionId\)\) return;/.test(body));
 check('没有任何「AI 漏排…补齐」的旧告警文案', body.indexOf('AI 漏排') < 0);
 
 /* ============================================================

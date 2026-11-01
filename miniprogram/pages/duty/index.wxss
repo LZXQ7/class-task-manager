@@ -88,21 +88,32 @@
 .dt-admin {
   display: flex;
   flex-direction: row;
+  align-items: center;
+  /* 右对齐 + max-width 组合：4 格（含「历史」）时平分铺满，
+     3 格（无历史）时也平分，只有 1 格（普通成员仅「历史」）时靠右成胶囊，不会拉成一整条。 */
+  justify-content: flex-end;
   padding: 8rpx 32rpx 0;
   margin-bottom: 24rpx;
 }
 .dt-admin-btn {
+  flex: 1;
+  max-width: 220rpx;
+  min-width: 0;
   height: 80rpx;
   border-radius: 32rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28rpx;
+  /* 4 格同排：字号收到 26rpx、横向内边距收到 8rpx，「清空值日表」5 字才不会撑爆 */
+  font-size: 26rpx;
+  white-space: nowrap;
   margin-right: 16rpx;
-  padding: 0 32rpx;
+  padding: 0 8rpx;
 }
+.dt-admin-btn:last-child { margin-right: 0; }
 .dt-admin-btn.ghost { background: #F2F3F5; color: #4E5969; }
-.dt-admin-btn.primary { flex: 1; background: #3370FF; color: #FFFFFF; font-weight: 600; margin-right: 0; }
+/* ⚠️ 不能再写 margin-right: 0 —— primary 后面现在可能还跟着「历史」 */
+.dt-admin-btn.primary { background: #3370FF; color: #FFFFFF; font-weight: 600; }
 .dt-admin-btn.danger { background: #FFECE8; color: #F53F3F; }
 .dt-admin-btn:active { opacity: 0.85; }
 
@@ -522,22 +533,10 @@
   color: var(--text-3);
 }
 
-/* ---------- 「已结束」入口 + 弹层（2026-10-04 需求） ----------
- * 本周早于今天的日子不进「按日」主列表，收进「已结束」弹层。 */
-/* 「已结束」入口容器：仅本周有已结束日子时渲染，入口右对齐 */
-.dt-modebar { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; }
-.dt-ended {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  height: 56rpx;
-  padding: 0 20rpx;
-  font-size: 24rpx;
-  color: var(--brand, #3370FF);
-  background: #F0F5FF;
-  border-radius: 999rpx;
-}
-.dt-ended text { margin-right: 6rpx; }
+/* ---------- 「历史」入口 + 弹层（2026-10-04 需求；2026-10-31 入口改版） ----------
+ * 本周早于今天的日子不进「按日」主列表，收进「历史」弹层。
+ * 入口已从「独立一行右对齐的 .dt-ended 胶囊」并进 .dt-admin 操作排（第 4 格，文案「历史」），
+ * 故 .dt-modebar / .dt-ended 两条样式已随节点删除（避免留死代码）。 */
 /* 今天起没有安排时的说明（否则按日会一片空白） */
 .dt-ended-empty {
   margin: 0 32rpx 24rpx;

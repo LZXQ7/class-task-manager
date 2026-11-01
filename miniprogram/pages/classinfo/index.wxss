@@ -1,4 +1,4 @@
-/* P5 · 班级信息（框架图式层级聚合页） */
+/* P5 · 信息（框架图式层级聚合页） */
 .ci {
   padding-bottom: 40rpx;
   height: 100vh;
@@ -127,7 +127,7 @@
   background: #F2F3F5;
 }
 
-/* 层级连线（纯视觉）：从「班级概况」向下汇入 6 个子节点的主干 */
+/* 层级连线（纯视觉）：从「班级概况」向下汇入班级模块子卡的主干 */
 .ci-connector {
   width: 2rpx;
   height: 28rpx;
@@ -135,7 +135,7 @@
   background: #E5E6EB;
 }
 
-/* 子节点：6 个班级模块入口 */
+/* 子节点：班级模块入口 */
 .ci-list {
   padding: 0 32rpx;
   display: flex;
@@ -193,20 +193,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* 未读通知角标（2026-10-27）：首页「查看通知」卡下线后，红点挂在班级信息的通知子卡上 */
-.ci-item-badge {
-  flex-shrink: 0;
-  min-width: 34rpx;
-  height: 34rpx;
-  padding: 0 10rpx;
-  margin-right: 12rpx;
-  line-height: 34rpx;
-  text-align: center;
-  font-size: 22rpx;
-  color: #FFFFFF;
-  background: #F53F3F;
-  border-radius: 17rpx;
-}
 .ci-foot {
   height: 180rpx;
 }
@@ -236,4 +222,153 @@
 .cs-row.on .cs-name {
   font-weight: 600;
   color: var(--brand, #3370FF);
+}
+
+/* ---------------- 倒数日（2026-11-02 新增）：个人本地自定义事件卡 ---------------- */
+.ci-cd {
+  margin: 16rpx 32rpx 0;
+  padding: 28rpx 32rpx;
+  background: var(--glass-bg);
+  border: 1rpx solid var(--glass-edge);
+  border-radius: 32rpx;
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ci-cd { background: rgba(255, 255, 255, 0.9); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ci-cd { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+.ci-cd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20rpx;
+  border-bottom: 2rpx solid var(--line-1, #E5E6EB);
+}
+.ci-cd-title {
+  font-size: 30rpx;
+  line-height: 42rpx;
+  font-weight: 600;
+  color: #1D2129;
+}
+.ci-cd-add {
+  display: flex;
+  align-items: center;
+  padding: 6rpx 20rpx;
+  background: var(--brand-light, #F0F5FF);
+  border-radius: 999rpx;
+}
+.ci-cd-add-t {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: var(--brand, #3370FF);
+}
+.ci-cd-empty {
+  margin-top: 20rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #86909C;
+}
+.ci-cd-list {
+  margin-top: 4rpx;
+}
+.ci-cd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 0;
+  border-top: 1rpx solid var(--bg-fill, #F2F3F5);
+}
+.ci-cd-row:first-child {
+  border-top: none;
+}
+.ci-cd-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 2026-11-02：事件名（标题）加粗 + 名字/日期同步放大 */
+.ci-cd-name {
+  font-size: 36rpx;
+  line-height: 52rpx;
+  font-weight: 700;
+  color: #1D2129;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ci-cd-date {
+  margin-top: 2rpx;
+  font-size: 30rpx;
+  line-height: 42rpx;
+  color: #86909C;
+}
+/* 「x天」粗体 44rpx，垂直居中于整条：视觉上顶到名字行中线、底到日期行中线。 */
+.ci-cd-days {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 44rpx;
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--brand, #3370FF);
+}
+.ci-cd-days.passed {
+  color: #86909C;
+  font-weight: 400;
+}
+
+/* 倒数日添加弹层表单（2026-11-02） */
+.cd-form {
+  padding: 8rpx 32rpx 32rpx;
+}
+.cd-field {
+  margin-top: 24rpx;
+}
+.cd-label {
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #86909C;
+}
+.cd-input {
+  margin-top: 12rpx;
+  height: 72rpx;
+  padding: 0 20rpx;
+  background: var(--bg-fill, #F2F3F5);
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  color: #1D2129;
+}
+.cd-picker {
+  margin-top: 12rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 20rpx;
+  background: var(--bg-fill, #F2F3F5);
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  color: #1D2129;
+}
+.cd-picker.placeholder {
+  color: #A8ABB2;
+}
+
+/* 底部操作条：复用全局 .btn / .btn-ghost，这里补 .f-actions 布局与等宽子按钮
+   （app.wxss 未提供，duty 页用 .sl .f-actions 本地定义，本页同样本地定义） */
+.f-actions {
+  display: flex;
+  gap: 20rpx;
+  align-items: stretch;
+  margin-top: 32rpx;
+}
+.f-cancel,
+.f-save {
+  flex: 1;
 }

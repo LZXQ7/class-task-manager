@@ -12,8 +12,8 @@
  *   ① 辅导员（groupTag='X'）：chips 建全、默认落主班、数据按 classId 拉
  *   ② 切班：参数真的换了、班名/人数/班费跟着换、isOtherClass 置位
  *   ③ 🔴 onShow 再跑 load 不被弹回主班（keep 分支）
- *   ④ 看别班时四张子卡 URL 都带 classId；通知额外带短名（后端支持按班查看，
- *      2026-10-28 起不再置灰/拦截）
+ *   ④ 看别班时仅剩的子卡（roster / fee）URL 都带 classId；通知/作业子卡已于
+ *      2026-11-02 移除，点这两个 key 不再跳转
  *   ⑤ 🔴 看本班时 URL 必须干净 —— roster 里 `otherClass: classId > 0`，
  *      带自己班 id 会被当成「查看别班」，语义就错了
  *   ⑥ 普通成员：不拉班级列表、请求不带 classId、无 chips
@@ -101,7 +101,8 @@ function makeHarness(profile, opts, src) {
           manual: (w) => 'manual:' + w,
           roster: (c, kw) => 'roster:' + (Number(c) || 0) + ':' + (kw || ''),
           classinfo: (c) => 'ci:' + (Number(c) || 0),
-          classList: () => 'classList'
+          classList: () => 'classList',
+          myClass: (memberId) => 'myClass:' + (Number(memberId) || 0)
         }
       };
     })()
@@ -147,8 +148,10 @@ async function runAll(src, quiet) {
     ok(page.data.classChips.length === 5, 'chips 建满 5 个班（= staffClassIds 范围）');
     ok(page.data.viewClassId === 3, '默认落主班 示例班级A，不是列表第一个');
     ok(page.data.className === OWN_示例班级A, '班名 = 示例班级A');
-    ok(JSON.stringify(calls.memberStats[0]) === '{"classId":3}', 'memberStats 首次带 classId=3');
-    ok(JSON.stringify(calls.feeSummary[0]) === '{"classId":3}', 'feeSummary 首次带 classId=3');
+    ok(JSON.stringify(calls.memberStats[0]) === '{}', 'memberStats 先以空参数出数（后端回落本班，不等 classList）');
+    ok(calls.memberStats.some((c) => JSON.stringify(c) === '{"classId":3}'), 'chips 落定后 memberStats 带 classId=3');
+    ok(JSON.stringify(calls.feeSummary[0]) === '{}', 'feeSummary 先以空参数出数');
+    ok(calls.feeSummary.some((c) => JSON.stringify(c) === '{"classId":3}'), 'chips 落定后 feeSummary 带 classId=3');
     ok(page.data.stats.total === 59, '显示 59 人（示例班级A 真实人数）');
     ok(page.data.feeTotal === 280, '班费显示 280');
     ok(page.data.isOtherClass === false, '看本班时 isOtherClass = false');
@@ -186,16 +189,14 @@ async function runAll(src, quiet) {
     page.load(); await settle();
     page.onClassPick({ currentTarget: { dataset: { id: 1 } } }); await settle();
     calls.nav.length = 0;
-    ['roster', 'fee', 'homework', 'notice'].forEach((k) =>
+    ['roster', 'fee'].forEach((k) =>
       page.onOpen({ currentTarget: { dataset: { key: k } } }));
     ok(calls.nav[0] === '/pages/roster/index?classId=1', '成员页带 classId=1 → ' + calls.nav[0]);
     ok(calls.nav[1] === '/pages/fee/index?classId=1', '班费页带 classId=1 → ' + calls.nav[1]);
-    ok(calls.nav[2] === '/pages/homework/index?classId=1', '作业页带 classId=1 → ' + calls.nav[2]);
-    /* 2026-10-28：通知不再被拦（后端 msgList 支持按班查看），
-     * 切到 2601 点通知 = 看 2601 的通知，URL 上带 id + 短名（导航标题用）。 */
-    ok(calls.nav[3] === '/pages/notice/index?classId=1&name=2601%E7%8F%AD',
-      '通知页带 classId=1 + 短名 → ' + calls.nav[3]);
-    ok(calls.toast.length === 0, '不再弹「通知仅显示本人班级」（四张子卡都跟班走）');
+    /* 通知 / 作业子卡已于 2026-11-02 从「信息」页移除 ⇒ 点这两个 key 不再跳转 */
+    page.onOpen({ currentTarget: { dataset: { key: 'homework' } } });
+    page.onOpen({ currentTarget: { dataset: { key: 'notice' } } });
+    ok(calls.nav.length === 2, '移除通知/作业后仅 roster/fee 两个子卡跳转（共 ' + calls.nav.length + ' 条）');
   }
 
   head('⑤ 🔴 看本班时点子卡（roster 里 classId>0 = 查看别班）');
@@ -204,12 +205,7 @@ async function runAll(src, quiet) {
     page.load(); await settle();
     calls.nav.length = 0;
     page.onOpen({ currentTarget: { dataset: { key: 'roster' } } });
-    page.onOpen({ currentTarget: { dataset: { key: 'notice' } } });
     ok(calls.nav[0] === '/pages/roster/index', '本班进成员页 URL 干净 → ' + calls.nav[0]);
-    /* 通知例外：它的 classId 只表示「看哪个班」，本班也带 —— 这样「在 示例班级A 看 示例班级A
-     * 的通知」比「不带参数看全部可见」更符合预期（不带参数是超管的全局视角）。 */
-    ok(calls.nav[1] === '/pages/notice/index?classId=3&name=示例班级A%E7%8F%AD',
-      '本班通知也带 classId（按班查看对本人班同样成立）→ ' + calls.nav[1]);
     ok(calls.toast.length === 0, '没有误弹提示');
   }
 
@@ -300,7 +296,8 @@ async function runAll(src, quiet) {
       'wxml 挂上 bottom-sheet 且 show 绑 classSheetShow');
     ok(!/scroll-x/.test(wxml), '横滑 chips 条已移除（用户反馈「左右滑动不太好」）');
     ok(/height="\{\{clsSheetH\}\}"/.test(wxml), '弹层高度接 clsSheetH（不是写死一个数）');
-    ok(/page-style="\{\{classSheetShow/.test(wxml), 'page-meta 把 classSheetShow 列进滚动锁');
+    ok(/page-style="\{\{.*classSheetShow/.test(wxml), 'page-meta 把 classSheetShow 列进滚动锁');
+    ok(/page-style="\{\{.*cdSheetShow/.test(wxml), 'page-meta 把 cdSheetShow 也列进滚动锁（倒数日弹层穿透防护）');
     ok(/"bottom-sheet"\s*:/.test(json), 'json 注册了 bottom-sheet 组件');
     ok(/wx:key="id"/.test(wxml), '弹层列表 wx:key 用属性名 id（不能写表达式）');
     ok(/\.cs-row/.test(wxss) && /\.ci-name-switch/.test(wxss), 'wxss 有弹层行与「切换」入口样式');
@@ -325,13 +322,6 @@ async function runAll(src, quiet) {
       name: 'isOtherClass 恒 false',
       from: 'isOtherClass: !!id && !!own && Number(id) !== own,',
       to: 'isOtherClass: false,'
-    },
-    {
-      /* 2026-10-28：通知支路一旦失效，notice 会落进 else（只带 classId、不带短名），
-       * 通知页导航标题就没有班名 —— 「切了班但看不出在看哪个班」。 */
-      name: '通知卡丢掉短名 / 不走按班支路（切班后标题看不出是哪个班）',
-      from: "if (key === 'notice') {",
-      to: 'if (false) {'
     },
     {
       name: '请求永远带 classId（普通成员也带）',

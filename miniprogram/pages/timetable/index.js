@@ -92,6 +92,7 @@ Page({
     totalWeeks: 18,
     week: 1,
     current: 1,
+    currentPeriod: 0,       // 当前正在上的节次号（按设备时间算，0=无）；课程表网格页高亮用
 
     dates: [],          // [{dow, short, day, isToday, isHoliday, holidayName, isMakeup, isWeekend}]（只含实际显示的天）
     periods: [],        // [{p, label, start}]
@@ -263,6 +264,9 @@ Page({
         this._afterAuth();
       }).catch(() => {});
     }
+    // 当前节次高亮：回到本页先刷一次 + 排定时器（_ptArr 就绪后定时器才真正排上）
+    this._refreshCurrentPeriod();
+    this._scheduleCurrentTimer();
   },
 
   /** 顶部「模拟中」横幅的「恢复本人」（v1.0.5） */
@@ -340,6 +344,7 @@ Page({
   _syncPeriodCount(classId) {
     const cid = Number(classId || this.data.viewClassId) || 0;
     const cls = (this.data.classList || []).find(c => Number(c.id) === cid);
+    this._ptArr = (cls && cls.periodTime) || [];   // 节次数起止表（含 start/end），当前节次高亮用
     const n = tt.setPeriods((cls && cls.periodTime) || []);
     const chips = [];
     for (let p = 1; p <= n; p++) chips.push(p);
@@ -362,6 +367,57 @@ Page({
     this._recomputeFab();
     this._syncFromCloud({ classId: this.data.viewClassId });
     this._loadPersonal();
+    // 当前节次高亮：先按此刻刷新一次，再排定时器到点翻面
+    this._refreshCurrentPeriod();
+    this._scheduleCurrentTimer();
+  },
+
+  /* 当前正在上的节次（课程表网格高亮用）：按设备时间对班级 periodTime 起止判定，返回节次号，0=无 */
+  _currentPeriodNow() {
+    const pt = this._ptArr || [];
+    if (!pt.length) return 0;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    let hit = 0;
+    pt.forEach((x) => {
+      const sm = /^(\d{1,2}):(\d{2})$/.exec(x.start || '');
+      const em = /^(\d{1,2}):(\d{2})$/.exec(x.end || '');
+      if (!sm || !em) return;
+      const s = Number(sm[1]) * 60 + Number(sm[2]);
+      const e = Number(em[1]) * 60 + Number(em[2]);
+      if (s <= nowMin && nowMin < e) hit = Number(x.period) || hit;
+    });
+    return hit;
+  },
+  _refreshCurrentPeriod() {
+    const cp = this._currentPeriodNow();
+    if (cp !== (this.data.currentPeriod || 0)) this.setData({ currentPeriod: cp });
+  },
+  /* 排下一个翻面时刻：每节的上课点 / 下课点。切走/卸载由 onHide/onUnload 清掉，自身先清旧计时器。 */
+  _scheduleCurrentTimer() {
+    if (this._curTimer) { clearTimeout(this._curTimer); this._curTimer = null; }
+    const pt = this._ptArr || [];
+    if (!pt.length) return;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const off = now.getSeconds() * 1000 + now.getMilliseconds();
+    let nextMs = Infinity;
+    pt.forEach((x) => {
+      const sm = /^(\d{1,2}):(\d{2})$/.exec(x.start || '');
+      const em = /^(\d{1,2}):(\d{2})$/.exec(x.end || '');
+      if (!sm || !em) return;
+      const s = Number(sm[1]) * 60 + Number(sm[2]);
+      const e = Number(em[1]) * 60 + Number(em[2]);
+      if (s > nowMin) { const f = (s - nowMin) * 60000 - off; if (f < nextMs) nextMs = f; }
+      if (e > nowMin) { const f = (e - nowMin) * 60000 - off; if (f < nextMs) nextMs = f; }
+    });
+    if (!isFinite(nextMs)) return;
+    const delay = Math.max(1000, nextMs);
+    this._curTimer = setTimeout(() => {
+      this._curTimer = null;
+      this._refreshCurrentPeriod();
+      this._scheduleCurrentTimer();
+    }, delay);
   },
 
   /** 辅导员/超管切班：换一份课表真源（强制重新同步，不走静默缓存） */
@@ -1309,7 +1365,12 @@ Page({
   },
 
   /** 页面销毁时清掉动画定时器（否则定时器回来时 setData 一个已销毁的页面） */
+  onHide() {
+    // 切走 Tab：清掉当前节次高亮定时器，避免后台空转 / 对已销毁实例 setData
+    if (this._curTimer) { clearTimeout(this._curTimer); this._curTimer = null; }
+  },
   onUnload() {
+    if (this._curTimer) { clearTimeout(this._curTimer); this._curTimer = null; }
     theme.unmount(this);   // 深色模式（C-4）：摘掉主题订阅
     swipe.cancel(this);
     // A 组/B 组 FLIP 的打断令牌作废：链上还没醒的 setTimeout 自己退出，不再对已销毁实例 setData

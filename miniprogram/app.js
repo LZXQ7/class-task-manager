@@ -56,6 +56,36 @@ function writeCachedAuth(profile, switched, demo) {
   } catch (e) { /* 缓存失败不影响主流程 */ }
 }
 
+/**
+ * 全局配置缓存（与身份缓存同款思路，2026-11-01 修「选修课首屏显示第x节」）
+ * ------------------------------------------------------------
+ * 首页合并本人选修课时用 `globalData.config.periodTime`（节次→起止时间）补时间；
+ * 但该字段是 `login` **异步**返回后才赋值的。老用户 `profile` 已被 readCachedAuth
+ * 同步还原 ⇒ onShow 时 profile 非空、config 仍 null ⇒ 首屏合并拿到空 periodTime
+ * ⇒ 选修课时间退化成「第N节」，且「身份指纹没变」导致 app.ready() 重跑被跳过 ⇒
+ * 卡在「第N节」直到切页再 load（login 早已返回，config 已到）。
+ * 与 profile 一样：login 成功后把 config 落 storage，onLaunch 同步还原占位，
+ * 首屏合并即拿到（按班静态的）节次时间表，login 回来后用真身覆盖。
+ * ⚠️ 跨班（超管切班）场景：缓存只存最近一次的 config；切到另一班时 login 返回新班 config
+ *    立即覆盖，仅首屏那一瞬可能短暂显示上班节次表，登录后自愈（选修课时间本就极少跨班差异）。
+ */
+const CONFIG_CACHE_KEY = 'appConfigCache';
+function readCachedConfig() {
+  try {
+    const v = wx.getStorageSync(CONFIG_CACHE_KEY);
+    return (v && typeof v === 'object' && v.periodTime) ? v : null;
+  } catch (e) { return null; }
+}
+function writeCachedConfig(config) {
+  try {
+    if (config && config.periodTime) wx.setStorageSync(CONFIG_CACHE_KEY, config);
+    else wx.removeStorageSync(CONFIG_CACHE_KEY);
+  } catch (e) { /* 缓存失败不影响主流程 */ }
+}
+function clearCachedConfig() {
+  try { wx.removeStorageSync(CONFIG_CACHE_KEY); } catch (e) { /* ignore */ }
+}
+
 App({
   /** 埋点助手：getApp().track.pageView(page) / getApp().track.action(key, ref) */
   track,
@@ -116,6 +146,9 @@ App({
       this.globalData.switched = !!cached.switched;
       this.globalData.demo = !!cached.demo;
     }
+    // 与 profile 同款同步占位：config.periodTime 也先还原，避免首屏合并选修课退化为「第N节」
+    const cachedCfg = readCachedConfig();
+    if (cachedCfg) this.globalData.config = cachedCfg;
     this._initSystemInfo();
     this._pickScene(options);
     this._installLoadingGuard();
@@ -154,6 +187,7 @@ App({
     g.authChecked = true;
     writeCachedAuth(null, false, false);      // v0.7.32：身份缓存必须一起清，绝不能留上一位成员
     try { mem.clear(); } catch (e) {}
+    try { clearCachedConfig(); } catch (e) {}
     try { notice.invalidate(); } catch (e) {}
     this._goBind();
     setTimeout(() => { g._unbinding = false; }, 1500);
@@ -403,6 +437,7 @@ App({
       g.bound = !!(r && r.bound);
       g.profile = r && r.member ? r.member : null;
       g.config = r && r.config ? r.config : null;
+      if (g.config) writeCachedConfig(g.config);
       g.switched = !!(r && r.switched);   // 超管「切换测试账号」模拟态
       g.demo = !!(r && r.demo);           // 演示态标记由 login 权威下发（免绑定 reviewDemo / 超管 switchDemo）
       g.authChecked = true;
@@ -473,6 +508,13 @@ App({
           .then((list) => { notice.write(list); })
           .catch(() => {});
       }
+      // 预热 dutyToday（2026-11-01 修「首页冷启动慢」）：首页首屏门控依赖它，
+      // 冷启动容器是冷的会 1~3s。登录后趁热预发一次把它暖起来，用户真正进首页再调就命中热容器。
+      // 失败一律吞掉（纯优化，绝不影响启动/首屏）。
+      try {
+        const cid = (g.profile && g.profile.classId) || (g.config && g.config.classId) || 0;
+        if (cid) api.dutyToday({ classId: cid }, { toast: false }).catch(() => {});
+      } catch (e) { /* 预热失败不影响主流程 */ }
     } catch (e) {
       console.warn('[app] 预热跳过', e);
     }
@@ -508,6 +550,7 @@ App({
     g.bound = !!(r && r.bound);
     g.profile = r && r.member ? r.member : null;
     g.config = r && r.config ? r.config : null;
+    if (g.config) writeCachedConfig(g.config);
     g.switched = !!(r && r.switched);
     g.demo = !!(r && r.demo);   // 演示态标记由 login 权威下发，不再因非模拟态而被误清（2026-10-29）
     writeCachedAuth(g.profile, g.switched, g.demo);   // v0.7.32：切换测试账号 / 恢复本人 后同步身份缓存

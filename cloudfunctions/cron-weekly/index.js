@@ -22,7 +22,8 @@ const week = require('./common/week');
 // 轮转取人内核：与 schedule 的「一键生成」共用同一份实现（禁止再写第二套算法）
 const {
   pickBySeq, buildState, loadDayBlocks, loadCursors, toSeqSet,
-  loadWeekCursors, saveWeekCursors, syncGlobalCursors
+  loadWeekCursors, saveWeekCursors, syncGlobalCursors,
+  resolveNeed, loadSlots, slotOf
 } = require('./common/schedule-core');
 /* 测试账号唯一真源（见 common/test-account.js）：
  * 自动排班的轮转名册**必须**过滤测试账号 —— 每周 cron 是无人值守的，
@@ -44,51 +45,10 @@ const DAY_TEXT = ['一', '二', '三', '四', '五', '六', '日'];
  * 会自动给中秋节 / 国庆当天排值日，也不认「这周这节课不上」。这些现在都补齐了。
  */
 /* ---------------- 排班岗位槽（2026-10-28） ----------------
- * ⚠️ 与 schedule 云函数的 loadSlots / slotOf **必须同口径**。
- *    项目已有「schedule.generate / buildCleaningPlan / cron-weekly.generateWeek
- *    三处同口径，改一处必须同步」的约定 —— 本函数是第四处。
- *    槽位表为空 ⇒ 返回空数组 ⇒ generateWeek 完全走原逻辑，现有班级零影响。
+ * ⚠️ loadSlots / slotOf 已收口到 common/schedule-core.js（与 schedule 云函数共用，
+ *    单一真源，2026-10-30 起改一处自动两处生效）。槽位表为空 ⇒ 返回空数组 ⇒
+ *    generateWeek 完全走原逻辑，现有班级零影响。
  */
-async function loadSlots(conn, classId) {
-  const [rows] = await conn.query(
-    "SELECT id, weekday, `period`, need_n, fixed_seq, kind, sort_order FROM duty_slot WHERE class_id = ? ORDER BY sort_order, weekday, `period`",
-    [Number(classId) || 1]
-  );
-  return rows.map(r => ({
-    id: Number(r.id),
-    weekday: Number(r.weekday),
-    /* null = 承包全天（当天所有节次共用这一批人） */
-    period: r.period === null ? null : Number(r.period),
-    needN: Math.max(1, Number(r.need_n) || 1),
-    /* 固定某人的学号序号；null = 参与轮转 */
-    fixedSeq: r.fixed_seq === null ? null : Number(r.fixed_seq),
-    kind: r.kind === 'CLEAN' ? 'CLEAN' : 'NORMAL',
-    sortOrder: Number(r.sort_order) || 0
-  }));
-}
-
-/**
- * 给一个课次匹配槽位。匹配优先级：
- *   ① CLEAN 课次 → 优先找 CLEAN 专用槽（大扫除单独成槽，不消耗常规轮转）
- *   ② 精确 (星期, 节次)
- *   ③ 同星期的「全天槽」(period = null)
- * 都匹配不到 → null（该课次回落原逻辑，不会被吞掉）
- *
- * ⚠️ weekday 用 **slot.day（实际生效的星期）**，不是 session.day_of_week ——
- *    调休 MOVE 后后者不变，用它会排到错误的那天。
- */
-function slotOf(slots, weekday, period, kind) {
-  if (!slots || !slots.length) return null;
-  const wd = Number(weekday);
-  const pd = Number(period);
-  if (kind === 'CLEAN') {
-    const c = slots.find(x => x.kind === 'CLEAN' && x.weekday === wd && (x.period === null || x.period === pd));
-    if (c) return c;
-  }
-  return slots.find(x => x.kind !== 'CLEAN' && x.weekday === wd && x.period === pd)
-    || slots.find(x => x.kind !== 'CLEAN' && x.weekday === wd && x.period === null)
-    || null;
-}
 
 async function generateWeek(pool, wk, classId) {
   const cfg = await week.getConfig(pool, classId);
@@ -215,9 +175,8 @@ async function generateWeek(pool, wk, classId) {
       /* 🔴 人数口径（与 schedule.generate 逐字同口径）：
        *   ① duty_count = 0 = 课次级显式「不排值日」（书香校园那类）—— 连槽位也不排；
        *   ② 其余以槽位 needN 为准：duty_count 是课次级默认值（多数 2），拿它兜底会截断 needN。 */
-      // duty_count=0 = 不排值日：?? 窄化让 0 保持 0（|| 1 会把 0 误当 1 排 1 人）
-      const dc = Number(s.duty_count ?? 1);
-      const n = Math.max(0, (dc === 0 ? 0 : (slotRec ? slotRec.needN : dc)) - alreadyFilled);
+      // 每节应排人数单一真源 resolveNeed：duty_count=0=不排值日，否则取槽位 needN，再减手动已排
+      const n = resolveNeed(s, slots, alreadyFilled, slot.day, slot.period, s.kind);
       if (n <= 0) continue;
       const blocks = await loadDayBlocks(conn, classDate);
       // 取人 = 与超管手动「一键生成」完全同源（`common/schedule-core.js` 的 pickBySeq）。

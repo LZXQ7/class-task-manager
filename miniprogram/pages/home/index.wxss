@@ -167,12 +167,11 @@
 }
 .course-row:last-child { border-bottom: none; }
 .course-row.mine { background: #F7F8FA; }
-/* 选修课行（2026-10-16 首页并入本人选修课）：**浅蓝强调底** + 左侧蓝色条 ——
-   2026-10-29 三轮定稿：先 #F7FAFF（近白，像白块）→ 透明（无区分）→ 现 #D6E4FF
-   （比课表页 PERSONAL_BG #EAF1FF 更深一档，蓝色更明确、强调可辨，深色文字仍清晰）。
+/* 选修课行（2026-11-02 修正）：**不再给常驻浅蓝底/蓝色条** —— 用户要求「没到的课一律不上色，
+   只有正在上的那节课才加深（见下方 .course-row.current）」。选修课仅靠「选修」角标（.tag.elective）
+   区分，避免被误当成高亮。
    🔴 不加 tappable：它不驱动值日、也没有课堂情况名单 ⇒ 纯展示行。 */
-.course-row.personal { background: #D6E4FF; }
-.course-row.personal .course-bar { background: #3370FF; opacity: 0.45; }
+.course-row.personal { /* 仅作 WXML 钩子（控制 hover / 角标），无背景色，避免非当前课被统一上色 */ }
 .course-bar {
   position: absolute;
   left: 32rpx;
@@ -187,12 +186,25 @@
    2026-10-15 结构调整：过去时间+课名同排、地点挂在整行下面 —— 课名折两行时
    时间和地点之间被撑开一大段。现在左列独立成栈，课名作为行的直接子元素，
    靠 .course-row 的 align-items:center 相对左列**上下居中**。 */
-.course-side { margin-left: 24rpx; flex-shrink: 0; }
-/* 时间列固定宽 ⇒ 课程名左缘全行对齐。
-   ⚠️ 宽度只给到刚好装下「08:10-09:50」（24rpx 字号下约 140rpx，取 152 留余量）——
-   曾经给到 216rpx，多出的 70rpx 全变成课程名前的空白，长课名被挤到省略号
-   （2026-10-15 用户实拍：名称和时间之间一大段空、且显示不全）。改时间格式前先核这列宽。 */
-.course-time { font-size: 24rpx; color: #86909C; width: 152rpx; flex-shrink: 0; }
+/* 左列（时间 + 房间）固定宽度 ⇒ 每行左列等宽，课程名左缘全行强制对齐（修「大屏不对齐」）。
+   box-sizing:border-box + padding-right 给一条浅色分隔线当「固定边界」；内容区 152rpx 与原
+   .course-time 同宽，课程名起止位置不漂移。房间名超长省略，避免把列撑宽导致各行列宽不一。 */
+.course-side {
+  margin-left: 24rpx;
+  flex-shrink: 0;
+  width: 178rpx;
+  box-sizing: border-box;
+  padding-right: 24rpx;
+  border-right: 2rpx solid #F2F3F5;
+}
+.course-time {
+  font-size: 24rpx;
+  color: #86909C;
+  width: 100%;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
 /* 课名：最多两行（2026-10-15 需求：单行放不下的用两行显示），两行仍放不下才省略。
    ⚠️ 用 -webkit-box + line-clamp 才能拿到「两行 + 末尾省略号」；换成普通 block + height
    会有「第二行只露出半截」的破相。
@@ -213,7 +225,16 @@
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
-.course-room { margin-top: 4rpx; font-size: 24rpx; color: #86909C; }
+.course-room {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #86909C;
+  width: 100%;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tag {
   flex-shrink: 0;
   height: 40rpx;
@@ -228,6 +249,14 @@
 /* 选修课角标（2026-10-16 首页并入本人选修课）：配色对齐课表页的 PERSONAL_BG/PERSONAL_FG，
    让选修课在首页与课表页里是一眼同源的两处显示。 */
 .tag.elective { background: #EAF1FF; color: #3370FF; }
+/* 当前正在上的课（2026-11-02）：品牌蓝实填充 + 白字，盖过 personal/mine 浅蓝；与 done 灰化互斥 */
+.course-row.current { background: #3370FF; }
+.course-row.current .course-bar { background: #FFFFFF; opacity: 1; }
+.course-row.current .course-name { color: #FFFFFF; font-weight: 600; }
+.course-row.current .course-time,
+.course-row.current .course-room { color: rgba(255, 255, 255, 0.85); }
+/* 「进行中」角标：白底品牌字，在蓝底行上醒目 */
+.tag.now { background: #FFFFFF; color: #3370FF; font-weight: 600; }
 .no-course {
   height: 128rpx;
   display: flex;

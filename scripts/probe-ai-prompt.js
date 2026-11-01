@@ -26,6 +26,10 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const SRC = fs.readFileSync(path.join(ROOT, 'cloudfunctions/schedule/index.js'), 'utf8');
 
+// 2026-10-31：validatePlan 已收口到 common/schedule-core.js（单一真源），直接 require 真源码模块
+const CORE_PATH = path.resolve(ROOT, 'cloudfunctions/common/schedule-core.js');
+const core = require(CORE_PATH);
+
 /* ---------------- 从源码抽函数 / 常量 ---------------- */
 function extractFn(name) {
   const start = SRC.indexOf('function ' + name + '(');
@@ -40,7 +44,7 @@ function extractPrompt() {
   if (start < 0 || end < 0) throw new Error('找不到 DEFAULT_AI_PROMPT');
   return new Function(SRC.slice(start, end + '].join(\'\\n\');'.length) + ' return DEFAULT_AI_PROMPT;')();
 }
-const validatePlan = new Function(extractFn('validatePlan') + '\n return validatePlan;')();
+const validatePlan = core.validatePlan;
 const DEFAULT_AI_PROMPT = extractPrompt();
 
 /* ---------------- 真实第 2 周上下文 ---------------- */

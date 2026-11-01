@@ -52,48 +52,62 @@ function call(name, action, payload, opt) {
   opt = opt || {};
   const needToast = opt.toast !== false;
   const loadingText = opt.loading;
+  // opt.retry：仅对网络/超时类失败（errCode -1，见下方 fail 分支）重试；
+  // 业务错误（含 40001/40002 未绑定）一律不重试，避免无意义的重复请求。
+  const maxRetry = (opt.retry > 0 && Number.isFinite(opt.retry)) ? Math.min(opt.retry, 3) : 0;
 
-  if (loadingText) {
-    wx.showLoading({ title: loadingText, mask: true });
+  function invoke() {
+    return new Promise((resolve, reject) => {
+      if (loadingText) wx.showLoading({ title: loadingText, mask: true });
+      wx.cloud.callFunction({
+        name,
+        data: { action, payload },
+        success(res) {
+          if (loadingText) wx.hideLoading();
+          const r = (res && res.result) || {};
+          if (r.errCode === 0) {
+            resolve(r.data === undefined ? null : r.data);
+            return;
+          }
+          const err = mkErr(r.errCode, r.errMsg || '请求失败', r.data);
+          if (r.errCode === 40001 || r.errCode === 40002) emit('needBind', err);
+          if (needToast && r.errCode !== 40001 && r.errCode !== 40002) {
+            wx.showToast({ title: err.errMsg || '请求失败', icon: 'none', duration: 2000 });
+          }
+          reject(err);
+        },
+        fail(e) {
+          if (loadingText) wx.hideLoading();
+          const raw = (e && e.errMsg) || '';
+          // ⚠️ 2026-10-05：原先这里是
+          //   `/cloud|network|fail/i.test(msg) ? '网络异常，请稍后重试' : msg`
+          // 而 wx.cloud.callFunction 的 errMsg **几乎总含 'fail'**（request:fail timeout 等）
+          // ⇒ 永远命中前一分支 ⇒ 真实原因（超时？云函数不存在？基础库不支持？）被无条件吞掉，
+          //    连续三轮排查「网络异常」都拿不到真因就是这里害的。
+          // 现在：把原始 errMsg **原样透出**（只对完全空的情况兜底），
+          // 并 console.error 落日志。基础库版本问题（3.x 老版本 callFunction 行为差异）
+          // 也只有这样才看得见。
+          const detail = raw || '请求失败（未返回错误信息）';
+          console.error('[request] callFunction fail:', name, action, raw, e);
+          const err = mkErr(-1, detail);
+          if (needToast) wx.showToast({ title: err.errMsg, icon: 'none', duration: 2500 });
+          reject(err);
+        }
+      });
+    });
   }
 
-  return new Promise((resolve, reject) => {
-    wx.cloud.callFunction({
-      name,
-      data: { action, payload },
-      success(res) {
-        if (loadingText) wx.hideLoading();
-        const r = (res && res.result) || {};
-        if (r.errCode === 0) {
-          resolve(r.data === undefined ? null : r.data);
-          return;
-        }
-        const err = mkErr(r.errCode, r.errMsg || '请求失败', r.data);
-        if (r.errCode === 40001 || r.errCode === 40002) emit('needBind', err);
-        if (needToast && r.errCode !== 40001 && r.errCode !== 40002) {
-          wx.showToast({ title: err.errMsg || '请求失败', icon: 'none', duration: 2000 });
-        }
-        reject(err);
-      },
-      fail(e) {
-        if (loadingText) wx.hideLoading();
-        const raw = (e && e.errMsg) || '';
-        // ⚠️ 2026-10-05：原先这里是
-        //   `/cloud|network|fail/i.test(msg) ? '网络异常，请稍后重试' : msg`
-        // 而 wx.cloud.callFunction 的 errMsg **几乎总含 'fail'**（request:fail timeout 等）
-        // ⇒ 永远命中前一分支 ⇒ 真实原因（超时？云函数不存在？基础库不支持？）被无条件吞掉，
-        //    连续三轮排查「网络异常」都拿不到真因就是这里害的。
-        // 现在：把原始 errMsg **原样透出**（只对完全空的情况兜底），
-        // 并 console.error 落日志。基础库版本问题（3.x 老版本 callFunction 行为差异）
-        // 也只有这样才看得见。
-        const detail = raw || '请求失败（未返回错误信息）';
-        console.error('[request] callFunction fail:', name, action, raw, e);
-        const err = mkErr(-1, detail);
-        if (needToast) wx.showToast({ title: err.errMsg, icon: 'none', duration: 2500 });
-        reject(err);
+  function run(attempt) {
+    return invoke().catch((err) => {
+      // 冷启动偶发超时/网络抖动 → errCode -1；短退避重试 1~2 次，避免雪崩
+      if (maxRetry > 0 && attempt <= maxRetry && err && err.errCode === -1) {
+        const delay = 400 * attempt;
+        return new Promise((res) => setTimeout(res, delay)).then(() => run(attempt + 1));
       }
+      throw err;
     });
-  });
+  }
+  return run(1);
 }
 
 /** 上传本地文件到云存储 */

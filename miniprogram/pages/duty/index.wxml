@@ -44,24 +44,9 @@
     bind:change="onWeekChange"
   />
 
-  <view class="dt-wrap st-item st-2 dt-modebar">
-    <!-- 「已结束」（2026-10-04 需求）：本周早于今天的日子收进弹层，不再占主列表 -->
-    <view
-      wx:if="{{pastDays.length}}"
-      class="dt-ended"
-      bindtap="onEndedOpen"
-      hover-class="press-dim"
-      hover-start-time="0"
-      hover-stay-time="60"
-    >
-      <text>已结束 {{pastDays.length}} 天</text>
-      <app-icon name="arrow-right" variant="gray" size="{{26}}" />
-    </view>
-  </view>
-
   <!-- 教职工班级筛选（v0.7.16 需求⑧）：辅导员不值日，但可逐班查看值日分配；
        chip-motion 的 padding/font-size 过渡让邻项平滑让位；flex-wrap 支持小屏换行 -->
-  <view wx:if="{{isCounselor && dutyChips.length}}" class="dt-fchips st-item st-3">
+  <view wx:if="{{isCounselor && dutyChips.length}}" class="dt-fchips st-item st-2">
     <view
       wx:for="{{dutyChips}}"
       wx:key="id"
@@ -73,15 +58,27 @@
     >{{item.name}}</view>
   </view>
 
-  <!-- 排班域操作区（超管 / 本班生活委员，需求 D）：放在最上面，不随列表滚动 —— 本周已有 24 条值日时排到页面底部会看不见 -->
-  <view wx:if="{{canSchedule}}" class="dt-admin st-item st-4">
-    <view class="dt-admin-btn danger" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onClear">清空值日表</view>
-    <view class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onAiOpen">{{busy ? '处理中' : '一键生成'}}</view>
-    <view wx:if="{{status === 'PUBLISHED'}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onUnpublish">撤回发布</view>
-    <view wx:else class="dt-admin-btn primary" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onPublish">发布给全班</view>
+  <!-- 排班域操作区（超管 / 本班生活委员，需求 D）：放在最上面，不随列表滚动 —— 本周已有 24 条值日时排到页面底部会看不见。
+       「历史」入口（2026-10-31 用户要求）：原「已结束 N 天」独立一行右对齐，现收进本排第 4 格，文案简化为「历史」。
+       ⚠️ 容器条件从 canSchedule 放宽为 canSchedule || pastDays.length —— 普通成员没有排班权限，
+          但同样要能翻看过去的日子，否则「历史」会对他消失。 -->
+  <view wx:if="{{canSchedule || pastDays.length}}" class="dt-admin st-item st-3">
+    <view wx:if="{{canSchedule}}" class="dt-admin-btn danger" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onClear">清空值日表</view>
+    <view wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onAiOpen">{{busy ? '处理中' : '一键生成'}}</view>
+    <view wx:if="{{canSchedule && status === 'PUBLISHED'}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onUnpublish">撤回发布</view>
+    <view wx:if="{{canSchedule && status !== 'PUBLISHED'}}" class="dt-admin-btn primary" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onPublish">发布给全班</view>
+    <!-- 「已结束」弹层入口：只在有已结束日子时出现（check-duty-ended B2 断言此 wx:if） -->
+    <view
+      wx:if="{{pastDays.length}}"
+      class="dt-admin-btn ghost"
+      bindtap="onEndedOpen"
+      hover-class="press-dim"
+      hover-start-time="0"
+      hover-stay-time="60"
+    >历史</view>
   </view>
   <!-- 手动排班的入口只在「我的」页（goManual → P5），此处不再重复 -->
-  <view wx:if="{{isAdmin && !canSchedule}}" class="dt-admin-tip st-item st-5">值日表的生成、发布与调整由超级管理员或本班生活委员负责</view>
+  <view wx:if="{{isAdmin && !canSchedule}}" class="dt-admin-tip st-item st-4">值日表的生成、发布与调整由超级管理员或本班生活委员负责</view>
 
   <!-- 数据区（骨架 / 空态 / 列表）：左右滑动切周时这一整块做方向性过渡，
        class 由 utils/swipe.js 下发、样式在 app.wxss。
@@ -90,7 +87,7 @@
   <view class="wk-swipe {{swipeCls}}">
   <!-- 入场动画单独套一层：wk-swipe 是切周动画的容器，两层分开才不会共用同一个 animation 属性
        ⚠️ 档位封顶 st-7：这是第 6 块，标 st-6（第 7 块起才与第 7 块同拍） -->
-  <view class="st-item st-6">
+  <view class="st-item st-5">
   <!-- 切周骨架：必须与「按日」真实版式同构（日期卡 + 2 行头像行）。
        旧写法 type="card" rows=3 height=400 会先糊上 3 块 400rpx 的大白块 ——
        真机上就是「切下一页闪过三个很明显的框」，高度还和真内容差一大截。 -->
@@ -188,7 +185,7 @@
         </view>
       </view>
       <!-- 今天起没有安排时给一句话说明，否则「按日」会是一片空白（被折走的都在「已结束」里） -->
-      <view wx:if="{{!activeDays.length}}" class="dt-ended-empty">今天起没有值日安排{{pastDays.length ? '，过去的日子在顶部「已结束」里' : ''}}</view>
+      <view wx:if="{{!activeDays.length}}" class="dt-ended-empty">今天起没有值日安排{{pastDays.length ? '，过去的日子在「历史」里' : ''}}</view>
     </block>
 
 
@@ -300,7 +297,7 @@
        ⚠️ 下面这张日期卡的版式与上方「按日」主列表**故意保持一致**（同一份 mergedDuties 结构）；
           改主列表那张卡时，这一份要跟着一起改（两处在本文件里相隔不远）。
        不含「加值日生」——过去的日子不该再补排。 -->
-  <bottom-sheet show="{{endedSheetShow}}" title="已结束 · 本周" height="{{1240}}" bind:close="onEndedClose">
+  <bottom-sheet show="{{endedSheetShow}}" title="历史 · 本周" height="{{1240}}" bind:close="onEndedClose">
     <view class="dt-ended-list">
       <view wx:for="{{pastDays}}" wx:key="date" class="dt-daycard card">
         <view class="dt-dayhead" style="{{item.ghFlip}}">

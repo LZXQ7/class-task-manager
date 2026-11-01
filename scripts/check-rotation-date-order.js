@@ -39,6 +39,9 @@ const CRON = path.join(ROOT, 'cloudfunctions', 'cron-weekly', 'index.js');
 
 const scheduleSrc = fs.readFileSync(SCHEDULE, 'utf8');
 const cronSrc = fs.readFileSync(CRON, 'utf8');
+// 2026-10-31：validatePlan 已收口到 common/schedule-core.js（单一真源），其 `ordered` 排序样板在此
+const CORE = path.join(ROOT, 'cloudfunctions', 'common', 'schedule-core.js');
+const coreSrc = fs.readFileSync(CORE, 'utf8');
 
 let failed = 0;
 const ok = (m) => console.log('PASS  ' + m);
@@ -161,8 +164,8 @@ CHAINS.forEach((c) => {
 
 /* ---------------- D. aiPlan 的 ordered 仍按日期 ---------------- */
 assertTrue(
-  /const ordered = sessions\.slice\(\)\.sort\(\(a, b\) => \(a\.date < b\.date/.test(scheduleSrc),
-  'D aiPlan 的 ordered 仍按解析后日期排（正确样板，别被改回 day_of_week）'
+  /items\.sort\(\(a, b\) => \(a\.date < b\.date \? -1 : a\.date > b\.date \? 1/.test(coreSrc),
+  'D aiPlan 的轮转流（items）仍按解析后日期排（正确样板，别被改回 day_of_week）'
 );
 
 /* ============================ 变异自证 ============================ */

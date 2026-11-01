@@ -38,7 +38,7 @@
      相对该祖先定位（那样 overlay 就盖不满屏）。`.nav` 自己有 backdrop-filter，
      所以这两条必须是它的**兄弟节点**、不能是它的子节点（见文件末尾）。 -->
 <view
-  wx:if="{{!showBack && themeEnabled}}"
+  wx:if="{{!showBack && themeEnabled && !sheetOpen}}"
   class="theme-btn"
   style="top:{{statusBarHeight + themeTopPx}}px"
   bindtap="onToggleTheme"

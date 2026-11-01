@@ -143,7 +143,7 @@ else bad('越界分组被静默丢弃（用户会以为导入成功）');
  * ④ 前端入口按能力位显隐（不是 isSuper）
  * ============================================================ */
 console.log('\n── ④ 前端入口按能力位显隐');
-has(DUTY_W, /wx:if="\{\{canSchedule\}\}" class="dt-admin /, '值日页排班操作区按 canSchedule 显示');
+has(DUTY_W, /wx:if="\{\{canSchedule(?: \|\| pastDays\.length)?\}\}" class="dt-admin /, '值日页排班操作区按 canSchedule 显示');
 has(DUTY_W, /btn-text="\{\{canSchedule \? '去发布' : ''\}\}"/, '未发布提示的「去发布」按 canSchedule');
 /**
  * ⚠️ 口径更新（2026-10-14）：原先硬数 `wx:if="{{canSchedule}}"` 出现 **6** 次。
@@ -151,12 +151,30 @@ has(DUTY_W, /btn-text="\{\{canSchedule \? '去发布' : ''\}\}"/, '未发布提�
  *   `wx:if="{{canSchedule && showAddDutyBtn}}"`（**开关式隐藏，功能代码全保留**），
  *   于是「纯 canSchedule」变成 5 处、「canSchedule && showAddDutyBtn」1 处，合计仍是 6。
  *   💡 判据要同时接受两种形态，否则以后再开关任何一个入口都会假红；
- *      但**总数 6 仍是硬要求** —— 那才是「一处漏改」的信号。
+ *      但**总数仍是硬要求** —— 那才是「一处漏改」的信号。
  *   2026-10-XX：去掉「按人」视图后，按人子行的「调整›」（1 处纯 canSchedule）随之消失，
  *      合计降为 **5** 处（4 纯 canSchedule + 1 `canSchedule && showAddDutyBtn`）。
+ *   2026-10-31（用户要求把「已结束 N 天」改成「历史」并入操作排）：
+ *      ⚠️ 权限模型变了 —— 容器不能再只认 canSchedule，否则**普通成员看不到「历史」**。
+ *      于是改成「容器放宽为 `canSchedule || pastDays.length`，权限下沉到每个按钮」：
+ *        清空值日表 / 一键生成各自带 `wx:if="{{canSchedule}}"`（原先是靠容器兜的），
+ *        撤回发布 / 发布给全班带 `wx:if="{{canSchedule && status …}}"`，「历史」只带 pastDays.length。
+ *      ⇒ 纯 canSchedule 从 1（容器）变成 2（清空 + 一键），合计 5 → **6**。
+ *      🔒 但光数总数会漏掉「容器放宽后某个按钮忘加 canSchedule」这种真泄漏，
+ *         所以下面新增 ④b 逐按钮钉死 —— 比数总数更靠得住。
  */
-eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 5,
-  '值日页排班入口全部改按 canSchedule（5 处：4 处纯 canSchedule + 1 处开关式隐藏「+加值日生」canSchedule && showAddDutyBtn；按人子行的「调整›」已随按人视图移除）');
+eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 6,
+  '值日页排班入口全部改按 canSchedule（6 处：清空 + 一键 2 处纯 canSchedule、1 处开关式隐藏「+加值日生」、3 处 canSchedule 三元）');
+/**
+ * ④b 权限下沉后的逐个校验（2026-10-31）：容器已放宽给普通成员看「历史」，
+ *     因此**每个排班动作按钮自身**必须带 canSchedule，否则无权限者会看到能点的按钮。
+ */
+['onClear', 'onAiOpen', 'onUnpublish', 'onPublish'].forEach((h) => {
+  const tag = new RegExp('<view[^>]*bindtap="' + h + '"[^>]*>').exec(DUTY_W);
+  const pass = !!tag && /wx:if="\{\{[^"]*canSchedule[^"]*\}\}"/.test(tag[0]);
+  if (pass) ok('排班动作按钮 ' + h + ' 自身受 canSchedule 保护（容器已放宽，权限必须落在按钮上）');
+  else bad('排班动作按钮 ' + h + ' 没带 canSchedule —— 容器放宽后无权限者会看到可点按钮');
+});
 /** 开关本身必须在：它是「暂时隐藏入口」的唯一恢复手段，删了就只能翻 git。 */
 ok('「+ 加值日生」用开关式隐藏（data.showAddDutyBtn 存在且当前为 false）',
   /showAddDutyBtn:\s*false/.test(read('miniprogram/pages/duty/index.js')),

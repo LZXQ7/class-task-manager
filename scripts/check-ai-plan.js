@@ -2,8 +2,8 @@
  * 离线仿真 schedule.validatePlan
  * ------------------------------------------------------------
  * 为什么这么写：MCP 的 invokeFunction 没有 WX 上下文，auth 路由一律 40001，
- * 没法直接调 aiPlan 验证。而 validatePlan 是纯函数（只吃 ctx + raw），
- * 所以直接从源码里原样抽出函数体 eval，测的就是生产代码本身。
+ * 没法直接调 aiPlan 验证。而 validatePlan 是纯函数（只吃 ctx + raw），且已收口到
+ * common/schedule-core.js（单一真源），直接 require 真源码模块测的就是生产代码本身。
  *
  * 覆盖 5 类硬规则 + 3 条兜底路径：
  *   ① 分组课排了别组的人     → 必须被拒
@@ -26,21 +26,18 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const SRC = fs.readFileSync(path.join(ROOT, 'cloudfunctions/schedule/index.js'), 'utf8');
+
+// 2026-10-31：validatePlan 已收口到 common/schedule-core.js（与 generate/cron 同处单一真源），
+// 直接 require 真源码模块即可测到生产代码本身（含 fillByRotation 等依赖，无需再 eval 抽取）。
+const CORE_PATH = path.join(ROOT, 'cloudfunctions/common/schedule-core.js');
+const core = require(CORE_PATH);
+const validatePlan = core.validatePlan;
+const parseSubMap = core.parseSubMap;
+const parseStartSeqs = core.parseStartSeqs;
+const applyStartFrom = core.applyStartFrom;
 
 const RR_PATH = path.join(ROOT, 'cloudfunctions/common/round-robin.js');
 const { pickBySeq: realPick, buildState: realBuild } = require(RR_PATH);
-
-function extractFn(name) {
-  const start = SRC.indexOf('function ' + name + '(');
-  if (start < 0) throw new Error('找不到函数 ' + name);
-  const end = SRC.indexOf('\n}', start);
-  if (end < 0) throw new Error('找不到函数 ' + name + ' 的结尾');
-  return SRC.slice(start, end + 2);
-}
-
-const factory = new Function('pickBySeq', 'buildState', extractFn('validatePlan') + '\n return validatePlan;');
-const validatePlan = factory(realPick, realBuild);
 
 /* ---------------- 造数据集：56 人 / seq 1..56 / 奇=A 偶=B ---------------- */
 function buildCtx(roundUsedSeqs) {
@@ -144,8 +141,8 @@ function check(label, cond, extra) {
   if (!okFlag) fail++;
   console.log((okFlag ? 'PASS  ' : 'FAIL  ') + label + (extra ? '   → ' + extra : ''));
 }
-function summarize(tag, ctx, raw) {
-  const v = validatePlan(ctx, raw);
+function summarize(tag, ctx, raw, subMap) {
+  const v = validatePlan(ctx, raw, subMap);
   const dupAcrossPlan = [];
   const seen = new Set();
   v.plan.forEach(p => p.memberSeqs.forEach(q => { if (seen.has(q)) dupAcrossPlan.push(q); else seen.add(q); }));
@@ -376,6 +373,245 @@ function revalidate(tag, ctx, first) {
 // 场景 1 的 ctx 被复用（validatePlan 只读 ctx，不改），直接用
 revalidate('场景 1', ctx, v);
 revalidate('场景 3', c3.ctx, c3v.v);
+
+/* ========== 场景 6：回归 · 手动预排（existingDutySeqs）不能被 AI 又排一遍（2026-10-31 修复） ========== */
+console.log('\n=== 场景 6：手动预排不被 AI 重复排 ===');
+/**
+ * 复现用户原话：本轮轮到 51/53 号、手动安排了 1/3 号 → 手动预排的 1/3 必须留在原课次，
+ * 且「轮转绕回」时不能再把 1/3 又排进别的课次（旧版会出现 …55、1、3、5 这类重复）。
+ * 根因：非「保持原样」课次里的 existingDutySeqs（手动值日）此前没并入去重集合，
+ * 修复后所有 existingDutySeqs 都并入去重（seedUsedFromExisting）。
+ * 注：本数据集 dutyCount=2，故「手动保留 + 补空缺」表现为 sid=1 保留 1 号并补 1 个轮转号。
+ */
+const roundUsed6 = [];
+for (let i = 1; i <= 50; i++) roundUsed6.push(i);   // 本轮已排 1..50 → 游标落在 51/53
+const c6 = buildCtx(roundUsed6);
+// 周一第 1 节（sid=1，A 组，dutyCount=2）手动预排了 1 号；周一第 2 节（sid=2，B 组）手动预排了 2 号
+c6.sessions.find(s => s.sessionId === 1).existingDutySeqs = [1];
+c6.sessions.find(s => s.sessionId === 2).existingDutySeqs = [2];
+// AI 没特别指定（assignments 留空，让本地按轮转补齐）
+const a6 = c6.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s6 = summarize('场景 6', c6.ctx, { assignments: a6, skipSeqs: [], notes: '手动预排' });
+const get6 = id => s6.v.plan.find(p => p.sessionId === id);
+check('sid=1 保留了手动预排的 1 号', get6(1).memberSeqs.includes(1), '成员=' + JSON.stringify(get6(1).memberSeqs));
+check('sid=1 补齐到 dutyCount=2', get6(1).memberSeqs.length === 2, '成员=' + JSON.stringify(get6(1).memberSeqs));
+check('sid=2 保留了手动预排的 2 号', get6(2).memberSeqs.includes(2), '成员=' + JSON.stringify(get6(2).memberSeqs));
+check('sid=2 补齐到 dutyCount=2', get6(2).memberSeqs.length === 2, '成员=' + JSON.stringify(get6(2).memberSeqs));
+// 关键：手动预排的 1/2 不得出现在其它任何课次（绕回也不会再排）
+const leak6 = s6.v.plan.filter(p => p.sessionId !== 1 && p.sessionId !== 2 && (p.memberSeqs.includes(1) || p.memberSeqs.includes(2)));
+check('1/2 号未泄漏到其它课次（无重复排）', leak6.length === 0, JSON.stringify(leak6.map(p => p.sessionId + ':' + p.memberSeqs)));
+check('全计划内 1 号只出现 1 次', s6.v.plan.filter(p => p.memberSeqs.includes(1)).length === 1);
+check('全计划内 2 号只出现 1 次', s6.v.plan.filter(p => p.memberSeqs.includes(2)).length === 1);
+
+/* ========== 场景 7：AI 指令「X号替换Y号」替班（9 本轮不值日、1 顶上） ========== */
+console.log('\n=== 场景 7：替班指令「X号替换Y号」 ===');
+// 先对 parseSubMap 做单测
+check('parseSubMap 主动式 1号替换9号 → {9:1}',
+  JSON.stringify(parseSubMap('1号替换9号', c6.roster.map(r => r.seq))) === JSON.stringify({ 9: 1 }));
+check('parseSubMap 用2号换5号 → {5:2}',
+  JSON.stringify(parseSubMap('用2号换5号', c6.roster.map(r => r.seq))) === JSON.stringify({ 5: 2 }));
+check('parseSubMap 被动式 9号被1号替换 → {9:1}',
+  JSON.stringify(parseSubMap('9号被1号替换', c6.roster.map(r => r.seq))) === JSON.stringify({ 9: 1 }));
+check('parseSubMap 3号顶4号 → {4:3}',
+  JSON.stringify(parseSubMap('3号顶4号', c6.roster.map(r => r.seq))) === JSON.stringify({ 4: 3 }));
+check('parseSubMap 不在名册的序号被忽略',
+  JSON.stringify(parseSubMap('99号替换100号', c6.roster.map(r => r.seq))) === JSON.stringify({}));
+check('parseSubMap 自己替换自己被忽略',
+  JSON.stringify(parseSubMap('1号替换1号', c6.roster.map(r => r.seq))) === JSON.stringify({}));
+
+// 端到端：1号替换9号，9 本轮不值日、轮到 9 的位子由 1 顶上
+const c7 = buildCtx([]);   // 游标 0，轮转从 1 开始，9 必然被排到
+const subMap7 = parseSubMap('1号替换9号', c7.roster.map(r => r.seq));
+check('subMap7 = {9:1}', JSON.stringify(subMap7) === JSON.stringify({ 9: 1 }));
+const a7 = c7.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s7 = summarize('场景 7', c7.ctx, { assignments: a7, skipSeqs: [], notes: '1号替换9号' }, subMap7);
+const hits7 = seq => s7.v.plan.filter(p => p.memberSeqs.includes(seq)).length;
+check('9 号本轮完全不被排（替班生效：9 这一轮没有值日）', hits7(9) === 0, '9 出现 ' + hits7(9) + ' 次');
+check('1 号至少值日两次（自己一轮 + 顶替 9 号）', hits7(1) >= 2, '1 出现 ' + hits7(1) + ' 次');
+// 9 原本该在的位子如今是 1（即某课次里 1 顶替了 9）
+check('存在「1 顶替 9」的课次（9 的位子被 1 占了）',
+  s7.v.plan.some(p => p.memberSeqs.includes(1) && !p.memberSeqs.includes(9)) && hits7(1) >= 2);
+
+/* ========== 场景 8：既有值日行「同一人重复」（示例成员56、示例成员56）必须去重 ========== */
+console.log('\n=== 场景 8：同课次既有值日重复行必须去重 ===');
+/**
+ * 用户截图实锤：某课次 existingDutySeqs 里同一个人出现两次（历史脏数据/重复行），
+ * 旧版 keep = existingDutySeqs.slice(0,dutyCount) 原样带出 →「示例成员56、示例成员56」。
+ * 修复：keep 先去重再截断。
+ */
+const c8 = buildCtx([]);
+c8.sessions.find(s => s.sessionId === 1).existingDutySeqs = [3, 3];  // 同一人两次（sid=1, dutyCount=2）
+const a8 = c8.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s8 = summarize('场景 8', c8.ctx, { assignments: a8, skipSeqs: [], notes: '重复行' });
+const get8 = id => s8.v.plan.find(p => p.sessionId === id);
+const uniq8 = new Set(get8(1).memberSeqs);
+check('sid=1 同课次内无重复人', uniq8.size === get8(1).memberSeqs.length,
+  '成员=' + JSON.stringify(get8(1).memberSeqs));
+check('sid=1 人数仍为 dutyCount=2（去重后补一个轮转号）',
+  get8(1).memberSeqs.length === 2, '成员=' + JSON.stringify(get8(1).memberSeqs));
+check('全计划不存在同课次重复',
+  s8.v.plan.every(p => new Set(p.memberSeqs).size === p.memberSeqs.length));
+
+/* ========== 场景 9：既有数据超名额塞满（旧脏数据/旧 AUTO）不得抽干候选池 ========== */
+console.log('\n=== 场景 9：超名额的既有数据不得让其余课次「未排」 ===');
+/**
+ * 用户截图实锤：旧版 seedUsedFromExisting 把 existingDutySeqs **全量**并入去重集合
+ * （不按 dutyCount 截断），旧脏数据在 5 个课次里塞了 50 人 → 候选池被抽干 →
+ * 其余课次全部「未排 / 候选人不足」。修复：按 dutyCount 截断 + 去重。
+ * 注：真实链路里 AUTO 已在 buildAiContext 被过滤，这里直接注入超量 existing 测 seed 截断兜底。
+ */
+const c9 = buildCtx([]);
+[1, 2, 3, 4, 5].forEach((sid, i) => {
+  c9.sessions.find(s => s.sessionId === sid).existingDutySeqs =
+    Array.from({ length: 10 }, (_, k) => i * 10 + k + 1); // 每节塞 10 人（>> dutyCount=2）
+});
+const a9 = c9.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s9 = summarize('场景 9', c9.ctx, { assignments: a9, skipSeqs: [], notes: '超名额既有数据' });
+check('所有课次都排上（无 0 人课次）', s9.v.plan.every(p => p.memberSeqs.length > 0),
+  '未排=' + s9.v.plan.filter(p => !p.memberSeqs.length).map(p => p.sessionId).join(','));
+check('没有任何「候选人不足」告警', !s9.v.warnings.some(w => w.indexOf('候选人不足') >= 0),
+  s9.v.warnings.join(' | ').slice(0, 120));
+check('每课次人数都不超过 dutyCount', s9.v.plan.every(p => p.memberSeqs.length <= p.dutyCount));
+
+/* ========== 场景 10：AI 把「本轮已轮过」写进 skipSeqs 不得抽干候选池 ========== */
+console.log('\n=== 场景 10：skipSeqs 里的「已轮过」冗余项必须被忽略 ===');
+/**
+ * 用户截图实锤（2026-10-31 16:17，第 9 周 11/9–11/15）：
+ *   19 个课次里 16 个「未排 / 候选人不足」，告警刷出「本轮跳过 1、2、…、51 号」，
+ *   且「56 号在本次计划里被排了多次」。
+ * 根因：空文本点「智能排班」时，模型按提示词把 roster 里 dutyCountThisRound=1（本轮已轮过）
+ *   的人写进 skipSeqs；而 pickBySeq 会把 skipSeqs 的人**从候选池物理删除** →
+ *   A 组只剩 53/55 两人，剩余名额全部排不满。
+ * 修复：validatePlan 剔除「本轮已排 / 已有值日」的冗余跳过项 + 可行性兜底。
+ */
+const roundUsed10 = [];
+for (let i = 1; i <= 51; i++) roundUsed10.push(i);   // A 游标 51 / B 游标 50，与截图一致
+const c10 = buildCtx(roundUsed10);
+const skipAll10 = roundUsed10.slice();               // 模型原样把 1..51 写进 skipSeqs
+const a10 = c10.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s10 = summarize('场景 10', c10.ctx, { assignments: a10, skipSeqs: skipAll10, notes: '空文本' });
+check('所有课次都排上（无「未排」）', s10.v.plan.every(p => p.memberSeqs.length > 0),
+  '未排=' + s10.v.plan.filter(p => !p.memberSeqs.length).map(p => p.sessionId).join(','));
+check('没有任何「候选人不足」告警',
+  !s10.v.warnings.some(w => w.indexOf('候选人不足') >= 0),
+  s10.v.warnings.join(' | ').slice(0, 120));
+check('每课次人数正好等于 dutyCount',
+  s10.v.plan.every(p => p.memberSeqs.length === p.dutyCount));
+check('同课次内无重复人',
+  s10.v.plan.every(p => new Set(p.memberSeqs).size === p.memberSeqs.length));
+const cnt10 = new Map();
+s10.v.plan.forEach(p => p.memberSeqs.forEach(q => cnt10.set(q, (cnt10.get(q) || 0) + 1)));
+check('全计划内没有任何人被排两次（不再出现「56 号被排了多次」）',
+  Array.from(cnt10.values()).every(n => n === 1),
+  '重复=' + Array.from(cnt10.entries()).filter(([, n]) => n > 1).map(([q]) => q).join(','));
+check('告警说明了「已轮过的人无需再跳过」',
+  s10.v.warnings.some(w => w.indexOf('无需再跳过') >= 0));
+
+// 10b：跳过人数多到「真的排不满」时必须自动解禁，绝不留下空课次
+const c10b = buildCtx([]);                            // 游标 0：1..51 都还没轮过，属「真跳过」
+const a10b = c10b.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s10b = summarize('场景 10b', c10b.ctx, { assignments: a10b, skipSeqs: skipAll10, notes: '' });
+check('跳过过多时自动解禁，仍然排满所有课次',
+  s10b.v.plan.every(p => p.memberSeqs.length === p.dutyCount),
+  '未排=' + s10b.v.plan.filter(p => p.memberSeqs.length !== p.dutyCount).map(p => p.sessionId).join(','));
+check('解禁有明确告警', s10b.v.warnings.some(w => w.indexOf('重新纳入轮转') >= 0));
+
+/* ========== 场景 11：「A组从53开始」= 起点指令，必须确定性生效 ========== */
+console.log('\n=== 场景 11：起点指令「a组从53，b组从52开始」 ===');
+/**
+ * 用户原话（2026-10-31 16:26 截图，输入框可见）：**「a组从53，b组从52开始」**。
+ * 模型按提示词把这句话理解成「A组 53 号之前都排过了」，写进 skipSeqs = 1…51，
+ * 把候选池抽干 → 19 节课 16 节「未排」。
+ * 修复：这句话本质是**轮转起点**，由 parseStartSeqs + applyStartFrom 确定性落到游标上，
+ * 完全不过模型（与 DB 里的游标是否最新无关）。
+ */
+const roster11 = buildCtx([]).roster;
+check('parseStartSeqs「a组从53，b组从52开始」→ {A:53,B:52}',
+  JSON.stringify(parseStartSeqs('a组从53，b组从52开始', roster11)) === JSON.stringify({ A: 53, B: 52 }),
+  JSON.stringify(parseStartSeqs('a组从53，b组从52开始', roster11)));
+check('parseStartSeqs「A组53号开始」→ {A:53}',
+  JSON.stringify(parseStartSeqs('A组53号开始', roster11)) === JSON.stringify({ A: 53 }));
+check('parseStartSeqs「B组由12起」→ {B:12}',
+  JSON.stringify(parseStartSeqs('B组由12起', roster11)) === JSON.stringify({ B: 12 }));
+check('parseStartSeqs 不会把「A组5号请假」误判成起点',
+  JSON.stringify(parseStartSeqs('A组5号请假', roster11)) === JSON.stringify({}),
+  JSON.stringify(parseStartSeqs('A组5号请假', roster11)));
+check('parseStartSeqs 不会把「A组23号之前全部排过了」误判成起点',
+  JSON.stringify(parseStartSeqs('A组23号之前全部排过了', roster11)) === JSON.stringify({}),
+  JSON.stringify(parseStartSeqs('A组23号之前全部排过了', roster11)));
+
+// 11b：游标 0 的极端情况也要从 53 / 52 起排（不依赖 DB 游标是否最新）
+const c11 = buildCtx([]);                                  // 游标 0
+const bumped11 = applyStartFrom(c11.ctx, parseStartSeqs('a组从53，b组从52开始', c11.roster));
+check('游标被推进到 A=52 / B=51', c11.ctx.state.cursors.A === 52 && c11.ctx.state.cursors.B === 51,
+  'A=' + c11.ctx.state.cursors.A + ' B=' + c11.ctx.state.cursors.B);
+check('生效回显为 A:53 / B:52', String(bumped11) === 'A:53,B:52', String(bumped11));
+const a11 = c11.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s11 = summarize('场景 11b', c11.ctx, { assignments: a11, skipSeqs: [], notes: 'a组从53，b组从52开始' });
+const firstA11 = s11.v.plan.find(p => p.groupScope === 'A');
+const firstB11 = s11.v.plan.find(p => p.groupScope === 'B');
+check('A 组第一个课次从 53 号起', firstA11.memberSeqs.every(q => q >= 53),
+  '成员=' + JSON.stringify(firstA11.memberSeqs));
+check('B 组第一个课次从 52 号起', firstB11.memberSeqs.every(q => q >= 52),
+  '成员=' + JSON.stringify(firstB11.memberSeqs));
+check('起点推进后仍然排满所有课次', s11.v.plan.every(p => p.memberSeqs.length === p.dutyCount));
+
+// 11c：游标只前进不后退
+const c11c = buildCtx([]);
+applyStartFrom(c11c.ctx, { A: 10, B: 10 });
+check('起点指令不会把游标往回拽（0 → 10 可以是前进；再给更小的值不变）',
+  c11c.ctx.state.cursors.A === 9);
+applyStartFrom(c11c.ctx, { A: 3, B: 3 });
+check('更小的起点被忽略（游标不后退）', c11c.ctx.state.cursors.A === 9,
+  'A=' + c11c.ctx.state.cursors.A);
+
+// 11d：用户原话 + 模型仍误写 skipSeqs=1..51 → 仍须从 53/52 起排且排满
+const c11d = buildCtx([]);
+applyStartFrom(c11d.ctx, parseStartSeqs('a组从53，b组从52开始', c11d.roster));
+const a11d = c11d.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s11d = summarize('场景 11d', c11d.ctx, { assignments: a11d, skipSeqs: skipAll10, notes: '' });
+check('模型误写 skipSeqs 时依然排满（起点指令兜住）',
+  s11d.v.plan.every(p => p.memberSeqs.length === p.dutyCount),
+  '未排=' + s11d.v.plan.filter(p => p.memberSeqs.length !== p.dutyCount).map(p => p.sessionId).join(','));
+
+/* ========== 场景 12：保洁（CLEAN）必须跟在当天课程后面，不许被甩到周尾 ========== */
+console.log('\n=== 场景 12：保洁与课程走同一条轮转流 ===');
+/**
+ * 用户 2026-10-31 截图实锤：周二第 2 节 9、11，下午「打扫 410」却是 35、36。
+ * 根因：AI 链路把保洁摘出 validatePlan，整周课程排完才用 buildCleaningPlan 补，
+ * 只能捡周尾号。修复：ctx.cleanSessions 并入同一条 items 流（与 generate 的 rotatePlan 同口径）。
+ */
+const c12 = buildCtx([]);
+const dates12 = Array.from(new Set(c12.sessions.map(s => s.date)));
+c12.ctx.cleanSessions = dates12.map((d, i) => ({
+  sessionId: 900 + i, date: d, dayOfWeek: i + 1, dayText: '周' + '一二三四五'[i],
+  period: 4, course: '打扫410', room: '410', groupScope: 'ALL',
+  dutyCount: 2, existingDutySeqs: [], busySameDaySeqs: []
+}));
+const a12 = c12.sessions.map(s => ({ sessionId: s.sessionId, memberSeqs: [] }));
+const s12 = summarize('场景 12', c12.ctx, { assignments: a12, skipSeqs: [], notes: '' });
+check('保洁被排上了（5 天各 2 人）', (s12.v.cleaningPlan || []).length === 5,
+  '保洁课次=' + ((s12.v.cleaningPlan || []).length));
+check('保洁按日期升序排列',
+  (s12.v.cleaningPlan || []).every((p, i, arr) => i === 0 || arr[i - 1].date <= p.date));
+const cleanSeqs12 = (s12.v.cleaningPlan || []).reduce((a, p) => a.concat(p.memberSeqs), []);
+const courseSeqs12 = s12.v.plan.reduce((a, p) => a.concat(p.memberSeqs), []);
+/* 旧实现（保洁整周课程排完才补）第一天就会用掉周尾号（实测 33、34），
+ * 新实现紧跟在第一天课程之后（实测 9、10）。用「第一天最多用到当天课程+当天保洁+余量」来分辨。 */
+const d012 = dates12[0];
+const firstCourse12 = s12.v.plan.filter(p => p.date === d012).reduce((a, p) => a.concat(p.memberSeqs), []);
+const firstClean12 = (s12.v.cleaningPlan || []).filter(p => p.date === d012).reduce((a, p) => a.concat(p.memberSeqs), []);
+check('第一天的保洁紧跟在第一天课程之后（没有跳到周尾）',
+  firstClean12.length > 0
+  && Math.max.apply(null, firstClean12) <= firstCourse12.length + firstClean12.length + 4,
+  '第一天课程=' + firstCourse12.join(',') + ' / 第一天保洁=' + firstClean12.join(','));
+const all12 = s12.v.plan.concat(s12.v.cleaningPlan || []);
+const cnt12 = new Map();
+all12.forEach(p => p.memberSeqs.forEach(q => cnt12.set(q, (cnt12.get(q) || 0) + 1)));
+check('课程 + 保洁合起来无重复（一轮一人一次）',
+  Array.from(cnt12.values()).every(n => n === 1),
+  '重复=' + Array.from(cnt12.entries()).filter(([, n]) => n > 1).map(([q]) => q).join(','));
+check('保洁每节人数等于 dutyCount', (s12.v.cleaningPlan || []).every(p => p.memberSeqs.length === 2));
 
 console.log('\n' + (fail === 0 ? '全部通过 ✅' : fail + ' 项失败 ❌'));
 process.exit(fail === 0 ? 0 : 1);

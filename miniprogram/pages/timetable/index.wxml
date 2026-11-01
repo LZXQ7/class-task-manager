@@ -165,7 +165,7 @@
                   wx:for-item="co"
                   wx:for-index="ci"
                   wx:key="key"
-                  class="tt-cell {{co.isHoliday ? 'holiday' : ''}} {{co.movedIn ? 'moved-in' : ''}} {{co.personal ? 'personal' : ''}}"
+                  class="tt-cell {{co.isHoliday ? 'holiday' : ''}} {{co.movedIn ? 'moved-in' : ''}} {{co.personal ? 'personal' : ''}} {{ (periods[r].p === currentPeriod && dates[c].isToday) ? 'current' : '' }}"
                   style="background:{{co.bg}};{{co.flip}}"
                   data-r="{{r}}"
                   data-c="{{c}}"

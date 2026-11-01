@@ -1,5 +1,5 @@
 /**
- * P5 · 班级信息（Tab 5，新增）
+ * P5 · 信息（Tab 5）
  * ------------------------------------------------------------
  * 老师建议：底部导航新增独立的「班级信息」分类，先罗列成员 / 课表 / 班费 /
  * 通知 / 作业 / 文档（框架图式层级），完善导航。
@@ -14,7 +14,6 @@
  */
 const api = require('../../utils/api');
 const util = require('../../utils/util');
-const notice = require('../../utils/notice');
 const pageAnim = require('../../utils/page-anim');
 const theme = require('../../utils/theme');
 const mem = require('../../utils/mem');
@@ -43,13 +42,6 @@ Page({
      * （班级是全局资产，不该让班委随手改）。
      */
     canManageClass: false,
-    /**
-     * 未读通知数（2026-10-27 补）：首页「查看通知」卡随首页精简下线后，
-     * 「还有没看的通知」这个信号在全站没有可见位置了 —— 角标挂在**通知子卡**上，
-     * 与首页旧口径完全一致：utils/notice 缓存同步读 + 排除自己发的（游标按成员隔离）。
-     */
-    noticeUnacked: 0,
-
     /* ---------------- 教职工切班（2026-10-28 需求） ----------------
      * 一个辅导员带多个班，以前只能进「班级成员」「班费」各自切，班级信息页却永远
      * 钉在主班 —— 在 A 班看到的人数/班费其实都是 B 班的，容易误判。
@@ -72,7 +64,13 @@ Page({
      * clsSheetH = 弹层高度（rpx），按班级数量算，见 _sheetHeight()。
      */
     classSheetShow: false,
-    clsSheetH: 440
+    clsSheetH: 440,
+    /** 倒数日列表（2026-11-02 新增）：个人本地自定义事件，存 wx storage，按日期升序 */
+    countdowns: [],
+    /** 倒数日添加弹层 */
+    cdSheetShow: false,
+    cdName: '',
+    cdDate: ''
   },
 
   onLoad() {
@@ -87,16 +85,12 @@ Page({
 
   onShow() {
     const app = getApp();
-    // 第 5 个 tab：把底部导航的选中态同步到「班级信息」
+    // 第 5 个 tab：把底部导航的选中态同步到「信息」
     if (app && app.setTabBar) app.setTabBar(2);
     // 就绪后统一播入场动画（v0.7.31：等身份 + 首屏数据，或 READY_MS 兜底）
     pageAnim.playReady(this, getApp());
     this.load();
-    // 通知角标：与首页旧口径同源（缓存同步读，不发请求）；每次进页面刷新一次
-    const p = (app && app.globalData && app.globalData.profile) || null;
-    const cached = notice.read(0);
-    const meId = Number((p && p.id) || 0);
-    this.setData({ noticeUnacked: cached ? notice.unackedCount(cached, meId) : 0 });
+    this.loadCountdowns();
   },
 
   load() {
@@ -240,7 +234,7 @@ Page({
       stats: null,
       feeTotal: null
     });
-    // 同步到全局「当前查看班级」：班级信息页是切班中心，其余 Tab 跟随此值联动
+    // 同步到全局「当前查看班级」：信息页是切班中心，其余 Tab 跟随此值联动
     getApp().globalData.viewClassId = Number(id) || 0;
     this._loadClassData(Number(id) || 0);
   },
@@ -330,6 +324,104 @@ Page({
     this.setData({ classSheetShow: false });
   },
 
+  /* ---------------- 倒数日（2026-11-02 新增）：个人本地自定义事件 ---------------- */
+  /** 读取本地倒数日事件，按日期升序，计算「还剩 N 天」展示文案 */
+  loadCountdowns() {
+    let list = [];
+    try {
+      const raw = wx.getStorageSync('countdown_events_v1');
+      if (Array.isArray(raw)) list = raw;
+    } catch (e) {
+      console.error('[classinfo] 读取倒数日失败', e && e.stack ? e.stack : e);
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const enriched = list
+      .slice()
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+      .map((it) => {
+        const t = new Date((it.date || '1970-01-01') + 'T00:00:00');
+        const diff = Math.round((t - today) / 86400000);
+        let dayText;
+        if (diff > 0) dayText = diff + '天';
+        else if (diff === 0) dayText = '今天';
+        else dayText = '已过 ' + (-diff) + ' 天';
+        return Object.assign({}, it, { dayText, passed: diff < 0 });
+      });
+    this.setData({ countdowns: enriched });
+  },
+
+  /** 打开添加弹层并清空表单 */
+  onCdAdd() {
+    this.setData({ cdSheetShow: true, cdName: '', cdDate: '' });
+  },
+
+  onCdNameInput(e) {
+    this.setData({ cdName: e.detail.value });
+  },
+
+  onCdDateChange(e) {
+    this.setData({ cdDate: e.detail.value });
+  },
+
+  onCdSheetClose() {
+    if (!this.data.cdSheetShow) return;
+    this.setData({ cdSheetShow: false });
+  },
+
+  /** 保存一条倒数日事件到本地 storage */
+  onCdSave() {
+    const name = (this.data.cdName || '').trim();
+    const date = this.data.cdDate;
+    if (!name) { wx.showToast({ title: '请填写事件名称', icon: 'none' }); return; }
+    if (!date) { wx.showToast({ title: '请选择目标日期', icon: 'none' }); return; }
+    let list = [];
+    try {
+      const raw = wx.getStorageSync('countdown_events_v1');
+      if (Array.isArray(raw)) list = raw;
+    } catch (e) {}
+    list.push({ id: Date.now(), name, date });
+    try {
+      wx.setStorageSync('countdown_events_v1', list);
+    } catch (e) {
+      console.error('[classinfo] 保存倒数日失败', e && e.stack ? e.stack : e);
+      wx.showToast({ title: '保存失败', icon: 'none' });
+      return;
+    }
+    this.setData({ cdSheetShow: false });
+    this.loadCountdowns();
+    wx.showToast({ title: '已添加', icon: 'success' });
+  },
+
+  /** 点列表项 → 确认后删除 */
+  onCdTap(e) {
+    const id = Number(e.currentTarget.dataset.id) || 0;
+    if (!id) return;
+    const item = (this.data.countdowns || []).filter((c) => c.id === id)[0];
+    if (!item) return;
+    wx.showModal({
+      title: '删除倒数日',
+      content: '确定删除「' + item.name + '」？',
+      confirmColor: '#F53F3F',
+      success: (r) => {
+        if (!r.confirm) return;
+        let list = [];
+        try {
+          const raw = wx.getStorageSync('countdown_events_v1');
+          if (Array.isArray(raw)) list = raw;
+        } catch (err) {}
+        list = list.filter((c) => c.id !== id);
+        try {
+          wx.setStorageSync('countdown_events_v1', list);
+        } catch (err) {
+          console.error('[classinfo] 删除倒数日失败', err && err.stack ? err.stack : err);
+          return;
+        }
+        this.loadCountdowns();
+      }
+    });
+  },
+
   /**
    * 弹层里点一个班：切换口径 + 关弹层。
    * `id = 0`（教职工一个班都没绑）→ 退到后端默认本班，行为与改造前一致。
@@ -344,37 +436,22 @@ Page({
   },
 
   /**
-   * 点击 4 个子卡：全是二级页，一律 navigateTo。
+   * 点击子卡：全是二级页，一律 navigateTo。
    * 看的是别班时把 classId 顺着 URL 传下去，子页面才显示那个班：
-   *   · roster   → onLoad 读 options.classId，进「查看指定班级」态（与「班级管理→查看人员」同一条路）
-   *   · homework → onLoad 读 options.classId
-   *   · fee      → onLoad 读 options.classId 作为「查看班级」的初始值
-   *   · notice   → onLoad 读 options.classId 走「按班查看」（2026-10-28 新增）
-   * ⚠️ roster / fee / homework **只在 isOtherClass 时带参数**：roster 里写的是
+   *   · roster → onLoad 读 options.classId，进「查看指定班级」态
+   *   · fee    → onLoad 读 options.classId 作为「查看班级」的初始值
+   * ⚠️ roster / fee **只在 isOtherClass 时带参数**：roster 里写的是
    *    `otherClass: classId > 0`，连自己班的 id 一起传会被当成「查看别班」，语义就错了。
-   *    notice 例外：它的 classId 只表示「看哪个班」，本班传进去也正确 ——
-   *    而且这样「在 示例班级A 看 示例班级A 的通知」比「不带参数看全部可见」更符合预期。
    */
   onOpen(e) {
     const key = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key) || '';
     const map = {
       roster:   '/pages/roster/index',
-      fee:      '/pages/fee/index',
-      notice:   '/pages/notice/index',
-      homework: '/pages/homework/index'
+      fee:      '/pages/fee/index'
     };
     let url = map[key];
     if (!url) return;
-    if (key === 'notice') {
-      /* 2026-10-28：通知不再被拦。原来 media.msgList 用 guard.classIdOf(ctx) 硬锁本班，
-       * 切到别班只能置灰 + 弹「通知仅显示本人班级」；现在后端支持按班查看
-       * （超管任意活动班 / 辅导员限 staff_class），班级信息页切哪个班就看哪个班的通知。 */
-      if (this.data.viewClassId) {
-        url += '?classId=' + this.data.viewClassId;
-        const hit = (this.data.classChips || []).filter(c => c.id === Number(this.data.viewClassId))[0];
-        if (hit && hit.short) url += '&name=' + encodeURIComponent(hit.short);
-      }
-    } else if (this.data.isOtherClass && this.data.viewClassId) {
+    if (this.data.isOtherClass && this.data.viewClassId) {
       url += '?classId=' + this.data.viewClassId;
     }
     wx.navigateTo({ url, fail: () => {} });

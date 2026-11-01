@@ -13,6 +13,13 @@
 
 **当前节点**：小程序主线已至 **对外 1.0.7.1**（内部 v0.7.45）。1.0.7.0 已审核通过、正式交付；1.0.7.1 在 1.0.7.0 基础上纯版本号推进+文档（值日页去切换、手动排版放开重复排班三入口均已随 1.0.7.0 前端上传/云函数部署落地），双轨已发（私有 tag `v1.0.7.1` @ `fbf99b1`、公开 @ `519dde2`）。代码改动与发布动作全部就位。**✅ 前端已由 miniprogram-ci 无头上传（2026-10-24，干净 tag 状态重传，项目备注=该版更新公告；上传机制与坑见【本session】· 2026-10-24）**。⚠️ 作业模块（homework）后端已上线但**前端未上传**（待单开 1.0.8 发版，见【本session】· 2026-10-24 未决段）。
 
+> 🔴 **2026-10-31 版本校正（用户确认）**：上面「对外 1.0.7.1」已过时 —— 实际对外正式版已是 **1.0.8.14**（`miniprogram/utils/config.js` `APP_VERSION`，10-30 20:47 定稿 `0543fe4`）。**1.0.8.x 系列从未打 git tag**（只有 `v1.0.6.5/1.0.6.9/1.0.7.0/1.0.7.1` 有 tag），查版本状态别只认 tag。
+> **发版路径铁律（2026-10-31 实测确认）**：云函数（`schedule`/`admin-web` 等）改动 `tcb fn code update` 一部署即生效，**不需要小程序审核、也不受 APP_VERSION 影响**；小程序前端改动（`miniprogram/**`）必须 `scripts/wx-upload/upload.mjs <版本>` 重传 + 提审才进正式版。判断"某修复上线没有"先看改在哪个目录。
+> **已知待补**：1.0.8.14 的 `aiApply` **不传 `text`**（`0543fe4` 里 `grep -c "text:"`=0，该句 10-31 14:58 `839a0d1` 才加）。后果仅限「A组从N开始 / X号替换Y号」在**落库阶段**不重放（`validatePlan` 不采信前端名单、按数据库游标重排）；普通排班不受影响。用户 10-31 实测「已点写入且结果对」⇒ 其数据库游标恰好已到位，未踩到。**下次发版务必带上这句。**
+> 📦 **1.0.8.15 已无头上传开发版（2026-10-31 18:01）**：111 文件、主包 731130 B（约 714KB），`config.js` `APP_VERSION=1.0.8.15`。含①值日页「已结束 N 天」→「历史」并入操作排（`15e36e8`）②`aiApply` 补传 `text`（`839a0d1`，即上条待补项，本版已带上）。**尚未设为体验版 / 未提审** —— 需 mp 后台「版本管理」选中 1.0.8.15 →「设为体验版」自查，满意后再提审。
+> 📦 **1.0.8.16 已无头上传开发版（2026-11-02 00:50）**：111 文件、主包 733082 B，`config.js` `APP_VERSION=1.0.8.16`（已随本版 bump）。**纯 bug 修复版，无新功能**，含①首页选修课首屏即显时间（config 启动同步还原，修「第N节」退化）②大屏课次行固定列宽+浅色分隔线+房间名省略（修左缘不齐）③冷启动加载优化（request 加 retry + 本地快照秒显 + 登录后预热 dutyToday）。**上传前踩 IP 白名单拦路**（`errCode:-10008 invalid ip:125.41.251.170`，本机透明代理出口 `127.0.0.1:57858` 强制路由，非可选 HTTP 代理），用户已在 mp 后台「小程序代码上传 IP 白名单」加 `125.41.251.170` 解决，重传通过。**尚未设为体验版 / 未提审** —— mp 后台「版本管理」选中 1.0.8.16 →「设为体验版」自查（重点验：大屏对齐 / 选修课首屏时间 / 冷启动秒显），满意后再提审。
+> 📦 **1.0.8.17 已无头上传开发版（2026-11-02 02:11）**：111 文件、主包 735880 B（约 719KB），`config.js` `APP_VERSION=1.0.8.17`（已随本版 bump）。**纯交互修正版，无新功能**，含①收紧「当前课程高亮」——仅「正在上」的课以品牌蓝实填充+「进行中」标签，未开始的课一律不上色（修 1.0.8.16 选修课行常驻浅蓝底被误当高亮的问题）②移除选修课常驻浅蓝底，仅以「选修」角标区分。**本次上传未再触发 IP 白名单拦截**（1.0.8.16 已加 `125.41.251.170`）。**尚未设为体验版 / 未提审** —— mp 后台「版本管理」选中 1.0.8.17 →「设为体验版」自查（重点验：选修课行不再发蓝 / 仅正在上的课加深），满意后再提审。
+
 - **本版三块（工作区已完成，未提交/未推/未部署）**：
   ① **移除失效提醒入口**：删掉「添加值日到系统日历」「值日微信提醒」入口与首页「打开微信通知页」悬浮胶囊（WXML/WXSS/JS 全清，含 `legal.js` 的微信能力说明；后端 `remind_block`/`remind_reopen` 字段保留、门禁继续看守）。门禁 `check-clean-label.js` 已改为看守这两条字段而非 UI 文案。
   ② **头像可更换**：`mine/index.wxml` 头像块 = `.avatar-slot`（**96rpx** 定宽 + `position:relative`）+ 正常流的 `<image class="avatar-img">`/`<view class="avatar-fallback">` + **留空**的 `<button class="avatar-btn" open-type="chooseAvatar">`（`position:absolute` 铺满槽位、`padding:0`、`box-sizing:border-box`，只当点击层）；`binderror` 兜底隐私拒绝（不再红屏）。🔴 **两次真机回归定论**：button 只要参与布局就会被撑宽（≈96rpx 内容 + 微信默认 14px×2 padding），与内部放 `<avatar-tag>` 还是内置 `<image>` 无关 —— 初版自定义组件还被渲染到按钮右侧外面（右移 87px）；`c010544` 只换内容不够，最终靠 **button 脱离文档流** 解决（截图二次量化：卡片内容左边界 x=68.5、头像 x=137，中间 125rpx 纯卡片底色、姓名被顶到 365rpx 处折行）。`check-tap-layer-zindex.js` 判据已翻转为「button 必须留空 + 必须 absolute + 槽位必须 relative」，并抽成共享判据 + 6 组变异自证。
@@ -29,6 +36,31 @@
 - ✅ **⑤ 双仓库已提交并推送（2026-10-18，走 `publish-release.sh` 一键双发）**：私有 `class-task-manager-template` 提交 `7edb067` 并打 tag **`v1.0.7.0`**（main + tag 均已推）；公开 `class-task-manager` 从私有 HEAD 导出 675 文件 → scrub 改 177 文件 → 自检 **0 命中原始 PII / 无 .xlsx** → 提交 `839de45` 已推（公开仓按惯例只提交不打 tag）。发版前收尾体检 `check_closeout.sh` **16/16 全过**（口径已 bump 至 1.0.7.0/v0.7.44）。⚠️ 同批修了一个**发版流程隐患**：`.gitignore` 的 `.env-*` 覆盖不到 `.env.local`，且一批本机 AI 工具目录（`.agents/`、`.codebuddy/`、`codebuddy-plugin/`、`.mcp.json`、`CODEBUDDY.md` 及乱名空文件 `1）——`）未忽略——`publish-release.sh` 第 1 步是 `git add -A`，会把这些吞进版本库；已全部补进 `.gitignore`（第 64-76 行）并验证只剩 7 个应提交新文件。
 - ✅ **工作区改动已全部提交（2026-10-18，`7edb067`）**：含 `cloudbaserc.json` 的 `envId` 由 `{{env.ENV_ID}}` 改为真实值 `<YOUR_ENV_ID>`（非机密、`deploy_all.sh` 已硬编码同款）；新增 `scripts/deploy-stat.js`、`scripts/check-require-paths.js`、`scripts/migrate-usage.sql`、`cloudfunctions/stat/`、`cloudfunctions/admin-web/lib/mod-usage.js`、`miniprogram/utils/track.js`、`outputs/v1.0.7.0-更新说明.md`；`deploy-admin-web.js` 改 `tcb deploy --only functions --yes`；prior 源码/文档。**HANDOFF 本次更新（双仓库已推状态）需再补一个提交推送**。
   - ⚠️ 1.0.6.9 的**前端此前从未上传**；本版 1.0.7.0 直接携带其全部前端改动（含班费跨班查看 v0.7.43）一并上传，不再单独发 1.0.6.9。
+
+---
+
+## 【本session】 · 2026-11-02（**大学生版课程表小程序：当前课高亮已落地入库 + 功能清单重写（排除低龄家校功能·保留倒数日·定义课表增强）**）
+
+- **定位调整（用户 01:44 重新界定）**：受众改为**大学生**，明确排除中小学家校类低龄功能（相册 / 接龙 / 红花奖励）；保留**倒数日**；把"课表增强"作为核心差异化明确界定（E1–E10：当前高亮/今日状态/时段线/备注/周次单双周/调课标记/课前提醒/冲突检测/导出/空闲教室联动）；并补齐大学生日常与学习向功能（学业助手 S1–S10 / 校园生活 L1–L6 / 轻社区 U1–U2）。完整见 `outputs/课程表小程序-补充功能调研清单.md`。
+- **第一点·当前课程高亮（已落地、已入库）**：首页「今日课次」(home/index) 复用 `done` 灰化加 `current`；课表网格 (timetable/index) 新增 `currentPeriod` + `periodTime` 捕获 + 定时翻牌 + 补 `onHide` 防泄漏。视觉按用户反馈收紧（2026-11-02 凌晨）：**仅「正在上」的课 `.current` 上品牌蓝实填充 +「进行中」标签，没到的课一律不上色**；已移除选修课常驻浅蓝底（`.course-row.personal` 去背景，仅留「选修」角标），课表网格 `.tt-cell.personal` 仅 1rpx 边框不改。门禁 6/6 全绿，已 commit `49d730f`（首次落地）与 `a928694`（视觉收紧·仅当前课加深）并推送。
+- **第二点·功能清单（已重写入库）**：原 18 项清单重写——剔除相册/接龙/红花，保留倒数日，新增课表增强定义与大学生/学习向功能；含 GitHub 来源线索（云小智/我的衡师/in-glut/ToGo校园/SYLU-EOA/WXClassTable/无广课程表/WeNjtech/NKUStudy/studyroom/LostAndFoundOnCampus/Campus_Trading_System/Books-Recycling）+ UGC 合规提示 + 落地优先级。已 commit 推送。
+- **第三点·「信息」页重构（倒数日 + 改名 + 删通知/作业）（代码完成、门禁全绿、待发版）**：用户原话「增加倒数日在班级信息；班级信息改为信息；去掉通知和作业」。三件事落地——
+  - **倒数日（个人本地自定义）**：经用户确认口径为「个人本地自定义（推荐）」——自己在「信息」页增删「事件名+目标日期」，本地 storage 保存，按最近排序显示「还剩 N 天 / 今天 / 已过 N 天」，纯前端、不依赖云端。`classinfo` 新增倒数日卡片 + 添加弹层（`bottom-sheet`，存 `wx.getStorageSync('countdown_events_v1')`），点行 `wx.showModal` 删除。
+  - **改名**：Tab 与导航栏「班级信息」→「信息」（`app.json` 的 `pages/classinfo/index` text + `custom-tab-bar/index.js` 的 `text`/`icon` 同步）。
+  - **删通知/作业子卡**：移除 classinfo 的「通知」「作业」两个子卡入口及关联 JS（移除 `notice` 依赖、`noticeUnacked` 角标、`onOpen` 内 notice/homework 分支）、未读角标死样式；剩余子卡 roster(st-2)/fee(st-3)，连接线注释更新（课程表已下线；通知/作业于 2026-11-02 移除）。
+  - **门禁同步**：`scripts/check-classinfo-switch.js` 删 notice/homework 子卡跳转断言 + 对应变异自证，修桩 `mem.keys` 缺 `myClass` 的既有崩溃 bug，`page-meta` 滚动锁正则改为容忍 `(classSheetShow || cdSheetShow)` 包裹并新增 `cdSheetShow` 同列断言；现 `通过=70 失败=0`（含 7 组变异全抓）。`check-wxss.js` 复跑全绿（`classinfo/index.wxml` 63 类全有定义；新增 `.f-actions/.f-cancel/.f-save` 本地定义修复未定义类回归）。`check-scroll-lock.js` 全绿（cdSheetShow 已入锁）。
+  - **第四点·信息页 4 项弹层/布局修复（用户 4 张截图反馈，代码完成、门禁全绿、待发版）**：
+    - **① 弹层被底部 tabBar 遮挡**：倒数日添加弹层 `bottom-sheet` 原写死 `height="{{560}}"`（≈280px），叠加 `.sheet-body-inner` 内部 `padding-bottom≈83px`（tabbarPx+safeBottom，由 bottom-sheet JS 下发让位底部自定义 tabBar），内容（事件名/目标日期/取消/保存）总高超出面板 → 底部按钮被裁切并落在 tabBar 区被遮挡。改为**自适应高度**（删 `height="{{560}}"`），面板按内容贴合 + 内 padding 让位 tabBar。
+    - **② 弹层左上角穿透小箭头**：nav-bar 的 `.theme-btn`（主题切换按钮，tab 页无返回键时渲染于左上角）在弹层玻璃半透明下「穿透」可见——与 nav-bar/index.js 注释记载的返回箭头穿透同因，但 `.theme-btn` 此前漏接 `sheetOpen` 抑制。修复：`nav-bar/index.wxml` 的 `.theme-btn` 渲染条件加 `&& !sheetOpen`；`classinfo` 的 `<nav-bar>` 接线 `sheet-open="{{classSheetShow || cdSheetShow}}"`（让本页弹层开时抑制主题按钮穿透）。
+    - **③ 普通成员切班入口**：原 `wx:if="{{classChips.length > 1}}"`——普通成员理论上 `classChips` 为空不渲染，但用户实测普通成员仍见「切换班级」。加 `isStaff &&` 双保险（`isStaff = isSuper() || groupTag==='X'`）：即便普通成员异常拿到 classChips 也绝不显示切班入口。
+    - **④ 倒数日位置**：原置于班费卡片之后；按用户要求移到**班级概况卡片正下方**（`.ci-connector` 之后、子卡列表 `.ci-list` 之前），并顺移动画档位：`概况 st-1` → `倒数日 st-2` → `班级成员 st-3` → `班费 st-4`（原 班级成员 st-2/fee st-3 顺延），同页插入块档位严格递增、无断档。
+    - **⚠️ 全局纪律（用户明确，须长期记住）**：**以后任何新增弹层都要做边界隔离——最下方的控件（含取消/保存按钮）必须保持在底部自定义 tabBar 上方，避免被遮挡**。实现上优先「自适应高度 + `.sheet-body-inner` 已有 padding-bottom 让位 tabBar」，避免写死固定高度导致溢出。
+    - 门禁复跑全绿：`check-wxss.js` EXIT=0；`check-classinfo-switch.js` 通过=70 失败=0 EXIT=0；`check-scroll-lock.js` OK(10 页面锁定) EXIT=0；`check-popup-anim.js` 全部通过 EXIT=0。无新增回归。改动 2 文件：`miniprogram/components/nav-bar/index.wxml`、`miniprogram/pages/classinfo/index.wxml`。
+  - ✅ **已发版 1.0.8.18（2026-11-02）**：第三点（信息页重构）+ 第四点（4 项弹层/布局修复）合并 bump `config.js` APP_VERSION→1.0.8.18 + 新建 `outputs/v1.0.8.18-更新说明.md`（版本A提审版+版本B公告版）+ `scripts/wx-upload/upload.mjs 1.0.8.18` 无头上传成功（111 文件 / 全包 740398B / 约 723KB，备注取自版本B；本次未触发 IP 白名单拦截）。待用户在 mp 后台「版本管理」设为体验版自查（信息页更名 / 倒数日 / 弹层不再被遮挡）。
+  - ✅ **已发版 1.0.8.19（2026-11-02）· 倒数日卡片视觉打磨**：① 头部（倒数日+添加）与列表间加 2rpx 分隔线（`--line-1 #E5E6EB`）；② 事件名 32→**36rpx 粗体 700**、日期 26→**30rpx**；③ 右侧天数由「还剩 N 天」改**「N天」**、44rpx 粗体垂直居中（上沿≈名字中线、下沿≈日期中线）。
+    bump `config.js` APP_VERSION 1.0.8.18→1.0.8.19 + 新建 `outputs/v1.0.8.19-更新说明.md` + `scripts/wx-upload/upload.mjs 1.0.8.19` 无头上传成功（111 文件 / 全包 740636B / 约 723KB，备注取自版本B，未触发 IP 白名单）。
+  - ⚠️ **发版纪律（用户明确，2026-11-02 起长期执行）**：**每次上传新版本必须同时同步 GitHub**（commit + `git push origin main` 重试至 `ahead 0`）；代理 502 拦截时先记 ahead 数，恢复后补推，不得只留本地。
+- ⏳ **待决**：① 1.0.8.17 已上传（仅当前课加深视觉修正），待用户预览确认（mp 后台「版本管理」设为体验版自查：选修课行不再发蓝 / 仅正在上的课加深）；若还想更轻可回退 B/C；② 从清单挑首批要落地的功能（建议：纯前端课表增强 E1–E6 + GPA 计算器 S4 + 校历 S8 + 同学录 U2；**倒数日已随本页重构落地**）。③ 信息页重构 + 4 项弹层修复 **1.0.8.18**、倒数日视觉打磨 **1.0.8.19** 均已成开发版本，待用户设为体验版自查。
 
 ---
 
