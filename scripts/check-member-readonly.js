@@ -124,10 +124,18 @@ ok(!/data-key=["']timetable["']/.test(ciWxml) && !/课程表/.test(ciWxml),
   '⑤ 课程表子卡已移除（它只是 switchTab 到 tabBar 已有的课表 tab，点了画面不变）');
 ok(!/timetable/i.test(classinfoJs) && !/ttConf|ttSub/.test(classinfoJs),
   '⑤ 课程表相关的死代码一并清掉（不再 require data/timetable、不再拉 courseAllSessions）');
-/* 删卡后入场动画档位必须重排：hero=st-1，子卡 st-2..st-5，不许留 st-6 断档
- * （断档本身不报错，只会让「第 6 块」的延迟白等一格，属于看不见的债）。 */
-ok(/st-5/.test(ciWxml) && !/st-6/.test(ciWxml),
-  '⑤ 删卡后档位仍是 st-1~st-5 连续（hero + 4 张子卡）');
+/* 入场动画档位必须「从 st-1 起连续、不跳号、封顶 st-7」。
+ * 断档本身不报错，只会让后面每块的延迟白等一格（看不见的债），所以钉死。
+ * ⚠️ 曾经写死成「必须有 st-5 且不得有 st-6」——那是 2026-11-02 删卡时的快照，
+ *    后来信息页加了「我的请假 / 请假审批」两张卡（→ st-6），判据立刻假红
+ *    （2026-11-03 踩）。**不要写死具体张数**，只守连续性与封顶。 */
+const ciSlots = (ciWxml.match(/st-item st-(\d+)/g) || [])
+  .map((s) => Number(s.match(/st-(\d+)/)[1]))
+  .filter((n, i, a) => a.indexOf(n) === i)
+  .sort((a, b) => a - b);
+const ciContiguous = ciSlots.length > 0 && ciSlots.every((n, i) => n === i + 1);
+ok(ciContiguous && ciSlots[ciSlots.length - 1] <= 7,
+  '⑤ 档位从 st-1 起连续递增、不跳号、封顶 st-7（实测 st-' + ciSlots.join(' / st-') + '）');
 ok(!/tt\.setClass/.test(classinfoJs),
   '⑤ 班级信息页不得调 tt.setClass（全局课表单例，改它会让课程表 tab 串班）');
 

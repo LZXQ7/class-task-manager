@@ -51,10 +51,12 @@
               <app-icon name="chevron-down" variant="gray" size="{{26}}" />
             </view>
           </picker>
+          <!-- 选「其他」时补一句具体事由（选填，最多 30 字） -->
+          <input wx:if="{{reasonIsOther}}" class="lv-input" value="{{reasonNote}}" placeholder="补充说明（选填，最多 30 字）" placeholder-class="lv-input-ph" maxlength="30" bindinput="onReasonNoteInput" />
         </view>
 
         <view class="lv-field">
-          <text class="lv-label">假条（选填）</text>
+          <text class="lv-label">假条<text class="lv-req">必传</text></text>
           <view wx:if="{{imageThumb}}" class="lv-img-row">
             <image class="lv-img" src="{{imageThumb}}" mode="aspectFill" data-fid="{{imageFileId}}" bindtap="onPreviewImage" />
             <view class="lv-img-del" data-fid="{{imageFileId}}" bindtap="onRemoveImage" hover-class="press-dim" hover-stay-time="60">删除</view>

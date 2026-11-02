@@ -10,16 +10,40 @@ const util = require('../../utils/util');
 const request = require('../../utils/request');
 const theme = require('../../utils/theme');
 
-/** 时段 key → 中文短标签（与后端 PERIOD_DEFS 同口径） */
-const SLOT_LABEL_MAP = { am: '上午', pm: '下午', eve: '晚上' };
-const PERIOD_HINT = { am: '上午 08:00–12:00', pm: '下午 13:00–18:00', eve: '晚上 18:00–21:00' };
+/** 时段固定顺序（上午→下午→晚上）：文案顺序与点选先后无关 */
+const PERIOD_ORDER = ['am', 'pm', 'eve'];
+/** 时段定义（与后端 PERIOD_DEFS 同口径） */
+const PERIOD_DEFS_FRONT = {
+  am: { label: '上午', start: '08:00', end: '12:00' },
+  pm: { label: '下午', start: '13:00', end: '18:00' },
+  eve: { label: '晚上', start: '18:00', end: '21:00' }
+};
+/**
+ * 请假事由（2026-11-03 需求③）：公假 / 病假 / 事假 / 其他。
+ * 选「其他」必须手填说明（存 reason_note）：前端拦一次，后端再拦一次。
+ * ⚠️ 与换班事由（COURSE/SICK/INTERN/OTHER，落 swap_request 的 ENUM 列）是两套枚举，别混。
+ */
 const REASON_OPTS = [
-  { key: 'COURSE', text: '课程相关' },
+  { key: 'PUBLIC', text: '公假' },
   { key: 'SICK', text: '病假' },
-  { key: 'INTERN', text: '实习' },
+  { key: 'PERSONAL', text: '事假' },
   { key: 'OTHER', text: '其他' }
 ];
+/** 事由 key → 中文。兼容后端可能回的老枚举值（COURSE/INTERN），避免显示空白 */
+const REASON_TEXT = (function () {
+  const m = {};
+  REASON_OPTS.forEach((r) => { m[r.key] = r.text; });
+  m.COURSE = '课程';
+  m.INTERN = '实习';
+  return m;
+})();
 const STATUS_TEXT = { PENDING: '待审批', APPROVED: '已通过', REJECTED: '未通过', CANCELLED: '已撤回' };
+/** 事由展示文本：「其他」带手填说明时拼成「其他：xxx」 */
+function reasonDisplay(key, note) {
+  const t = REASON_TEXT[key] || '其他';
+  const n = String(note || '').trim();
+  return (key === 'OTHER' && n) ? (t + '：' + n) : t;
+}
 const STATUS_CLASS = { PENDING: 'st-pending', APPROVED: 'st-approved', REJECTED: 'st-rejected', CANCELLED: 'st-cancelled' };
 
 /** YYYY-MM-DD */
@@ -34,10 +58,34 @@ function parsePeriodsFront(p) {
   if (Array.isArray(p)) return p.filter(Boolean);
   return String(p).split(',').map((t) => t.trim()).filter(Boolean);
 }
-function periodsTextFront(periods) {
-  const a = parsePeriodsFront(periods);
+/** periods → 固定顺序数组（去重、去白名单外） */
+function normPeriodOrder(periods) {
+  const raw = parsePeriodsFront(periods);
+  return PERIOD_ORDER.filter((k) => raw.indexOf(k) >= 0);
+}
+/**
+ * 时段展示（2026-11-03 需求①）：**固定顺序 + 相邻合并**。
+ *   ['pm','am']  → '08:00–18:00'（连续两段合并成一个区间）
+ *   ['eve','pm'] → '13:00–21:00'
+ *   ['eve','am'] → '上午 08:00–12:00；晚上 18:00–21:00'（跳段，分开说明）
+ *   ['am']       → '上午 08:00–12:00'
+ *   []           → '全天'
+ */
+function periodRangeText(periods) {
+  const a = normPeriodOrder(periods);
   if (!a.length) return '全天';
-  return a.map((k) => SLOT_LABEL_MAP[k] || k).join('、');
+  const groups = [];
+  let cur = [a[0]];
+  for (let i = 1; i < a.length; i++) {
+    if (PERIOD_ORDER.indexOf(a[i]) === PERIOD_ORDER.indexOf(a[i - 1]) + 1) cur.push(a[i]);
+    else { groups.push(cur); cur = [a[i]]; }
+  }
+  groups.push(cur);
+  return groups.map((g) => {
+    const s = PERIOD_DEFS_FRONT[g[0]].start;
+    const e = PERIOD_DEFS_FRONT[g[g.length - 1]].end;
+    return g.length > 1 ? (s + '–' + e) : (PERIOD_DEFS_FRONT[g[0]].label + ' ' + s + '–' + e);
+  }).join('；');
 }
 
 Page({
@@ -61,6 +109,9 @@ Page({
     reasonOpts: REASON_OPTS,
     reasonIndex: 3,
     reasonText: '其他',
+    /** 选「其他」时才显示手填说明输入框（选填） */
+    reasonIsOther: true,
+    reasonNote: '',
     imageFileId: '',
     imageThumb: '',
     submitting: false,
@@ -105,8 +156,8 @@ Page({
     return Object.assign({}, x, {
       statusText: STATUS_TEXT[x.status] || x.status,
       statusClass: STATUS_CLASS[x.status] || '',
-      periodsText: x.periodsText || periodsTextFront(x.periods),
-      reasonText: (REASON_OPTS.filter((r) => r.key === x.reason)[0] || {}).text || '其他',
+      periodsText: x.periodsText || periodRangeText(x.periods),
+      reasonText: reasonDisplay(x.reason, x.reasonNote),
       imgUrl: ''
     });
   },
@@ -176,8 +227,10 @@ Page({
     (arr || []).forEach((k) => {
       if (['am', 'pm', 'eve'].indexOf(k) >= 0 && norm.indexOf(k) < 0) norm.push(k);
     });
+    // 提示文案走 periodRangeText：**固定顺序 + 相邻合并**，与点选先后无关
+    // （先点「下午」再点「上午」也必须显示 08:00–18:00，而不是「下午…；上午…」）
     const hint = norm.length
-      ? (norm.map((k) => PERIOD_HINT[k]).join('；') + '（区间内每天都按这些时段算，未选时段视为在校）')
+      ? (periodRangeText(norm) + '（区间内每天都按这些时段算，未选时段视为在校）')
       : '全天请假（区间内每天所有时段都算请假）。';
     this.setData({
       leavePeriods: norm,
@@ -201,7 +254,20 @@ Page({
   onReasonChange(e) {
     const idx = Number(e.detail.value);
     const opt = REASON_OPTS[idx];
-    if (opt) this.setData({ reasonIndex: idx, reasonText: opt.text });
+    if (!opt) return;
+    const isOther = opt.key === 'OTHER';
+    // 从「其他」切走时清掉手填说明，避免残留内容被误当成新事由
+    this.setData({
+      reasonIndex: idx,
+      reasonText: opt.text,
+      reasonIsOther: isOther,
+      reasonNote: isOther ? this.data.reasonNote : ''
+    });
+  },
+
+  /** 「其他」的手填说明（选填，最多 30 字） */
+  onReasonNoteInput(e) {
+    this.setData({ reasonNote: String((e.detail && e.detail.value) || '').slice(0, 30) });
   },
 
   /** 选图 → 直传云存储拿 fileID（二进制不经过云函数），暂存用于提交与预览 */
@@ -252,20 +318,23 @@ Page({
       startDate: today, endDate: today,
       leavePeriods: [], periodAllOn: true, periodAmOn: false, periodPmOn: false, periodEveOn: false,
       leavePeriodHint: '全天请假（区间内每天所有时段都算请假）。',
-      reasonIndex: 3, reasonText: '其他',
+      reasonIndex: 3, reasonText: '其他', reasonIsOther: true, reasonNote: '',
       imageFileId: '', imageThumb: ''
     });
   },
 
   onSubmitApply() {
     if (this.data.submitting) return;
-    const { startDate, endDate, leavePeriods, reasonText, imageFileId } = this.data;
+    const { startDate, endDate, leavePeriods, imageFileId, reasonNote } = this.data;
     if (!startDate || !endDate) { util.toast('请选择请假日期'); return; }
     if (endDate < startDate) { util.toast('结束日期不能早于开始日期'); return; }
+    // 假条必传（2026-11-03 需求②）：没有图不许提交，省得班长审批时无凭证
+    if (!imageFileId) { util.toast('请先上传假条照片'); return; }
     const reason = REASON_OPTS[this.data.reasonIndex] ? REASON_OPTS[this.data.reasonIndex].key : 'OTHER';
     const periods = leavePeriods || [];
+    const note = reason === 'OTHER' ? String(reasonNote || '').trim() : '';
     this.setData({ submitting: true });
-    api.leaveApply({ startDate, endDate, periods, reason, fileId: imageFileId }, { toast: false })
+    api.leaveApply({ startDate, endDate, periods, reason, reasonNote: note, fileId: imageFileId }, { toast: false })
       .then((r) => {
         this.setData({ submitting: false });
         util.toast((r && r.existed) ? '该区间已申请过' : '已提交，等待审批');

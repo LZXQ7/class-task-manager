@@ -63,18 +63,14 @@ const LEAVE_SLOTS = [
   { key: 'pm', label: '下午', start: '13:00', end: '18:00', hint: '每天 13:00–18:00' },
   { key: 'eve', label: '晚上', start: '18:00', end: '21:00', hint: '每天 18:00–21:00' }
 ];
-/** 时段 key → 中文短标签（不含「全天」；前端展示用，与后端 PERIOD_DEFS 同口径） */
-const SLOT_LABEL_MAP = (function () {
+/** 时段固定顺序（上午→下午→晚上）：文案顺序与点选先后无关 */
+const PERIOD_ORDER = ['am', 'pm', 'eve'];
+/** 时段 key → {label,start,end}：直接复用 LEAVE_SLOTS，避免两处定义漂移 */
+const PERIOD_DEFS_FRONT = (function () {
   const m = {};
-  LEAVE_SLOTS.forEach((s) => { if (s.key !== 'all') m[s.key] = s.label; });
+  LEAVE_SLOTS.forEach((s) => { if (s.key !== 'all') m[s.key] = { label: s.label, start: s.start, end: s.end }; });
   return m;
 })();
-/** 时段 key → 中文时段文案（含钟点，用于登记页提示与确认弹窗） */
-const PERIOD_HINT = {
-  am: '上午 08:00–12:00',
-  pm: '下午 13:00–18:00',
-  eve: '晚上 18:00–21:00'
-};
 /** 把 periods 字段（数组 / 逗号串 / 空）统一成数组（前端版 parsePeriods） */
 function parsePeriodsFront(p) {
   if (!p) return [];
@@ -98,20 +94,39 @@ function inLeaveWindowFront(row, clock) {
   }
   return per.indexOf(segmentOfFront(clock)) >= 0;
 }
-/** 时段展示文本：['am','pm'] → '上午、下午'；[] → '全天'；旧记录 periods 空但有时段 → 回显钟点（绝不谎报全天） */
+/**
+ * 时段展示（2026-11-03 需求①）：**固定顺序 + 相邻合并**，与点选先后无关。
+ *   ['pm','am']      → '08:00–18:00'（连续两段合并成一个区间）
+ *   ['eve','pm']     → '13:00–21:00'
+ *   ['eve','am']     → '上午 08:00–12:00；晚上 18:00–21:00'（跳段，分开说明）
+ *   ['am']           → '上午 08:00–12:00'
+ *   []               → '全天'
+ */
+function periodRangeText(periods) {
+  const raw = parsePeriodsFront(periods);
+  const a = PERIOD_ORDER.filter((k) => raw.indexOf(k) >= 0);   // 固定顺序（不是点选顺序）
+  if (!a.length) return '全天';
+  const groups = [];
+  let cur = [a[0]];
+  for (let i = 1; i < a.length; i++) {
+    if (PERIOD_ORDER.indexOf(a[i]) === PERIOD_ORDER.indexOf(a[i - 1]) + 1) cur.push(a[i]);
+    else { groups.push(cur); cur = [a[i]]; }
+  }
+  groups.push(cur);
+  return groups.map((g) => {
+    const s = PERIOD_DEFS_FRONT[g[0]].start;
+    const e = PERIOD_DEFS_FRONT[g[g.length - 1]].end;
+    return g.length > 1 ? (s + '–' + e) : (PERIOD_DEFS_FRONT[g[0]].label + ' ' + s + '–' + e);
+  }).join('；');
+}
+/** 列表行时段文本：periods 优先；旧记录 periods 空但有时段 → 回显钟点（绝不谎报全天） */
 function leavePeriodText(x) {
   if (!x) return '';
   const arr = parsePeriodsFront(x.periods);
-  if (arr.length) return arr.map((k) => (SLOT_LABEL_MAP[k] || k)).join('、');
+  if (arr.length) return periodRangeText(arr);
   const s = x.startTime, e = x.endTime;
   if (s && e) return String(s).slice(0, 5) + '–' + String(e).slice(0, 5);
   return '全天';
-}
-/** 时段展示文本（纯数组入参，用于确认弹窗）：[] → '全天' */
-function periodsTextFront(periods) {
-  const a = parsePeriodsFront(periods);
-  if (!a.length) return '全天';
-  return a.map((k) => (SLOT_LABEL_MAP[k] || k)).join('、');
 }
 /**
  * 请假时段展示（2026-11-02 需求①：多时段）。
@@ -1002,8 +1017,10 @@ _clockNow() {
     (arr || []).forEach((k) => {
       if (['am', 'pm', 'eve'].indexOf(k) >= 0 && norm.indexOf(k) < 0) norm.push(k);
     });
+    // 提示文案走 periodRangeText：**固定顺序 + 相邻合并**，与点选先后无关
+    // （先点「下午」再点「上午」也必须显示 08:00–18:00，而不是「下午…；上午…」）
     const hint = norm.length
-      ? (norm.map((k) => PERIOD_HINT[k]).join('；') + '（区间内每天都按这些时段算，未选时段视为在校）')
+      ? (periodRangeText(norm) + '（区间内每天都按这些时段算，未选时段视为在校）')
       : '全天请假（区间内每天所有时段都算请假）。';
     this.setData({
       leavePeriods: norm,
@@ -1095,7 +1112,7 @@ _clockNow() {
     // 钟点写死在后端 PERIOD_DEFS，前端只传 key 数组 ⇒ 旧的「结束必须晚于开始」校验随之失效，
     // **不再保留那条死代码**。periods 经后端 normPeriods 白名单兜底，写坏也不会提交非法档位。
     const periods = leavePeriods || [];
-    const periodText = periodsTextFront(periods);
+    const periodText = periodRangeText(periods);
     const span = leaveStart === leaveEnd
       ? leaveStart + (periods.length ? (' ' + periodText) : '（全天）')
       : (leaveStart + ' ~ ' + leaveEnd + (periods.length ? (' 每天 ' + periodText) : '（全天）'));

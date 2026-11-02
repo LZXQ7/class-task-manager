@@ -18,6 +18,15 @@ const week = require('./common/week');
 const { BizError, ok, fail } = require('./common/resp');
 
 const REASONS = ['COURSE', 'SICK', 'INTERN', 'OTHER'];
+/**
+ * 请假事由白名单（2026-11-03 需求③：公假 / 病假 / 事假 / 其他）。
+ *
+ * 🔴 **不要复用上面的 REASONS** —— 那是「换班事由」，落 swap_request.reason 列，
+ *    该列是 `enum('COURSE','SICK','INTERN','OTHER')` 且在线上。若把 REASONS 改成
+ *    公假/事假，换班插入会因枚举越界直接失败。两条业务线各用各的白名单。
+ * OTHER 时 `reason_note` 存手填说明（前端强制填，后端双拦）。
+ */
+const LEAVE_REASONS = ['PUBLIC', 'SICK', 'PERSONAL', 'OTHER'];
 const EXPIRE_HOURS = 24;
 
 const STATUS_TEXT = {
@@ -153,11 +162,34 @@ function parsePeriods(s) {
   return String(s).split(',').map(x => x.trim()).filter(Boolean);
 }
 
-/** periods 数组 → 中文展示（['am','pm'] → '上午、下午'；[] → '全天'） */
+/**
+ * periods 数组 → 中文展示（2026-11-03 需求①：**固定顺序 + 相邻合并**）。
+ *
+ * 顺序恒定按 am→pm→eve，与点选先后无关（点「下午」再点「上午」不能显示成「下午；上午」）。
+ * 相邻时段合并成一个连续区间，跳段（不相邻）才分开说明：
+ *   ['pm','am']  → '08:00–18:00'
+ *   ['eve','pm'] → '13:00–21:00'
+ *   ['eve','am'] → '上午 08:00–12:00；晚上 18:00–21:00'
+ *   ['am']       → '上午 08:00–12:00'
+ *   ['am','pm','eve'] → '08:00–21:00'
+ *   []           → '全天'
+ */
 function periodsText(arr) {
-  const a = parsePeriods(arr);
+  const raw = parsePeriods(arr);
+  const a = PERIOD_KEYS.filter(k => raw.indexOf(k) >= 0);   // 固定顺序（不是点选顺序）
   if (!a.length) return '全天';
-  return a.map(k => (PERIOD_DEFS[k] && PERIOD_DEFS[k].label) || k).join('、');
+  const groups = [];
+  let cur = [a[0]];
+  for (let i = 1; i < a.length; i++) {
+    if (PERIOD_KEYS.indexOf(a[i]) === PERIOD_KEYS.indexOf(a[i - 1]) + 1) cur.push(a[i]);
+    else { groups.push(cur); cur = [a[i]]; }
+  }
+  groups.push(cur);
+  return groups.map(g => {
+    const s = PERIOD_DEFS[g[0]].range[0];
+    const e = PERIOD_DEFS[g[g.length - 1]].range[1];
+    return g.length > 1 ? (s + '–' + e) : (PERIOD_DEFS[g[0]].label + ' ' + s + '–' + e);
+  }).join('；');
 }
 
 /** 区间内「还没值完」的值日 → 置 LEAVE（与 addLeave / leaveApprove 同口径） */
@@ -1024,9 +1056,13 @@ const routes = {
       if (spanDays(startDate, endDate) > LEAVE_MAX_DAYS) throw new BizError(41001, '单次请假最多 ' + LEAVE_MAX_DAYS + ' 天');
       const periods = normPeriods(payload.periods);
       const tp = periodsToTime(periods);
-      const reason = REASONS.includes(payload.reason) ? payload.reason : 'OTHER';
+      const reason = LEAVE_REASONS.includes(payload.reason) ? payload.reason : 'OTHER';
+      // 「其他」可补一句手填说明（选填，最多 30 字）；非 OTHER 时一律丢弃，不落库
+      const reasonNote = reason === 'OTHER' ? String(payload.reasonNote || '').trim().slice(0, 30) : '';
+      // 假条必传（2026-11-03 需求②）：前端拦一次，后端再拦一次——绕过界面直调云函数也必须带图
       const fileId = String(payload.fileId || '').slice(0, 128);
-      if (fileId && fileId.indexOf('cloud://') !== 0) throw new BizError(41001, '假条图片上传失败，请重试');
+      if (!fileId) throw new BizError(41001, '请上传假条照片');
+      if (fileId.indexOf('cloud://') !== 0) throw new BizError(41001, '假条图片上传失败，请重试');
       // 幂等：同人同区间同段已存在 apply 记录 → 直接返回（避免连点/重试双写）
       const [dup] = await pool.query(
         "SELECT id, status FROM leave_request WHERE class_id = ? AND member_id = ? AND start_date = ? AND end_date = ? AND IFNULL(periods,'') = ? AND source = 'apply'",
@@ -1034,9 +1070,9 @@ const routes = {
       );
       if (dup.length) return { leaveId: Number(dup[0].id), existed: true, status: dup[0].status };
       const [ins] = await pool.query(
-        "INSERT INTO leave_request (class_id, member_id, start_date, end_date, start_time, end_time, periods, status, source, reason, leave_image, applied_by) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'apply', ?, ?, ?)",
-        [classId, me.id, startDate, endDate, tp.start, tp.end, periods.join(','), reason, fileId || null, me.id]
+        "INSERT INTO leave_request (class_id, member_id, start_date, end_date, start_time, end_time, periods, status, source, reason, reason_note, leave_image, applied_by) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'apply', ?, ?, ?, ?)",
+        [classId, me.id, startDate, endDate, tp.start, tp.end, periods.join(','), reason, reasonNote || null, fileId, me.id]
       );
       const leaveId = Number(ins.insertId);
       // 审批人 = 本班班长兼团支书 / 副班长（在职、非教职工、有 openid）+ 超管（不限班）
@@ -1128,7 +1164,7 @@ const routes = {
       const pool = getPool();
       const [rows] = await pool.query(
         `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date, l.start_time, l.end_time,
-                l.periods, l.status, l.source, l.reason, l.leave_image, l.created_at, l.approved_at,
+                l.periods, l.status, l.source, l.reason, l.reason_note, l.leave_image, l.created_at, l.approved_at,
                 m.name, m.group_tag, m.student_no
            FROM leave_request l JOIN member m ON m.id = l.member_id
           WHERE l.member_id = ? AND l.source = 'apply'
@@ -1154,6 +1190,7 @@ const routes = {
             status: r.status,
             source: r.source,
             reason: r.reason,
+            reasonNote: r.reason_note || '',
             hasImage: !!r.leave_image,
             image: r.leave_image || '',
             createdAt: String(r.created_at || '').slice(0, 16),
@@ -1180,7 +1217,7 @@ const routes = {
       const args = superNow ? [] : [guard.classIdOf(ctx)];
       const [rows] = await pool.query(
         `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date, l.start_time, l.end_time,
-                l.periods, l.reason, l.leave_image, l.created_at,
+                l.periods, l.reason, l.reason_note, l.leave_image, l.created_at,
                 m.name, m.group_tag, m.student_no, l.class_id, cl.name AS className
            FROM leave_request l
            JOIN member m ON m.id = l.member_id
@@ -1205,6 +1242,7 @@ const routes = {
             periods,
             periodsText: periodsText(periods),
             reason: r.reason,
+            reasonNote: r.reason_note || '',
             hasImage: !!r.leave_image,
             image: r.leave_image || '',
             createdAt: String(r.created_at || '').slice(0, 16),

@@ -122,7 +122,7 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      （上沿≈名字行中线、下沿≈日期行中线）；已过事件仍为灰色「已过 N 天」400 字重。
  *   纯前端改动（wxss + classinfo 文案），无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.20';
+const APP_VERSION = '1.0.8.21';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

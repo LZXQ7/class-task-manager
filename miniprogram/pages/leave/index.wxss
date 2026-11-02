@@ -10,6 +10,19 @@
 
 .lv-field { margin-top: 24rpx; }
 .lv-label { font-size: 26rpx; color: #4E5969; font-weight: 500; }
+/* 「必传」小标：贴在标签后，不抢主文案 */
+.lv-req { margin-left: 8rpx; font-size: 22rpx; font-weight: 400; color: #F53F3F; }
+/* 「其他」事由的手填输入框：与 .lv-picker 同一套底色/圆角，视觉上是同一行延伸 */
+.lv-input {
+  height: 64rpx;
+  padding: 0 20rpx;
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #1D2129;
+  background: #F2F3F5;
+  border-radius: 16rpx;
+}
+.lv-input-ph { color: #86909C; }
 
 .lv-dates { display: flex; align-items: center; margin-top: 12rpx; }
 .lv-date {
