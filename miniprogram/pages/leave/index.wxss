@@ -1,0 +1,108 @@
+/* 我的请假 / 请假审批（2026-11-01 请假 v3）
+   门禁⑥：底部操作条用 .f-actions（display:flex + gap），按钮 flex:1。
+   门禁⑤：只用类选择器，禁 `~`、禁标签选择器（组件内标签选择器会静默失效）。
+   玻璃卡复用全局 .card（其 @supports 兜底在 app.wxss，本文件不写 backdrop-filter）。 */
+.lv-body { padding: 0 24rpx; }
+.lv-tabs { margin: 20rpx 0 8rpx; }
+
+.lv-card { padding: 28rpx 28rpx 24rpx; margin-bottom: 8rpx; }
+.lv-card-t { font-size: 30rpx; font-weight: 600; color: #1D2129; margin-bottom: 20rpx; }
+
+.lv-field { margin-top: 24rpx; }
+.lv-label { font-size: 26rpx; color: #4E5969; font-weight: 500; }
+
+.lv-dates { display: flex; align-items: center; margin-top: 12rpx; }
+.lv-date {
+  min-width: 200rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 20rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #4E5969;
+  background: #F2F3F5;
+  border-radius: 16rpx;
+}
+.lv-tilde { margin: 0 16rpx; font-size: 24rpx; color: #86909C; }
+
+/* 多时段胶囊：全天与半天互斥，上午/下午/晚上 可任意组合 */
+.lv-periods { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 12rpx; }
+.lv-chip {
+  min-width: 120rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 28rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #4E5969;
+  background: #F2F3F5;
+  border-radius: 16rpx;
+}
+.lv-chip.on { font-weight: 600; color: #3370FF; background: #E8F0FF; }
+
+.lv-hint { margin-top: 12rpx; font-size: 22rpx; line-height: 32rpx; color: #86909C; }
+
+/* 事由选择器（原生 picker） */
+.lv-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64rpx;
+  padding: 0 20rpx;
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #1D2129;
+  background: #F2F3F5;
+  border-radius: 16rpx;
+}
+
+/* 假条上传 / 缩略图 */
+.lv-upload {
+  display: flex;
+  align-items: center;
+  height: 88rpx;
+  padding: 0 20rpx;
+  margin-top: 12rpx;
+  background: #F2F3F5;
+  border-radius: 16rpx;
+  color: #4E5969;
+}
+.lv-upload-t { margin-left: 12rpx; font-size: 26rpx; }
+.lv-img-row { display: flex; align-items: center; margin-top: 12rpx; }
+.lv-img { width: 140rpx; height: 140rpx; border-radius: 12rpx; background: #F2F3F5; }
+.lv-img-del { margin-left: 20rpx; padding: 8rpx 16rpx; font-size: 26rpx; color: #F53F3F; }
+
+/* 列表分区标题 */
+.lv-sec-t { margin: 28rpx 4rpx 12rpx; font-size: 28rpx; font-weight: 600; color: #1D2129; }
+
+/* 申请 / 待批 行 */
+.lv-row { padding: 24rpx; margin-bottom: 16rpx; }
+.lv-row-head { display: flex; align-items: center; justify-content: space-between; }
+.lv-row-name { font-size: 30rpx; font-weight: 600; color: #1D2129; }
+.lv-row-cls { margin-left: 12rpx; font-size: 22rpx; color: #86909C; }
+.lv-row-sub { margin-top: 8rpx; font-size: 24rpx; color: #86909C; }
+
+/* 假条缩略图（data-fid 是 cloud:// fileID，点击换临时 URL 预览） */
+.lv-thumb-wrap { display: inline-block; margin-top: 12rpx; }
+.lv-thumb { width: 120rpx; height: 120rpx; border-radius: 12rpx; background: #F2F3F5; }
+
+.lv-row-actions { display: flex; justify-content: flex-end; gap: 16rpx; margin-top: 16rpx; }
+.lv-link { font-size: 26rpx; color: #3370FF; padding: 8rpx 4rpx; }
+.lv-pass { min-width: 140rpx; }
+.lv-reject { min-width: 140rpx; }
+.lv-link.disabled,
+.lv-pass.disabled,
+.lv-reject.disabled { opacity: 0.5; }
+
+/* 状态标签 */
+.lv-status { font-size: 22rpx; padding: 4rpx 16rpx; border-radius: 999rpx; }
+.st-pending { color: #D25A00; background: #FFF3E8; }
+.st-approved { color: #00875A; background: #E6F7F0; }
+.st-rejected { color: #F53F3F; background: #FFECE8; }
+.st-cancelled { color: #86909C; background: #F2F3F5; }
+
+.lv-foot { height: 60rpx; }
+
+/* 门禁⑥：底部操作条（提交按钮） */
+.f-actions { display: flex; gap: 20rpx; align-items: stretch; margin-top: 24rpx; }
+.f-cancel, .f-save { flex: 1; }

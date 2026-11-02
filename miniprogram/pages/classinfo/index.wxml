@@ -109,6 +109,26 @@
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
 
+      <!-- 请假 v3（2026-11-01）：普通成员本人申请入口 + 审批人待批入口 -->
+      <view wx:if="{{canApply}}" class="ci-item card st-item st-5" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoMyLeave">
+        <view class="ci-item-ic"><app-icon name="calendar" variant="brand" size="{{40}}" /></view>
+        <view class="ci-item-main">
+          <text class="ci-item-name">我的请假</text>
+          <text class="ci-item-sub">提交请假申请 · 查看审批进度</text>
+        </view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+
+      <view wx:if="{{canApprove}}" class="ci-item card st-item st-6" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoApprove">
+        <view class="ci-item-ic"><app-icon name="check" variant="brand" size="{{40}}" /></view>
+        <view class="ci-item-main">
+          <text class="ci-item-name">请假审批</text>
+          <text class="ci-item-sub">{{pendingCount > 0 ? (pendingCount + ' 条待审批') : '审批同学的请假申请'}}</text>
+        </view>
+        <view wx:if="{{pendingCount > 0}}" class="ci-badge">{{pendingCount}}</view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+
     </view>
 
     <view class="ci-foot"></view>

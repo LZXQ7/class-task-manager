@@ -84,12 +84,110 @@ function normTimePair(a, b) {
   return { start: s + ':00', end: e + ':00' };
 }
 
-/** 此刻是否落在请假时段内（整天假恒 true）—— 实时口径的唯一判定处 */
+/** 此刻是否落在请假时段内 —— 实时口径唯一判定处（2026-11-02 改用 periods）
+ * 优先级：periods 非空 → 按「当前时刻落在哪个时段档」判定（am+pm 在晚上算回校）；
+ *          periods 空/未设（整天假或旧记录）→ 按起止时间兜底（与旧口径一致）。 */
 function inLeaveWindow(row, clock) {
-  const s = normTime(row && row.start_time);
-  const e = normTime(row && row.end_time);
-  if (!s || !e) return true;
-  return clock >= s && clock <= e;
+  const p = row && row.periods;
+  const per = Array.isArray(p)
+    ? p
+    : (p != null && p !== '' ? String(p).split(',').filter(Boolean) : []);
+  if (!per.length) {
+    const s = normTime(row && (row.startTime != null ? row.startTime : row.start_time));
+    const e = normTime(row && (row.endTime != null ? row.endTime : row.end_time));
+    if (!s || !e) return true;
+    return clock >= s && clock <= e;
+  }
+  return per.indexOf(segmentOf(clock)) >= 0;
+}
+
+/* ---------------- 多时段（2026-11-02 需求①）：periods 权威字段 ----------------
+ * periods ∈ {'am','pm','eve'} 的组合；空数组 / 空串 / NULL = 全天（与旧「两列 NULL」等价）。
+ * 语义：区间内**每天**的选中时段（如 am+pm = 每天上午+下午，晚上回校）。
+ * start_time/end_time 仅由 periods 派生回填，**仅供旧读取路径/显示兼容**，不参与实时判定。 */
+const PERIOD_DEFS = {
+  am:  { range: ['08:00', '12:00'], label: '上午' },
+  pm:  { range: ['13:00', '18:00'], label: '下午' },
+  eve: { range: ['18:00', '21:00'], label: '晚上' }
+};
+/** 合法时段 key 白名单（防注入非法 key） */
+const PERIOD_KEYS = ['am', 'pm', 'eve'];
+
+/** 归一 periods：数组去白名单 + 去重；含 'all' 或空 → 空数组（=全天） */
+function normPeriods(arr) {
+  if (!Array.isArray(arr)) return [];
+  const set = [];
+  for (const k of arr) {
+    const s = String(k || '').trim();
+    if (s === 'all' || s === '') continue;
+    if (PERIOD_KEYS.indexOf(s) < 0) continue;   // 白名单外忽略
+    if (set.indexOf(s) < 0) set.push(s);
+  }
+  return set;
+}
+
+/** periods → {start,end}（派生回填）。空 → 两列 NULL（整天）。 */
+function periodsToTime(periods) {
+  if (!periods || !periods.length) return { start: null, end: null };
+  let s = '23:59', e = '00:00';
+  for (const k of periods) {
+    const d = PERIOD_DEFS[k];
+    if (!d) continue;
+    if (d.range[0] < s) s = d.range[0];
+    if (d.range[1] > e) e = d.range[1];
+  }
+  return { start: s + ':00', end: e + ':00' };
+}
+
+/** 当前时刻落在哪个时段档（用于实时判定） */
+function segmentOf(clock) {
+  if (clock < '12:00') return 'am';
+ if (clock < '18:00') return 'pm';
+  return 'eve';
+}
+
+/** 字符串 periods（'am,pm' / '' / NULL）→ 数组 */
+function parsePeriods(s) {
+  if (!s) return [];
+  if (Array.isArray(s)) return s.filter(Boolean);
+  return String(s).split(',').map(x => x.trim()).filter(Boolean);
+}
+
+/** periods 数组 → 中文展示（['am','pm'] → '上午、下午'；[] → '全天'） */
+function periodsText(arr) {
+  const a = parsePeriods(arr);
+  if (!a.length) return '全天';
+  return a.map(k => (PERIOD_DEFS[k] && PERIOD_DEFS[k].label) || k).join('、');
+}
+
+/** 区间内「还没值完」的值日 → 置 LEAVE（与 addLeave / leaveApprove 同口径） */
+async function markDutiesLeave(pool, classId, memberId, startDate, endDate, operatorId) {
+  const [duties] = await pool.query(
+    "SELECT id FROM duty WHERE class_id = ? AND member_id = ? AND status IN ('PENDING','ONGOING') AND class_date BETWEEN ? AND ?",
+    [classId, memberId, startDate, endDate]
+  );
+  for (const d of duties) {
+    await pool.query("UPDATE duty SET status = 'LEAVE' WHERE id = ?", [d.id]);
+    await pool.query('INSERT INTO duty_log (duty_id, operator_id, action, from_member) VALUES (?,?,?,?)',
+      [d.id, operatorId, 'LEAVE', memberId]);
+  }
+  return duties.length;
+}
+
+/** 发系统通知给指定成员（scope=PICK），复用 notice_msg + notice_msg_target */
+async function notifyMembers(pool, { classId, publisherId, title, content, memberIds }) {
+  const ids = [...new Set((memberIds || []).map(Number).filter(Boolean))]
+    .filter(id => id !== Number(publisherId));
+  if (!ids.length) return 0;
+  const [n] = await pool.query(
+    "INSERT INTO notice_msg (class_id, publisher_id, title, content, scope, week) VALUES (?,?,?,?, 'PICK', NULL)",
+    [classId, publisherId, title, content]
+  );
+  const noticeId = n.insertId;
+  for (const mid of ids) {
+    await pool.query('INSERT IGNORE INTO notice_msg_target (notice_id, member_id) VALUES (?, ?)', [noticeId, mid]);
+  }
+  return noticeId;
 }
 
 /** 'YYYY-MM-DD' → 加 n 天（返回同格式字符串）；用于归档/清除日的天数计算 */
@@ -505,7 +603,7 @@ const routes = {
       const date = normDate(payload.date) || week.todayStr();
       const [rows] = await pool.query(
         `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date,
-                l.start_time, l.end_time, l.leave_image,
+                l.start_time, l.end_time, l.periods, l.leave_image,
                 m.name, m.group_tag, m.student_no
            FROM leave_request l
            JOIN member m ON m.id = l.member_id
@@ -537,11 +635,11 @@ const routes = {
         endDate: week.dateStr(r.end_date),
         startTime: normTime(r.start_time),
         endTime: normTime(r.end_time),
+        periods: parsePeriods(r.periods),
         hasImage: !!r.leave_image,
         image: r.leave_image || ''
       }));
-      const nowList = list.filter(x => inLeaveWindow(
-        { start_time: x.startTime, end_time: x.endTime }, clock));
+      const nowList = list.filter(x => inLeaveWindow(x, clock));
       return {
         date,
         list,
@@ -576,18 +674,20 @@ const routes = {
         const ids = await guard.staffClassIds(pool, me);
         // ⚠️ 各班汇总走**实时口径**（此刻真在请假的人）—— 与在位统计同一套口径；
         //    日期口径只给「名单 + 撤销」用（leaveBoard / leaveHistory）。
-        const clock = week.nowHHmm() + ':00';
+        const clock = week.nowHHmm();
         const classes = [];
         for (const cid of ids) {
           const [c] = await pool.query('SELECT name FROM `class` WHERE id = ?', [cid]);
           const [r] = await pool.query(
-            "SELECT COUNT(*) AS n FROM leave_request l JOIN member m ON m.id = l.member_id " +
-            "WHERE l.class_id = ? AND l.status = 'APPROVED' AND l.start_date <= ? AND l.end_date >= ? " +
-            "AND (l.start_time IS NULL OR (l.start_time <= ? AND l.end_time >= ?)) " +
-            "AND m.group_tag <> 'X' AND " + notTest('m'),
-            [cid, date, date, clock, clock]
+            `SELECT l.start_time, l.end_time, l.periods
+               FROM leave_request l JOIN member m ON m.id = l.member_id
+              WHERE l.class_id = ? AND l.status = 'APPROVED' AND l.start_date <= ? AND l.end_date >= ?
+                AND m.group_tag <> 'X' AND ${notTest('m')}`,
+            [cid, date, date]
           );
-          classes.push({ classId: cid, className: c.length ? c[0].name : ('班级' + cid), leave: Number(r[0].n) || 0 });
+          // 实时口径：此刻真在请假时段内（多时段下按「当前时段是否入选中集合」判定）
+          const n = r.filter(x => inLeaveWindow(x, clock)).length;
+          classes.push({ classId: cid, className: c.length ? c[0].name : ('班级' + cid), leave: n });
         }
         return { mode: 'counselor', date, classes };
       }
@@ -595,7 +695,7 @@ const routes = {
       const [cl] = await pool.query('SELECT name FROM `class` WHERE id = ?', [classId]);
       const [rows] = await pool.query(
         `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date,
-                l.start_time, l.end_time, l.leave_image,
+                l.start_time, l.end_time, l.periods, l.leave_image,
                 m.name, m.group_tag, m.student_no
            FROM leave_request l
            JOIN member m ON m.id = l.member_id
@@ -617,11 +717,11 @@ const routes = {
         endDate: week.dateStr(r.end_date),
         startTime: normTime(r.start_time),
         endTime: normTime(r.end_time),
+        periods: parsePeriods(r.periods),
         hasImage: !!r.leave_image,
         image: r.leave_image || ''
       }));
-      const nowList = list.filter(x => inLeaveWindow(
-        { start_time: x.startTime, end_time: x.endTime }, clock2));
+      const nowList = list.filter(x => inLeaveWindow(x, clock2));
       return {
         mode: 'class',
         classId,
@@ -654,8 +754,9 @@ const routes = {
       if (!memberId || !startDate || !endDate) throw new BizError(41001, '请选择同学与请假日期');
       if (endDate < startDate) throw new BizError(41001, '结束日期不能早于开始日期');
       if (spanDays(startDate, endDate) > LEAVE_MAX_DAYS) throw new BizError(41001, '单次请假最多 ' + LEAVE_MAX_DAYS + ' 天');
-      // 请假 v2：可选时段（半天假）。语义=区间内每天相同时段；整天假两列写 NULL。
-      const tp = normTimePair(payload.startTime, payload.endTime);
+      // 请假 v2（2026-11-02 升级）：多时段。periods 权威（空=全天），派生 start/end 仅兼容。
+      const periods = normPeriods(payload.periods);
+      const tp = periodsToTime(periods);
       // 目标必须是本班在读**学生**（教职工 / 测试账号 / 已停用一律拒绝）
       const [ms] = await pool.query(
         "SELECT id FROM member WHERE id = ? AND class_id = ? AND status <> 'DISABLED' AND group_tag <> 'X' AND " + notTest(''),
@@ -666,27 +767,18 @@ const routes = {
       // ⚠️ 时段必须一起比：只比日期会让「整天假」和「半天假」互相吞掉（半天假登记不进去）
       const [dup] = await pool.query(
         "SELECT id FROM leave_request WHERE class_id = ? AND member_id = ? AND status = 'APPROVED' " +
-        "AND start_date = ? AND end_date = ? AND IFNULL(start_time,'') = ? AND IFNULL(end_time,'') = ?",
-        [classId, memberId, startDate, endDate, tp.start || '', tp.end || '']
+        "AND start_date = ? AND end_date = ? AND IFNULL(periods,'') = ? AND source = 'register'",
+        [classId, memberId, startDate, endDate, periods.join(',')]
       );
       if (dup.length) return { leaveId: Number(dup[0].id), affected: 0, existed: true };
-      // 区间内「还没值完」的值日 → 置 LEAVE
-      const [duties] = await pool.query(
-        "SELECT id FROM duty WHERE class_id = ? AND member_id = ? AND status IN ('PENDING','ONGOING') AND class_date BETWEEN ? AND ?",
-        [classId, memberId, startDate, endDate]
-      );
+      const affected = await markDutiesLeave(pool, classId, memberId, startDate, endDate, me.id);
       const [ins] = await pool.query(
-        "INSERT INTO leave_request (class_id, member_id, start_date, end_date, start_time, end_time, status) " +
-        "VALUES (?, ?, ?, ?, ?, ?, 'APPROVED')",
-        [classId, memberId, startDate, endDate, tp.start, tp.end]
+        "INSERT INTO leave_request (class_id, member_id, start_date, end_date, start_time, end_time, periods, status, source) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', 'register')",
+        [classId, memberId, startDate, endDate, tp.start, tp.end, periods.join(',')]
       );
-      for (const d of duties) {
-        await pool.query("UPDATE duty SET status = 'LEAVE' WHERE id = ?", [d.id]);
-        await pool.query('INSERT INTO duty_log (duty_id, operator_id, action, from_member) VALUES (?,?,?,?)',
-          [d.id, me.id, 'LEAVE', memberId]);
-      }
-      console.log(JSON.stringify({ fn: 'adjust', action: 'addLeave', by: me.id, target: memberId, startDate, endDate, affected: duties.length }));
-      return { leaveId: Number(ins.insertId), affected: duties.length };
+      console.log(JSON.stringify({ fn: 'adjust', action: 'addLeave', by: me.id, target: memberId, startDate, endDate, periods: periods.join(','), affected }));
+      return { leaveId: Number(ins.insertId), affected };
     }
   },
 
@@ -759,7 +851,7 @@ const routes = {
       const classId = await guard.resolveClassId(pool, ctx, payload);
       const [rows] = await pool.query(
         `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date,
-                l.start_time, l.end_time, l.leave_image, l.status, l.created_at, l.cancelled_at,
+                l.start_time, l.end_time, l.periods, l.leave_image, l.status, l.created_at, l.cancelled_at,
                 m.name, m.group_tag, m.student_no
            FROM leave_request l
            JOIN member m ON m.id = l.member_id
@@ -795,7 +887,7 @@ const routes = {
           // 🔴 **今天之内**的假：必须拿时刻比，否则上午的假下午仍显示「进行中」。
           //    `inLeaveWindow` 对「无时段」（start/end_time 为 NULL，即整天假）直接返回 true
           //    ⇒ 整天假保持 ONGOING，这是对的（整天假没有结束的那一刻）。
-          if (inLeaveWindow({ start_time: r.start_time, end_time: r.end_time }, clock)) {
+          if (inLeaveWindow(r, clock)) {
             state = 'ONGOING';
           } else {
             // 时段已过：对用户只呈现「已结束」（课表视角：上午那节课已经上了）。
@@ -816,6 +908,7 @@ const routes = {
           endDate: end,
           startTime: normTime(r.start_time),
           endTime: normTime(r.end_time),
+          periods: parsePeriods(r.periods),
           state,
           hasImage: !!r.leave_image,
           image: r.leave_image || '',
@@ -904,6 +997,245 @@ const routes = {
         memberId: row.member_id, hadImage: !!fileId
       }));
       return { leaveId };
+    }
+  },
+
+  /* ================= 2026-11-02 需求②：成员自申请 + 审批 =================
+   * 与班委代登记（addLeave，即时生效）两条线共用一张 leave_request 表，用 source 区分：
+   *   · source='register'  → 班委/超管代登记，即时 APPROVED（见 addLeave）
+   *   · source='apply'     → 成员自申请，落 PENDING，由班长/副班长/超管审批
+   * 审批：单级、任一审批人（班长兼团支书 / 副班长 / 超管）通过即生效；驳回可重提。 */
+
+  /**
+   * 成员自申请请假：填日期区间 + 多时段 + 可选假条，落 PENDING，由本班审批人审批。
+   * 仅本人可提交（memberId 强制 = 本人）；不立即标记值日（审批通过才标记，见 leaveApprove）。
+   * 提交后通知本班审批人（班长/副班长 + 超管）。
+   */
+  leaveApply: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      const classId = guard.classIdOf(ctx);
+      const pool = getPool();
+      const startDate = normDate(payload.startDate);
+      const endDate = normDate(payload.endDate);
+      if (!startDate || !endDate) throw new BizError(41001, '请选择请假日期');
+      if (endDate < startDate) throw new BizError(41001, '结束日期不能早于开始日期');
+      if (spanDays(startDate, endDate) > LEAVE_MAX_DAYS) throw new BizError(41001, '单次请假最多 ' + LEAVE_MAX_DAYS + ' 天');
+      const periods = normPeriods(payload.periods);
+      const tp = periodsToTime(periods);
+      const reason = REASONS.includes(payload.reason) ? payload.reason : 'OTHER';
+      const fileId = String(payload.fileId || '').slice(0, 128);
+      if (fileId && fileId.indexOf('cloud://') !== 0) throw new BizError(41001, '假条图片上传失败，请重试');
+      // 幂等：同人同区间同段已存在 apply 记录 → 直接返回（避免连点/重试双写）
+      const [dup] = await pool.query(
+        "SELECT id, status FROM leave_request WHERE class_id = ? AND member_id = ? AND start_date = ? AND end_date = ? AND IFNULL(periods,'') = ? AND source = 'apply'",
+        [classId, me.id, startDate, endDate, periods.join(',')]
+      );
+      if (dup.length) return { leaveId: Number(dup[0].id), existed: true, status: dup[0].status };
+      const [ins] = await pool.query(
+        "INSERT INTO leave_request (class_id, member_id, start_date, end_date, start_time, end_time, periods, status, source, reason, leave_image, applied_by) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'apply', ?, ?, ?)",
+        [classId, me.id, startDate, endDate, tp.start, tp.end, periods.join(','), reason, fileId || null, me.id]
+      );
+      const leaveId = Number(ins.insertId);
+      // 审批人 = 本班班长兼团支书 / 副班长（在职、非教职工、有 openid）+ 超管（不限班）
+      const [approvers] = await pool.query(
+        "SELECT id FROM member WHERE ((group_tag <> 'X' AND status = 'ACTIVE' AND position IN ('班长兼团支书','副班长')) OR (role = 'ADMIN' AND is_super = 1)) " +
+        "AND openid IS NOT NULL AND student_no NOT LIKE '0000000000%' AND (class_id = ? OR (role = 'ADMIN' AND is_super = 1))",
+        [classId]
+      );
+      const spanText = startDate + (endDate !== startDate ? '~' + endDate : '');
+      await notifyMembers(pool, {
+        classId, publisherId: me.id,
+        title: '请假待审批',
+        content: (me.name || '某同学') + ' 申请请假（' + spanText + ' ' + periodsText(periods) + '），请审批。',
+        memberIds: approvers.map(r => Number(r.id))
+      });
+      console.log(JSON.stringify({ fn: 'adjust', action: 'leaveApply', by: me.id, classId, leaveId, periods: periods.join(',') }));
+      return { leaveId, existed: false, status: 'PENDING' };
+    }
+  },
+
+  /**
+   * 审批成员请假申请：班长/副班长/超管，单级任一通过即生效。
+   *   agree=true  → APPROVED + 标记区间内值日 LEAVE + 通知申请人
+   *   agree=false → REJECTED + 通知申请人
+   * 已处理过（非 PENDING）的记录原样返回当前状态（幂等，防重复审批把值日又标一遍）。
+   */
+  leaveApprove: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      if (!guard.isLeaveApprover(me)) throw new BizError(40003, '仅班长、副班长或超管可审批请假');
+      const leaveId = Number(payload.leaveId);
+      const agree = !!payload.agree;
+      if (!leaveId) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const [lr] = await pool.query('SELECT * FROM leave_request WHERE id = ?', [leaveId]);
+      const leave = lr[0];
+      if (!leave) throw new BizError(41004, '请假申请不存在');
+      // 班级隔离：非超管只能审批本班申请（防越权审别班）
+      if (!guard.isSuper(me) && Number(leave.class_id) !== guard.classIdOf(ctx)) {
+        throw new BizError(40003, '只能审批本班的请假申请');
+      }
+      if (leave.status !== 'PENDING') {
+        return { status: leave.status, already: true };
+      }
+      const classId = Number(leave.class_id);
+      const memberId = Number(leave.member_id);
+      const startDate = week.dateStr(leave.start_date);
+      const endDate = week.dateStr(leave.end_date);
+      const spanText = startDate + (endDate !== startDate ? '~' + endDate : '');
+      if (agree) {
+        await pool.query(
+          "UPDATE leave_request SET status = 'APPROVED', approved_by = ?, approved_at = NOW() WHERE id = ?",
+          [me.id, leaveId]
+        );
+        const affected = await markDutiesLeave(pool, classId, memberId, startDate, endDate, me.id);
+        await notifyMembers(pool, {
+          classId, publisherId: me.id,
+          title: '请假已通过',
+          content: '你的请假申请（' + spanText + '）已通过审批。',
+          memberIds: [memberId]
+        });
+        console.log(JSON.stringify({ fn: 'adjust', action: 'leaveApprove', by: me.id, leaveId, agree: true, affected }));
+        return { status: 'APPROVED', affected };
+      }
+      await pool.query(
+        "UPDATE leave_request SET status = 'REJECTED', approved_by = ?, approved_at = NOW() WHERE id = ?",
+        [me.id, leaveId]
+      );
+      await notifyMembers(pool, {
+        classId, publisherId: me.id,
+        title: '请假未通过',
+        content: '你的请假申请（' + spanText + '）未通过审批。',
+        memberIds: [memberId]
+      });
+      console.log(JSON.stringify({ fn: 'adjust', action: 'leaveApprove', by: me.id, leaveId, agree: false }));
+      return { status: 'REJECTED' };
+    }
+  },
+
+  /**
+   * 我的请假申请：返回本人作为申请人的全部请假记录（审批中/已通过/已驳回/已撤销），倒序。
+   * 用于「信息页 → 我的请假」列表。
+   */
+  leaveMyList: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date, l.start_time, l.end_time,
+                l.periods, l.status, l.source, l.reason, l.leave_image, l.created_at, l.approved_at,
+                m.name, m.group_tag, m.student_no
+           FROM leave_request l JOIN member m ON m.id = l.member_id
+          WHERE l.member_id = ? AND l.source = 'apply'
+          ORDER BY l.id DESC LIMIT 100`,
+        [me.id]
+      );
+      const today = week.todayStr();
+      return {
+        list: rows.map((r) => {
+          const periods = parsePeriods(r.periods);
+          return {
+            leaveId: Number(r.leaveId),
+            memberId: Number(r.memberId),
+            name: r.name,
+            groupTag: r.groupTag,
+            studentNo: String(r.student_no || ''),
+            startDate: week.dateStr(r.start_date),
+            endDate: week.dateStr(r.end_date),
+            startTime: normTime(r.start_time),
+            endTime: normTime(r.end_time),
+            periods,
+            periodsText: periodsText(periods),
+            status: r.status,
+            source: r.source,
+            reason: r.reason,
+            hasImage: !!r.leave_image,
+            image: r.leave_image || '',
+            createdAt: String(r.created_at || '').slice(0, 16),
+            approvedAt: String(r.approved_at || '').slice(0, 16)
+          };
+        }),
+        today
+      };
+    }
+  },
+
+  /**
+   * 待审批请假队列（审批人视角）：超管 → 全班级 PENDING；班长/副班长 → 仅本班 PENDING。
+   * 返回申请人姓名/学号/组别/时段/日期/原因/假条，供审批人通过/驳回。
+   */
+  leavePendingList: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      if (!guard.isLeaveApprover(me)) throw new BizError(40003, '仅班长、副班长或超管可查看审批队列');
+      const pool = getPool();
+      const superNow = guard.isSuper(me);
+      const classFilter = superNow ? '' : 'AND l.class_id = ?';
+      const args = superNow ? [] : [guard.classIdOf(ctx)];
+      const [rows] = await pool.query(
+        `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date, l.start_time, l.end_time,
+                l.periods, l.reason, l.leave_image, l.created_at,
+                m.name, m.group_tag, m.student_no, l.class_id, cl.name AS className
+           FROM leave_request l
+           JOIN member m ON m.id = l.member_id
+           LEFT JOIN \`class\` cl ON cl.id = l.class_id
+          WHERE l.status = 'PENDING' AND l.source = 'apply' ${classFilter}
+          ORDER BY l.id DESC LIMIT 200`,
+        args
+      );
+      return {
+        list: rows.map((r) => {
+          const periods = parsePeriods(r.periods);
+          return {
+            leaveId: Number(r.leaveId),
+            memberId: Number(r.memberId),
+            name: r.name,
+            groupTag: r.groupTag,
+            studentNo: String(r.student_no || ''),
+            startDate: week.dateStr(r.start_date),
+            endDate: week.dateStr(r.end_date),
+            startTime: normTime(r.start_time),
+            endTime: normTime(r.end_time),
+            periods,
+            periodsText: periodsText(periods),
+            reason: r.reason,
+            hasImage: !!r.leave_image,
+            image: r.leave_image || '',
+            createdAt: String(r.created_at || '').slice(0, 16),
+            classId: Number(r.class_id),
+            className: r.className || ''
+          };
+        })
+      };
+    }
+  },
+
+  /**
+   * 撤回自己的请假申请：仅申请人本人、且状态为 PENDING 时。
+   * PENDING 尚未标记值日，撤回只置 CANCELLED，无需恢复值日。
+   */
+  leaveMyCancel: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      const leaveId = Number(payload.leaveId);
+      if (!leaveId) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const [lr] = await pool.query('SELECT * FROM leave_request WHERE id = ?', [leaveId]);
+      const leave = lr[0];
+      if (!leave) throw new BizError(41004, '请假申请不存在');
+      if (Number(leave.member_id) !== me.id) throw new BizError(40003, '只能撤回自己的请假申请');
+      if (leave.source !== 'apply') throw new BizError(41001, '仅申请类请假可撤回');
+      if (leave.status !== 'PENDING') throw new BizError(41001, '该申请已审批，无法撤回');
+      await pool.query("UPDATE leave_request SET status = 'CANCELLED', cancelled_at = ? WHERE id = ?", [week.nowStamp(), leaveId]);
+      console.log(JSON.stringify({ fn: 'adjust', action: 'leaveMyCancel', by: me.id, leaveId }));
+      return { status: 'CANCELLED' };
     }
   }
 };

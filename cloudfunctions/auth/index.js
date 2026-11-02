@@ -241,6 +241,13 @@ const routes = {
           canRosterEdit: !!(guard.isSuper(m) || guard.isCounselor(m) || guard.isMonitor(m)),
           canGrantPosition: !!guard.isSuper(m),
           canLeave: !!(guard.isSuper(m) || guard.isCommittee(m)),
+          /*
+           * canApprove   请假审批（2026-11-02 需求②）：超管 / 本班班长兼团支书 / 本班副班长。
+           *               与请假登记 canLeave 的区别：班委（含生活委员 role=ADMIN）有登记权，
+           *               但**审批权只给班长 / 副班长 / 超管**——生活委员不能批请假。
+           *               入口可见性依据；真正拦截在 adjust.leaveApprove 的 guard.isLeaveApprover。
+           */
+          canApprove: !!(guard.isSuper(m) || guard.isMonitor(m) || guard.isViceMonitor(m)),
           avatarUrl: m.avatar_url || '',
           // 微信提醒「额度耗尽」标记（v0.7.15）：cron 发订阅消息 43101 时置 1。
           // 「我的」页据此把提醒行改成「额度已用完 · 点此重新开启」。

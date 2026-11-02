@@ -1,0 +1,130 @@
+<!-- 我的请假 / 请假审批（2026-11-01 请假 v3）
+     普通成员本人提交申请；班长/副班长/超管审批。原生页面滚动（无 scroll-view），无弹层 → 无需 page-meta。 -->
+<view class="page page-fade {{tClass}}">
+
+  <!-- 非 Tab 二级页：左上角必须有返回键（show-back） -->
+  <nav-bar title="请假" show-back="{{true}}" />
+
+  <view class="lv-body">
+
+    <!-- 审批人才能切到「审批」tab；普通成员只有「我的申请」 -->
+    <view wx:if="{{canApprove}}" class="lv-tabs">
+      <segmented value="{{tab}}" items="{{segOpts}}" bind:change="onTabChange" />
+    </view>
+
+    <!-- ============ 我的申请 ============ -->
+    <block wx:if="{{tab === 'apply'}}">
+
+      <!-- 申请表单 -->
+      <view class="lv-card card">
+        <view class="lv-card-t">提交请假申请</view>
+
+        <view class="lv-field">
+          <text class="lv-label">请假日期</text>
+          <view class="lv-dates">
+            <picker mode="date" value="{{startDate}}" end="{{maxDate}}" data-kind="start" bindchange="onDateChange">
+              <view class="lv-date">{{startDate}}</view>
+            </picker>
+            <text class="lv-tilde">至</text>
+            <picker mode="date" value="{{endDate}}" end="{{maxDate}}" data-kind="end" bindchange="onDateChange">
+              <view class="lv-date">{{endDate}}</view>
+            </picker>
+          </view>
+        </view>
+
+        <view class="lv-field">
+          <text class="lv-label">时段（可多选）</text>
+          <view class="lv-periods">
+            <view class="lv-chip {{periodAllOn ? 'on' : ''}}" data-k="all" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">全天</view>
+            <view class="lv-chip {{periodAmOn ? 'on' : ''}}" data-k="am" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">上午</view>
+            <view class="lv-chip {{periodPmOn ? 'on' : ''}}" data-k="pm" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">下午</view>
+            <view class="lv-chip {{periodEveOn ? 'on' : ''}}" data-k="eve" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">晚上</view>
+          </view>
+          <view class="lv-hint">{{leavePeriodHint}}</view>
+        </view>
+
+        <view class="lv-field">
+          <text class="lv-label">请假事由</text>
+          <picker mode="selector" range="{{reasonOpts}}" range-key="text" value="{{reasonIndex}}" bindchange="onReasonChange">
+            <view class="lv-picker">
+              <text>{{reasonText}}</text>
+              <app-icon name="chevron-down" variant="gray" size="{{26}}" />
+            </view>
+          </picker>
+        </view>
+
+        <view class="lv-field">
+          <text class="lv-label">假条（选填）</text>
+          <view wx:if="{{imageThumb}}" class="lv-img-row">
+            <image class="lv-img" src="{{imageThumb}}" mode="aspectFill" data-fid="{{imageFileId}}" bindtap="onPreviewImage" />
+            <view class="lv-img-del" data-fid="{{imageFileId}}" bindtap="onRemoveImage" hover-class="press-dim" hover-stay-time="60">删除</view>
+          </view>
+          <view wx:else class="lv-upload" bindtap="onPickImage" hover-class="press-dim" hover-stay-time="60">
+            <app-icon name="photo-plus" variant="brand" size="{{36}}" />
+            <text class="lv-upload-t">上传假条照片</text>
+          </view>
+        </view>
+
+        <view class="f-actions">
+          <view class="btn f-save {{submitting ? 'disabled' : ''}}" bindtap="onSubmitApply" hover-class="btn-hover" hover-stay-time="60">{{submitting ? '提交中…' : '提交申请'}}</view>
+        </view>
+      </view>
+
+      <!-- 我的申请列表 -->
+      <view class="lv-sec-t">我的申请</view>
+      <skeleton wx:if="{{loading && !myList.length}}" type="card" rows="{{3}}" height="{{160}}" />
+      <empty-state
+        wx:elif="{{!myList.length}}"
+        icon="empty-box"
+        title="还没有请假申请"
+        desc="在上面填好日期和时段，提交第一条申请吧"
+        padding="{{100}}"
+      />
+      <block wx:else>
+        <view wx:for="{{myList}}" wx:key="leaveId" class="lv-row card">
+          <view class="lv-row-head">
+            <text class="lv-row-name">{{item.name}}</text>
+            <view class="lv-status {{item.statusClass}}">{{item.statusText}}</view>
+          </view>
+          <view class="lv-row-sub">{{item.startDate}}<text wx:if="{{item.endDate !== item.startDate}}"> ~ {{item.endDate}}</text> · {{item.periodsText}} · {{item.reasonText}}</view>
+          <view wx:if="{{item.imgUrl || item.image}}" class="lv-thumb-wrap" data-fid="{{item.image}}" bindtap="onPreviewImage" hover-class="press-dim" hover-stay-time="60">
+            <image class="lv-thumb" src="{{item.imgUrl}}" mode="aspectFill" />
+          </view>
+          <view wx:if="{{item.status === 'PENDING'}}" class="lv-row-actions">
+            <view class="lv-link {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onWithdraw" hover-class="press-dim" hover-stay-time="60">撤回</view>
+          </view>
+        </view>
+      </block>
+    </block>
+
+    <!-- ============ 审批 ============ -->
+    <block wx:elif="{{tab === 'approve'}}">
+      <view class="lv-sec-t">待审批</view>
+      <empty-state
+        wx:if="{{!pendingList.length}}"
+        icon="empty-box"
+        title="没有待审批的请假"
+        desc="同学提交申请后会出现在这里"
+        padding="{{100}}"
+      />
+      <block wx:else>
+        <view wx:for="{{pendingList}}" wx:key="leaveId" class="lv-row card">
+          <view class="lv-row-head">
+            <text class="lv-row-name">{{item.name}}</text>
+            <text wx:if="{{item.className}}" class="lv-row-cls">{{item.className}}</text>
+          </view>
+          <view class="lv-row-sub">{{item.startDate}}<text wx:if="{{item.endDate !== item.startDate}}"> ~ {{item.endDate}}</text> · {{item.periodsText}} · {{item.reasonText}}</view>
+          <view wx:if="{{item.imgUrl || item.image}}" class="lv-thumb-wrap" data-fid="{{item.image}}" bindtap="onPreviewImage" hover-class="press-dim" hover-stay-time="60">
+            <image class="lv-thumb" src="{{item.imgUrl}}" mode="aspectFill" />
+          </view>
+          <view class="lv-row-actions">
+            <view class="btn btn-ghost btn-sm lv-reject {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onReject" hover-class="btn-hover" hover-stay-time="60">驳回</view>
+            <view class="btn btn-sm lv-pass {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onApprove" hover-class="btn-hover" hover-stay-time="60">通过</view>
+          </view>
+        </view>
+      </block>
+    </block>
+
+    <view class="lv-foot"></view>
+  </view>
+</view>

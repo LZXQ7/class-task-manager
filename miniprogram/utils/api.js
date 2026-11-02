@@ -180,6 +180,17 @@ module.exports = {
   /* 2026-10-09：删除**已撤销**的请假记录（物理删除、不可恢复；仅超管 + 班委）。
    * ⚠️ 后端 leaveDelete 会连带删掉云存储里的假条文件。 */
   leaveDelete: C('adjust', 'leaveDelete'),
+  /* 2026-11-01 请假 v3：成员自申请 + 审批流（与班委代登记 addLeave 分流）
+   * - leaveApply：本人提交 PENDING 请假申请（附假条 fileID），后端通知审批人
+   * - leaveApprove：审批人通过/驳回（only 班长/副班长/超管），通过后标记 duty LEAVE
+   * - leaveMyList：本人全部申请（含 PENDING/APPROVED/REJECTED）列表
+   * - leavePendingList：审批人待批队列（超管全班级 / 班长副班长本班）
+   * - leaveMyCancel：本人撤回尚未审批的 PENDING（逻辑删除，不可恢复） */
+  leaveApply: C('adjust', 'leaveApply'),
+  leaveApprove: C('adjust', 'leaveApprove'),
+  leaveMyList: C('adjust', 'leaveMyList'),
+  leavePendingList: C('adjust', 'leavePendingList'),
+  leaveMyCancel: C('adjust', 'leaveMyCancel'),
 
   /* ---------- media（仅语音通知相关；值日照片凭证已下线） ---------- */
   attachList: C('media', 'attachList'),

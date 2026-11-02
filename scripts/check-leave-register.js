@@ -95,11 +95,13 @@ function audit(adjustSrc) {
      * ⚠️ 判据必须容忍 SQL 被折成多段字符串拼接（`" +\n "` 会插在 'APPROVED' 与 AND 之间），
      *    否则「代码是对的、正则没匹配上」会被报成缺失（2026-10-08 踩）。
      * ⚠️ 时段必须一起比：只比日期会让「整天假」与「半天假」互相吞掉
-     *    （登记 8:00–12:00 时撞上已有的整天假 → 静默返回 existed，半天假登记不进去）。 */
+     *    （登记 8:00–12:00 时撞上已有的整天假 → 静默返回 existed，半天假登记不进去）。
+     *    ⏺ 请假 v2（2026-11-02）起时段权威字段是 periods（空串 '' = 全天），
+     *      幂等比的是 `IFNULL(periods,'')` 而非旧的 start_time/end_time —— 判据随之更新。 */
     if (!/status\s*=\s*'APPROVED'[\s"'+]*AND\s+start_date\s*=\s*\?/.test(add)) {
       p.push('addLeave 缺少幂等检查（同人同区间重复提交会双写）');
     }
-    if (!/IFNULL\(\s*start_time\s*,/.test(add) || !/IFNULL\(\s*end_time\s*,/.test(add)) {
+    if (!/IFNULL\(\s*periods\s*,/.test(add)) {
       p.push('addLeave 的幂等没比时段（半天假会被同日的整天假吞掉，登记不进去）');
     }
   }

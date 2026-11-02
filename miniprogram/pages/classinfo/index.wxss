@@ -193,6 +193,22 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* 请假审批卡角标（2026-11-01）：待批条数红点，贴在箭头前。
+   与全局危险色 #F53F3F 同源（删除倒数日 confirmColor 同色）。 */
+.ci-badge {
+  flex-shrink: 0;
+  min-width: 36rpx;
+  height: 36rpx;
+  line-height: 36rpx;
+  padding: 0 10rpx;
+  margin-right: 14rpx;
+  text-align: center;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: #F53F3F;
+  border-radius: 999rpx;
+}
 .ci-foot {
   height: 180rpx;
 }

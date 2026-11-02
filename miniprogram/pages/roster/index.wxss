@@ -801,6 +801,27 @@
   color: #86909C;
 }
 
+/* 2026-11-02 需求①：时段多选胶囊（全天/上午/下午/晚上）。
+   ⚠️ 不复用已删除的 .lv-chip 药丸类，新命名 .lv-pchip 避免与旧「留空壳」混淆。
+   选中态用全站品牌蓝（#3370FF）+ 浅蓝底（#E8F0FF），与 .lv-dr.on / .mb-chip.on 同源。 */
+.lv-periods { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 16rpx; }
+.lv-pchip {
+  min-width: 120rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 28rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #4E5969;
+  background: #F2F3F5;
+  border-radius: 16rpx;
+}
+.lv-pchip.on {
+  font-weight: 600;
+  color: #3370FF;
+  background: #E8F0FF;
+}
+
 .lv-search {
   display: flex;
   align-items: center;

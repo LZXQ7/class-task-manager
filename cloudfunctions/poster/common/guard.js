@@ -256,6 +256,17 @@ function requireLeaveView(ctx) {
 }
 
 /**
+ * 请假**审批权**（2026-11-02 需求②）：超管 / 本班班长兼团支书 / 本班副班长。
+ *
+ * 与 `requireLeaveRegister`（班委/超管可代登记）的区别：审批权更窄 ——
+ * 生活委员（role=ADMIN）有登记权但**没有审批权**；普通成员自申请的请假
+ * 只由班长 / 副班长 / 超管拍板。班级隔离由各 handler 的 classIdOf/resolveClassId 保证。
+ */
+function isLeaveApprover(member) {
+  return !!member && (isSuper(member) || isMonitor(member) || isViceMonitor(member));
+}
+
+/**
  * 本次请求生效的班级（v0.7.16：教职工多班化的统一收口）。
  *   普通成员   → 恒本班（忽略传入的 classId，防伪造越权）；
  *   超管       → 可传任意**活动**班级；
@@ -309,4 +320,4 @@ async function resolveClassId(pool, ctx, payload) {
   return own;
 }
 
-module.exports = { getContext, requireBind, requireAdmin, isAdmin, isSuper, requireSuper, classIdOf, isCounselor, staffClassIds, resolveClassId, isDemoMember, demoClassIds, ADMIN_ROLES, isDutyAdmin, isMonitor, isViceMonitor, requireTimetablePublish, requireScheduleAuth, requireRosterEdit, requirePositionGrant, isGrantedPosition, POSITION_DUTY_ADMIN, POSITION_MONITOR, POSITION_VICE_MONITOR, isCommittee, requireCommittee, requireLeaveRegister, requireLeaveView };
+module.exports = { getContext, requireBind, requireAdmin, isAdmin, isSuper, requireSuper, classIdOf, isCounselor, staffClassIds, resolveClassId, isDemoMember, demoClassIds, ADMIN_ROLES, isDutyAdmin, isMonitor, isViceMonitor, requireTimetablePublish, requireScheduleAuth, requireRosterEdit, requirePositionGrant, isGrantedPosition, POSITION_DUTY_ADMIN, POSITION_MONITOR, POSITION_VICE_MONITOR, isCommittee, requireCommittee, requireLeaveRegister, requireLeaveView, isLeaveApprover };

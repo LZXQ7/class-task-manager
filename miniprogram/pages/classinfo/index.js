@@ -56,6 +56,15 @@ Page({
     viewClassId: 0,
     /** 是否教职工（超管 / 辅导员）。普通成员只有自己一个班，不显示切班入口 */
     isStaff: false,
+    /**
+     * 请假能力位（2026-11-01 请假 v3）：
+     *   canApply   —— 本人可提交请假申请。普通成员（含班委，非教职工）都算，教职工走别通道。
+     *   canApprove —— 有审批他人申请的权限（班长 / 副班长 / 超管），来自 auth.login 的 canApprove。
+     */
+    canApply: false,
+    canApprove: false,
+    /** 待我审批的请假条数（审批卡角标）；非审批人恒为 0 */
+    pendingCount: 0,
     /** 当前看的是不是「非本人主班」—— 通知卡据此置灰（它跟不过去，见 onOpen 注释） */
     isOtherClass: false,
     /**
@@ -101,6 +110,12 @@ Page({
     const isCounselorNow = !!(p && p.groupTag === 'X');
     const isStaff = isSuperNow || isCounselorNow;
     this.setData({ profile: p, canManageClass: isStaff, isStaff });
+    // 请假能力位（v3）：普通成员（含班委）本人可提交申请；审批权看 auth.login 下发的 canApprove。
+    // ⚠️ 用 app.canApprove() 而不是本地比对 position：与后端 isLeaveApprover 单一真源，不会漂移。
+    const canApprove = !!(app && app.canApprove && app.canApprove());
+    const canApply = !isStaff;
+    this.setData({ canApply, canApprove });
+    if (canApprove) this._loadPending();
 
     /* 教职工：可切换多个班。classList 仍然必要（要知道「他到底能看哪几个班」），
      * 但**不再让统计等它** —— 顺序与取舍见分支内说明。 */
@@ -464,6 +479,31 @@ Page({
   goClasses() {
     if (getApp().track) getApp().track.action('class_open');
     wx.navigateTo({ url: '/pages/classes/index' });
+  },
+
+  /**
+   * 请假审批角标：仅审批人拉「待我审批」列表计数（非审批人不打）。
+   * 超管看到全班级的待批、班长/副班长只看本班（后端 leavePendingList 已分口径）。
+   * 失败静默归零，不让角标卡在旧数字上误导。
+   */
+  _loadPending() {
+    if (!getApp().canApprove || !getApp().canApprove()) { this.setData({ pendingCount: 0 }); return; }
+    api.leavePendingList({}, { toast: false })
+      .then((r) => {
+        const list = (r && r.list) || [];
+        this.setData({ pendingCount: list.length });
+      })
+      .catch(() => { this.setData({ pendingCount: 0 }); });
+  },
+
+  /** 「我的请假」卡 → 进入请假页（本人申请 + 进度；默认 apply tab） */
+  onGoMyLeave() {
+    wx.navigateTo({ url: '/pages/leave/index', fail: () => {} });
+  },
+
+  /** 「请假审批」卡 → 进入请假页并定位审批 tab */
+  onGoApprove() {
+    wx.navigateTo({ url: '/pages/leave/index?tab=approve', fail: () => {} });
   },
 
   noop() {}

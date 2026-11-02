@@ -494,34 +494,22 @@
           </picker>
         </view>
 
-        <!-- 2026-10-09 改版：请假时段 = **全天 / 上午 / 下午 三选一**。
-     旧版是「点『全天』展开两个 time picker」，用户反馈「很多人用不明白」：
-       ① 胶囊长得像状态标签，不像能按的东西；
-       ②「指定时段」是抽象词 —— 用户脑子里就是「我要请半天假」；
-       ③ 让他挑 08:00~12:00 是把内部结构漏给了用户。
-     现在用全站同一套 `<segmented>`（与今日/历史、三个快捷筛选同一个控件），
-     钟点写死（上午 08:00–12:00 / 下午 13:00–18:00 / 晚上 18:00–21:00）。
-     ⚠️ handler 里必须读 `e.detail.key`（segmented 只 emit key；门禁
-         check-segmented.js 按这一条扫），所以这里没有 dataset。
-     ⚠️ width 必须显式给 440：组件默认 320rpx 等分，三档时每格 107rpx，
-         加到四档后只剩 80rpx ——「全天」两字在选中态（30rpx 字号）左右只剩 ~10rpx 会显挤。
-         440/4 = 110rpx ≈ 原三档密度，视觉密度不变。 -->
-        <view class="lv-sec-t">请假时段</view>
-        <segmented
-          value="{{leaveSlot}}"
-          items="{{leaveSlotOpts}}"
-          width="{{440}}"
-          bind:change="onLeaveSlot"
-        />
-        <!-- 选半天时段时把钟点写出来（用户不用猜「上午」到底是几点到几点）；
-             选全天时这句话没有信息量，换成说明半天假的跨天口径。
-             ⚠️ 档位顺序必须与 LEAVE_SLOTS 一致：新增「晚上」后 `pm` 必须显式 `wx:elif`，
-             否则会被后面的 `wx:else` 接住，晚上档显示成下午的文案。 -->
-        <view wx:if="{{leaveSlot === 'all'}}" class="lv-hint">半天假选「上午」「下午」或「晚上」，区间内**每天**都按这个时段算（如 10-09 至 10-11 每天上午）。</view>
-        <view wx:elif="{{leaveSlot === 'am'}}" class="lv-hint">上午 = 每天 08:00–12:00（跨天也按每天这个时段算）。</view>
-        <view wx:elif="{{leaveSlot === 'pm'}}" class="lv-hint">下午 = 每天 13:00–18:00（跨天也按每天这个时段算）。</view>
-        <view wx:else class="lv-hint">晚上 = 每天 18:00–21:00（跨天也按每天这个时段算）。</view>
-        <view class="lv-hint">区间内已排的值日会自动标记为「已请假」（半天假也按整天标记）；撤销时恢复。</view>
+        <!-- 2026-11-02 需求①：请假时段 = **多选**。
+     全天 与 上午/下午/晚上 互斥；上午/下午/晚上 之间任意 1~3 组合（含跳段，如上午+晚上）。
+     单选改多选后「全天」不再是档位之一，而是「未选任何半天」的等价态（leavePeriods 空 = 全天）。
+     ⚠️ 用普通 view 做多选胶囊（不是 segmented，segmented 是单选语义）：每个胶囊 data-k，
+        点「全天」清空、点其余 toggle；三个布尔位 periodAllOn/periodAmOn/periodPmOn/periodEveOn
+        供 WXML 直接判 active（WXML 不支持 indexOf）。 -->
+        <view class="lv-sec-t">请假时段（可多选）</view>
+        <view class="lv-periods">
+          <view class="lv-pchip {{periodAllOn ? 'on' : ''}}" data-k="all" bindtap="onLeavePeriodTap">全天</view>
+          <view class="lv-pchip {{periodAmOn ? 'on' : ''}}" data-k="am" bindtap="onLeavePeriodTap">上午</view>
+          <view class="lv-pchip {{periodPmOn ? 'on' : ''}}" data-k="pm" bindtap="onLeavePeriodTap">下午</view>
+          <view class="lv-pchip {{periodEveOn ? 'on' : ''}}" data-k="eve" bindtap="onLeavePeriodTap">晚上</view>
+        </view>
+        <!-- 提示文案随选择实时变化（由 _setLeavePeriods 算出 leavePeriodHint，含钟点，用户不用猜） -->
+        <view class="lv-hint">{{leavePeriodHint}}</view>
+        <view class="lv-hint">区间内已排的值日会自动标记为「已请假」（按整天标记）；撤销时恢复。</view>
 
         <view class="lv-sec-t">选择同学（点一下即登记上面的日期）</view>
         <view class="lv-search">

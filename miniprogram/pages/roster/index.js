@@ -63,30 +63,65 @@ const LEAVE_SLOTS = [
   { key: 'pm', label: '下午', start: '13:00', end: '18:00', hint: '每天 13:00–18:00' },
   { key: 'eve', label: '晚上', start: '18:00', end: '21:00', hint: '每天 18:00–21:00' }
 ];
-/** key → 档位；**唯一真源**，取不到时回落 all（全天）而不是崩 */
-function slotOf(key) {
-  return LEAVE_SLOTS.filter((s) => s.key === key)[0] || LEAVE_SLOTS[0];
+/** 时段 key → 中文短标签（不含「全天」；前端展示用，与后端 PERIOD_DEFS 同口径） */
+const SLOT_LABEL_MAP = (function () {
+  const m = {};
+  LEAVE_SLOTS.forEach((s) => { if (s.key !== 'all') m[s.key] = s.label; });
+  return m;
+})();
+/** 时段 key → 中文时段文案（含钟点，用于登记页提示与确认弹窗） */
+const PERIOD_HINT = {
+  am: '上午 08:00–12:00',
+  pm: '下午 13:00–18:00',
+  eve: '晚上 18:00–21:00'
+};
+/** 把 periods 字段（数组 / 逗号串 / 空）统一成数组（前端版 parsePeriods） */
+function parsePeriodsFront(p) {
+  if (!p) return [];
+  if (Array.isArray(p)) return p.filter(Boolean);
+  return String(p).split(',').map((t) => t.trim()).filter(Boolean);
 }
-
-/**
- * 历史记录里的时段反推成「上午/下午/晚上」显示（2026-10-09）。
- *
- * ⚠️ **按区间匹配而不是精确等于**：旧数据是用户手动输的任意钟点
- *    （如 08:30–11:30），精确等于匹配不上就会退回成「08:30–11:30」原文 ——
- *    那反而是对的。所以规则是：**命中某一档就用那一档的短标签，没命中就显示原文**。
- * 🔴 半天假也可能被误判：若将来出现跨档区间（如 08:00–18:00），它既不等于 am
- *    也不等于 pm ⇒ 会原样显示钟点，这是安全的（不会谎报成半个）。
- */
-function slotLabel(startTime, endTime) {
-  const s = String(startTime || '').slice(0, 5);
-  const e = String(endTime || '').slice(0, 5);
-  if (!s && !e) return '';
-  for (let i = 1; i < LEAVE_SLOTS.length; i++) {
-    const o = LEAVE_SLOTS[i];
-    if (o.start && o.start === s && o.end === e) return o.label;
+/** 当前时刻落在哪个时段档（与后端 segmentOf 一致：<12:00=am，<18:00=pm，其余=eve） */
+function segmentOfFront(clock) {
+  if (clock < '12:00') return 'am';
+  if (clock < '18:00') return 'pm';
+  return 'eve';
+}
+/** 某行此刻是否在「请假中」（实时口径，与后端 inLeaveWindow 一致；空 periods 按起止时间兜底） */
+function inLeaveWindowFront(row, clock) {
+  const p = row && row.periods;
+  const per = Array.isArray(p) ? p : (p != null && p !== '' ? parsePeriodsFront(p) : []);
+  if (!per.length) {
+    const s = row && row.startTime, e = row && row.endTime;
+    if (!s || !e) return true;
+    return clock >= s && clock <= e;
   }
-  return s + '–' + e;
+  return per.indexOf(segmentOfFront(clock)) >= 0;
 }
+/** 时段展示文本：['am','pm'] → '上午、下午'；[] → '全天'；旧记录 periods 空但有时段 → 回显钟点（绝不谎报全天） */
+function leavePeriodText(x) {
+  if (!x) return '';
+  const arr = parsePeriodsFront(x.periods);
+  if (arr.length) return arr.map((k) => (SLOT_LABEL_MAP[k] || k)).join('、');
+  const s = x.startTime, e = x.endTime;
+  if (s && e) return String(s).slice(0, 5) + '–' + String(e).slice(0, 5);
+  return '全天';
+}
+/** 时段展示文本（纯数组入参，用于确认弹窗）：[] → '全天' */
+function periodsTextFront(periods) {
+  const a = parsePeriodsFront(periods);
+  if (!a.length) return '全天';
+  return a.map((k) => (SLOT_LABEL_MAP[k] || k)).join('、');
+}
+/**
+ * 请假时段展示（2026-11-02 需求①：多时段）。
+ *
+ * 后端 `leaveBoard`/`leaveHistory` 已下发 `periods` 数组（['am','pm','eve'] 的任意组合，
+ * 空数组 = 全天）。展示统一走 `leavePeriodText(x)`：命中档位就用「上午、下午」短标签，
+ * 空 periods 但有旧钟点（迁移前的自定义钟点记录）则回显钟点原文，**绝不谎报成全天**。
+ * 实时「请假中」判定走 `inLeaveWindowFront`，与后端 inLeaveWindow 同口径
+ * （空 periods 按起止时间兜底；否则按「此刻落在哪个时段档」判，am+pm 在晚上算回校）。
+ */
 
 /**
  * 导入撤回窗口 = 导入后 **24 小时**（1.0.6 需求③：撤回入口只显示一天）。
@@ -237,19 +272,17 @@ Page({
     /** 登记弹层内切换：today（今日名单+登记） / history（历史请假，含已撤销） */
     leaveTab: 'today',
     /**
-     * 请假时段档位（2026-10-09）：'all' | 'am' | 'pm'。
-     * ⚠️ 取代了旧的 leaveHalf + leaveStartTime + leaveEndTime 三个字段 ——
-     *    钟点已写死（见 LEAVE_SLOTS），不需要页面持有具体时分。
+     * 请假时段（2026-11-02 需求①：多选）。
+     * leavePeriods = ['am','pm','eve'] 的任意 1~3 组合；**空数组 = 全天**（与后端 periods 同口径）。
+     * 另存三个布尔位（供 WXML 直接判 active，WXML 不支持 indexOf）与一句提示文案。
+     * ⚠️ 取代旧的 leaveSlot 单选：单选改多选，全天与半天互斥（选任意半天即退出「全天」）。
      */
-    leaveSlot: 'all',
-    /**
-     * 时段档位的展示数组（2026-10-09）。
-     * ⚠️ 写成 **data 里的常量数组**而不是在 wxml 里内联字面量：
-     *    内联数组每次父级 setData 都会生成新对象 → segmented 的 observer 再响一次
-     *    （见 components/segmented/index.js 头部注释，那会打断正在播的两拍动画）。
-     * ⚠️ 字段名是 `text` 不是 `label`（segmented 的 items 契约是 [{key, text}]）。
-     */
-    leaveSlotOpts: LEAVE_SLOTS.map(s => ({ key: s.key, text: s.label })),
+    leavePeriods: [],
+    periodAllOn: true,
+    periodAmOn: false,
+    periodPmOn: false,
+    periodEveOn: false,
+    leavePeriodHint: '全天请假（区间内每天所有时段都算请假）。',
     /** 历史请假（后端 adjust.leaveHistory，倒序 300 条，含已撤销；筛选全在前端做） */
     leaveHistory: [],
     /**
@@ -432,8 +465,8 @@ Page({
           clearText: (x.imageArchived && x.clearInDays != null)
             ? (x.clearInDays > 0 ? (x.clearInDays + ' 天清除') : '即将清除')
             : '',
-          // 历史行的时段短标签（上午/下午；旧数据是任意钟点，匹配不上就回原文）
-          slotText: slotLabel(x.startTime, x.endTime)
+          // 历史行的时段短标签（多时段：['am','pm'] → '上午、下午'；空 periods 但有钟点回显钟点）
+          slotText: leavePeriodText(x)
         }));
         this.setData({ leaveHistory: rows, histToday: (r && r.today) || '' }, () => {
           this._applyHistoryFilter();
@@ -770,7 +803,7 @@ _clockNow() {
     //    所以「上午/下午」的反推必须在 JS 里算好）。在这里补一次，
     //    下面 leaveListA / leaveListB 是从 list 派生的，会自动继承。
     list = (list || []).map(x => Object.assign({}, x, {
-      slotText: slotLabel(x.startTime, x.endTime)
+      slotText: leavePeriodText(x)
     }));
     // ⚠️⚠️ `leaveMap`（「请假中」标签）必须用**实时口径**，不是日期口径（2026-10-09 用户实拍）：
     //    原来这里直接 `list.forEach(x => map[x.memberId] = true)` —— `list` 是**日期口径全列**
@@ -779,8 +812,9 @@ _clockNow() {
     //    顶部「在位统计」用实时（显示他不在假里），行尾标签却用日期（说他还在假）⇒ 两处打架。
     //    ⇒ 改成用下面那个 `nowList`（实时）来填；`nowList` 必须在填 map **之前**算出来。
     const clock = this._clockNow();
-    // 整天假（无时段）恒算「在请假」；半天假则要求此刻落在时段内。
-    const nowList = list.filter(x => (!x.startTime || !x.endTime) ? true : (clock >= x.startTime && clock <= x.endTime));
+    // 整天假（无时段）恒算「在请假」；多时段假则按 `inLeaveWindowFront`（此刻落在哪个时段档）判定，
+    // 与后端 inLeaveWindow 同口径（如 am+pm 在晚上 18:00 后算回校，不再误挂「请假中」）。
+    const nowList = list.filter(x => inLeaveWindowFront(x, clock));
     const map = {};
     nowList.forEach(x => { map[x.memberId] = true; });
     const st = backendStat || {};
@@ -893,8 +927,13 @@ _clockNow() {
       leaveStart: today,
       leaveEnd: today,
       leaveKw: '',
-      // 时段每次开弹层都回落到「全天」（2026-10-09：旧版残留的 leaveHalf/时分一并删掉）
-      leaveSlot: 'all',
+      // 时段每次开弹层都回落到「全天」（空数组 = 全天）
+      leavePeriods: [],
+      periodAllOn: true,
+      periodAmOn: false,
+      periodPmOn: false,
+      periodEveOn: false,
+      leavePeriodHint: '全天请假（区间内每天所有时段都算请假）。',
       leaveMaxDate: ymd(new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())),
       leaveCands: this._leaveFilter('', this.data.members)
     });
@@ -947,26 +986,43 @@ _clockNow() {
   },
 
   /**
-   * 请假时段 = **全天 / 上午 / 下午 三选一**（2026-10-09）。
+   * 请假时段 = **多选**（2026-11-02 需求①）：
+   *   全天 与 上午/下午/晚上 互斥；上午/下午/晚上 之间任意 1~3 组合（含跳段，如上午+晚上）。
    *
-   * ⚠️ 取代了旧的三件套（onLeaveTimeOpen / onLeaveAllDay / onLeaveTime + 两个 time
-   *    picker）。用户对旧版的评价是「很多人用不明白」：胶囊长得像状态标签、
-   *    「指定时段」是抽象词，而真要请半天的人只想说「上午」/「下午」。
-   *    钟点写死（见 LEAVE_SLOTS），所以这里只剩「记住选了哪一档」。
+   * 取代旧的 `onLeaveSlot` 单选：单选改多选后，「全天」不再是档位之一，而是
+   * 「未选任何半天」的等价态（leavePeriods 空数组 = 全天）。
    *
-   * ⚠️ `<segmented>` 的事件契约是 `triggerEvent('change', { key })` ——
-   *    **必须读 `e.detail.key`**。读 `.value` / `currentTarget.dataset` 只会拿到 undefined，
-   *    表现就是「点了没反应」（首页「查看名单」那个坑就是这么来的；门禁
-   *    scripts/check-segmented.js 也按这一条扫 handler 体）。
-   * 🔴 判据极性 = 「**选中值必须先过白名单**」：直接 `setData({ leaveSlot: k })`
-   *    会让任意 key 写进 leaveSlot（写坏了 onLeavePick 会把非法档位当合法提交）。
+   * 🔴 判据极性 = 「**选中值必须先过白名单**」：直接 `setData({ leavePeriods: [...k] })`
+   *    会让任意 key 写进数组（写坏了 onLeavePick 会把非法档位当合法提交）。
+   *    所有变更都走 `_setLeavePeriods()` 统一过白名单 + 派生布尔位/提示文案。
    */
-  onLeaveSlot(e) {
-    const k = e.detail ? e.detail.key : '';
-    if (!k) return;
-    if (LEAVE_SLOTS.map((s) => s.key).indexOf(k) < 0) return;  // 白名单外直接忽略
-    if (k === this.data.leaveSlot) return;
-    this.setData({ leaveSlot: k }, () => this._resizeLeaveSheet());
+  /** 统一设时段：过白名单、去重、派生 three 布尔位与提示文案 */
+  _setLeavePeriods(arr) {
+    const norm = [];
+    (arr || []).forEach((k) => {
+      if (['am', 'pm', 'eve'].indexOf(k) >= 0 && norm.indexOf(k) < 0) norm.push(k);
+    });
+    const hint = norm.length
+      ? (norm.map((k) => PERIOD_HINT[k]).join('；') + '（区间内每天都按这些时段算，未选时段视为在校）')
+      : '全天请假（区间内每天所有时段都算请假）。';
+    this.setData({
+      leavePeriods: norm,
+      periodAllOn: norm.length === 0,
+      periodAmOn: norm.indexOf('am') >= 0,
+      periodPmOn: norm.indexOf('pm') >= 0,
+      periodEveOn: norm.indexOf('eve') >= 0,
+      leavePeriodHint: hint
+    }, () => this._resizeLeaveSheet());
+  },
+
+  /** 点时段胶囊：data-k = 'all'|'am'|'pm'|'eve'。'all' 清空；其余 toggle。 */
+  onLeavePeriodTap(e) {
+    const k = e.currentTarget.dataset.k;
+    if (k === 'all') { this._setLeavePeriods([]); return; }
+    if (['am', 'pm', 'eve'].indexOf(k) < 0) return;  // 白名单外直接忽略
+    const cur = this.data.leavePeriods || [];
+    const next = cur.indexOf(k) >= 0 ? cur.filter((x) => x !== k) : cur.concat([k]);
+    this._setLeavePeriods(next);
   },
 
   onLeaveClose() {
@@ -1032,16 +1088,17 @@ _clockNow() {
     const id = Number(e.currentTarget.dataset.id);
     const m = (this.data.members || []).find(x => x.id === id);
     if (!m) return;
-    const { leaveStart, leaveEnd, leaveSlot } = this.data;
+    const { leaveStart, leaveEnd, leavePeriods } = this.data;
     if (!leaveStart || !leaveEnd) { util.toast('请先选择请假日期'); return; }
     if (leaveEnd < leaveStart) { util.toast('结束日期不能早于开始日期'); return; }
-    // 时段：钟点写死在 LEAVE_SLOTS，页面只存 key ⇒ 旧的「结束必须晚于开始」校验
-    // 已随之失去意义（写死的档位不可能违反），**不再保留那条死代码**。
-    // ⚠️ slotOf 兜底：leaveSlot 被写坏时回落到「全天」而不是提交半个非法时段。
-    const slot = slotOf(leaveSlot);
+    // 时段改为多选（需求①）：leavePeriods 空数组 = 全天；否则 ['am'|'pm'|'eve'] 任意组合。
+    // 钟点写死在后端 PERIOD_DEFS，前端只传 key 数组 ⇒ 旧的「结束必须晚于开始」校验随之失效，
+    // **不再保留那条死代码**。periods 经后端 normPeriods 白名单兜底，写坏也不会提交非法档位。
+    const periods = leavePeriods || [];
+    const periodText = periodsTextFront(periods);
     const span = leaveStart === leaveEnd
-      ? leaveStart + (slot.key === 'all' ? '（整天）' : (' ' + slot.label))
-      : (leaveStart + ' ~ ' + leaveEnd + (slot.key === 'all' ? '（整天）' : (' 每天 ' + slot.label)));
+      ? leaveStart + (periods.length ? (' ' + periodText) : '（全天）')
+      : (leaveStart + ' ~ ' + leaveEnd + (periods.length ? (' 每天 ' + periodText) : '（全天）'));
     util.confirmStrict('为「' + m.name + '」登记 ' + span + ' 的请假？\n区间内已排的值日会标记为「已请假」。', '请假登记')
       .then((act) => {
         if (act !== 'confirm') return;
@@ -1050,8 +1107,7 @@ _clockNow() {
           memberId: id,
           startDate: leaveStart,
           endDate: leaveEnd,
-          startTime: slot.start,
-          endTime: slot.end
+          periods: periods   // 多时段：periods 权威字段，后端 addLeave 据此派生 start/end 并落库
         };
         api.leaveAdd(payload, { toast: false })
           .then((r) => {

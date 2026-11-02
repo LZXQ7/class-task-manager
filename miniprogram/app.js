@@ -635,5 +635,15 @@ App({
   canLeave() {
     const p = this.globalData.profile;
     return !!(p && p.canLeave);
+  },
+
+  /**
+   * 请假审批（2026-11-01 请假 v3）：本人自申请需审批，审批人 = 本班班长 / 副班长 / 超管。
+   * 与 canLeave 区分：班委能「代登记即时生效」（canLeave），但不一定都能「审别人的申请」；
+   * 审批权以 auth.login 下发的 canApprove 为唯一权威（后端 isLeaveApprover 口径）。
+   */
+  canApprove() {
+    const p = this.globalData.profile;
+    return !!(p && p.canApprove);
   }
 });
