@@ -58,6 +58,25 @@ function normDate(v) {
   return Number.isFinite(Date.parse(s + 'T00:00:00Z')) ? s : '';
 }
 
+/**
+ * 倒数日：目标日期距今多少天（正数=还有 N 天，0=今天，负数=已过 N 天）。
+ *
+ * 两端都按 **UTC 零点** 做差：`week.todayStr()` 已经是「北京时间日期」字符串
+ * （fmtDate 内部 +8h 再取 ISO 日期，不受运行时区影响），再拼 `T00:00:00Z`，
+ * 两个纯日期相减恒为整天数 —— 不会因为云函数跑在 UTC 而差一天。
+ */
+function cdDays(targetDate) {
+  const t = String(targetDate || '').slice(0, 10);
+  if (!DATE_RE.test(t)) return null;
+  const a = Date.parse(week.todayStr() + 'T00:00:00Z');
+  const b = Date.parse(t + 'T00:00:00Z');
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+/** 倒数日单条数量上限：防手滑 / 防刷（超过就别用倒数日了，该用备忘录） */
+const CD_MAX_ITEMS = 50;
+
 /** [a, b] 的天数（含首尾）；参数非法返回 Infinity（调用方据此拒绝） */
 function spanDays(a, b) {
   const ta = Date.parse(a + 'T00:00:00Z');
@@ -1274,6 +1293,76 @@ const routes = {
       await pool.query("UPDATE leave_request SET status = 'CANCELLED', cancelled_at = ? WHERE id = ?", [week.nowStamp(), leaveId]);
       console.log(JSON.stringify({ fn: 'adjust', action: 'leaveMyCancel', by: me.id, leaveId }));
       return { status: 'CANCELLED' };
+    }
+  },
+
+  /* ---------------- 倒数日（2026-11-03）：个人自定义事件，按 member 隔离 ----------------
+   * 需求：「每个人可添加自己的，独立的」。
+   *   · 归属维度**只有 member_id**，不带 class_id —— 换了班 / 超管切了班，
+   *     自己写的倒数日不该凭空消失（早期前端版本是 wx.storage 本地存，换机即丢，已迁云端）。
+   *   · 三条接口全部 needBind，且每条 SQL 都带 `member_id = me.id`；
+   *     删除前**先查归属再删**，越权直接 40003，绝不靠前端藏按钮。
+   *   · 不返回别人的数据：列表本身就是 `WHERE member_id = ?`，没有「全班倒数日」这种视图。
+   */
+  countdownList: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      const pool = getPool();
+      const [rows] = await pool.query(
+        'SELECT id, name, target_date FROM countdown_event WHERE member_id = ? ORDER BY target_date ASC, id ASC LIMIT ?',
+        [me.id, CD_MAX_ITEMS]
+      );
+      return {
+        list: rows.map((r) => ({
+          id: Number(r.id),
+          name: r.name,
+          date: String(r.target_date).slice(0, 10),
+          days: cdDays(r.target_date)
+        }))
+      };
+    }
+  },
+
+  countdownAdd: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      const name = String(payload.name == null ? '' : payload.name).trim().slice(0, 30);
+      if (!name) throw new BizError(41001, '请填写事件名称');
+      const date = normDate(payload.date);
+      if (!date) throw new BizError(41001, '请选择正确的目标日期');
+      const pool = getPool();
+      // 幂等：同人 / 同名 / 同日期 只存一条（连点两下「保存」不该出现两条一模一样的）
+      const [dup] = await pool.query(
+        'SELECT id FROM countdown_event WHERE member_id = ? AND name = ? AND target_date = ? LIMIT 1',
+        [me.id, name, date]
+      );
+      if (dup.length) return { id: Number(dup[0].id), existed: true };
+      const [cnt] = await pool.query('SELECT COUNT(*) AS n FROM countdown_event WHERE member_id = ?', [me.id]);
+      if (Number(cnt[0].n) >= CD_MAX_ITEMS) throw new BizError(41001, '最多 ' + CD_MAX_ITEMS + ' 个倒数日，先删掉一些吧');
+      const [r] = await pool.query(
+        'INSERT INTO countdown_event (member_id, name, target_date) VALUES (?, ?, ?)',
+        [me.id, name, date]
+      );
+      console.log(JSON.stringify({ fn: 'adjust', action: 'countdownAdd', by: me.id, id: r.insertId, date }));
+      return { id: Number(r.insertId), existed: false };
+    }
+  },
+
+  countdownDelete: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      const id = Number(payload.id);
+      if (!id) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const [rows] = await pool.query('SELECT member_id FROM countdown_event WHERE id = ?', [id]);
+      if (!rows.length) throw new BizError(41004, '倒数日不存在');
+      if (Number(rows[0].member_id) !== me.id) throw new BizError(40003, '只能删除自己的倒数日');
+      await pool.query('DELETE FROM countdown_event WHERE id = ? AND member_id = ?', [id, me.id]);
+      console.log(JSON.stringify({ fn: 'adjust', action: 'countdownDelete', by: me.id, id }));
+      return { deleted: 1 };
     }
   }
 };

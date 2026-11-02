@@ -192,6 +192,16 @@ module.exports = {
   leavePendingList: C('adjust', 'leavePendingList'),
   leaveMyCancel: C('adjust', 'leaveMyCancel'),
 
+  /* ---------- 倒数日（2026-11-03）：个人自定义倒数事件 ----------
+   * 🔴 这三条**只操作自己的数据**：后端每条 SQL 都带 `member_id = me.id`，
+   *    没有任何「看别人 / 看全班倒数日」的入口。前端藏按钮不算隔离，后端才是。
+   *    · countdownList   → { list:[{id,name,date,days}] }（days 由后端按北京日期算）
+   *    · countdownAdd    → { id, existed }（同人同名同日期幂等，连点不会重复）
+   *    · countdownDelete → { deleted }（越权删别人的返回 40003） */
+  countdownList: C('adjust', 'countdownList'),
+  countdownAdd: C('adjust', 'countdownAdd'),
+  countdownDelete: C('adjust', 'countdownDelete'),
+
   /* ---------- media（仅语音通知相关；值日照片凭证已下线） ---------- */
   attachList: C('media', 'attachList'),
   markNoticeRead: C('media', 'markNoticeRead'),

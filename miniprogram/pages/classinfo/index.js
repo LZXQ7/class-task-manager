@@ -74,7 +74,7 @@ Page({
      */
     classSheetShow: false,
     clsSheetH: 440,
-    /** 倒数日列表（2026-11-02 新增）：个人本地自定义事件，存 wx storage，按日期升序 */
+    /** 倒数日列表（2026-11-03 改云端）：**仅本人**的事件，后端按 member_id 隔离，按日期升序 */
     countdowns: [],
     /** 倒数日添加弹层 */
     cdSheetShow: false,
@@ -339,31 +339,94 @@ Page({
     this.setData({ classSheetShow: false });
   },
 
-  /* ---------------- 倒数日（2026-11-02 新增）：个人本地自定义事件 ---------------- */
-  /** 读取本地倒数日事件，按日期升序，计算「还剩 N 天」展示文案 */
+  /* ---------------- 倒数日（2026-11-03 改云端）：个人自定义事件，按人隔离 ---------------- */
+  /**
+   * 读取**自己的**倒数日（后端按 member_id 隔离，拿不到别人的），并算「还剩 N 天」文案。
+   *
+   * 天数优先用后端返回的 `days`（后端按北京时间日期算，不受手机时区影响）；
+   * 后端没给（老数据 / 字段缺失）时才本地兜底算一次。
+   */
   loadCountdowns() {
-    let list = [];
-    try {
-      const raw = wx.getStorageSync('countdown_events_v1');
-      if (Array.isArray(raw)) list = raw;
-    } catch (e) {
-      console.error('[classinfo] 读取倒数日失败', e && e.stack ? e.stack : e);
-    }
+    return this._fetchCountdowns().then((list) => {
+      this.setData({ countdowns: this._enrichCd(list) });
+      // 1.0.8.19~1.0.8.21 的旧数据存在本地，这里做一次性搬迁（成功即清 key，失败下次再试）
+      this._migrateLocalCd();
+      return list;
+    });
+  },
+
+  _fetchCountdowns() {
+    return api.countdownList({}, { toast: false })
+      .then((d) => ((d && d.list) || []))
+      .catch((e) => {
+        // 拉不到不清空已有列表：网络抖动时把上次的内容留在界面上，比空着更不容易误解成「被删了」
+        console.error('[classinfo] 拉取倒数日失败', e && e.stack ? e.stack : e);
+        return this.data.countdowns || [];
+      });
+  },
+
+  _enrichCd(list) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const enriched = list
+    return (list || [])
       .slice()
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
       .map((it) => {
-        const t = new Date((it.date || '1970-01-01') + 'T00:00:00');
-        const diff = Math.round((t - today) / 86400000);
+        let diff = Number(it.days);
+        if (!Number.isFinite(diff)) {
+          const t = new Date((it.date || '1970-01-01') + 'T00:00:00');
+          diff = Math.round((t - today) / 86400000);
+        }
         let dayText;
         if (diff > 0) dayText = diff + '天';
         else if (diff === 0) dayText = '今天';
         else dayText = '已过 ' + (-diff) + ' 天';
         return Object.assign({}, it, { dayText, passed: diff < 0 });
       });
-    this.setData({ countdowns: enriched });
+  },
+
+  /**
+   * 一次性迁移：把旧版本存在 wx.storage 的倒数日搬到云端。
+   *
+   * 迁移成功的判据是**全部条目都上传成功** —— 只要有一条失败就保留本地 key，
+   * 下次 onShow 再试，绝不做「删了本地却没上传」这种静默丢数据的事。
+   * `_cdMigrating` 是内存锁：onShow 重复触发时不会并发跑两遍上传。
+   */
+  _migrateLocalCd() {
+    if (this._cdMigrating) return;
+    let local = [];
+    try {
+      const raw = wx.getStorageSync('countdown_events_v1');
+      if (Array.isArray(raw) && raw.length) local = raw;
+    } catch (e) {
+      return;
+    }
+    if (!local.length) return;
+    this._cdMigrating = true;
+    const tasks = local
+      .map((it) => ({
+        name: String((it && it.name) || '').trim().slice(0, 30),
+        date: String((it && it.date) || '').slice(0, 10)
+      }))
+      .filter((it) => it.name && /^\d{4}-\d{2}-\d{2}$/.test(it.date));
+    const upload = tasks.length
+      ? tasks.reduce(
+          (p, it) => p.then(() => api.countdownAdd(it, { toast: false })),
+          Promise.resolve()
+        )
+      : Promise.resolve();
+    upload
+      .then(() => {
+        wx.removeStorageSync('countdown_events_v1');
+        this._cdMigrating = false;
+        console.log('[classinfo] 倒数日本地数据已迁云端，共', tasks.length, '条');
+        if (tasks.length) this.loadCountdowns();
+      })
+      .catch((e) => {
+        this._cdMigrating = false;
+        // 保留本地 key，下次 onShow 重试；不弹 toast 打扰用户（他们并不知道有迁移这回事）
+        console.error('[classinfo] 倒数日迁移失败，保留本地待重试', e && e.stack ? e.stack : e);
+      });
   },
 
   /** 打开添加弹层并清空表单 */
@@ -384,35 +447,33 @@ Page({
     this.setData({ cdSheetShow: false });
   },
 
-  /** 保存一条倒数日事件到本地 storage */
+  /** 保存到云端（个人）；后端对「同人同名同日期」幂等，连点不会重复 */
   onCdSave() {
     const name = (this.data.cdName || '').trim();
     const date = this.data.cdDate;
     if (!name) { wx.showToast({ title: '请填写事件名称', icon: 'none' }); return; }
     if (!date) { wx.showToast({ title: '请选择目标日期', icon: 'none' }); return; }
-    let list = [];
-    try {
-      const raw = wx.getStorageSync('countdown_events_v1');
-      if (Array.isArray(raw)) list = raw;
-    } catch (e) {}
-    list.push({ id: Date.now(), name, date });
-    try {
-      wx.setStorageSync('countdown_events_v1', list);
-    } catch (e) {
-      console.error('[classinfo] 保存倒数日失败', e && e.stack ? e.stack : e);
-      wx.showToast({ title: '保存失败', icon: 'none' });
-      return;
-    }
-    this.setData({ cdSheetShow: false });
-    this.loadCountdowns();
-    wx.showToast({ title: '已添加', icon: 'success' });
+    if (this._cdSaving) return;
+    this._cdSaving = true;
+    api.countdownAdd({ name, date }, { toast: false })
+      .then((r) => {
+        this._cdSaving = false;
+        this.setData({ cdSheetShow: false });
+        this.loadCountdowns();
+        wx.showToast({ title: r && r.existed ? '已经有这一个了' : '已添加', icon: 'none' });
+      })
+      .catch((e) => {
+        this._cdSaving = false;
+        console.error('[classinfo] 保存倒数日失败', e && e.stack ? e.stack : e);
+        wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+      });
   },
 
-  /** 点列表项 → 确认后删除 */
+  /** 点列表项 → 确认后删除（后端会再校验归属，删别人的直接 40003） */
   onCdTap(e) {
     const id = Number(e.currentTarget.dataset.id) || 0;
     if (!id) return;
-    const item = (this.data.countdowns || []).filter((c) => c.id === id)[0];
+    const item = (this.data.countdowns || []).filter((c) => String(c.id) === String(id))[0];
     if (!item) return;
     wx.showModal({
       title: '删除倒数日',
@@ -420,19 +481,12 @@ Page({
       confirmColor: '#F53F3F',
       success: (r) => {
         if (!r.confirm) return;
-        let list = [];
-        try {
-          const raw = wx.getStorageSync('countdown_events_v1');
-          if (Array.isArray(raw)) list = raw;
-        } catch (err) {}
-        list = list.filter((c) => c.id !== id);
-        try {
-          wx.setStorageSync('countdown_events_v1', list);
-        } catch (err) {
-          console.error('[classinfo] 删除倒数日失败', err && err.stack ? err.stack : err);
-          return;
-        }
-        this.loadCountdowns();
+        api.countdownDelete({ id }, { toast: false })
+          .then(() => this.loadCountdowns())
+          .catch((err) => {
+            console.error('[classinfo] 删除倒数日失败', err && err.stack ? err.stack : err);
+            wx.showToast({ title: '删除失败，请重试', icon: 'none' });
+          });
       }
     });
   },

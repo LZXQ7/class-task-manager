@@ -69,7 +69,7 @@
     <!-- 层级连线（纯视觉，提示框架图的「根 → 子节点」层级） -->
     <view class="ci-connector"></view>
 
-    <!-- 倒数日（2026-11-02 新增）：个人本地自定义事件，按最近排序显示「N 天」 -->
+    <!-- 倒数日（2026-11-03 改云端）：**仅本人**的自定义事件，按日期升序显示「N 天」 -->
     <view class="ci-cd card st-item st-2">
       <view class="ci-cd-head">
         <text class="ci-cd-title">倒数日</text>
@@ -160,7 +160,7 @@
     </view>
   </bottom-sheet>
 
-  <!-- 倒数日添加弹层（2026-11-02）：名称 + 日期，存本地 storage -->
+  <!-- 倒数日添加弹层（2026-11-03 改云端）：名称 + 日期，存服务端（仅本人可见） -->
   <bottom-sheet
     show="{{cdSheetShow}}"
     title="添加倒数日"
