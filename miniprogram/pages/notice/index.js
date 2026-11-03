@@ -109,7 +109,7 @@ Page({
     const s = !!(app && app.isSuper && app.isSuper());
     // 发布通知入口（2026-10-27 归位）：入口随发布能力走 —— 超管 / 班委（isAdmin）
     // ∨ 辅导员（groupTag='X'）。与发布页 onNoticeOpen 里的范围口径同一套身份判定。
-    // 演示态（体验版「一键体验」进入演示班）下放开入口：让审核 / 评委账号也能走完整发布流程；
+    // 演示态（「一键体验」进入演示班）下放开入口：让体验者也能走完整发布流程；
     // 生产环境普通成员仍不可见，逻辑不变。
     const isDemo = !!(app && app.globalData && app.globalData.demo);
     const canPublish = isDemo || !!(app && app.isAdmin && app.isAdmin()) || !!(p && p.groupTag === 'X');

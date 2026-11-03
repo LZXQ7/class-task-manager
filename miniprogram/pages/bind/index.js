@@ -52,8 +52,8 @@ Page({
     staffError: '',
     staffBinding: false,
 
-    /* 参赛演示 · 一键体验（2026-10-28，参赛临时入口）：免口令直达演示班 104。
-       reviewError 仅在后端 DEMO_QUICK_OPEN=false（赛后关闭）时回填提示。 */
+    /* 一键体验（演示入口）：免口令直达演示班。
+       reviewError 仅在后端 DEMO_QUICK_OPEN=false（入口关闭）时回填提示。 */
     reviewError: '',
     reviewEntering: false
   },
@@ -75,7 +75,7 @@ Page({
         if (c2 && c2.bindOpen === false) this.setData({ bindClosed: true });
       }).catch(() => {});
     }
-    // 参赛演示 · 一键体验入口（2026-10-28）：始终可见，不再依赖 reviewOn 门控（见 wxml）。
+    // 一键体验入口：始终可见，不再依赖 reviewOn 门控（见 wxml）。
     const scene = app.globalData.scene || '';
     if (scene) this._resolveScene(scene);
 
@@ -348,11 +348,11 @@ Page({
       });
   },
 
-  /* ---------------- 参赛演示 · 一键体验（2026-10-28，参赛临时入口） ---------------- */
+  /* ---------------- 一键体验（演示入口） ---------------- */
   /**
-   * 参赛提交用：评委 / 第一个使用者**无需口令**一键进入演示班 104（全虚拟测试数据）。
+   * 无需口令一键进入演示班（全虚拟测试数据），用于初次体验与功能演示。
    * 后端 auth.reviewDemo 走 quick 通道（DEMO_QUICK_OPEN 常量开关），跳过口令与开关门控。
-   * 赛后移除（见 README §14）。
+   * 正式环境可设 DEMO_QUICK_OPEN=false 关闭该入口。
    */
   onQuickDemo() {
     if (this.data.reviewEntering) return;

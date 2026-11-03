@@ -49,16 +49,13 @@
 ├── scripts/                  # 门禁 / 验证 / 迁移 / 部署脚本（见 §8、§9）
 ├── docs/                     # 产品、设计、接入文档
 ├── i18n/                     # 多语言（base.json）
-├── outputs/                  # 发版说明（*.md 入库；构建/验证产物被 gitignore）
-├── HANDOFF.md                # 跨 session 状态交接件（主线节点 + 下一步）
 ├── CHANGELOG.md              # 版本史（对外版本 → 内部版本映射）
-├── CHANGELOG-DETAIL.md       # 版本详细改动
 ├── cloudbaserc.json          # CloudBase 配置（envId、函数清单、部署模式）
 ├── project.config.json       # 小程序项目配置（appid 等）
 └── project.private.config.json  # ⚠️ gitignore：微信 IDE 上传私钥/密钥
 ```
 
-> `Dawn-Course-ref/`、`preview/`、`miniapp/`、`_tmp_*`、`outputs/**`（非 md）、`.workbuddy/`
+> `Dawn-Course-ref/`、`preview/`、`miniapp/`、`_tmp_*`、`.workbuddy/`
 > 等均为**衍生物或敏感/大体积目录**，已被 `.gitignore` 排除，**不要提交**。
 
 ---
@@ -161,12 +158,11 @@ node scripts/deploy-admin-web.js
   git tag vx.y.z                      # 仅「已上传微信平台」的版本才打 tag
   git push origin main --tags
   ```
-- **仓库**：`https://github.com/LZXQ7/class-task-manager-template.git`（默认分支 `main`）。
+- **仓库**：`https://github.com/LZXQ7/class-task-manager`（默认分支 `main`）。
 - **微信端上传 / 送审**：在微信开发者工具或公众平台操作。
-  > 🔴 **本仓库无法自动感知你是否上传/送审**。请在上传或送审后**主动告知**，
-  > 我会据此更新 `HANDOFF.md`【主线状态】（标记版本上传/送审日期、跑复核、按需开关审核体验入口）。
-- **审核体验入口（review-demo）**：提审前按 `outputs/vX-更新说明.md` 的「提审前必做」
-  开启入口 / 换口令 / 置演示标记；审核通过后跑 `scripts/disable-review-demo.sql` 关后门。
+  > 🔴 上传与送审由人工完成，仓库不会自动感知。建议在上传/送审后同步更新发布记录与复核清单。
+- **审核体验入口（review-demo）**：微信审核阶段可临时开启免口令体验入口；
+  审核通过后执行 `scripts/disable-review-demo.sql` 关闭后门。
   > 演示态**不是纯只读**：拦截的是不可逆/授权/全站级写，值日/换班/请假/排班等可逆日常写仍放行。
 
 ---
@@ -178,9 +174,13 @@ node scripts/deploy-admin-web.js
 - `.workbuddy/` —— 生产数据备份（含学生隐私 PII）+ 记忆密钥，**体积大且敏感**；
 - `project.private.config.json` —— 微信 IDE 上传私钥 / 密钥（可重生成）；
 - `.env-*` —— 数据库明文口令（`DB_*`）；
-- `Dawn-Course-ref/`、`preview/`、`miniapp/`、`_tmp_*`、`outputs/**`（非 `*.md`）—— 衍生物 / 大体积 / 临时。
+- `Dawn-Course-ref/`、`preview/`、`miniapp/`、`_tmp_*` —— 衍生物 / 大体积 / 临时。
 
-建议仓库设为 **Private**。令牌、openid、学生真实信息一律不进版本库。
+本仓库代码已做脱敏处理：不含密钥、令牌、openid 或学生真实信息。**二次部署时请替换为你自己的**
+envId、appid、班级与成员数据，切勿把真实学生信息、数据库口令提交回本仓库。
+
+> ⚠️ 代码保留了一个**免口令体验开关**：`cloudfunctions/auth/index.js` 顶部的 `DEMO_QUICK_OPEN`（默认 `true`）。
+> 部署到正式环境前请设为 `false` 并重新部署 `auth` 云函数，否则任何人都可免口令进入演示数据。
 
 ---
 
@@ -232,33 +232,15 @@ git add -A && git commit -m "..." && git tag vx.y.z && git push origin main --ta
 | `备案-服务内容备注文案.md` | ICP 备案 |
 | `AI 一键生成值日表-提示词与配置说明.md` | AI 排班提示词 |
 
-版本细节另见根目录 `CHANGELOG.md` / `CHANGELOG-DETAIL.md`；跨 session 状态见 `HANDOFF.md`。
+版本细节见根目录 `CHANGELOG.md`。
 
 ---
 
-## 14. 参赛评测登录方式（评委 / 第一个使用者必读）
+## 14. 许可证
 
-本仓库**没有任何硬编码默认账号或口令**（见 §10 安全约定）。常规绑定需要班级口令 + 名单 + 学号后四位，
-评委 / 第一个使用者拿不到这些，因此专设一条**参赛演示 · 一键体验**通道：
+本项目采用 **MIT License**，详见根目录 [`LICENSE`](./LICENSE)。
 
-1. 打开小程序，落在「绑定页」（首屏）。
-2. 页面底部可见 **「参赛演示 · 一键体验」** 区块，点击 **「一键体验（无需口令）」** 按钮。
-3. 直接进入**演示班 104** —— 该班为**全虚拟测试数据**，**不含任何真实学生信息**。
-4. 退出演示：底部「我的」→「退出登录」，即可回到绑定页重新体验或正常绑定。
-
-> 演示班 104 与真实班级在数据库层完全隔离，体验者全程只见虚拟数据，无法触达任何真实学生。
-
-### 赛后关闭（务必执行）
-
-该入口为**参赛临时入口**，默认常开。赛后务必关闭，不留后门：
-
-- 后端开关：将 `cloudfunctions/auth/index.js` 顶部的常量 `DEMO_QUICK_OPEN` 改为 `false`，
-  重新部署 `auth` 云函数（`tcb fn code update auth ...`）。关闭后按钮点击会提示「体验入口未开放」。
-- 前端入口：删除 `miniprogram/pages/bind/index.wxml` 中「参赛演示 · 一键体验」区块，
-  及 `index.js` 的 `onQuickDemo` 处理函数（可选；仅隐藏按钮，真正拦截在后端）。
-
-> 若需保留「微信审核体验入口」（凭口令，非参赛用），原有 `reviewDemo` 逻辑未改动，
-> 仍由「我的 → 管理 → 审核体验入口」开关控制。
+可自由使用、修改、分发与商用，仅需保留原始版权声明与许可声明。软件按「现状」提供，不附带任何担保。
 
 ---
 
