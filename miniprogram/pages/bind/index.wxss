@@ -1,6 +1,6 @@
 .bind {
   min-height: 100vh;
-  background: #FFFFFF;
+  background: var(--bg-card);
 }
 
 /* ---------- Step 1 ---------- */
@@ -11,7 +11,7 @@
   height: 176rpx;
   margin: 0 auto;
   border-radius: 48rpx;
-  background: #F0F5FF;
+  background: var(--brand-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -22,14 +22,14 @@
   font-size: 56rpx;
   line-height: 76rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .bind-sub {
   margin-top: 8rpx;
   text-align: center;
   font-size: 28rpx;
   line-height: 40rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .bind-form {
   padding: 0 32rpx;
@@ -38,39 +38,39 @@
 .bind-label {
   font-size: 26rpx;
   line-height: 36rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 .bind-input {
   margin-top: 16rpx;
   height: 96rpx;
   border-radius: 40rpx;
-  border: 2rpx solid #E5E6EB;
-  background: #FFFFFF;
+  border: 2rpx solid var(--line-1);
+  background: var(--bg-card);
   padding: 0 24rpx;
   font-size: 32rpx;
-  color: #1D2129;
+  color: var(--text-1);
   text-align: center;
   letter-spacing: 4rpx;
 }
 .bind-input.err {
-  border-color: #F53F3F;
+  border-color: var(--danger);
 }
 .bind-ph {
-  color: #C9CDD4;
+  color: var(--text-4);
   font-size: 28rpx;
 }
 .bind-help {
   margin-top: 16rpx;
   font-size: 24rpx;
   line-height: 32rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .bind-note {
   margin-top: 12rpx;
   padding: 16rpx 20rpx;
   font-size: 22rpx;
   line-height: 32rpx;
-  color: #4E5969;
+  color: var(--text-2);
   background: rgba(31, 35, 41, 0.04);
   border-radius: 12rpx;
 }
@@ -79,13 +79,13 @@
   margin-top: 16rpx;
   font-size: 24rpx;
   line-height: 32rpx;
-  color: #F53F3F;
+  color: var(--danger);
 }
 .bind-primary {
   margin: 48rpx 32rpx 0;
   height: 96rpx;
   border-radius: 40rpx;
-  background: #3370FF;
+  background: var(--brand);
   color: #FFFFFF;
   font-size: 34rpx;
   font-weight: 600;
@@ -93,17 +93,17 @@
   align-items: center;
   justify-content: center;
 }
-.bind-primary:active { background: #245BDB; }
+.bind-primary:active { background: var(--brand-press); }
 .bind-primary.disabled {
-  background: #F2F3F5;
-  color: #C9CDD4;
+  background: var(--bg-fill);
+  color: var(--text-4);
 }
 .bind-spinner {
   width: 40rpx;
   height: 40rpx;
   border-radius: 32rpx;
   border: 4rpx solid rgba(255, 255, 255, 0.35);
-  border-top-color: #FFFFFF;
+  border-top-color: var(--bg-card);
   animation: bind-spin .8s linear infinite;
 }
 @keyframes bind-spin { to { transform: rotate(360deg); } }
@@ -113,7 +113,7 @@
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  color: #3370FF;
+  color: var(--brand);
   font-size: 26rpx;
 }
 /* 隐私合规勾选行（2026-09-25 审核）：主动勾选同意，不得默认即同意 */
@@ -122,7 +122,7 @@
   display: flex;
   justify-content: center;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .agree-row {
   display: flex;
@@ -132,7 +132,7 @@
   width: 32rpx;
   height: 32rpx;
   border-radius: 16rpx;
-  border: 2rpx solid #C9CDD4;
+  border: 2rpx solid var(--bg-fill);
   margin-right: 10rpx;
   display: flex;
   align-items: center;
@@ -141,17 +141,17 @@
   background: rgba(255, 255, 255, 0.55);
 }
 .agree-box.on {
-  background: #D6E0FF;
-  border-color: #3370FF;
+  background: var(--brand-light);
+  border-color: var(--brand);
 }
-.agree-text { color: #86909C; }
-.link { color: #3370FF; }
+.agree-text { color: var(--text-3); }
+.link { color: var(--brand); }
 /* 绑定入口关闭提示条（超管手动关闭 / 防爆破自动锁死） */
 .bind-closed {
   margin: 24rpx 48rpx 0;
   padding: 20rpx 24rpx;
-  background: #FFF7E8;
-  color: #D46B08;
+  background: var(--warning-bg);
+  color: var(--warning-strong);
   border-radius: 24rpx;
   font-size: 26rpx;
   line-height: 1.6;
@@ -167,13 +167,13 @@
 .bind-tip {
   padding: 16rpx 32rpx;
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .search-box {
   margin: 0 32rpx 16rpx;
   height: 80rpx;
   border-radius: 32rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -183,7 +183,7 @@
   flex: 1;
   margin-left: 12rpx;
   font-size: 26rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .roster-scroll {
   height: calc(100vh - 320rpx);
@@ -193,8 +193,8 @@
   height: 64rpx;
   line-height: 48rpx;
   font-size: 26rpx;
-  color: #86909C;
-  background: #F5F6F8;
+  color: var(--text-3);
+  background: var(--bg-page);
 }
 .roster-row {
   position: relative;
@@ -203,22 +203,22 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  background: #FFFFFF;
-  border-bottom: 2rpx solid #F2F3F5;
+  background: var(--bg-card);
+  border-bottom: 2rpx solid var(--bg-fill);
 }
-.roster-row.on { background: #F0F5FF; }
+.roster-row.on { background: var(--brand-light); }
 .roster-row.bound { opacity: 0.45; }
 .roster-name {
   margin-left: 24rpx;
   font-size: 30rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .roster-no {
   position: absolute;
   left: 132rpx;
   top: 76rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .roster-row > .roster-badge,
 .roster-row > .roster-tag {
@@ -232,15 +232,15 @@
   font-size: 22rpx;
   line-height: 40rpx;
 }
-.roster-badge.ga { background: #F0F5FF; color: #3370FF; }
-.roster-badge.gb { background: #F3F0FF; color: #7C5CFF; }
-.roster-badge.teacher { background: #E8FFFB; color: #0AA5A8; }
+.roster-badge.ga { background: var(--brand-light); color: var(--brand); }
+.roster-badge.gb { background: var(--purple-bg); color: var(--purple); }
+.roster-badge.teacher { background: var(--success-bg); color: #0AA5A8; }
 .roster-tag {
   height: 40rpx;
   padding: 0 16rpx;
   border-radius: 16rpx;
-  background: #F2F3F5;
-  color: #4E5969;
+  background: var(--bg-fill);
+  color: var(--text-2);
   font-size: 22rpx;
   line-height: 40rpx;
 }
@@ -254,8 +254,8 @@
   right: 0;
   bottom: 0;
   height: 196rpx;
-  background: #FFFFFF;
-  border-top: 2rpx solid #F2F3F5;
+  background: var(--bg-card);
+  border-top: 2rpx solid var(--bg-fill);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -267,15 +267,15 @@
 .pick-name {
   margin-left: 16rpx;
   font-size: 30rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
-.pick-name.placeholder { color: #C9CDD4; }
+.pick-name.placeholder { color: var(--text-4); }
 .pick-btn {
   margin-left: auto;
   width: 240rpx;
   height: 88rpx;
   border-radius: 32rpx;
-  background: #3370FF;
+  background: var(--brand);
   color: #FFFFFF;
   font-size: 30rpx;
   font-weight: 600;
@@ -283,29 +283,29 @@
   align-items: center;
   justify-content: center;
 }
-.pick-btn:active { background: #245BDB; }
-.pick-btn.disabled { background: #F2F3F5; color: #C9CDD4; }
+.pick-btn:active { background: var(--brand-press); }
+.pick-btn.disabled { background: var(--bg-fill); color: var(--text-4); }
 
 /* ---------- Step 3 ---------- */
 .picked-card {
   margin: 16rpx 32rpx;
   padding: 24rpx;
   background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid #F2F3F5;
+  border: 2rpx solid var(--bg-fill);
   border-radius: 40rpx;
   display: flex;
   flex-direction: row;
   align-items: center;
 }
 .picked-info { margin-left: 24rpx; flex: 1; min-width: 0; }
-.picked-name { font-size: 34rpx; font-weight: 600; color: #1D2129; }
-.picked-no { margin-top: 4rpx; font-size: 24rpx; color: #86909C; }
-.picked-change { color: #3370FF; font-size: 30rpx; }
+.picked-name { font-size: 34rpx; font-weight: 600; color: var(--text-1); }
+.picked-no { margin-top: 4rpx; font-size: 24rpx; color: var(--text-3); }
+.picked-change { color: var(--brand); font-size: 30rpx; }
 .code-title {
   margin-top: 48rpx;
   text-align: center;
   font-size: 30rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .code-wrap {
   position: relative;
@@ -319,19 +319,19 @@
   height: 112rpx;
   margin: 0 12rpx;
   border-radius: 40rpx;
-  border: 2rpx solid #E5E6EB;
-  background: #FFFFFF;
+  border: 2rpx solid var(--line-1);
+  background: var(--bg-card);
   font-size: 44rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .code-cell.active {
-  border: 4rpx solid #3370FF;
+  border: 4rpx solid var(--brand);
 }
-.code-wrap.err .code-cell { border-color: #F53F3F; }
+.code-wrap.err .code-cell { border-color: var(--danger); }
 .code-input {
   position: absolute;
   left: 0;
@@ -346,7 +346,7 @@
   margin-top: 24rpx;
   text-align: center;
   font-size: 26rpx;
-  color: #F53F3F;
+  color: var(--danger);
 }
 
 /* ---------- 教职工绑定码入口（2026-09-26） ----------
@@ -362,7 +362,7 @@
   margin-top: 24rpx;
   text-align: center;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
   text-decoration: underline;
 }
 

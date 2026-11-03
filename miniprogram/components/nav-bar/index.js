@@ -129,10 +129,9 @@ Component({
     /**
      * 对外：**切到指定模式**并从 (x, y) 播圆形揭示。
      * ------------------------------------------------------------
-     * 两处入口共用这一个方法，不要各写一份：
-     *   ① 左上角的切换按钮（onToggleTheme）
-     *   ② 「我的」页 → 外观设置项（页内三态选择，二级页没有左上角按钮）
-     * 走同一个方法才保证「按钮切有动效、设置里切没动效」不会割裂。
+     * 唯一入口：「我的」页 → 外观设置项（页内三态选择，复用 segmented 组件）。
+     * 左上角的切换按钮已移除（用户要求只保留「我的」页入口），故现在只有这一处。
+     * 走同一个方法保证「设置里切 → 圆形揭示动效」与历史按钮路径完全一致。
      *
      * @param {'system'|'light'|'dark'} mode 目标模式
      * @param {number} [x] 圆心 x（px，页面坐标）；省略/非数字 = 屏幕中心
@@ -149,28 +148,6 @@ Component({
       const resolved = mode === 'system' ? t.getSystemTheme() : mode;
       this._playReveal(cx, cy, resolved);
       t.setMode(mode);
-    },
-
-    /**
-     * 切换主题（system → light → dark → system 循环）
-     * ------------------------------------------------------------
-     * 圆形揭示是**两段式**，顺序不能反：
-     *   ① 先用当前主题的底色把整个屏幕盖住（半径 0）；
-     *   ② 再切主题（页面根节点的 class 换掉，底下已经是新主题了）；
-     *   ③ 然后把遮罩从触点扩散开 —— 用户看到的是「新主题从手指处被揭开」。
-     * ⚠️ 若先切主题再盖：会闪一下旧主题（盖之前那一帧已经变了），
-     *    也就是最典型的「白闪」；反过来先盖则用户全程看不到中间态。
-     * ⚠️ 遮罩颜色取的是**新**主题底色（--bg-page 的实色近似），
-     *    取错就会在揭开瞬间看到一次色差闪动。
-     */
-    onToggleTheme(e) {
-      const t = require('../../utils/theme');
-      // 触点相对页面（e.detail.x / y 在小程序里是相对触发元素的局部坐标，
-      // 这里用 x/y 即可 —— 按钮自身 64rpx 见方，误差远小于半径）
-      const x = (e && e.detail && typeof e.detail.x === 'number') ? e.detail.x : this._centerX();
-      const y = (e && e.detail && typeof e.detail.y === 'number') ? e.detail.y : this._centerY();
-      const next = { system: 'light', light: 'dark', dark: 'system' }[t.getMode()] || 'light';
-      this.applyTheme(next, x, y);
     },
 
     /**

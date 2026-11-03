@@ -29,27 +29,8 @@
      fixed 时用 px 状态栏 + rpx 标题行，避免大屏上 88rpx≠44px 造成偏移 -->
 <view wx:if="{{placeholder && fixed}}" class="nav-placeholder" style="padding-top:{{statusBarHeight}}px"></view>
 
-<!-- ============ 主题切换（深色模式 C-4）============
-     ⚠️ **只在没有返回按钮时出现**（`showBack` 为假 = 四个 tab 页）：左上角是
-     `.nav-left` 的地盘，有返回按钮时插进来会把它顶走/重叠。
-     二级页的切换入口在「我的」页（mine）里，那里有完整的设置区。
-     ⚠️ 两者都用 `position: fixed` 而非 absolute：祖先链上**不能**出现
-     filter / backdrop-filter / transform / will-change —— 它们会让 fixed 退化成
-     相对该祖先定位（那样 overlay 就盖不满屏）。`.nav` 自己有 backdrop-filter，
-     所以这两条必须是它的**兄弟节点**、不能是它的子节点（见文件末尾）。 -->
-<view
-  wx:if="{{!showBack && themeEnabled && !sheetOpen}}"
-  class="theme-btn"
-  style="top:{{statusBarHeight + themeTopPx}}px"
-  bindtap="onToggleTheme"
-  hover-class="theme-btn-hover"
-  hover-stay-time="80"
->
-  <!-- 纯 CSS 画的太阳/月亮：不走 app-icon（那套是脚本生成 + 云存储 SVG，
-       新增图标要上传资源；且图标是固定色，主题切换时颜色不会跟着变） -->
-  <view class="theme-sun"></view>
-  <view class="theme-moon"></view>
-</view>
+<!-- 顶部左侧不再放主题切换按钮（用户要求只保留「我的 → 外观」一处入口）。
+     圆形揭示 overlay 见文件末尾，仍由「我的」页的切换触发（复用 applyTheme）。 -->
 
 <!-- 圆形揭示 overlay：clip-path 从触点扩散，扩散完立刻 setData 摘掉自身。
      🔴 用 circle() 而非 scale：scale 会把底下内容一起缩放（几何变形），

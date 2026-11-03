@@ -27,7 +27,7 @@
   .mn-user { background: rgba(255, 255, 255, 0.9); }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .mn-user { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .mn-user { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .mn-user-info {
   flex: 1;
@@ -44,7 +44,7 @@
   font-size: 40rpx;
   line-height: 56rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .mn-bind {
   margin-left: 12rpx;
@@ -52,15 +52,15 @@
   height: 36rpx;
   line-height: 36rpx;
   font-size: 20rpx;
-  color: #00B42A;
-  background: #E8FFEA;
+  color: var(--success);
+  background: var(--success-bg);
   border-radius: 999rpx;
 }
 .mn-user-sub {
   margin-top: 6rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .mn-admin {
   padding: 0 16rpx;
@@ -68,23 +68,23 @@
   line-height: 44rpx;
   font-size: 22rpx;
   font-weight: 500;
-  color: #3370FF;
-  background: #F0F5FF;
+  color: var(--brand);
+  background: var(--brand-light);
   border-radius: 999rpx;
 }
 /* 超管：标黄区分普通管理员 */
 .mn-admin.super {
-  color: #D46B08;
-  background: #FFF3C2;
+  color: var(--warning-strong);
+  background: var(--warning-bg);
 }
 /* 班委（蓝，与 .mn-admin 默认一致）；辅导员（青） */
 .mn-admin.committee {
-  color: #3370FF;
-  background: #F0F5FF;
+  color: var(--brand);
+  background: var(--brand-light);
 }
 .mn-admin.counselor {
   color: #0AA5A8;
-  background: #E8FFFB;
+  background: var(--success-bg);
 }
 /* 头像位（2026-10-18 第二次修正：button 退出文档流）。
    🔴 真机两次实测：<button open-type="chooseAvatar"> **只要参与布局**，就会被撑成
@@ -110,7 +110,7 @@
   width: 96rpx;
   height: 96rpx;
   border-radius: 50%;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 /* 无头像 / 头像加载失败：姓氏色块（底 #F0F5FF、字 #3370FF；无姓名时显示「?」，
    与组件 firstChar 一致；96rpx 圆下字号取 38rpx 居中） */
@@ -118,8 +118,8 @@
   width: 96rpx;
   height: 96rpx;
   border-radius: 50%;
-  background: #F0F5FF;
-  color: #3370FF;
+  background: var(--brand-light);
+  color: var(--brand);
   font-size: 38rpx;
   font-weight: 600;
   display: flex;
@@ -170,22 +170,22 @@
   top: 8rpx;
   bottom: 8rpx;
   width: 2rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 .mn-num {
   font-size: 48rpx;
   line-height: 60rpx;
   font-weight: 700;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .mn-num.warn {
-  color: #FF7D00;
+  color: var(--warning);
 }
 .mn-label {
   margin-top: 4rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 /* 待值日 / 已结束 可点开明细（需求）：点击查看具体值日条目；本学期为纯展示不可点 */
 .mn-stat-cell.tappable {
@@ -197,7 +197,7 @@
   right: 14rpx;
   font-size: 28rpx;
   line-height: 1;
-  color: #C9CDD4;
+  color: var(--text-4);
 }
 .mn-stat-cell.tappable:active .mn-num,
 .mn-stat-cell.tappable:active .mn-label {
@@ -227,7 +227,7 @@
   right: 0;
   top: 0;
   height: 2rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 .mn-row-text {
   flex: 1;
@@ -235,11 +235,11 @@
   margin-left: 20rpx;
   font-size: 30rpx;
   line-height: 44rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .mn-row-done {
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .mn-mini-btn {
   padding: 0 20rpx;
@@ -248,44 +248,44 @@
   font-size: 24rpx;
   font-weight: 500;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
   border-radius: 999rpx;
 }
 .mn-mini-btn:active {
-  background: #245BDB;
+  background: var(--brand-press);
 }
 .mn-mini-tag {
   padding: 0 12rpx;
   height: 36rpx;
   line-height: 36rpx;
   font-size: 20rpx;
-  color: #3370FF;
-  background: #F0F5FF;
+  color: var(--brand);
+  background: var(--brand-light);
   border-radius: 16rpx;
 }
 /* 「模拟中」橙色变体（切换测试账号时显示） */
 .mn-mini-tag.warn {
-  color: #FF7D00;
-  background: #FFF7E8;
+  color: var(--warning);
+  background: var(--warning-bg);
 }
 /* 「绑定入口开放中」绿色小标签 */
 .mn-mini-tag.ok {
-  color: #00B42A;
-  background: #E8FFEA;
+  color: var(--success);
+  background: var(--success-bg);
 }
 /* 仅超管可见的入口（如手动排班）用金色标 */
 .mn-mini-tag.super {
-  color: #D46B08;
-  background: #FFF3C2;
+  color: var(--warning-strong);
+  background: var(--warning-bg);
 }
 /* 班委（蓝）/ 辅导员（青）：与 .mn-admin 三色一致，挂在入口行表示当前用户职位 */
 .mn-mini-tag.committee {
-  color: #3370FF;
-  background: #F0F5FF;
+  color: var(--brand);
+  background: var(--brand-light);
 }
 .mn-mini-tag.counselor {
   color: #0AA5A8;
-  background: #E8FFFB;
+  background: var(--success-bg);
 }
 /* 「换班待确认」的条数角标 */
 .mn-badge {
@@ -297,71 +297,44 @@
   text-align: center;
   font-size: 22rpx;
   color: #FFFFFF;
-  background: #F53F3F;
+  background: var(--danger);
   border-radius: 999rpx;
   box-sizing: border-box;
 }
 
 /* ============ 外观（深色模式 C-4）============
- * 三态单选（跟随系统 / 浅色 / 深色）。
- * 🔴 本块**一律走 var(--token)**，不写死色值 —— 它是深色模式下用户唯一能回到
- *    「跟随系统」的地方，写死浅色会让深色下的选中态/描述文字对比度崩掉。
- *    （mine 其余部分的硬编码色值是历史遗留，属于页面级色值治理的另一件事。） */
-.appear-opt {
+ * 紧凑单行：标签「外观」+ 复用全站 segmented 组件（自动 / 浅色 / 深色）。
+ * 🔴 本块**一律走 var(--token)** —— 玻璃材质与文字色都靠令牌自动翻深色，
+ *    不写死色值（否则深色下这道窄条会反色失败、与整页脱节）。
+ * ⚠️ 玻璃配方与 app.wxss 的 .card 同款（--glass-* 令牌），并把本类补进
+ *    「不支持 backdrop-filter / 降低透明度」两份降级，否则深色 + 降级会惨白。
+ *    不再占整张卡：原本三行单选 ≈ 336rpx + 内边距，现在单行 ≈ 120rpx。 */
+.mn-theme {
   display: flex;
   align-items: center;
-  padding: 22rpx 32rpx;
-  position: relative;
+  justify-content: space-between;
+  margin: 24rpx 32rpx 0;
+  padding: 24rpx 32rpx;
+  background: var(--glass-bg);
+  border: 1rpx solid var(--glass-edge);
+  border-radius: var(--r-md);
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
-.appear-opt + .appear-opt::before {
-  content: '';
-  position: absolute;
-  left: 32rpx;
-  right: 0;
-  top: 0;
-  height: 2rpx;
-  background: var(--line-2);
+/* 不支持 backdrop-filter 的机型（部分安卓 WebView）：用实心底色（令牌自动翻深色，不写死白） */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .mn-theme { background: var(--bg-card); }
 }
-/* 单选圆点：外圈 + 选中时的实心 + 勾（纯 CSS，不走 app-icon —— 图标是固定色的） */
-.appear-radio {
-  flex: none;
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 50%;
-  border: 2rpx solid var(--text-4);
-  box-sizing: border-box;
-  position: relative;
-  transition: border-color .18s, background .18s;
+/* 系统开了「降低透明度」：直接实心、不做模糊（无障碍优先于观感） */
+@media (prefers-reduced-transparency: reduce) {
+  .mn-theme { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
-.appear-radio.on {
-  border-color: var(--brand);
-  background: var(--brand);
-}
-.appear-radio.on::after {
-  content: '';
-  position: absolute;
-  left: 11rpx;
-  top: 5rpx;
-  width: 9rpx;
-  height: 17rpx;
-  border-right: 3rpx solid var(--bg-card);
-  border-bottom: 3rpx solid var(--bg-card);
-  transform: rotate(40deg);
-}
-.appear-txt {
-  flex: 1;
-  min-width: 0;
-  margin-left: 24rpx;
-}
-.appear-t {
+.mn-theme-label {
   font-size: 30rpx;
   line-height: 44rpx;
+  font-weight: 500;
   color: var(--text-1);
-}
-.appear-d {
-  font-size: 24rpx;
-  line-height: 34rpx;
-  color: var(--text-3);
 }
 
 /* 解除绑定（已禁用，仅提示） */
@@ -371,13 +344,13 @@
   line-height: 96rpx;
   text-align: center;
   font-size: 30rpx;
-  color: #F53F3F;
-  background: #FFFFFF;
+  color: var(--danger);
+  background: var(--bg-card);
   border-radius: 24rpx;
   box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
 }
 .mn-unbind:active {
-  background: #FFECE8;
+  background: var(--danger-bg);
 }
 /* v0.7.18 需求④：纯说明文字，去底色与圆角 */
 .mn-unbind-hint {
@@ -385,7 +358,7 @@
   text-align: center;
   font-size: 26rpx;
   line-height: 40rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .mn-foot {
   height: 180rpx;
@@ -405,7 +378,7 @@
   right: 32rpx;
   top: 0;
   height: 2rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 .ap-info {
   flex: 1;
@@ -416,13 +389,13 @@
   font-size: 28rpx;
   line-height: 40rpx;
   font-weight: 500;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ap-sub {
   margin-top: 4rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .ap-status {
   flex-shrink: 0;
@@ -442,8 +415,8 @@
   height: 56rpx;
   line-height: 56rpx;
   font-size: 24rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 999rpx;
   /* 申请处理按钮按下反馈（v0.7.14 · #5④）：缩放 + 淡入回弹 */
   transition: opacity .08s ease, transform .08s ease;
@@ -453,7 +426,7 @@
 }
 .ap-btn.primary {
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
 }
 .ap-btn:active {
   opacity: 0.8;
@@ -463,11 +436,11 @@
 .ap-sect {
   padding: 20rpx 32rpx 12rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 /* 待确认条目：浅底，与「我的申请」列表区分开 */
 .ap-item.pending {
-  background: #FBFCFE;
+  background: var(--bg-card);
 }
 
 /* ============ 关于 P8 ============ */
@@ -483,7 +456,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #F0F5FF;
+  background: var(--brand-light);
   border-radius: 40rpx;
 }
 .ab-name {
@@ -491,19 +464,19 @@
   font-size: 34rpx;
   line-height: 48rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ab-ver {
   margin-top: 4rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .ab-card {
   width: 100%;
   margin-top: 32rpx;
   padding: 24rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 24rpx;
 }
 .ab-row {
@@ -512,10 +485,10 @@
   justify-content: space-between;
   height: 88rpx;
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ab-row + .ab-row {
-  border-top: 2rpx solid #F2F3F5;
+  border-top: 2rpx solid var(--bg-fill);
 }
 /* ICP 备案号（2026-10-12）：与上方协议卡同宽同底色；值用**主色 + 下划线**（合规要求「可点击」的视觉暗示） */
 .ab-icp {
@@ -525,17 +498,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 24rpx;
 }
 .ab-icp-l {
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ab-icp-v {
   font-size: 28rpx;
   font-weight: 500;
-  color: #3370FF;
+  color: var(--brand);
   text-decoration: underline;
 }
 .ab-foot {
@@ -547,11 +520,11 @@
 .ab-foot text {
   font-size: 22rpx;
   line-height: 34rpx;
-  color: #C9CDD4;
+  color: var(--text-4);
 }
 /* 微信提醒「额度已用完」的行尾提示（v0.7.15）：沿用本页告警色，与左侧橙色铃铛同色 */
 .mn-row-warn {
-  color: #FF7D00;
+  color: var(--warning);
 }
 
 /* ---------- 审核体验口令（2026-10-15 · v1.0.6.8，仅超管） ----------
@@ -600,7 +573,7 @@
   display: block;
   font-size: 24rpx;
   line-height: 1.4;
-  color: #86909C;
+  color: var(--text-3);
   margin-bottom: 12rpx;
 }
 /* ⚠️ input 组件必须给显式 height：只给 padding 时盒子塌陷，
@@ -613,29 +586,29 @@
   width: 100%;
   height: 88rpx;
   box-sizing: border-box;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border: 2rpx solid rgba(229, 230, 235, 0.9);
   border-radius: 20rpx;
   padding: 0 24rpx;
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 /* 本页本地定义（勿借别页类名 —— 页面 wxss 不跨页共享） */
-.f-ph { color: #C9CDD4; }
+.f-ph { color: var(--text-4); }
 .an-textarea {
-  background: #FFFFFF;
+  background: var(--bg-card);
   border: 2rpx solid rgba(229, 230, 235, 0.9);
   border-radius: 20rpx;
   padding: 20rpx 24rpx;
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
   width: 100%;
   min-height: 240rpx;
   box-sizing: border-box;
 }
 .an-tip {
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
   line-height: 1.6;
   margin-bottom: 20rpx;
 }
@@ -677,7 +650,7 @@
   padding: 0 32rpx;
   border-radius: 44rpx;
   box-sizing: border-box;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border: 2rpx solid rgba(236, 72, 153, 0.35);
   color: #EC4899;
   font-size: 28rpx;
@@ -697,14 +670,14 @@
 }
 .an-models-hint {
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
   margin-bottom: 12rpx;
 }
 .an-model {
   padding: 16rpx 22rpx;
   border-radius: 16rpx;
   font-size: 26rpx;
-  color: #1D2129;
+  color: var(--text-1);
   background: rgba(31, 38, 135, 0.05);
   border: 2rpx solid transparent;
   margin-bottom: 12rpx;
@@ -744,7 +717,7 @@
 /* 次要行动：描边 + 留白，与主行动的实心渐变形成明显对比 */
 .an-btn.ghost {
   color: #EC4899;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border: 2rpx solid rgba(236, 72, 153, 0.35);
   box-sizing: border-box;
 }
@@ -764,14 +737,14 @@
   right: 0;
   top: 0;
   height: 2rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 .dl-date {
   flex-shrink: 0;
   width: 156rpx;
   font-size: 26rpx;
   line-height: 36rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 .dl-info { flex: 1; min-width: 0; margin-left: 20rpx; }
 .dl-line1 {
@@ -784,7 +757,7 @@
   font-size: 30rpx;
   line-height: 44rpx;
   font-weight: 500;
-  color: #1D2129;
+  color: var(--text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -793,7 +766,7 @@
   margin-top: 4rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .dl-tag {
   flex-shrink: 0;
@@ -804,15 +777,15 @@
   font-size: 20rpx;
   border-radius: 999rpx;
 }
-.dl-tag.pending { color: #FF7D00; background: #FFF7E8; }
-.dl-tag.ongoing { color: #3370FF; background: #F0F5FF; }
-.dl-tag.expired { color: #86909C; background: #F2F3F5; }
-.dl-tag.done    { color: #00B42A; background: #E8FFEA; }
+.dl-tag.pending { color: var(--warning); background: var(--warning-bg); }
+.dl-tag.ongoing { color: var(--brand); background: var(--brand-light); }
+.dl-tag.expired { color: var(--text-3); background: var(--bg-fill); }
+.dl-tag.done    { color: var(--success); background: var(--success-bg); }
 .dl-loading,
 .dl-empty {
   padding: 48rpx 0;
   text-align: center;
   font-size: 26rpx;
   line-height: 40rpx;
-  color: #86909C;
+  color: var(--text-3);
 }

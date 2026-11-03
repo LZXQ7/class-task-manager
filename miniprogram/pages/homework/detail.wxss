@@ -15,20 +15,20 @@
   margin: 20rpx 24rpx;
   padding: 28rpx 28rpx;
   border-radius: 20rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
 }
 
 .hd-title {
   font-size: 34rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 
 .hd-brief {
   margin-top: 14rpx;
   font-size: 26rpx;
   line-height: 40rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 .hd-meta {
@@ -37,7 +37,7 @@
   align-items: center;
   margin-top: 18rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 .hd-dot {
@@ -50,8 +50,9 @@
   border-radius: 12rpx;
   font-size: 24rpx;
   color: #873800;
-  background: #FFF7E8;
+  background: var(--warning-bg);
 }
+.t-dark .hd-purged { color: var(--warning); }
 
 /* 统计行 */
 .st-row {
@@ -60,7 +61,7 @@
   align-items: stretch;
   margin: 0 24rpx 20rpx;
   border-radius: 20rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
 }
 
 .st-cell {
@@ -75,25 +76,25 @@
 .st-num {
   font-size: 34rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 
 .st-num.ok {
-  color: #00B42A;
+  color: var(--success);
 }
 
 .st-num.warn {
-  color: #FF7D00;
+  color: var(--warning);
 }
 
 .st-num.bad {
-  color: #F53F3F;
+  color: var(--danger);
 }
 
 .st-lab {
   margin-top: 8rpx;
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 筛选 chip 行（含「全选」入口：2026-10-24 用户反馈「将已完成的人多选后批量导出」）
@@ -113,11 +114,11 @@
   border-radius: 999rpx;
   font-size: 24rpx;
   line-height: 40rpx;
-  color: #3370FF;
+  color: var(--brand);
 }
 
 .fl-all.on {
-  color: #86909C;
+  color: var(--text-3);
 }
 
 .fl-chip {
@@ -126,14 +127,14 @@
   border-radius: 999rpx;
   font-size: 24rpx;
   line-height: 40rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
 }
 
 .fl-chip.on {
   padding: 8rpx 34rpx;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
 }
 
 /* 提交名单行（2026-10-24 修复：.mb-row 家族此前只在 roster/index.wxss 定义，
@@ -155,7 +156,7 @@
   right: 0;
   top: 0;
   height: 2rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 
 .mb-info {
@@ -176,13 +177,13 @@
   font-size: 30rpx;
   line-height: 44rpx;
   font-weight: 500;
-  color: #1D2129;
+  color: var(--text-1);
 }
 
 .mb-sub {
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 .mb-tag {
@@ -192,22 +193,22 @@
   height: 40rpx;
   line-height: 40rpx;
   font-size: 22rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
 
 /* 提交状态色（statusTone = status || 'none'；none 走上面的灰底基准） */
-.mb-tag.PENDING { color: #FF7D00; background: #FFF7E8; }
-.mb-tag.DONE    { color: #00B42A; background: #E8FFEA; }
-.mb-tag.REJECT  { color: #F53F3F; background: #FFECE8; }
+.mb-tag.PENDING { color: var(--warning); background: var(--warning-bg); }
+.mb-tag.DONE    { color: var(--success); background: var(--success-bg); }
+.mb-tag.REJECT  { color: var(--danger); background: var(--danger-bg); }
 
 /* 筛选无结果（与作业列表页同规格） */
 .hw-empty {
   padding: 120rpx 32rpx;
   text-align: center;
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 批阅多选：行尾小方框 */
@@ -216,13 +217,13 @@
   height: 36rpx;
   margin-left: 16rpx;
   border-radius: 10rpx;
-  border: 2rpx solid #C9CDD4;
-  background: #FFFFFF;
+  border: 2rpx solid var(--bg-fill);
+  background: var(--bg-card);
 }
 
 .pk-box.on {
-  border-color: #3370FF;
-  background: #3370FF;
+  border-color: var(--brand);
+  background: var(--brand);
 }
 
 .pk-dot {
@@ -234,11 +235,11 @@
   line-height: 28rpx;
   text-align: center;
   color: #FFFFFF;
-  background: #C9CDD4;
+  background: var(--bg-fill);
 }
 
 .pk-dot.on {
-  background: #00B42A;
+  background: var(--success);
 }
 
 /* 批阅/提交两个弹层的内容容器。
@@ -252,7 +253,7 @@
 .rv-tip {
   font-size: 26rpx;
   line-height: 40rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 .rv-input {
@@ -264,14 +265,14 @@
   border-radius: 12rpx;
   font-size: 26rpx;
   line-height: 40rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
 }
 
 /* 提交要求提示 */
 .hd-req {
   margin-top: 12rpx;
   font-size: 24rpx;
-  color: #3370FF;
+  color: var(--brand);
 }
 
 /* 作业附件（发布时上传，详情页回显） */
@@ -286,13 +287,13 @@
 .hd-attach-lab {
   margin-bottom: 4rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 .sb-req {
   font-size: 26rpx;
   line-height: 40rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 /* 提交弹层内的文件选择（复用发布页同名结构，样式在此页独立定义） */
@@ -311,8 +312,8 @@
   font-size: 26rpx;
   line-height: 72rpx;
   text-align: center;
-  color: #3370FF;
-  background: #E8F0FF;
+  color: var(--brand);
+  background: var(--brand-light);
 }
 
 .fm-act:last-child {
@@ -326,7 +327,7 @@
   margin-top: 12rpx;
   padding: 14rpx 16rpx;
   border-radius: 12rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
 }
 
 /* 图片缩略图 + 文件名正文（2026-10-24：图片显示缩略图、文件显示文件名，用户反馈；
@@ -336,7 +337,7 @@
   height: 88rpx;
   margin-right: 16rpx;
   border-radius: 8rpx;
-  background: #E5E6EB;
+  background: var(--line-1);
   flex-shrink: 0;
 }
 
@@ -349,7 +350,7 @@
 
 .fm-file-name {
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -358,7 +359,7 @@
 .fm-file-size {
   margin-top: 4rpx;
   font-size: 22rpx;
-  color: #C9CDD4;
+  color: var(--text-4);
 }
 
 .fm-file-del {
@@ -367,13 +368,13 @@
   font-size: 32rpx;
   line-height: 36rpx;
   text-align: center;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 .hw-empty-sm {
   margin-top: 16rpx;
   font-size: 24rpx;
-  color: #C9CDD4;
+  color: var(--text-4);
   text-align: center;
 }
 
@@ -406,7 +407,7 @@
   flex-shrink: 0;
   margin-left: 16rpx;
   font-size: 22rpx;
-  color: #3370FF;
+  color: var(--brand);
 }
 
 /* 可点的附件行（图片）：加按下反馈，与列表行 tap-hover 同手感 */
@@ -415,7 +416,7 @@
 }
 
 .fm-file-tap.tap-hover {
-  background: #E5E6EB;
+  background: var(--line-1);
 }
 
 /* 批量操作条（2026-10-24 用户反馈「无法批量选择作业下载」补的入口）：
@@ -429,24 +430,24 @@
   margin: 0 24rpx 16rpx;
   padding: 16rpx 20rpx;
   border-radius: 16rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
 }
 
 .batch-num {
   margin-right: auto;
   font-size: 24rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 .batch-name {
   margin-right: 16rpx;
   font-size: 22rpx;
-  color: #3370FF;
+  color: var(--brand);
 }
 
 .batch-clear {
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 .batch-dl {
@@ -458,7 +459,7 @@
   line-height: 64rpx;
   text-align: center;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
 }
 
 /* 查看提交弹层：成员信息行（姓名 + 学号 + 状态标签，与名单行同口径） */
@@ -472,13 +473,13 @@
 .vw-name {
   font-size: 28rpx;
   font-weight: 500;
-  color: #1D2129;
+  color: var(--text-1);
 }
 
 .vw-no {
   margin: 0 12rpx;
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 查看提交弹层：老师批语（学生看得到老师给自己的反馈） */
@@ -489,7 +490,7 @@
   margin: 8rpx 0 16rpx;
   padding: 16rpx 20rpx;
   border-radius: 12rpx;
-  background: #FFF7E8;
+  background: var(--warning-bg);
 }
 
 .vw-remark-lab {
@@ -497,13 +498,13 @@
   margin-right: 12rpx;
   font-size: 22rpx;
   font-weight: 500;
-  color: #FF7D00;
+  color: var(--warning);
 }
 
 .vw-remark-text {
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 /* 学生视角「我的提交」块（非班委本人也交了作业，且看不到名单，靠此块看批语） */
@@ -511,7 +512,7 @@
   margin: 0 24rpx 20rpx;
   padding: 24rpx 28rpx;
   border-radius: 20rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
 }
 
 .my-sub-head {
@@ -524,7 +525,7 @@
 .my-sub-lab {
   font-size: 28rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 
 .my-sub-remark {
@@ -534,7 +535,7 @@
   margin-bottom: 16rpx;
   padding: 16rpx 20rpx;
   border-radius: 12rpx;
-  background: #FFF7E8;
+  background: var(--warning-bg);
 }
 
 .my-sub-remark-lab {
@@ -542,13 +543,13 @@
   margin-right: 12rpx;
   font-size: 22rpx;
   font-weight: 500;
-  color: #FF7D00;
+  color: var(--warning);
 }
 
 .my-sub-remark-text {
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 .my-sub-files {
@@ -558,7 +559,7 @@
 .my-sub-empty {
   margin-top: 8rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 提交弹层：打回时展示老师批语（学生重交前先看原因） */
@@ -569,7 +570,7 @@
   margin: 16rpx 0 4rpx;
   padding: 16rpx 20rpx;
   border-radius: 12rpx;
-  background: #FFECE8;
+  background: var(--danger-bg);
 }
 
 .sb-reject-lab {
@@ -577,13 +578,13 @@
   margin-right: 12rpx;
   font-size: 22rpx;
   font-weight: 500;
-  color: #F53F3F;
+  color: var(--danger);
 }
 
 .sb-reject-text {
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 /* 主按钮主题化（2026-10-24 用户反馈「保存全部/标记已完成等按钮颜色太过艳丽，不符合主题样式」）：

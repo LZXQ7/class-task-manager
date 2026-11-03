@@ -42,7 +42,7 @@
   height: 28rpx;
   margin-top: 18rpx;
   border: 3rpx solid rgba(51, 112, 255, 0.25);
-  border-top-color: #3370ff;
+  border-top-color: var(--brand);
   border-radius: 50%;
 }
 .ss-ring.spin {

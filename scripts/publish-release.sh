@@ -31,7 +31,13 @@ PUBLIC_DIR="${PUBLIC_REPO_DIR:-C:/Users/PC/WorkBuddy/class-task-manager-public}"
 SCRUB_JS="${SCRUB_JS:-C:/Users/PC/WorkBuddy/_scrub_tmp/scrub.js}"
 PRIV_REPO="class-task-manager-template"
 PUB_REPO="class-task-manager"
-XLSX_EXCLUDE=":!scripts/fixtures/*.xlsx"   # 真实 PII 夹具，导出时排除
+# 导出到公开仓时的排除项（负 pathspec）：只留在私有仓、不进开源仓
+PUBLIC_EXCLUDE=(
+  ":!scripts/fixtures/*.xlsx"   # 真实 PII 夹具（学号+姓名+教师），脱敏脚本不扫二进制
+  ":!HANDOFF.md"                # 内部状态交接件（含运营细节）
+  ":!CHANGELOG-DETAIL.md"       # 内部详细改动史（含未公开排查过程）
+  ":!outputs"                   # 内部产出目录（设计稿/诊断报告/参赛与提交材料）
+)
 
 # 临时注入 / 去除 remote 令牌（仅本进程内生效，不落盘）
 set_remote() {   # $1=dir $2=repo $3=token
@@ -72,8 +78,8 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 git rm -r --cached -q . 2>/dev/null || true
 git clean -fd -q   # 移除未跟踪（保留 node_modules/outputs 等被忽略目录；git clean 不碰 .git）
-git -C "$PRIVATE_DIR" archive --format=tar HEAD -- "$XLSX_EXCLUDE" | tar -x -C "$PUBLIC_DIR"
-echo "    已导出 $(find "$PUBLIC_DIR" -type f -not -path '*/.git/*' | wc -l) 个文件（不含 .xlsx）"
+git -C "$PRIVATE_DIR" archive --format=tar HEAD -- "${PUBLIC_EXCLUDE[@]}" | tar -x -C "$PUBLIC_DIR"
+echo "    已导出 $(find "$PUBLIC_DIR" -type f -not -path '*/.git/*' | wc -l) 个文件（已排除 PII 夹具与内部文件）"
 
 echo "==> [3/6] 全量脱敏（scrub.js 不在任何仓库内，含原始词搜索串，严禁进库）"
 if [ ! -f "$SCRUB_JS" ]; then
@@ -101,7 +107,14 @@ if grep -rI -n -E "\b260[0-9]{9}\b" "$PUBLIC_DIR" --exclude-dir=.git >/dev/null 
   echo "❌ 公开树疑似含真实学号(12 位 260 开头)，已中止" >&2
   exit 1
 fi
-echo "    ✓ 自检通过（0 命中原始 PII，无 .xlsx）"
+# 4d 内部文件不得进公开树（防止排除项被误删后静默回灌）
+for internal in HANDOFF.md CHANGELOG-DETAIL.md outputs; do
+  if git -C "$PUBLIC_DIR" ls-files | grep -qx "$internal" || git -C "$PUBLIC_DIR" ls-files | grep -q "^$internal/"; then
+    echo "❌ 公开树含内部文件 $internal（导出排除项失效），已中止" >&2
+    exit 1
+  fi
+done
+echo "    ✓ 自检通过（0 命中原始 PII，无 .xlsx，无内部文件）"
 
 echo "==> [5/6] 公开仓库：提交 + 推送"
 cd "$PUBLIC_DIR"

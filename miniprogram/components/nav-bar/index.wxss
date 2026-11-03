@@ -20,7 +20,7 @@
 }
 @media (prefers-reduced-transparency: reduce) {
   .nav {
-    background: #FFFFFF !important;
+    background: var(--bg-card) !important;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -116,61 +116,8 @@
  *    它们会让 fixed 相对该祖先定位 —— 所以本组件的 `.nav`（有 backdrop-filter）
  *    绝不能是按钮的祖先，这正是 wxml 里把按钮放在 `.nav` **外面**的原因。
  *
- * 位置与 .nav-left 的返回按钮对齐：状态栏高 + (88rpx - 64rpx)/2。
- * 🔴 top 由 JS（statusBarHeight）算好后用 inline style 传 —— 不用 calc 把 px 和 rpx
- *    混在一个表达式里：状态栏是 **px**、偏移是 **rpx**，部分机型上两者换算时序不同
- *    会差 1~2px，表现为按钮上下抖。 */
-.theme-btn {
-  position: fixed;
-  left: 16rpx;
-  z-index: 950;
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 半透明玻璃圆钮：与 .card 同材质，但更淡（不该抢标题的视觉重心） */
-  background: var(--glass-bg);
-  border: 1rpx solid var(--glass-edge);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  box-sizing: border-box;
-}
-.theme-btn-hover {
-  background: var(--brand-light);
-  border-color: var(--brand);
-}
-/* 太阳 / 月亮：纯 CSS 画，不走 app-icon（那套是云存储 SVG + 固定色，
- * 主题切换时颜色不会跟着变）。两个都用绝对定位叠在一起，
- * 靠 opacity 交叉淡入淡出 —— 纯 CSS 过渡，不占 setData。 */
-.theme-sun,
-.theme-moon {
-  position: absolute;
-  width: 30rpx;
-  height: 30rpx;
-  box-sizing: border-box;
-  transition: opacity .22s ease, transform .22s ease;
-  pointer-events: none;
-}
-/* 太阳：一个圆 + 中心实心（简化的日面，不画光芒 —— 64rpx 里光芒会糊成一团） */
-.theme-sun {
-  border-radius: 50%;
-  background: var(--warning);
-  box-shadow: inset 0 0 0 5rpx var(--bg-page);
-}
-/* 月亮：实心圆用底色「咬」出一个缺口 —— 比用两段 border 拼 crescent 干净得多 */
-.theme-moon {
-  border-radius: 50%;
-  background: var(--text-1);
-  box-shadow: inset 6rpx 3rpx 0 0 var(--bg-page);
-}
-/* 浅色模式显示月亮（点它变深色） */
-.theme-moon { opacity: 0; transform: scale(.6) rotate(-30deg); }
-.theme-sun  { opacity: 1; transform: scale(1); }
-/* 深色模式反过来：显示太阳（点它变浅色） */
-.t-dark .theme-sun  { opacity: 0; transform: scale(.6) rotate(30deg); }
-.t-dark .theme-moon { opacity: 1; transform: scale(1) rotate(0); }
+/* 顶部左侧主题切换按钮已移除（入口统一收到「我的 → 外观」）。
+   下方 .theme-reveal 圆形揭示 overlay 保留，仍由「我的」页切换触发。 */
 
 /* ============ 圆形揭示 overlay（C-4）============
  * 盖住整屏，clip-path 从触点扩散。z-index 必须**高于按钮**（950 → 960），
@@ -195,6 +142,4 @@
  *    这里只是把「万一 CSS 动画也被触发」的路径也关掉。 */
 @media (prefers-reduced-motion: reduce) {
   .theme-reveal { display: none; }
-  .theme-sun,
-  .theme-moon { transition: none; }
 }

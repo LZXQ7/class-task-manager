@@ -49,9 +49,10 @@ const BOARD_PAD = 64;             // 课表左右留白（各 32rpx）
 const BOARD_INNER = 750 - BOARD_PAD - FIXED_W;   // 右侧可视宽（rpx）= 600
 const COL_W_WEEKEND = 110;        // 显示周六 / 周日时的列宽（放不下就横向滚）
 
-/** 个人选修课在网格里的配色（与全班课次区分开，一眼看出是「自己的」） */
-const PERSONAL_BG = '#EAF1FF';
-const PERSONAL_FG = '#3370FF';
+/** 个人选修课在网格里的配色（与全班课次区分开，一眼看出是「自己的」）
+ *  同 util.COURSE_COLORS：走 app.wxss 的 --co-p-bg / --co-p-fg，深色下自动换成暗色版 */
+const PERSONAL_BG = 'var(--co-p-bg, #EAF1FF)';
+const PERSONAL_FG = 'var(--co-p-fg, #3370FF)';
 
 
 /** 周次数组 → 展示文案：空 = 每周都上 */

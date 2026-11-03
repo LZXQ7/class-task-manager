@@ -23,7 +23,7 @@
   .ci-hero { background: rgba(255, 255, 255, 0.9); }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .ci-hero { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .ci-hero { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .ci-hero-top {
   display: flex;
@@ -33,7 +33,7 @@
 .ci-hero-label {
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 /* 「班级管理」入口（右上角胶囊）：与子卡图标块同色系（#F0F5FF 底 + 品牌蓝字），
    保持卡片内既有视觉刻度；深色模式与 .ci-item-ic 走同一口径。 */
@@ -96,7 +96,7 @@
   font-size: 44rpx;
   line-height: 60rpx;
   font-weight: 700;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ci-hero-stats {
   display: flex;
@@ -113,18 +113,18 @@
   font-size: 44rpx;
   line-height: 56rpx;
   font-weight: 700;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ci-stat-label {
   margin-top: 4rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .ci-stat-divider {
   width: 2rpx;
   height: 48rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 
 /* 层级连线（纯视觉）：从「班级概况」向下汇入班级模块子卡的主干 */
@@ -132,7 +132,7 @@
   width: 2rpx;
   height: 28rpx;
   margin: 0 auto;
-  background: #E5E6EB;
+  background: var(--line-1);
 }
 
 /* 子节点：班级模块入口 */
@@ -157,14 +157,14 @@
   .ci-item { background: rgba(255, 255, 255, 0.9); }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .ci-item { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .ci-item { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .ci-item-ic {
   flex-shrink: 0;
   width: 72rpx;
   height: 72rpx;
   border-radius: 20rpx;
-  background: #F0F5FF;
+  background: var(--brand-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -180,13 +180,13 @@
   font-size: 32rpx;
   line-height: 46rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ci-item-sub {
   margin-top: 4rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
   /* 副标题现在可能是动态摘要（课程表：「今天 5 节 · 本周 20 节」，2026-10-28），
      字数不定 ⇒ 单行省略，避免换行把整行卡片顶高、六张卡高度参差 */
   overflow: hidden;
@@ -206,7 +206,7 @@
   font-size: 22rpx;
   font-weight: 600;
   color: #FFFFFF;
-  background: #F53F3F;
+  background: var(--danger);
   border-radius: 999rpx;
 }
 .ci-foot {
@@ -228,7 +228,7 @@
 }
 /* 相邻行加分隔线：用 `+`（小程序支持），不用 `~`（真机 fatal） */
 .cs-row + .cs-row {
-  border-top: 1rpx solid var(--bg-fill, #F2F3F5);
+  border-top: 1rpx solid var(--bg-fill, var(--bg-fill));
 }
 .cs-name {
   font-size: 30rpx;
@@ -255,20 +255,20 @@
   .ci-cd { background: rgba(255, 255, 255, 0.9); }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .ci-cd { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .ci-cd { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .ci-cd-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding-bottom: 20rpx;
-  border-bottom: 2rpx solid var(--line-1, #E5E6EB);
+  border-bottom: 2rpx solid var(--line-1, var(--line-1));
 }
 .ci-cd-title {
   font-size: 30rpx;
   line-height: 42rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ci-cd-add {
   display: flex;
@@ -286,7 +286,7 @@
   margin-top: 20rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .ci-cd-list {
   margin-top: 4rpx;
@@ -296,7 +296,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 18rpx 0;
-  border-top: 1rpx solid var(--bg-fill, #F2F3F5);
+  border-top: 1rpx solid var(--bg-fill, var(--bg-fill));
 }
 .ci-cd-row:first-child {
   border-top: none;
@@ -312,7 +312,7 @@
   font-size: 36rpx;
   line-height: 52rpx;
   font-weight: 700;
-  color: #1D2129;
+  color: var(--text-1);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -321,7 +321,7 @@
   margin-top: 2rpx;
   font-size: 30rpx;
   line-height: 42rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 /* 「x天」粗体 44rpx，垂直居中于整条：视觉上顶到名字行中线、底到日期行中线。 */
 .ci-cd-days {
@@ -337,7 +337,7 @@
   color: var(--brand, #3370FF);
 }
 .ci-cd-days.passed {
-  color: #86909C;
+  color: var(--text-3);
   font-weight: 400;
 }
 
@@ -351,7 +351,7 @@
 .cd-label {
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .cd-input {
   margin-top: 12rpx;
@@ -360,7 +360,7 @@
   background: var(--bg-fill, #F2F3F5);
   border-radius: 16rpx;
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .cd-picker {
   margin-top: 12rpx;
@@ -370,7 +370,7 @@
   background: var(--bg-fill, #F2F3F5);
   border-radius: 16rpx;
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .cd-picker.placeholder {
   color: #A8ABB2;

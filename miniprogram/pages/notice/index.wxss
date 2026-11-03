@@ -36,12 +36,12 @@
   margin: 0 16rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #3370FF;
+  color: var(--brand);
 }
 .nt-tipdone {
   flex-shrink: 0;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .nt-tipbtn {
   flex-shrink: 0;
@@ -51,10 +51,10 @@
   font-size: 24rpx;
   font-weight: 500;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
   border-radius: 999rpx;
 }
-.nt-tipbtn:active { background: #245BDB; }
+.nt-tipbtn:active { background: var(--brand-press); }
 
 /* 通知卡（需求②：更紧凑，历史通知占的位置更小）
  * ⚠️ 裁切层（.nt-item）必须自带与卡片**同值**的圆角（v0.7.24，用户报「卡片四个角有灰色」）：
@@ -90,7 +90,7 @@
   font-size: 30rpx;
   font-weight: 600;
   line-height: 42rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .nt-head-right {
   display: flex;
@@ -115,8 +115,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #FFECE8;
-  color: #F53F3F;
+  background: var(--danger-bg);
+  color: var(--danger);
   border-radius: 12px;
   opacity: 0;
   transition: opacity .16s ease;
@@ -135,18 +135,18 @@
   height: 40rpx;
   line-height: 40rpx;
   font-size: 22rpx;
-  color: #FF7D00;
-  background: #FFF7E8;
+  color: var(--warning);
+  background: var(--warning-bg);
   border-radius: 999rpx;
 }
 .nt-acktag.on {
-  color: #00B42A;
-  background: #E8FFEA;
+  color: var(--success);
+  background: var(--success-bg);
 }
 .nt-meta {
   margin-top: 6rpx;
   font-size: 23rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 /* 正文裁剪层（v0.7.13）：max-height 由 JS 按**实测**高度下发（折叠态 3×42=126rpx，
    展开态是量出来的真实高度），transition 让它连续变化 ——
@@ -160,7 +160,7 @@
 .nt-content {
   font-size: 27rpx;
   line-height: 42rpx;
-  color: #4E5969;
+  color: var(--text-2);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -185,7 +185,7 @@
 .nt-fold-txt {
   margin-right: 6rpx;
   font-size: 24rpx;
-  color: #3370FF;
+  color: var(--brand);
 }
 /* 同一个箭头旋转到新状态（v0.7.13）：展开时转 180°，不再是「换一个图标」。
    外层套 view 是因为 app-icon 是自定义组件，外部 class 不一定能作用到它的根节点。
@@ -202,21 +202,21 @@
   align-items: center;
   margin-top: 16rpx;
   padding: 16rpx 20rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 14rpx;
 }
-.nt-link:active { background: #F0F5FF; }
+.nt-link:active { background: var(--brand-light); }
 .nt-linktext {
   flex: 1;
   min-width: 0;
   margin-left: 14rpx;
   font-size: 26rpx;
-  color: #3370FF;
+  color: var(--brand);
 }
 .nt-linkhint {
   flex-shrink: 0;
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .nt-foot {
   display: flex;
@@ -226,12 +226,12 @@
   justify-content: space-between;
   margin-top: 16rpx;
   padding-top: 14rpx;
-  border-top: 2rpx solid #F2F3F5;
+  border-top: 2rpx solid var(--bg-fill);
 }
 .nt-ackinfo { flex: 1; min-width: 0; }
 .nt-acknum {
   font-size: 23rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .nt-acklist {
   display: flex;
@@ -245,14 +245,14 @@
   margin: 0 8rpx 8rpx 0;
   padding: 2rpx 12rpx;
   font-size: 22rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
 .nt-ackmore {
   margin: 0 8rpx 8rpx 0;
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .nt-btn {
   padding: 0 32rpx;
@@ -261,10 +261,10 @@
   font-size: 26rpx;
   font-weight: 600;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
   border-radius: 999rpx;
 }
-.nt-btn:active { background: #245BDB; }
+.nt-btn:active { background: var(--brand-press); }
 .nt-space { height: 40rpx; }
 /* 超管「清空全部通知」入口：红色弱化文字居中，二次确认后才执行 */
 .nt-clear {
@@ -272,7 +272,7 @@
   padding: 20rpx 0;
   text-align: center;
   font-size: 26rpx;
-  color: #F53F3F;
+  color: var(--danger);
   opacity: .8;
 }
 
@@ -307,7 +307,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: 999rpx;
   box-shadow: 0 6rpx 20rpx rgba(0,0,0,.12);
   transition: transform .2s cubic-bezier(0.34, 1.4, 0.64, 1);
@@ -323,7 +323,7 @@
   padding: 0 6rpx;
   box-sizing: border-box;
   border-radius: 999rpx;
-  background: #F53F3F;
+  background: var(--danger);
   color: #FFFFFF;
   font-size: 20rpx;
   line-height: 32rpx;
@@ -345,8 +345,8 @@
   padding: 80rpx 32rpx;
   text-align: center;
 }
-.rc-empty-txt { display: block; margin-top: 16rpx; font-size: 28rpx; color: #86909C; }
-.rc-empty-sub { display: block; margin-top: 8rpx; font-size: 24rpx; color: #C9CDD4; }
+.rc-empty-txt { display: block; margin-top: 16rpx; font-size: 28rpx; color: var(--text-3); }
+.rc-empty-sub { display: block; margin-top: 8rpx; font-size: 24rpx; color: var(--text-4); }
 /* 回收站卡片（v0.7.14）：标题 + 单行内容，右侧常驻「恢复」 */
 .rc-item {
   display: flex;
@@ -354,8 +354,8 @@
   align-items: center;
   padding: 24rpx;
   margin-bottom: 16rpx;
-  background: #FFFFFF;
-  border: 2rpx solid #F2F3F5;
+  background: var(--bg-card);
+  border: 2rpx solid var(--bg-fill);
   border-radius: 32rpx;
   box-shadow: 0 2rpx 12rpx rgba(29,33,41,.05);
 }
@@ -364,7 +364,7 @@
   display: block;
   font-size: 28rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -374,7 +374,7 @@
   display: block;
   margin-top: 8rpx;
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -387,13 +387,13 @@
   line-height: 52rpx;
   font-size: 24rpx;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
   border-radius: 999rpx;
 }
 
 /* ---------- 配图缩略图 + 图片查看器（v0.7.14，截图②） ---------- */
 .nt-imgs { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; margin-top: 16rpx; }
-.nt-img { width: 150rpx; height: 150rpx; border-radius: 24rpx; overflow: hidden; background: #F2F3F5; }
+.nt-img { width: 150rpx; height: 150rpx; border-radius: 24rpx; overflow: hidden; background: var(--bg-fill); }
 .nt-img-pic { width: 100%; height: 100%; display: block; }
 
 .nt-viewer { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 100; }
@@ -413,7 +413,7 @@
 .nt-vnext { right: 24rpx; }
 .nt-vdots { position: fixed; bottom: 48rpx; left: 0; right: 0; z-index: 102; display: flex; justify-content: center; gap: 12rpx; }
 .nt-vdot { width: 14rpx; height: 14rpx; border-radius: 50%; background: rgba(255, 255, 255, 0.4); }
-.nt-vdot.on { background: #FFFFFF; }
+.nt-vdot.on { background: var(--bg-card); }
 
 /* 无障碍兜底：系统开启「减少动态效果」时，高度与箭头都直接到位，不做过渡。
    （过渡时长压到 0.01ms 而不是写 none，是为了让 transitionend / 计时逻辑不突变） */
@@ -438,7 +438,8 @@
   padding: 14rpx 0;
   font-size: 26rpx;
   color: #E5484D;
-  border: 2rpx solid #FFD9D5;
+  border: 2rpx solid var(--danger-bg);
   border-radius: 24rpx;
-  background: #FFF3F3;
+  background: var(--danger-bg);
 }
+.t-dark .rc-clear { color: var(--danger); }

@@ -147,12 +147,12 @@ Page({
      */
     themeEnabled: config.DARK_MODE_ENABLED,
 
-    /* 外观（深色模式 C-4）：三级单选。选项表**静态写死**在 data 里，
-       不用 wxml 内联数组字面量 —— 每次 setData 都会生成新数组，浪费一次 diff。 */
-    themeOpts: [
-      { key: 'system', text: '跟随系统', desc: '随手机的深色模式自动切换' },
-      { key: 'light', text: '浅色', desc: '始终使用浅色' },
-      { key: 'dark', text: '深色', desc: '始终使用深色' }
+    /* 外观（深色模式 C-4）：紧凑三段控制（自动 / 浅色 / 深色），复用全站 segmented 组件。
+       选项表静态写死在 data 里，不用 wxml 内联数组字面量（每次 setData 生成新数组浪费 diff）。 */
+    themeSegs: [
+      { key: 'system', text: '自动' },
+      { key: 'light', text: '浅色' },
+      { key: 'dark', text: '深色' }
     ],
     /** 当前模式（'system' | 'light' | 'dark'）—— 只读展示 + 点击切换用，别处不要散落字面量 */
     themeMode: 'system'
@@ -190,13 +190,14 @@ Page({
    * 局部坐标，而单选行几乎横跨整屏，用局部坐标当圆心会明显偏。
    */
   onThemePick(e) {
-    const key = String((e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.k) || '');
-    if (key !== 'system' && key !== 'light' && key !== 'dark') return;   // 白名单，防脏 dataset
+    // segmented 组件 emit `change` → e.detail.key；白名单防脏值
+    const key = String((e && e.detail && e.detail.key) || '');
+    if (key !== 'system' && key !== 'light' && key !== 'dark') return;
     if (key === theme.getMode()) return;                                  // 原地再点一次：不播动画
-    const t = (e && e.changedTouches && e.changedTouches[0]) || null;
+    // 复用 nav-bar 的 applyTheme（圆形揭示）；不传圆心 = 屏幕中心
     const nav = this.selectComponent('#mnNav');
     if (nav && nav.applyTheme) {
-      nav.applyTheme(key, t ? t.clientX : undefined, t ? t.clientY : undefined);
+      nav.applyTheme(key);
     } else {
       // 兜底：nav-bar 实例没拿到（不该发生）就直接切，绝不因为动效缺失而卡住功能
       theme.setMode(key);

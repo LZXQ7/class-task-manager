@@ -25,7 +25,7 @@
   background: var(--bg-fill);
   border: 1rpx solid transparent;
 }
-.fee-cls-chip.on { color: #3370FF; background: rgba(51,112,255,0.12); border-color: rgba(51,112,255,0.4); font-weight: 600; }
+.fee-cls-chip.on { color: var(--brand); background: rgba(51,112,255,0.12); border-color: rgba(51,112,255,0.4); font-weight: 600; }
 
 /* 余额卡（居中展示，与首页弹层同口径）
    2026-10-27：原来是一条无底的裸区块 + 底部细线分割，内容贴边。
@@ -73,7 +73,7 @@
 .fee-rec-img-pic { width: 100%; height: 100%; display: block; }
 .fee-rec-del {
   font-size: 24rpx;
-  color: #F53F3F;
+  color: var(--danger);
   padding: 4rpx 8rpx;
 }
 .fee-rec-del:active { opacity: 0.6; }
@@ -89,7 +89,7 @@
 }
 .fee-rec-append {
   font-size: 24rpx;
-  color: #3370FF;
+  color: var(--brand);
   padding: 4rpx 8rpx;
 }
 .fee-rec-append:active { opacity: 0.6; }

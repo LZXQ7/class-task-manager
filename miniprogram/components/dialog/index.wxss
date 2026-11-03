@@ -45,7 +45,7 @@
 }
 @media (prefers-reduced-transparency: reduce) {
   .dlg-box {
-    background: #FFFFFF;
+    background: var(--bg-card);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -60,13 +60,13 @@
   font-size: 34rpx;
   line-height: 48rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .dlg-content {
   margin-top: 16rpx;
   font-size: 28rpx;
   line-height: 42rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 .dlg-actions {
   margin-top: 40rpx;
@@ -85,9 +85,9 @@
   font-size: 32rpx;
 }
 .dlg-cancel {
-  color: #4E5969;
+  color: var(--text-2);
   border-right: 2rpx solid rgba(229,230,235,0.7);
 }
-.dlg-cancel:active { background: #F7F8FA; }
+.dlg-cancel:active { background: var(--fill-soft); }
 .dlg-confirm { font-weight: 600; }
-.dlg-confirm:active { background: #F7F8FA; }
+.dlg-confirm:active { background: var(--fill-soft); }

@@ -14,7 +14,7 @@ const { logAction } = require('./audit');
 async function overview() {
   const pool = getPool();
   const [classes] = await pool.query(
-    'SELECT c.id, c.name, c.is_active, c.total_weeks, c.term_start, ' +
+    'SELECT c.id, c.name, c.is_active, c.is_demo, c.total_weeks, c.term_start, ' +
     '(SELECT COUNT(*) FROM member m WHERE m.class_id = c.id AND ' + NOT_TEST('m') + ') AS memberCnt, ' +
     // ⚠️ 绑定 = openid 已写入（成员把微信绑定到学号）。同样显式排除测试账号。
     '(SELECT COUNT(*) FROM member m WHERE m.class_id = c.id AND m.openid IS NOT NULL AND ' + NOT_TEST('m') + ') AS boundCnt, ' +
@@ -33,6 +33,8 @@ async function overview() {
       id: c.id,
       name: c.name,
       isActive: Number(c.is_active) !== 0,
+      // 演示班：列出但**不计入任何统计**（见下方 stats），前端据此显示「演示」而非「停用」
+      isDemo: Number(c.is_demo) !== 0,
       totalWeeks: c.total_weeks,
       termStart: typeof c.term_start === 'string' ? c.term_start.slice(0, 10) : c.term_start,
       memberCount: Number(c.memberCnt || 0),
@@ -40,14 +42,22 @@ async function overview() {
       sessionCount: Number(c.sessionCnt || 0),
       dutyCount: Number(c.dutyCnt || 0)
     })),
-    stats: {
-      classCount: classes.filter((c) => Number(c.is_active) !== 0).length,
-      memberCount: classes.reduce((n, c) => n + Number(c.memberCnt || 0), 0),
-      boundCount: classes.reduce((n, c) => n + Number(c.boundCnt || 0), 0),
-      sessionCount: classes.reduce((n, c) => n + Number(c.sessionCnt || 0), 0),
-      adminCount: Number(admin.c || 0),
-      audit7d: Number(recent.c || 0)
-    }
+    stats: (() => {
+      // 🔴 汇总口径：演示班（is_demo=1）**全量排除**。
+      //   它是一批全虚构数据（40 人 / 13 课次 / 288 条值日），混进来会让「成员 239」这类
+      //   规模数字虚高，而这些数字的用途是看真实班级规模（2026-11-04 实锤：
+      //   239 = 真实 199 + 演示 40；770 = 真实 482 + 演示 288）。
+      //   表格里仍然列它一行，只是状态标「演示」、不计入合计。
+      const real = classes.filter((c) => Number(c.is_demo) === 0);
+      return {
+        classCount: real.filter((c) => Number(c.is_active) !== 0).length,
+        memberCount: real.reduce((n, c) => n + Number(c.memberCnt || 0), 0),
+        boundCount: real.reduce((n, c) => n + Number(c.boundCnt || 0), 0),
+        sessionCount: real.reduce((n, c) => n + Number(c.sessionCnt || 0), 0),
+        adminCount: Number(admin.c || 0),
+        audit7d: Number(recent.c || 0)
+      };
+    })()
   };
 }
 

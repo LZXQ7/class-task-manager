@@ -52,6 +52,23 @@
     return String(name).replace(/小学教育/g, '小教');
   }
 
+  /**
+   * 班级状态标签。
+   * 🔴 演示班（is_demo=1）在库里是 is_active=0 —— 那是**刻意**停的（停用后它不会出现在
+   *   真实超管的小程序班级列表里），不是故障。若照 isActive 原样渲染，后台会把它显示成
+   *   灰「停用」，让人以为被谁误停（2026-11-04 用户就是这么问上来的）。
+   * @param {object} c 班级对象（需带 isDemo / isActive）
+   * @param {boolean} [short] 窄表格用短文案
+   */
+  function classStatusTag(c, short) {
+    if (c && c.isDemo) {
+      return '<span class="tag tag-demo">' + (short ? '演示' : '演示 · 不参与统计') + '</span>';
+    }
+    return (c && c.isActive)
+      ? '<span class="tag tag-ok">启用</span>'
+      : '<span class="tag tag-off">停用</span>';
+  }
+
   function toast(msg, type) {
     var el = $('#toast');
     el.textContent = msg;
@@ -101,6 +118,15 @@
             else { data = { ok: false, errMsg: '响应异常（HTTP ' + res.status + '）' }; }
           }
           if (!res.ok && data && data.ok === undefined) data.ok = false;
+          // 演示班的「班级不存在或已停用」是**设计**不是故障：后台多数接口走
+          // guard.resolveClassId，它对超管硬要求 is_active=1，而演示班是刻意停用的。
+          // 在这里统一改写成能看懂的话，免得每个页面各弹一次 40003 去查后端。
+          // （放 api() 是因为它是所有请求的唯一出口，别为这个去改 20 份 guard 拷贝。）
+          var cur = currentClass();
+          if (data && data.ok === false && cur && cur.isDemo &&
+              /班级不存在或已停用/.test(String(data.errMsg || ''))) {
+            data.errMsg = '「' + cur.name + '」是审核体验用的虚拟班，不参与统计、不支持后台修改';
+          }
           return data;
         });
       })
@@ -201,7 +227,7 @@
         stat('成员', s.memberCount, '不含测试账号') +
         stat('已绑定', s.boundCount, '已绑微信') +
         stat('课程课次', s.sessionCount, '不含保洁') +
-        stat('值日记录', o.classes.reduce(function (n, c) { return n + c.dutyCount; }, 0), '累计') +
+        stat('值日记录', o.classes.reduce(function (n, c) { return c.isDemo ? n : n + c.dutyCount; }, 0), '累计') +
         '</div>' +
         '<div class="card">' +
         '<div class="card-hd">各班规模</div>' +
@@ -216,7 +242,7 @@
             '<td>' + c.sessionCount + '</td>' +
             '<td>' + c.dutyCount + '</td>' +
             '<td>' + c.totalWeeks + '</td>' +
-            '<td>' + (c.isActive ? '<span class="tag tag-ok">启用</span>' : '<span class="tag tag-off">停用</span>') + '</td>' +
+            '<td>' + classStatusTag(c) + '</td>' +
             '</tr>';
         }).join('') +
         '</tbody></table></div>' +
@@ -1229,7 +1255,7 @@
             '<td class="td-no">' + esc(c.joinToken) + '</td>' +
             '<td class="td-no">' + esc(c.inviteCode) + '</td>' +
             '<td>' + (c.bindOpen ? '<span class="tag tag-ok">开</span>' : '<span class="tag tag-off">关</span>') + '</td>' +
-            '<td>' + (c.isActive ? '<span class="tag tag-ok">启用</span>' : '<span class="tag tag-off">停用</span>') + '</td>' +
+            '<td>' + classStatusTag(c, true) + '</td>' +
             '<td><button class="link" data-c-edit="' + c.id + '">配置</button></td>' +
             '</tr>';
         }).join('') + '</tbody></table></div>' +
@@ -1750,8 +1776,11 @@
     }
     var sel = $('#class-picker');
     sel.innerHTML = state.classes.map(function (c) {
+      // 演示班标注「（演示）」而不是「（停用）」：库里的 is_active=0 是刻意为之，
+      // 直接显示「（停用）」会让人以为这个班被误停、进而去「修」它（反而破坏演示隔离）。
+      var suffix = c.isDemo ? '（演示）' : (c.isActive ? '' : '（停用）');
       return '<option value="' + c.id + '"' + (c.id === state.classId ? ' selected' : '') + '>' +
-        esc(shortClassName(c.name)) + (c.isActive ? '' : '（停用）') + '</option>';
+        esc(shortClassName(c.name)) + suffix + '</option>';
     }).join('');
     sel.onchange = function () {
       state.classId = Number(sel.value);
@@ -1768,7 +1797,14 @@
       reload();
       var cls = currentClass();
       // 概览页不显示班级名、数据也跟班级无关 ⇒ 不给提示的话点了像没反应
-      if (cls) toast('已切换到「' + cls.name + '」');
+      if (cls && cls.isDemo) {
+        // 演示班在库里是 is_active=0（刻意停用），后台多数接口走 guard.resolveClassId
+        // 要求 active=1 ⇒ 会回「班级不存在或已停用」。这属于设计，不是故障：
+        // 切过去时直接说明原因，别让人对着一片报错去查后端（2026-11-04 用户提问来源）。
+        toast('「' + cls.name + '」是审核体验用的虚拟班，不参与统计、不支持后台修改', 'warn');
+      } else if (cls) {
+        toast('已切换到「' + cls.name + '」');
+      }
     };
     $('#who').textContent = me.user.memberName + '（' + me.user.username + '）';
     hideBoot();

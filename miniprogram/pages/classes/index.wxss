@@ -41,7 +41,7 @@
   align-items: center;
   justify-content: center;
   color: var(--danger);
-  background: #FFECE8;
+  background: var(--danger-bg);
   border-radius: 32rpx;
   z-index: 1;
   opacity: 0;
@@ -105,7 +105,7 @@
   border-radius: var(--r-md);
 }
 .cl-btn + .cl-btn { margin-left: 20rpx; }
-.cl-btn:active { background: #DCE8FF; }
+.cl-btn:active { background: var(--brand-light-hover); }
 /* 「查看人员」主操作：实心品牌色，与上面两个浅底次操作区分主次 */
 .cl-btn.primary { color: #FFFFFF; background: var(--brand); }
 .cl-btn.primary:active { background: var(--brand-press); }
@@ -138,7 +138,7 @@
   font-size: 28rpx;
   color: var(--brand);
   background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid #D6E0FF;
+  border: 2rpx solid var(--brand-light);
   border-radius: var(--r-md);
 }
 .cl-import text { margin-left: 10rpx; }
@@ -155,7 +155,7 @@
   font-size: 28rpx;
   color: var(--brand);
   background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid #D6E0FF;
+  border: 2rpx solid var(--brand-light);
   border-radius: 32rpx;
 }
 .cl-pick text { margin-left: 10rpx; }
@@ -169,7 +169,7 @@
   font-size: 24rpx;
   line-height: 34rpx;
   color: var(--danger);
-  background: #FFECE8;
+  background: var(--danger-bg);
   border-radius: 24rpx;
   word-break: break-all;
 }
@@ -182,7 +182,7 @@
   align-items: flex-start;
   padding: 24rpx;
   margin-bottom: 16rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border: 2rpx solid var(--line-2);
   border-radius: 32rpx;
 }
@@ -196,7 +196,7 @@
   text-align: center;
   font-size: 28rpx;
   color: #FFFFFF;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border: 2rpx solid var(--text-4);
   border-radius: 20rpx;
 }
@@ -213,7 +213,7 @@
 }
 
 .cl-g-stat { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: var(--text-3); }
-.cl-g-warn { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: #FF7D00; }
+.cl-g-warn { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: var(--warning); }
 .cl-g-ok { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: var(--success); }
 
 /* ---------- 弹层表单（与 .np / .im 同刻度） ---------- */
@@ -229,7 +229,7 @@
 .cl-input {
   height: 92rpx;
   padding: 0 24rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 32rpx;
   font-size: 28rpx;
   color: var(--text-1);
@@ -238,7 +238,7 @@
   width: 100%;
   height: 320rpx;
   padding: 24rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border: 2rpx solid var(--line-2);
   border-radius: 32rpx;
   font-size: 26rpx;
@@ -318,7 +318,7 @@
   text-align: center;
   font-size: 22rpx;
   line-height: 30rpx;
-  color: #D46B08;
+  color: var(--warning-strong);
 }
 
 /* ---------- 教职工一次性绑定码（2026-09-26） ----------
@@ -328,7 +328,7 @@
   margin-top: 24rpx;
   padding: 24rpx;
   background: var(--brand-light);
-  border: 2rpx solid #D6E0FF;
+  border: 2rpx solid var(--brand-light);
   border-radius: 32rpx;
 }
 .cl-code-head { font-size: 26rpx; color: var(--text-2); }
@@ -364,7 +364,7 @@
   flex-wrap: wrap;
   padding: 20rpx 24rpx;
   margin-bottom: 12rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 32rpx;
 }
 .cl-staff-main { flex: 1; min-width: 0; }
@@ -390,7 +390,7 @@
   font-size: 26rpx;
   color: var(--brand);
   background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid #D6E0FF;
+  border: 2rpx solid var(--brand-light);
   border-radius: 999rpx;
 }
 .cl-staff-empty {
@@ -418,7 +418,7 @@
   line-height: 1.2;
   color: var(--text-2);
   background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid #E5E6EB;
+  border: 2rpx solid var(--line-1);
   border-radius: 999rpx;
 }
 .cl-fchip.on {
@@ -445,7 +445,7 @@
   font-size: 26rpx;
   color: var(--text-2);
   background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid #E5E6EB;
+  border: 2rpx solid var(--line-1);
   border-radius: 999rpx;
 }
 .cl-bchip.on {
@@ -469,13 +469,14 @@
 .cl-staff-ops .cl-staff-btn { margin-left: 0; }
 .cl-staff-btn.warn {
   color: #E5484D;
-  border-color: #FFD9D5;
+  border-color: var(--danger-bg);
   /* ⚠️ 这里是「警告态」的浅玫瑰底，**故意不玻璃化**：它是语义色，不是材质。
      2026-09-26 事故：glassify 脚本用 `#FFF` 做备选做前缀匹配，把 `#FFF3F3` 吃成
      `rgba(255,255,255,.55);1F2;` —— 语法坏掉 → IDE 报「编译 .wxss 文件错误」。
      现已改为精确匹配 6 位值，并加了 `check-wxss-compile` 用官方 wcsc 兜底。 */
-  background: #FFF3F3;
+  background: var(--danger-bg);
 }
+.t-dark .cl-staff-btn.warn { color: var(--danger); }
 .cl-staff-cls {
   margin-left: 14rpx;
   color: var(--text-3);
@@ -484,7 +485,7 @@
   width: 100%;
   margin-top: 16rpx;
   padding: 16rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 24rpx;
   box-sizing: border-box;
 }

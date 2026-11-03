@@ -160,13 +160,17 @@
               class="tt-cell-slot {{cell.wk ? 'wk' : ''}}"
             >
               <block wx:if="{{!cell.empty}}">
+                <!-- 色值走 app.wxss 的 --co-N-bg / --co-N-fg（深色下自动换成暗色版）。
+                     底色与字色都写在块上，课名 / 教室**继承** color ——
+                     深色下左侧那条 6rpx 色条取的就是这里的 currentColor
+                     （见 wxss 的 .t-dark .tt-cell::before）。 -->
                 <view
                   wx:for="{{cell.courses}}"
                   wx:for-item="co"
                   wx:for-index="ci"
                   wx:key="key"
                   class="tt-cell {{co.isHoliday ? 'holiday' : ''}} {{co.movedIn ? 'moved-in' : ''}} {{co.personal ? 'personal' : ''}} {{ (periods[r].p === currentPeriod && dates[c].isToday) ? 'current' : '' }}"
-                  style="background:{{co.bg}};{{co.flip}}"
+                  style="background:{{co.bg}};color:{{co.fg}};{{co.flip}}"
                   data-r="{{r}}"
                   data-c="{{c}}"
                   data-sid="{{co.sessionId}}"
@@ -180,8 +184,8 @@
                 >
                   <view wx:if="{{co.groupScope}}" class="tt-cell-tag">{{co.groupScope}} 组</view>
                   <view wx:elif="{{co.personal}}" class="tt-cell-tag personal-tag">个</view>
-                  <text class="tt-cell-name" style="color:{{co.fg}}">{{co.name}}</text>
-                  <text class="tt-cell-room" style="color:{{co.fg}}">{{co.room}}</text>
+                  <text class="tt-cell-name">{{co.name}}</text>
+                  <text class="tt-cell-room">{{co.room}}</text>
                   <view wx:if="{{co.movedIn}}" class="tt-cell-shift in">自{{co.shiftFromText}}调入</view>
                   <view wx:elif="{{co.shifted}}" class="tt-cell-shift">调课</view>
                   <view wx:if="{{co.isHoliday}}" class="tt-cell-holiday">假期</view>

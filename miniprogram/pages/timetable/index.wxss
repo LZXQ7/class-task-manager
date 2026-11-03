@@ -1,6 +1,6 @@
 .tt { min-height: 100vh; }
 .tt-nav-right { display: flex; align-items: center; }
-.tt-nav-btn { font-size: 30rpx; color: #3370FF; padding: 0 16rpx; }
+.tt-nav-btn { font-size: 30rpx; color: var(--brand); padding: 0 16rpx; }
 
 .tt-wrap { padding: 0 32rpx; }
 
@@ -14,7 +14,7 @@
   justify-content: center;
 }
 .tt-head .tt-time { height: 80rpx; }
-.tt-time-p { font-size: 26rpx; font-weight: 600; color: #1D2129; }
+.tt-time-p { font-size: 26rpx; font-weight: 600; color: var(--text-1); }
 /* .tt-time-t（节次下的上课时间）已按要求去掉，只留「1-5」节次号 */
 .tt-cells {
   flex: 1;
@@ -39,7 +39,7 @@
 .tt-fixed-row {
   /* 行高由 JS 按屏幕高度内联下发（自适应），这里只留兜底值 */
   height: 132rpx;
-  border-top: 2rpx solid #F2F3F5;
+  border-top: 2rpx solid var(--bg-fill);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -51,7 +51,7 @@
 .tt-scroll-hint {
   text-align: center;
   font-size: 22rpx;
-  color: #C9CDD4;
+  color: var(--text-4);
   padding: 16rpx 0 0;
 }
 
@@ -62,7 +62,7 @@
   display: flex;
   flex-direction: row;
   width: 100%;
-  border-top: 2rpx solid #F2F3F5;
+  border-top: 2rpx solid var(--bg-fill);
 }
 .tt-head-cell {
   flex: 1;
@@ -75,11 +75,11 @@
   border-radius: 24rpx;
 }
 /* 周末底色最浅；.today / .off 写在后面，同优先级下后者覆盖前者 */
-.tt-head-cell.wk { background: #F7F8FA; }
-.tt-head-cell.today { background: #F0F5FF; }
-.tt-head-w { font-size: 26rpx; color: #4E5969; }
-.tt-head-cell.today .tt-head-w { color: #3370FF; font-weight: 600; }
-.tt-head-d { font-size: 24rpx; color: #86909C; margin-top: 2rpx; }
+.tt-head-cell.wk { background: var(--fill-soft); }
+.tt-head-cell.today { background: var(--brand-light); }
+.tt-head-w { font-size: 26rpx; color: var(--text-2); }
+.tt-head-cell.today .tt-head-w { color: var(--brand); font-weight: 600; }
+.tt-head-d { font-size: 24rpx; color: var(--text-3); margin-top: 2rpx; }
 
 /* ---------- 网格 ---------- */
 .tt-cell-slot {
@@ -92,7 +92,7 @@
   flex-direction: column;
 }
 /* 空的周末格子给一层浅底，让人一眼看出「这两天是周末」，可往这里排调休课 */
-.tt-cell-slot.wk { background: #F5F6F8; }
+.tt-cell-slot.wk { background: var(--bg-page); }
 .tt-cell {
   flex: 1;
   min-height: 56rpx;
@@ -105,11 +105,47 @@
 /* 空格子占位（无课） */
 .tt-cell.empty {
   background: transparent;
-  border: 1rpx dashed #E5E6EB;
+  border: 1rpx dashed var(--line-1);
 }
+
+/* ---------- 深色下的课格（2026-11-04）----------
+ * 浅色是「马卡龙底 + 深字」，直接搬到深色背景上就是**一整片发亮的大色块**
+ * （用户报「色块比较亮」）。深色改成「同色相低透明度底 + 左侧 6rpx 色条」：
+ *   色相靠色条认，明度交给底 —— 远看是安静的深色面，近看仍能分出是哪门课。
+ * 块底 / 字色全部来自 wxml 内联的 --co-N-bg / --co-N-fg（真源在 app.wxss），本文件不写死色值。
+ * ⚠️ 色条用 ::before + currentColor：currentColor 就是 wxml 下发到 .tt-cell 的 co.fg，
+ *    所以色条与课名同色，不用给 5 个色号各写一条规则。
+ * ⚠️ 必须排在 .tt-cell.current / .moved-in / .holiday 之前或另给更高优先级：
+ *    那三条同权重且后声明，会各自盖掉这里的底色 / 左侧标记（下方已逐一处理）。 */
+.t-dark .tt-cell {
+  padding-left: 14rpx;                                    /* 让开 6rpx 色条 + 8rpx 常规内距 */
+  box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, 0.05);  /* 极淡内描边：深底上才有「一块面」的边界 */
+}
+.t-dark .tt-cell::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6rpx;
+  background: currentColor;
+  opacity: 0.9;
+}
+/* absolute 不受 padding 约束，得单独让开色条；透明度 .6 → .85：深色下 20rpx 的教室号
+   叠 .6 只剩 4.2:1，压到 .85 才过 4.5:1（实测 blue/purple 两档最紧） */
+.t-dark .tt-cell-room { left: 14rpx; opacity: 0.85; }
+.t-dark .tt-cell.empty { padding-left: 8rpx; box-shadow: none; }  /* 空格子没有色相，别留内描边 */
+/* 这三种格子本来就有自己的左侧标记 / 实心底，再叠色条会变成 12rpx 双色边 → 不出色条 */
+.t-dark .tt-cell.moved-in::before,
+.t-dark .tt-cell.holiday::before,
+.t-dark .tt-cell.current::before { display: none; }
+/* 分组 / 选修角标：浅色是「浅蓝底 + 蓝字」，放到深色块上几乎看不见 → 换半透明白底 + 浅字 */
+.t-dark .tt-cell-tag { background: rgba(255, 255, 255, 0.14); color: var(--text-1); }
+.t-dark .personal-tag { background: rgba(122, 162, 255, 0.22); color: var(--brand); }
+
 /* 当前正在上的节次（2026-11-02）：品牌蓝实填充 + 白字；!important 盖过 co.bg 内联底色；
    仅在「今天列 + 当前节次」时由 WXML 加 .current，与首页列表高亮一致 */
-.tt-cell.current { background: #3370FF !important; box-shadow: inset 0 0 0 3rpx rgba(255, 255, 255, 0.55); }
+.tt-cell.current { background: var(--brand) !important; box-shadow: inset 0 0 0 3rpx rgba(255, 255, 255, 0.55); }
 .tt-cell.current .tt-cell-name,
 .tt-cell.current .tt-cell-room { color: #FFFFFF !important; opacity: 1 !important; }
 .tt-cell.current .tt-cell-tag { background: rgba(255, 255, 255, 0.25) !important; color: #FFFFFF !important; }
@@ -139,7 +175,7 @@
   background: rgba(51,112,255,0.12);
   font-size: 18rpx;
   line-height: 24rpx;
-  color: #3370FF;
+  color: var(--brand);
   font-weight: 600;
 }
 /* 个人选修课单元 + 「个」标签：与全班课次配色区分，一眼看出是「自己的」 */
@@ -148,7 +184,7 @@
 }
 .personal-tag {
   background: rgba(51,112,255,0.18);
-  color: #3370FF;
+  color: var(--brand);
 }
 .tt-foot { height: 48rpx; }
 
@@ -211,7 +247,7 @@
 .fab-menu-t {
   font-size: 26rpx;
   font-weight: 600;
-  color: #3370FF;
+  color: var(--brand);
   margin: 0 6rpx 0 8rpx;
 }
 /* 收起态：整体下移 12rpx + 透明 + 不接点击；展开态回到原位。
@@ -239,12 +275,21 @@
   border-radius: 38rpx;
   font-size: 26rpx;
   font-weight: 600;
-  color: #4E5969;
+  color: var(--text-2);
   background: rgba(255, 255, 255, 0.62);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
   border: 1rpx solid rgba(255, 255, 255, 0.7);
   box-shadow: 0 6rpx 20rpx rgba(51,112,255,.14), inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+}
+/* 深色：浅色那版是「半透明白玻璃」，叠在深色页面上会糊成一块灰白（白岛）。
+   换成深色玻璃 tint + 弱亮边；字色本来就取 --text-2 / --brand，会自己跟着翻。
+   ⚠️ 必须排在下面的 .fab-menu-item.on **之前**：同权重时后者（品牌渐变）要赢。 */
+.t-dark .fab-menu-btn,
+.t-dark .fab-menu-item {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-edge);
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.35), var(--glass-highlight);
 }
 /* 当前正在看的那一组：品牌渐变实心，一眼能看出「现在看的是谁」 */
 .fab-menu-item.on {
@@ -255,15 +300,19 @@
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .fab-menu-btn { background: rgba(255, 255, 255, 0.93); }
   .fab-menu-item { background: rgba(255, 255, 255, 0.95); }
+  /* 不支持模糊时这两条浅色兜底会把深色糊成白块 → 深色下改实心卡底。
+     `:not(.on)` 是为了让「当前组」的品牌渐变继续生效（同权重且本块更靠后）。 */
+  .t-dark .fab-menu-btn,
+  .t-dark .fab-menu-item:not(.on) { background: var(--bg-card); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .fab-menu-btn {
-    background: #FFFFFF;
+    background: var(--bg-card);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
   .fab-menu-item {
-    background: #FFFFFF;
+    background: var(--bg-card);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -273,11 +322,11 @@
   .fab-menu.open .fab-menu-list { transform: none; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .fab { background: #3370FF; }
+  .fab { background: var(--brand); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .fab {
-    background: #3370FF;
+    background: var(--brand);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -285,24 +334,24 @@
 
 /* ---------- 详情 / 表单 ---------- */
 .ds-form { padding: 8rpx 32rpx 48rpx; }
-.tt-detail-name { font-size: 34rpx; font-weight: 600; color: #1D2129; margin-bottom: 16rpx; }
+.tt-detail-name { font-size: 34rpx; font-weight: 600; color: var(--text-1); margin-bottom: 16rpx; }
 .tt-detail-row {
   display: flex;
   flex-direction: row;
   padding: 12rpx 0;
-  border-bottom: 2rpx solid #F2F3F5;
+  border-bottom: 2rpx solid var(--bg-fill);
 }
-.tt-detail-row .k { width: 140rpx; font-size: 26rpx; color: #86909C; }
-.tt-detail-row .v { flex: 1; font-size: 26rpx; color: #1D2129; }
+.tt-detail-row .k { width: 140rpx; font-size: 26rpx; color: var(--text-3); }
+.tt-detail-row .v { flex: 1; font-size: 26rpx; color: var(--text-1); }
 .tt-detail-duties { margin-top: 24rpx; }
-.tt-detail-sub { font-size: 26rpx; color: #4E5969; margin-bottom: 12rpx; }
+.tt-detail-sub { font-size: 26rpx; color: var(--text-2); margin-bottom: 12rpx; }
 .tt-duty-row {
   display: flex;
   flex-direction: row;
   align-items: center;
   padding: 12rpx 0;
 }
-.tt-duty-name { margin: 0 16rpx; flex: 1; font-size: 28rpx; color: #1D2129; }
+.tt-duty-name { margin: 0 16rpx; flex: 1; font-size: 28rpx; color: var(--text-1); }
 .tt-detail-actions {
   display: flex;
   flex-direction: row;
@@ -318,26 +367,26 @@
   margin-right: 16rpx;
   padding: 0 32rpx;
 }
-.tt-dbtn.danger { background: #FFECE8; color: #F53F3F; }
-.tt-dbtn.primary { flex: 1; background: #3370FF; color: #FFFFFF; font-weight: 600; margin-right: 0; }
+.tt-dbtn.danger { background: var(--danger-bg); color: var(--danger); }
+.tt-dbtn.primary { flex: 1; background: var(--brand); color: #FFFFFF; font-weight: 600; margin-right: 0; }
 
 .f-row {
   display: flex;
   flex-direction: row;
   align-items: center;
   min-height: 112rpx;
-  border-bottom: 2rpx solid #F2F3F5;
+  border-bottom: 2rpx solid var(--bg-fill);
 }
-.f-label { width: 180rpx; font-size: 30rpx; color: #1D2129; flex-shrink: 0; }
+.f-label { width: 180rpx; font-size: 30rpx; color: var(--text-1); flex-shrink: 0; }
 .f-input {
   flex: 1;
   height: 96rpx;
   font-size: 30rpx;
-  color: #1D2129;
+  color: var(--text-1);
   text-align: right;
 }
-.f-ph { color: #C9CDD4; font-size: 28rpx; }
-.f-block { padding: 16rpx 0; border-bottom: 2rpx solid #F2F3F5; }
+.f-ph { color: var(--text-4); font-size: 28rpx; }
+.f-block { padding: 16rpx 0; border-bottom: 2rpx solid var(--bg-fill); }
 .f-chips { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 12rpx; }
 /* ⚠️ 两条为了让「挤开动画」真的平滑而加的改动：
    ① box-sizing: border-box —— 否则 .on 多出来的 2rpx 边框会把盒子撑大 4rpx，
@@ -348,8 +397,8 @@
   padding: 0 24rpx;
   margin: 0 16rpx 16rpx 0;
   border-radius: 32rpx;
-  background: #F2F3F5;
-  color: #4E5969;
+  background: var(--bg-fill);
+  color: var(--text-2);
   font-size: 26rpx;
   line-height: 64rpx;
   box-sizing: border-box;
@@ -358,20 +407,20 @@
 /* .on 补的 padding 是「挤开动画」的目标值（0 24rpx → 0 34rpx），
    过渡由 app.wxss 的 .chip-motion 负责 → 邻项平滑让位而不是瞬移 */
 .f-chip.on {
-  background: #F0F5FF;
-  color: #3370FF;
+  background: var(--brand-light);
+  color: var(--brand);
   font-weight: 600;
-  border: 2rpx solid #3370FF;
+  border: 2rpx solid var(--brand);
   padding: 0 34rpx;
 }
 /* 「当前正在看的那一周」只变色不加边框，与「已选中」区分开 */
-.f-chip.cur { color: #3370FF; }
-.f-tip { font-size: 24rpx; color: #86909C; }
+.f-chip.cur { color: var(--brand); }
+.f-tip { font-size: 24rpx; color: var(--text-3); }
 .f-actions { margin-top: 32rpx; padding-bottom: 24rpx; }
 .f-save {
   height: 96rpx;
   border-radius: 32rpx;
-  background: #3370FF;
+  background: var(--brand);
   color: #FFFFFF;
   font-size: 32rpx;
   font-weight: 600;
@@ -379,12 +428,13 @@
   align-items: center;
   justify-content: center;
 }
-.f-save.off { background: #A8C1FF; }
+.f-save.off { background: var(--brand-disable); }
 .f-save.danger {
-  background: #FFFFFF;
+  background: var(--bg-card);
   color: #E34D59;
   border: 1rpx solid #F0C2C6;
 }
+.t-dark .f-save.danger { color: var(--danger); }
 
 /* ---------- 周次选择 ---------- */
 .wk-grid {
@@ -398,8 +448,8 @@
   height: 96rpx;
   margin: 0 12rpx 16rpx 0;
   border-radius: 32rpx;
-  background: #F2F3F5;
-  color: #4E5969;
+  background: var(--bg-fill);
+  color: var(--text-2);
   font-size: 30rpx;
   display: flex;
   align-items: center;
@@ -409,18 +459,18 @@
   border: 2rpx solid transparent;
 }
 .wk-chip:nth-child(4n) { margin-right: 0; }
-.wk-chip.cur { color: #3370FF; }
+.wk-chip.cur { color: var(--brand); }
 .wk-chip.on {
-  background: #F0F5FF;
-  color: #3370FF;
+  background: var(--brand-light);
+  color: var(--brand);
   font-weight: 600;
-  border: 2rpx solid #3370FF;
+  border: 2rpx solid var(--brand);
 }
 
 /* ---------- 节假日 / 调休标记 ---------- */
-.tt-head-cell.off { background: #FFF3F3; position: relative; }
+.tt-head-cell.off { background: var(--danger-bg); position: relative; }
 .tt-head-cell.off .tt-head-w,
-.tt-head-cell.off .tt-head-d { color: #F53F3F; }
+.tt-head-cell.off .tt-head-d { color: var(--danger); }
 .tt-head-tag {
   position: absolute;
   right: 6rpx;
@@ -428,12 +478,12 @@
   height: 24rpx;
   padding: 0 6rpx;
   border-radius: 4rpx;
-  background: #F53F3F;
+  background: var(--danger);
   color: #FFFFFF;
   font-size: 18rpx;
   line-height: 24rpx;
 }
-.tt-head-tag.mk { background: #FF7D00; }
+.tt-head-tag.mk { background: var(--warning); }
 .tt-head-shift {
   position: absolute;
   left: 6rpx;
@@ -444,8 +494,8 @@
   border-radius: 4rpx;
   font-weight: 600;
 }
-.tt-head-shift.out { background: #FFF7E8; color: #FF7D00; }
-.tt-head-shift.in { background: #D6E0FF; color: #3370FF; }
+.tt-head-shift.out { background: var(--warning-bg); color: var(--warning); }
+.tt-head-shift.in { background: var(--brand-light); color: var(--brand); }
 .tt-cell-shift {
   position: absolute;
   right: 4rpx;
@@ -460,16 +510,19 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.tt-cell-shift.out { background: #FFF7E8; color: #FF7D00; }
-.tt-cell-shift.in { background: #D6E0FF; color: #3370FF; }
+.tt-cell-shift.out { background: var(--warning-bg); color: var(--warning); }
+.tt-cell-shift.in { background: var(--brand-light); color: var(--brand); }
 /* 放假也照常显示课次，仅打「假期」标记（见 timetable.js sessionsOfWeek 的 isHoliday） */
 .tt-cell.holiday {
   box-shadow: inset 0 0 0 200rpx rgba(134, 144, 156, 0.16);
-  border-left: 6rpx solid #F53F3F;
+  border-left: 6rpx solid var(--danger);
 }
+/* 深色下那层灰纱是「提亮」，会把放假的格子抬得比正常格子还亮（浅色下是压暗）。
+   改成压暗的纱，语义才对：放假 = 退居背景。 */
+.t-dark .tt-cell.holiday { box-shadow: inset 0 0 0 200rpx rgba(8, 10, 14, 0.42); }
 /* 按天「调入」的课：左侧蓝色条，一眼看出是别处调来的 */
 .tt-cell.moved-in {
-  border-left: 6rpx solid #3370FF;
+  border-left: 6rpx solid var(--brand);
 }
 .tt-cell-holiday {
   position: absolute;
@@ -478,7 +531,7 @@
   height: 24rpx;
   padding: 0 6rpx;
   border-radius: 4rpx;
-  background: #F53F3F;
+  background: var(--danger);
   color: #FFFFFF;
   font-size: 18rpx;
   line-height: 24rpx;
@@ -487,52 +540,52 @@
 }
 
 /* ---------- 校历弹层 ---------- */
-.cal-sec { padding: 8rpx 0 24rpx; border-bottom: 2rpx solid #F2F3F5; }
+.cal-sec { padding: 8rpx 0 24rpx; border-bottom: 2rpx solid var(--bg-fill); }
 .cal-sec:last-child { border-bottom: none; }
-.cal-sec-t { font-size: 28rpx; font-weight: 600; color: #1D2129; padding: 8rpx 0 12rpx; }
+.cal-sec-t { font-size: 28rpx; font-weight: 600; color: var(--text-1); padding: 8rpx 0 12rpx; }
 .cal-list { padding-bottom: 4rpx; }
 .cal-item {
   display: flex;
   flex-direction: row;
   align-items: center;
   padding: 14rpx 0;
-  border-bottom: 2rpx solid #F7F8FA;
+  border-bottom: 2rpx solid var(--fill-soft);
 }
-.cal-date { width: 210rpx; font-size: 26rpx; color: #1D2129; }
-.cal-name { flex: 1; font-size: 26rpx; color: #4E5969; }
+.cal-date { width: 210rpx; font-size: 26rpx; color: var(--text-1); }
+.cal-name { flex: 1; font-size: 26rpx; color: var(--text-2); }
 .cal-kind {
   font-size: 22rpx;
-  color: #F53F3F;
-  background: #FFF3F3;
+  color: var(--danger);
+  background: var(--danger-bg);
   padding: 2rpx 12rpx;
   border-radius: 16rpx;
   margin-right: 16rpx;
 }
-.cal-kind.mk { color: #FF7D00; background: #FFF7E8; }
-.cal-del { font-size: 26rpx; color: #86909C; padding: 0 8rpx; }
-.cal-empty { font-size: 26rpx; color: #C9CDD4; padding: 20rpx 0; text-align: center; }
+.cal-kind.mk { color: var(--warning); background: var(--warning-bg); }
+.cal-del { font-size: 26rpx; color: var(--text-3); padding: 0 8rpx; }
+.cal-empty { font-size: 26rpx; color: var(--text-4); padding: 20rpx 0; text-align: center; }
 .cal-form { margin-top: 16rpx; }
 .cal-two { display: flex; flex-direction: row; align-items: center; }
 .cal-picker {
   height: 80rpx;
   padding: 0 20rpx;
   border-radius: 32rpx;
-  background: #F2F3F5;
-  color: #1D2129;
+  background: var(--bg-fill);
+  color: var(--text-1);
   font-size: 28rpx;
   line-height: 80rpx;
   margin-right: 16rpx;
 }
-.cal-picker.ph { color: #C9CDD4; }
-.cal-arrow { font-size: 30rpx; color: #86909C; margin-right: 16rpx; }
+.cal-picker.ph { color: var(--text-4); }
+.cal-arrow { font-size: 30rpx; color: var(--text-3); margin-right: 16rpx; }
 .cal-input {
   flex: 1;
   height: 80rpx;
   padding: 0 20rpx;
   border-radius: 32rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
   margin: 16rpx 0 0;
 }
 .cal-two .cal-input { margin: 0; }
@@ -540,7 +593,7 @@
   height: 88rpx;
   margin-top: 20rpx;
   border-radius: 32rpx;
-  background: #3370FF;
+  background: var(--brand);
   color: #FFFFFF;
   font-size: 30rpx;
   font-weight: 600;
@@ -548,22 +601,22 @@
   align-items: center;
   justify-content: center;
 }
-.cal-hint { font-size: 24rpx; color: #86909C; margin-top: 12rpx; }
+.cal-hint { font-size: 24rpx; color: var(--text-3); margin-top: 12rpx; }
 
 /* ---------- 临时调课弹层 ---------- */
 .ts-pick {
   height: 88rpx;
   padding: 0 20rpx;
   border-radius: 32rpx;
-  background: #F2F3F5;
-  color: #1D2129;
+  background: var(--bg-fill);
+  color: var(--text-1);
   font-size: 28rpx;
   line-height: 88rpx;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.ts-pick.ph { color: #C9CDD4; }
+.ts-pick.ph { color: var(--text-4); }
 
 /* 「这几天不上」的日期格：一行 7 个（周一至周日） */
 .ts-days { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 12rpx; }
@@ -572,17 +625,17 @@
   height: 104rpx;
   margin: 0 8rpx 12rpx 0;
   border-radius: 32rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 .ts-day:nth-child(7n) { margin-right: 0; }
-.ts-day.on { background: #FFF3F3; border: 2rpx solid #F53F3F; }
-.ts-day-w { font-size: 24rpx; color: #86909C; }
-.ts-day-d { font-size: 28rpx; font-weight: 600; color: #1D2129; margin-top: 4rpx; }
-.ts-day.on .ts-day-w, .ts-day.on .ts-day-d { color: #F53F3F; }
+.ts-day.on { background: var(--danger-bg); border: 2rpx solid var(--danger); }
+.ts-day-w { font-size: 24rpx; color: var(--text-3); }
+.ts-day-d { font-size: 28rpx; font-weight: 600; color: var(--text-1); margin-top: 4rpx; }
+.ts-day.on .ts-day-w, .ts-day.on .ts-day-d { color: var(--danger); }
 
 .ts-area {
   width: 100%;
@@ -591,9 +644,9 @@
   padding: 20rpx;
   margin-top: 12rpx;
   border-radius: 32rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
   line-height: 40rpx;
 }
 .ts-area.tall { min-height: 480rpx; }
@@ -601,8 +654,8 @@
 .ts-chips { display: flex; flex-direction: column; margin-top: 12rpx; }
 .ts-chip {
   font-size: 26rpx;
-  color: #3370FF;
-  background: #F0F5FF;
+  color: var(--brand);
+  background: var(--brand-light);
   border-radius: 24rpx;
   padding: 12rpx 20rpx;
   margin-bottom: 12rpx;
@@ -620,42 +673,42 @@
   font-weight: 600;
 }
 .ts-btn + .ts-btn { margin-left: 16rpx; }
-.ts-btn.primary { background: #3370FF; color: #FFFFFF; }
-.ts-btn.primary.off { background: #A8C1FF; }
-.ts-btn.ghost { background: #F2F3F5; color: #4E5969; font-weight: 500; }
-.ts-btn.ghost.danger { background: #FFECE8; color: #F53F3F; }
+.ts-btn.primary { background: var(--brand); color: #FFFFFF; }
+.ts-btn.primary.off { background: var(--brand-disable); }
+.ts-btn.ghost { background: var(--bg-fill); color: var(--text-2); font-weight: 500; }
+.ts-btn.ghost.danger { background: var(--danger-bg); color: var(--danger); }
 
 .ts-err {
   margin-top: 16rpx;
   padding: 16rpx 20rpx;
   border-radius: 24rpx;
-  background: #FFECE8;
-  color: #F53F3F;
+  background: var(--danger-bg);
+  color: var(--danger);
   font-size: 24rpx;
   line-height: 36rpx;
 }
-.ts-note { font-size: 26rpx; color: #4E5969; padding: 8rpx 0 12rpx; }
+.ts-note { font-size: 26rpx; color: var(--text-2); padding: 8rpx 0 12rpx; }
 
 .ts-item {
   display: flex;
   flex-direction: row;
   align-items: center;
   padding: 18rpx 0;
-  border-bottom: 2rpx solid #F7F8FA;
+  border-bottom: 2rpx solid var(--fill-soft);
 }
 .ts-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ts-item-name {
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
   font-weight: 500;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.ts-item-eff { font-size: 24rpx; color: #86909C; margin-top: 6rpx; }
-.ts-item-note { font-size: 22rpx; color: #C9CDD4; margin-left: 16rpx; max-width: 220rpx; }
-.ts-warn { font-size: 24rpx; color: #FF7D00; line-height: 36rpx; padding: 4rpx 0; }
-.ts-del { font-size: 26rpx; color: #F53F3F; padding: 8rpx 0 8rpx 16rpx; }
+.ts-item-eff { font-size: 24rpx; color: var(--text-3); margin-top: 6rpx; }
+.ts-item-note { font-size: 22rpx; color: var(--text-4); margin-left: 16rpx; max-width: 220rpx; }
+.ts-warn { font-size: 24rpx; color: var(--warning); line-height: 36rpx; padding: 4rpx 0; }
+.ts-del { font-size: 26rpx; color: var(--danger); padding: 8rpx 0 8rpx 16rpx; }
 
 /* 课格按压反馈：cell 背景是内联 style（按课程着色），tap-hover 加底色会被盖住，
    用整体轻微变暗代替；只动 opacity，不建包含块（页面有 FAB fixed 元素）。 */
@@ -665,7 +718,7 @@
 .tt-empty {
   margin: 120rpx 48rpx 0;
   padding: 56rpx 40rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: 40rpx;
   display: flex;
   flex-direction: column;
@@ -674,13 +727,13 @@
 .tt-empty-title {
   font-size: 30rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .tt-empty-desc {
   margin-top: 16rpx;
   font-size: 25rpx;
   line-height: 40rpx;
-  color: #86909C;
+  color: var(--text-3);
   text-align: center;
 }
 
@@ -699,9 +752,12 @@
   line-height: 1.2;
   color: var(--text-2);
   background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid #E5E6EB;
+  border: 2rpx solid var(--line-1);
   border-radius: 999rpx;
 }
+/* 深色：半透明白底在深色页上是一块灰白（白岛）→ 换深色玻璃 tint。
+   ⚠️ 排在 .tt-fchip.on 之前，选中态的品牌实心蓝不能被盖掉。 */
+.t-dark .tt-fchip { background: var(--glass-bg-strong); }
 .tt-fchip.on {
   padding: 12rpx 32rpx;
   font-size: 28rpx;
@@ -709,7 +765,6 @@
   color: #FFFFFF;
   background: var(--brand);
   border-color: var(--brand);
-}
-@media (prefers-reduced-motion: reduce) {
+}@media (prefers-reduced-motion: reduce) {
   .tt-fchip { transition-duration: .01ms; }
 }

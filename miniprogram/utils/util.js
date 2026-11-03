@@ -163,13 +163,21 @@ function whenText(kind, period) {
   return kind === 'CLEAN' ? CLEAN_WHEN : ('第' + period + '节');
 }
 
-/* ---------------- 课程配色 S1–S5 ---------------- */
+/* ---------------- 课程配色 S1–S5 ----------------
+ * 🔴 值一律写成 `var(--co-N-xx, <浅色兜底>)`，不再返回裸 hex（2026-11-04）：
+ *   · 浅色作用域给「马卡龙底 + 深字」，深色作用域给「同色相低透明度底 + 提亮字」，
+ *     真源在 app.wxss 的 .t-light / .t-dark 里，这里只引用；
+ *   · 括号里那个兜底 = 浅色值 —— 首帧 tClass 还没挂上时不会掉成透明/黑；
+ *   · 调用方只是把它塞进内联 style（background / color），切主题时会自动重算，
+ *     不用为了换主题重建 grid 数据。
+ *   （原先返回裸 hex：深色下色块保持马卡龙色，整片发光 —— 用户报「色块比较亮」。）
+ */
 const COURSE_COLORS = [
-  { bg: '#D6E0FF', fg: '#245BDB' },
-  { bg: '#E6F7EE', fg: '#009A29' },
-  { bg: '#FFF3E8', fg: '#D46B08' },
-  { bg: '#F3F0FF', fg: '#5E3BE8' },
-  { bg: '#E6F7F7', fg: '#0AA5A8' }
+  { bg: 'var(--co-1-bg, #D6E0FF)', fg: 'var(--co-1-fg, #245BDB)' },
+  { bg: 'var(--co-2-bg, #E6F7EE)', fg: 'var(--co-2-fg, #009A29)' },
+  { bg: 'var(--co-3-bg, #FFF3E8)', fg: 'var(--co-3-fg, #D46B08)' },
+  { bg: 'var(--co-4-bg, #F3F0FF)', fg: 'var(--co-4-fg, #5E3BE8)' },
+  { bg: 'var(--co-5-bg, #E6F7F7)', fg: 'var(--co-5-fg, #0AA5A8)' }
 ];
 function courseColor(idx) {
   return COURSE_COLORS[(Number(idx) || 0) % COURSE_COLORS.length];

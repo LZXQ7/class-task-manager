@@ -353,6 +353,9 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .tag-all { background: #e8f3ff; color: #2b5fe6; }
 .tag-super { background: #fff1f0; color: #cb2634; }
 .tag-clean { background: #f2f3f5; color: var(--text-2); }
+/* 演示班标签（2026-11-04）：库里刻意 is_active=0，不能沿用灰色「停用」——
+   那会让人以为被误停。紫色系与「演示/审核用」语义绑定，且和 tag-all 的蓝区分开。 */
+.tag-demo { background: #f3efff; color: #6b3fd4; }
 
 .empty { padding: 36px 16px; text-align: center; color: var(--text-3); }
 .loading { padding: 36px 16px; text-align: center; color: var(--text-3); }
@@ -604,6 +607,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 }
 .toast-ok { background: #0aa30a; }
 .toast-err { background: var(--err); }
+/* 提示型（非错误）：切到演示班时的说明走这个，别用红色吓人 */
+.toast-warn { background: #d25f00; }
 
 /* 导入弹窗的「来源切换」：上传 xlsx 文件 / 粘贴青果网页源码 二选一 */
 .src-row { display: flex; gap: 8px; margin: 12px 0 16px; }

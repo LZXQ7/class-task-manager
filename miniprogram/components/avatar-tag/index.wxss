@@ -16,7 +16,7 @@
 .avatar-img {
   flex-shrink: 0;
   border-radius: 999rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 .avatar-char {
   font-weight: 600;
@@ -36,7 +36,7 @@
 .avatar-sub {
   font-size: 24rpx;
   line-height: 32rpx;
-  color: #86909C;
+  color: var(--text-3);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

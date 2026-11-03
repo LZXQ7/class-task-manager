@@ -11,10 +11,10 @@
   align-items: center;
 }
 .ds-main-info { margin-left: 24rpx; flex: 1; min-width: 0; }
-.ds-name { font-size: 34rpx; font-weight: 600; color: #1D2129; margin-right: 12rpx; }
-.ds-sub { margin-top: 4rpx; font-size: 24rpx; color: #86909C; }
+.ds-name { font-size: 34rpx; font-weight: 600; color: var(--text-1); margin-right: 12rpx; }
+.ds-sub { margin-top: 4rpx; font-size: 24rpx; color: var(--text-3); }
 .ds-block { margin-top: 32rpx; }
-.ds-block-title { font-size: 26rpx; color: #4E5969; margin-bottom: 16rpx; }
+.ds-block-title { font-size: 26rpx; color: var(--text-2); margin-bottom: 16rpx; }
 .ds-peers { display: flex; flex-direction: row; flex-wrap: wrap; }
 .ds-peer {
   display: flex;
@@ -22,25 +22,25 @@
   align-items: center;
   margin: 0 16rpx 12rpx 0;
 }
-.ds-peer-name { margin: 0 12rpx; font-size: 26rpx; color: #1D2129; }
+.ds-peer-name { margin: 0 12rpx; font-size: 26rpx; color: var(--text-1); }
 .ds-log {
   display: flex;
   flex-direction: row;
   align-items: center;
   padding: 8rpx 0;
 }
-.ds-log-text { margin-left: 12rpx; flex: 1; font-size: 24rpx; color: #4E5969; }
-.ds-log-time { font-size: 22rpx; color: #C9CDD4; }
+.ds-log-text { margin-left: 12rpx; flex: 1; font-size: 24rpx; color: var(--text-2); }
+.ds-log-time { font-size: 22rpx; color: var(--text-4); }
 .ds-cand {
   display: flex;
   flex-direction: row;
   align-items: center;
   padding: 16rpx;
   border-radius: 32rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   margin-bottom: 16rpx;
 }
-.ds-cand.on { background: #F0F5FF; }
+.ds-cand.on { background: var(--brand-light); }
 /* 姓名一行、「值日 N 次」另起一行：不写 flex-direction:column 的话两者是同一行的行内元素，
    「值日」的起始位置会随姓名长短左右漂移（2 字名 / 3 字名对不齐）。 */
 .ds-cand-info {
@@ -51,8 +51,8 @@
   flex-direction: column;
   align-items: flex-start;
 }
-.ds-cand-name { font-size: 30rpx; color: #1D2129; }
-.ds-cand-sub { font-size: 24rpx; color: #86909C; }
+.ds-cand-name { font-size: 30rpx; color: var(--text-1); }
+.ds-cand-sub { font-size: 24rpx; color: var(--text-3); }
 /* 「值日 N 次」三段对齐：中间数字占固定宽度并居中，单位数↔双位数不改变两侧文字的位置。 */
 .cnt-num { display: inline-block; min-width: 46rpx; text-align: center; }
 .ds-chips { display: flex; flex-direction: row; flex-wrap: wrap; }
@@ -61,16 +61,16 @@
   padding: 0 24rpx;
   margin: 0 16rpx 16rpx 0;
   border-radius: 32rpx;
-  background: #F2F3F5;
-  color: #4E5969;
+  background: var(--bg-fill);
+  color: var(--text-2);
   font-size: 26rpx;
   line-height: 64rpx;
 }
 .ds-chip.on {
-  background: #F0F5FF;
-  color: #3370FF;
+  background: var(--brand-light);
+  color: var(--brand);
   font-weight: 600;
-  border: 2rpx solid #3370FF;
+  border: 2rpx solid var(--brand);
 }
 .ds-dates { display: flex; flex-direction: row; }
 .ds-date {
@@ -78,9 +78,9 @@
   height: 96rpx;
   margin-right: 14rpx;
   border-radius: 40rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -109,7 +109,7 @@
   margin-right: 16rpx;
 }
 .ds-btn:last-child { margin-right: 0; }
-.ds-btn.primary { flex: 1; background: #3370FF; color: #FFFFFF; font-weight: 600; }
-.ds-btn.ghost { background: #F2F3F5; color: #4E5969; }
-.ds-btn.danger { background: #FFECE8; color: #F53F3F; }
+.ds-btn.primary { flex: 1; background: var(--brand); color: #FFFFFF; font-weight: 600; }
+.ds-btn.ghost { background: var(--bg-fill); color: var(--text-2); }
+.ds-btn.danger { background: var(--danger-bg); color: var(--danger); }
 .ds-btn:active { opacity: 0.8; }

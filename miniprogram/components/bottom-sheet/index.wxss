@@ -52,7 +52,7 @@
 }
 @media (prefers-reduced-transparency: reduce) {
   .sheet-panel {
-    background: #FFFFFF;
+    background: var(--bg-card);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -111,7 +111,7 @@
 .sheet-title {
   font-size: 32rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .sheet-close {
   position: absolute;

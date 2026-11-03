@@ -72,7 +72,7 @@
 .ws-range {
   font-size: 32rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
   letter-spacing: .5rpx;
   line-height: 1.35;
 }
@@ -83,7 +83,7 @@
   margin-top: 4rpx;
   font-size: 22rpx;
   line-height: 1.4;
-  color: #86909C;
+  color: var(--text-3);
 }
 /* 「本周」标记：圆点 + 文字同色，整体作为一个整体块（旧版只有孤零零一个蓝点） */
 .ws-now {
@@ -91,14 +91,14 @@
   flex-direction: row;
   align-items: center;
   margin-left: 12rpx;
-  color: #3370FF;
+  color: var(--brand);
   font-weight: 500;
 }
 .ws-dot {
   width: 10rpx;
   height: 10rpx;
   border-radius: 5rpx;
-  background: #3370FF;
+  background: var(--brand);
   margin-right: 6rpx;
 }
 /* 发布状态标签：跟在下行末尾；无状态时（课表页）整行自然居中 */
@@ -110,9 +110,19 @@
   font-size: 20rpx;
   line-height: 34rpx;
 }
-.ws-status.draft { background: rgba(134, 144, 156, 0.14); color: #86909C; }
-.ws-status.published { background: rgba(0, 180, 42, 0.12); color: #00B42A; }
-.ws-status.archived { background: rgba(124, 92, 255, 0.14); color: #7C5CFF; }
+.ws-status.draft { background: rgba(134, 144, 156, 0.14); color: var(--text-3); }
+.ws-status.published { background: rgba(0, 180, 42, 0.12); color: var(--success); }
+.ws-status.archived { background: rgba(124, 92, 255, 0.14); color: var(--purple); }
+/* ---------- 深色（2026-11-04）----------
+ * 浅色材质是「半透明白 + 白描边 + 靛蓝投影」；深色下白 tint 会糊成一块灰白硬片，
+ * 白描边 + 白内高光还会显出「塑料反光」。换成与 .card 同一套深色玻璃口径：
+ * 低不透明度冷色 tint + 弱亮边 + 黑投影（字色本来就走 --text-N，会自己翻）。 */
+.t-dark .ws-bubble,
+.t-dark .ws-card {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-edge);
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.38), var(--glass-highlight);
+}
 /* 系统开启「减少动态效果」：按下反馈退化为只换透明度（不做缩放） */
 @media (prefers-reduced-motion: reduce) {
   .ws-bubble,

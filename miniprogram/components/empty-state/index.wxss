@@ -8,13 +8,13 @@
   margin-top: 24rpx;
   font-size: 28rpx;
   line-height: 40rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .empty-desc {
   margin-top: 8rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #C9CDD4;
+  color: var(--text-4);
   text-align: center;
   padding: 0 64rpx;
 }
@@ -23,11 +23,11 @@
   height: 64rpx;
   padding: 0 32rpx;
   border-radius: 40rpx;
-  background: #F0F5FF;
-  color: #3370FF;
+  background: var(--brand-light);
+  color: var(--brand);
   font-size: 26rpx;
   line-height: 64rpx;
 }
 .empty-btn:active {
-  background: #DCE8FF;
+  background: var(--brand-light-hover);
 }

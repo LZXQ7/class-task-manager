@@ -29,6 +29,10 @@ function maskClass(r) {
     totalWeeks: r.total_weeks,
     bindOpen: Number(r.bind_open) !== 0,
     isActive: Number(r.is_active) !== 0,
+    // 演示班（2026-10-28 演示环境隔离）：全虚构数据、只服务审核体验入口。
+    // 🔴 它被**刻意**设为 is_active=0（避免出现在真实超管的小程序班级列表里），
+    //   后台必须拿到这个标记，否则只能显示成「停用」——语义错、还会误导以为被人停掉了。
+    isDemo: Number(r.is_demo) !== 0,
     periodTime: jsonSafe(r.period_time) || [],
     mainRoom: r.main_room || '',
     memberCount: Number(r.cnt || 0)

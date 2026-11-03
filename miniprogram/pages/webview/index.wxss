@@ -1,4 +1,4 @@
-.wv { min-height: 100vh; background: #F5F6F8; }
+.wv { min-height: 100vh; background: var(--bg-page); }
 .wv-fail {
   display: flex;
   flex-direction: column;
@@ -9,12 +9,12 @@
   margin-top: 32rpx;
   font-size: 32rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .wv-desc {
   margin: 16rpx 64rpx 0;
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
   line-height: 40rpx;
   text-align: center;
 }
@@ -24,9 +24,9 @@
   height: 88rpx;
   line-height: 88rpx;
   border-radius: 32rpx;
-  background: #3370FF;
+  background: var(--brand);
   color: #FFFFFF;
   font-size: 30rpx;
   font-weight: 600;
 }
-.wv-btn:active { background: #245BDB; }
+.wv-btn:active { background: var(--brand-press); }

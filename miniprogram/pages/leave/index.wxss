@@ -6,23 +6,23 @@
 .lv-tabs { margin: 20rpx 0 8rpx; }
 
 .lv-card { padding: 28rpx 28rpx 24rpx; margin-bottom: 8rpx; }
-.lv-card-t { font-size: 30rpx; font-weight: 600; color: #1D2129; margin-bottom: 20rpx; }
+.lv-card-t { font-size: 30rpx; font-weight: 600; color: var(--text-1); margin-bottom: 20rpx; }
 
 .lv-field { margin-top: 24rpx; }
-.lv-label { font-size: 26rpx; color: #4E5969; font-weight: 500; }
+.lv-label { font-size: 26rpx; color: var(--text-2); font-weight: 500; }
 /* 「必传」小标：贴在标签后，不抢主文案 */
-.lv-req { margin-left: 8rpx; font-size: 22rpx; font-weight: 400; color: #F53F3F; }
+.lv-req { margin-left: 8rpx; font-size: 22rpx; font-weight: 400; color: var(--danger); }
 /* 「其他」事由的手填输入框：与 .lv-picker 同一套底色/圆角，视觉上是同一行延伸 */
 .lv-input {
   height: 64rpx;
   padding: 0 20rpx;
   margin-top: 12rpx;
   font-size: 26rpx;
-  color: #1D2129;
-  background: #F2F3F5;
+  color: var(--text-1);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
-.lv-input-ph { color: #86909C; }
+.lv-input-ph { color: var(--text-3); }
 
 .lv-dates { display: flex; align-items: center; margin-top: 12rpx; }
 .lv-date {
@@ -32,11 +32,11 @@
   padding: 0 20rpx;
   text-align: center;
   font-size: 26rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
-.lv-tilde { margin: 0 16rpx; font-size: 24rpx; color: #86909C; }
+.lv-tilde { margin: 0 16rpx; font-size: 24rpx; color: var(--text-3); }
 
 /* 多时段胶囊：全天与半天互斥，上午/下午/晚上 可任意组合 */
 .lv-periods { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 12rpx; }
@@ -47,13 +47,13 @@
   padding: 0 28rpx;
   text-align: center;
   font-size: 26rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
-.lv-chip.on { font-weight: 600; color: #3370FF; background: #E8F0FF; }
+.lv-chip.on { font-weight: 600; color: var(--brand); background: var(--brand-light); }
 
-.lv-hint { margin-top: 12rpx; font-size: 22rpx; line-height: 32rpx; color: #86909C; }
+.lv-hint { margin-top: 12rpx; font-size: 22rpx; line-height: 32rpx; color: var(--text-3); }
 
 /* 事由选择器（原生 picker） */
 .lv-picker {
@@ -64,8 +64,8 @@
   padding: 0 20rpx;
   margin-top: 12rpx;
   font-size: 26rpx;
-  color: #1D2129;
-  background: #F2F3F5;
+  color: var(--text-1);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
 
@@ -76,31 +76,31 @@
   height: 88rpx;
   padding: 0 20rpx;
   margin-top: 12rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
   border-radius: 16rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 .lv-upload-t { margin-left: 12rpx; font-size: 26rpx; }
 .lv-img-row { display: flex; align-items: center; margin-top: 12rpx; }
-.lv-img { width: 140rpx; height: 140rpx; border-radius: 12rpx; background: #F2F3F5; }
-.lv-img-del { margin-left: 20rpx; padding: 8rpx 16rpx; font-size: 26rpx; color: #F53F3F; }
+.lv-img { width: 140rpx; height: 140rpx; border-radius: 12rpx; background: var(--bg-fill); }
+.lv-img-del { margin-left: 20rpx; padding: 8rpx 16rpx; font-size: 26rpx; color: var(--danger); }
 
 /* 列表分区标题 */
-.lv-sec-t { margin: 28rpx 4rpx 12rpx; font-size: 28rpx; font-weight: 600; color: #1D2129; }
+.lv-sec-t { margin: 28rpx 4rpx 12rpx; font-size: 28rpx; font-weight: 600; color: var(--text-1); }
 
 /* 申请 / 待批 行 */
 .lv-row { padding: 24rpx; margin-bottom: 16rpx; }
 .lv-row-head { display: flex; align-items: center; justify-content: space-between; }
-.lv-row-name { font-size: 30rpx; font-weight: 600; color: #1D2129; }
-.lv-row-cls { margin-left: 12rpx; font-size: 22rpx; color: #86909C; }
-.lv-row-sub { margin-top: 8rpx; font-size: 24rpx; color: #86909C; }
+.lv-row-name { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
+.lv-row-cls { margin-left: 12rpx; font-size: 22rpx; color: var(--text-3); }
+.lv-row-sub { margin-top: 8rpx; font-size: 24rpx; color: var(--text-3); }
 
 /* 假条缩略图（data-fid 是 cloud:// fileID，点击换临时 URL 预览） */
 .lv-thumb-wrap { display: inline-block; margin-top: 12rpx; }
-.lv-thumb { width: 120rpx; height: 120rpx; border-radius: 12rpx; background: #F2F3F5; }
+.lv-thumb { width: 120rpx; height: 120rpx; border-radius: 12rpx; background: var(--bg-fill); }
 
 .lv-row-actions { display: flex; justify-content: flex-end; gap: 16rpx; margin-top: 16rpx; }
-.lv-link { font-size: 26rpx; color: #3370FF; padding: 8rpx 4rpx; }
+.lv-link { font-size: 26rpx; color: var(--brand); padding: 8rpx 4rpx; }
 .lv-pass { min-width: 140rpx; }
 .lv-reject { min-width: 140rpx; }
 .lv-link.disabled,
@@ -109,10 +109,13 @@
 
 /* 状态标签 */
 .lv-status { font-size: 22rpx; padding: 4rpx 16rpx; border-radius: 999rpx; }
-.st-pending { color: #D25A00; background: #FFF3E8; }
-.st-approved { color: #00875A; background: #E6F7F0; }
-.st-rejected { color: #F53F3F; background: #FFECE8; }
-.st-cancelled { color: #86909C; background: #F2F3F5; }
+.st-pending { color: #D25A00; background: var(--warning-bg); }
+.st-approved { color: #00875A; background: var(--success-bg); }
+/* 深色下提亮状态文字（浅色不变）：暗橙/暗绿压在深色 tint 上对比度不足 */
+.t-dark .st-pending { color: var(--warning); }
+.t-dark .st-approved { color: var(--success); }
+.st-rejected { color: var(--danger); background: var(--danger-bg); }
+.st-cancelled { color: var(--text-3); background: var(--bg-fill); }
 
 .lv-foot { height: 60rpx; }
 

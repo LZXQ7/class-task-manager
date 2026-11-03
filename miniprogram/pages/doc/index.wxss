@@ -6,27 +6,27 @@
   display: block;
   font-size: 40rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .dc-meta {
   display: block;
   margin-top: 8rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* ---------- 导语 ---------- */
 .dc-intro {
   margin: 0 32rpx 8rpx;
   padding: 22rpx 24rpx;
-  background: #F0F5FF;
+  background: var(--brand-light);
   border-radius: 32rpx;
 }
 .dc-intro-text {
   display: block;
   font-size: 25rpx;
   line-height: 1.8;
-  color: #3370FF;
+  color: var(--brand);
 }
 .dc-intro-text + .dc-intro-text { margin-top: 14rpx; }
 
@@ -35,7 +35,7 @@
   margin: 16rpx 32rpx 24rpx;
   padding: 28rpx 32rpx;
   background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid #F2F3F5;
+  border: 2rpx solid var(--bg-fill);
   border-radius: 40rpx;
 }
 .dc-h {
@@ -43,14 +43,14 @@
   margin-bottom: 12rpx;
   font-size: 30rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .dc-p {
   display: block;
   margin: 8rpx 0;
   font-size: 27rpx;
   line-height: 1.8;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 /* ---------- 条目 ---------- */
@@ -66,14 +66,14 @@
   height: 10rpx;
   margin: 18rpx 14rpx 0 4rpx;
   border-radius: 50%;
-  background: #C9CDD4;
+  background: var(--bg-fill);
 }
 .dc-li-text {
   flex: 1;
   min-width: 0;
   font-size: 27rpx;
   line-height: 1.8;
-  color: #4E5969;
+  color: var(--text-2);
 }
 
 /* ---------- 页脚 ---------- */
@@ -83,5 +83,5 @@
   text-align: center;
   font-size: 23rpx;
   line-height: 1.7;
-  color: #C9CDD4;
+  color: var(--text-4);
 }

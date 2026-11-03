@@ -110,6 +110,9 @@ app.get('/api/me', async (req, res) => {
     //   凡是「按班级配置动态渲染」的前端逻辑，字段都必须在这一层放行。
     classes: classes.map((c) => ({
       id: c.id, name: c.name, isActive: c.isActive,
+      // 演示班标记：前端据此把下拉里的「（停用）」改写成「（演示）」。
+      // 不传这个字段，前端就只能看见 is_active=0，把刻意停用的演示班当成故障显示。
+      isDemo: !!c.isDemo,
       periodTime: c.periodTime || [],   // 大节时间（节次数来源）
       mainRoom: c.mainRoom || ''        // 主教室（保洁值日房间）
     }))

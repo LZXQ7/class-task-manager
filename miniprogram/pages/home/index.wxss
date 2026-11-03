@@ -20,8 +20,8 @@
 
 /* ---------- NavBar 中间：日期 + 周次 ---------- */
 .nav-center { display: flex; flex-direction: row; align-items: baseline; justify-content: center; }
-.nav-date { font-size: 30rpx; font-weight: 600; color: #1D2129; }
-.nav-week { margin-left: 8rpx; font-size: 22rpx; color: #86909C; }
+.nav-date { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
+.nav-week { margin-left: 8rpx; font-size: 22rpx; color: var(--text-3); }
 
 /* ---------- Hero 值日卡 ----------
  * 状态变体（设计稿）：plain 白底 / blue 蓝渐变（进行中）/ leave 橙底（已请假）/ small 无值日。
@@ -44,7 +44,7 @@
   .hero { background: rgba(255, 255, 255, 0.9); }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .hero { background: #FFFFFF; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .hero { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .hero:active { opacity: 0.94; }
 .hero.blue {
@@ -52,7 +52,7 @@
   border-color: transparent;
   box-shadow: 0 8rpx 32rpx rgba(51,112,255,0.28);
 }
-.hero.leave { background: #FFF7E8; border-color: #FFF3C2; }
+.hero.leave { background: var(--warning-bg); border-color: var(--warning-bg); }
 /* 无值日：白底小卡；不带头部状态行，标题上边距在 .noduty 里归零 */
 .hero.small { padding: 30rpx 32rpx; }
 
@@ -74,14 +74,14 @@
 /* 白底 / 橙底卡上白胶囊看不见 → 换成浅灰底深字 */
 .hero.plain .hero-chip,
 .hero.small .hero-chip,
-.hero.leave .hero-chip { background: #F2F3F5; color: #4E5969; }
+.hero.leave .hero-chip { background: var(--bg-fill); color: var(--text-2); }
 .hero-chip.right { display: flex; flex-direction: row; align-items: center; }
 .hero-dot {
   width: 16rpx;
   height: 16rpx;
   margin-left: 10rpx;
   border-radius: 999rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
 }
 
 .hero-title { margin-top: 20rpx; font-size: 44rpx; line-height: 60rpx; font-weight: 600; }
@@ -98,12 +98,12 @@
 .hero-peer-text { font-size: 24rpx; line-height: 34rpx; color: rgba(255, 255, 255, 0.70); }
 .hero.plain .hero-peer-text,
 .hero.small .hero-peer-text,
-.hero.leave .hero-peer-text { color: #86909C; }
+.hero.leave .hero-peer-text { color: var(--text-3); }
 .hero-more { font-size: 24rpx; }       /* 颜色随 hero.subColor 内联 */
 
 /* 无值日变体的两行文案 */
-.hero-title.noduty { margin-top: 0; font-size: 40rpx; line-height: 56rpx; color: #1D2129; }
-.hero-sub.noduty-sub { margin-top: 8rpx; font-size: 26rpx; line-height: 36rpx; color: #86909C; }
+.hero-title.noduty { margin-top: 0; font-size: 40rpx; line-height: 56rpx; color: var(--text-1); }
+.hero-sub.noduty-sub { margin-top: 8rpx; font-size: 26rpx; line-height: 36rpx; color: var(--text-3); }
 
 /* ============================================================
  * 以下为功能弹层 / 列表样式，追加在骨架之后
@@ -111,7 +111,7 @@
 
 /* ---------- 语音条 ---------- */
 .voice-bar {
-  background: #F0F5FF;
+  background: var(--brand-light);
   border-radius: 40rpx;
   padding: 24rpx;
   display: flex;
@@ -122,21 +122,21 @@
   width: 80rpx;
   height: 80rpx;
   border-radius: 40rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .voice-info { flex: 1; margin-left: 24rpx; min-width: 0; }
-.voice-title { font-size: 28rpx; color: #245BDB; }
-.voice-sub { margin-top: 4rpx; font-size: 24rpx; color: #86909C; }
+.voice-title { font-size: 28rpx; color: var(--brand-press); }
+.voice-sub { margin-top: 4rpx; font-size: 24rpx; color: var(--text-3); }
 .voice-btn {
   flex-shrink: 0;
   height: 64rpx;
   padding: 0 28rpx;
   border-radius: 32rpx;
-  background: #FFFFFF;
-  color: #3370FF;
+  background: var(--bg-card);
+  color: var(--brand);
   font-size: 26rpx;
   line-height: 64rpx;
 }
@@ -150,11 +150,11 @@
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 2rpx solid #F2F3F5;
+  border-bottom: 2rpx solid var(--bg-fill);
 }
-.card-title { font-size: 30rpx; font-weight: 600; color: #1D2129; }
-.card-link { font-size: 26rpx; color: #3370FF; }
-.card-sub { font-size: 24rpx; color: #86909C; }
+.card-title { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
+.card-link { font-size: 26rpx; color: var(--brand); }
+.card-sub { font-size: 24rpx; color: var(--text-3); }
 
 /* ---------- 课次行 ---------- */
 .course-row {
@@ -163,10 +163,10 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  border-bottom: 2rpx solid #F2F3F5;
+  border-bottom: 2rpx solid var(--bg-fill);
 }
 .course-row:last-child { border-bottom: none; }
-.course-row.mine { background: #F7F8FA; }
+.course-row.mine { background: var(--fill-soft); }
 /* 选修课行（2026-11-02 修正）：**不再给常驻浅蓝底/蓝色条** —— 用户要求「没到的课一律不上色，
    只有正在上的那节课才加深（见下方 .course-row.current）」。选修课仅靠「选修」角标（.tag.elective）
    区分，避免被误当成高亮。
@@ -179,9 +179,9 @@
   width: 6rpx;
   height: 64rpx;
   border-radius: 3rpx;
-  background: #E5E6EB;
+  background: var(--line-1);
 }
-.course-bar.on { background: #3370FF; }
+.course-bar.on { background: var(--brand); }
 /* 左列（时间 + 地点竖排）：紧凑成栈，两行间距与单行行一致（4rpx）。
    2026-10-15 结构调整：过去时间+课名同排、地点挂在整行下面 —— 课名折两行时
    时间和地点之间被撑开一大段。现在左列独立成栈，课名作为行的直接子元素，
@@ -195,11 +195,11 @@
   width: 178rpx;
   box-sizing: border-box;
   padding-right: 24rpx;
-  border-right: 2rpx solid #F2F3F5;
+  border-right: 2rpx solid var(--bg-fill);
 }
 .course-time {
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
   width: 100%;
   flex-shrink: 0;
   white-space: nowrap;
@@ -213,7 +213,7 @@
       别把整行改成 flex-start，那样标签会顶上去。 */
 .course-name {
   font-size: 30rpx;
-  color: #1D2129;
+  color: var(--text-1);
   align-self: flex-start;
   /* 与左侧时间列的间距：约两个小字字符宽（时间列字号 24rpx × 2）。
      2026-10-15 定：16rpx 太挤、再放宽到 48rpx。要改只动这一个值。 */
@@ -228,7 +228,7 @@
 .course-room {
   margin-top: 4rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
   width: 100%;
   flex-shrink: 0;
   white-space: nowrap;
@@ -243,27 +243,27 @@
   font-size: 22rpx;
   line-height: 40rpx;
 }
-.tag.ga { background: #F0F5FF; color: #3370FF; }
-.tag.gb { background: #F3F0FF; color: #7C5CFF; }
-.tag.all { background: #F2F3F5; color: #4E5969; }
+.tag.ga { background: var(--brand-light); color: var(--brand); }
+.tag.gb { background: var(--purple-bg); color: var(--purple); }
+.tag.all { background: var(--bg-fill); color: var(--text-2); }
 /* 选修课角标（2026-10-16 首页并入本人选修课）：配色对齐课表页的 PERSONAL_BG/PERSONAL_FG，
    让选修课在首页与课表页里是一眼同源的两处显示。 */
-.tag.elective { background: #EAF1FF; color: #3370FF; }
+.tag.elective { background: var(--brand-light); color: var(--brand); }
 /* 当前正在上的课（2026-11-02）：品牌蓝实填充 + 白字，盖过 personal/mine 浅蓝；与 done 灰化互斥 */
-.course-row.current { background: #3370FF; }
-.course-row.current .course-bar { background: #FFFFFF; opacity: 1; }
+.course-row.current { background: var(--brand); }
+.course-row.current .course-bar { background: var(--bg-card); opacity: 1; }
 .course-row.current .course-name { color: #FFFFFF; font-weight: 600; }
 .course-row.current .course-time,
 .course-row.current .course-room { color: rgba(255, 255, 255, 0.85); }
 /* 「进行中」角标：白底品牌字，在蓝底行上醒目 */
-.tag.now { background: #FFFFFF; color: #3370FF; font-weight: 600; }
+.tag.now { background: var(--bg-card); color: var(--brand); font-weight: 600; }
 .no-course {
   height: 128rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* ---------- 快捷入口已下线（.quick / .quick-item 一并删除） ---------- */
@@ -276,13 +276,13 @@
   padding: 24rpx 32rpx;
 }
 .remind-info { flex: 1; margin-left: 24rpx; }
-.remind-title { font-size: 30rpx; color: #1D2129; }
-.remind-sub { margin-top: 4rpx; font-size: 24rpx; color: #86909C; }
+.remind-title { font-size: 30rpx; color: var(--text-1); }
+.remind-sub { margin-top: 4rpx; font-size: 24rpx; color: var(--text-3); }
 .remind-done {
   display: flex;
   flex-direction: row;
   align-items: center;
-  color: #00B42A;
+  color: var(--success);
   font-size: 26rpx;
 }
 
@@ -295,32 +295,32 @@
   height: 40rpx;
   padding: 0 16rpx;
   border-radius: 16rpx;
-  background: #F3F0FF;
-  color: #7C5CFF;
+  background: var(--purple-bg);
+  color: var(--purple);
   font-size: 22rpx;
   line-height: 40rpx;
 }
 /* 职位头衔三色分层（超管金 / 班委蓝 / 辅导员青） */
-.admin-tag.super { color: #D46B08; background: #FFF3C2; }
-.admin-tag.committee { color: #3370FF; background: #F0F5FF; }
-.admin-tag.counselor { color: #0AA5A8; background: #E8FFFB; }
+.admin-tag.super { color: var(--warning-strong); background: var(--warning-bg); }
+.admin-tag.committee { color: var(--brand); background: var(--brand-light); }
+.admin-tag.counselor { color: #0AA5A8; background: var(--success-bg); }
 .admin-grid { display: flex; flex-direction: row; }
 .admin-cell {
   flex: 1;
   height: 144rpx;
   margin: 0 12rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 40rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
 }
-.admin-cell text { margin-top: 12rpx; font-size: 26rpx; color: #1D2129; }
-.admin-cell:active { background: #F0F5FF; }
+.admin-cell text { margin-top: 12rpx; font-size: 26rpx; color: var(--text-1); }
+.admin-cell:active { background: var(--brand-light); }
 
 /* ---------- 提醒卡 · 测试提醒入口（开启后出现；点击发一条测试订阅消息并弹窗回访） ---------- */
-.remind-test { margin-top: 8rpx; font-size: 24rpx; color: #3370FF; }
+.remind-test { margin-top: 8rpx; font-size: 24rpx; color: var(--brand); }
 .remind-test.busy { opacity: 0.5; }
 
 /* ---------- 查看通知（§41 需求⑦）全员可见 ---------- */
@@ -330,10 +330,10 @@
   align-items: center;
   padding: 24rpx 32rpx;
 }
-.notice-card:active { background: #F2F3F5; }
+.notice-card:active { background: var(--bg-fill); }
 .notice-info { flex: 1; margin-left: 24rpx; }
-.notice-title { font-size: 30rpx; color: #1D2129; }
-.notice-sub { margin-top: 4rpx; font-size: 24rpx; color: #86909C; }
+.notice-title { font-size: 30rpx; color: var(--text-1); }
+.notice-sub { margin-top: 4rpx; font-size: 24rpx; color: var(--text-3); }
 .notice-badge {
   flex-shrink: 0;
   min-width: 36rpx;
@@ -343,7 +343,7 @@
   text-align: center;
   font-size: 22rpx;
   color: #FFFFFF;
-  background: #F53F3F;
+  background: var(--danger);
   border-radius: 999rpx;
   margin-right: 12rpx;
 }
@@ -361,7 +361,7 @@
 .an-view-title {
   font-size: 32rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
   margin-bottom: 16rpx;
 }
 .an-view-scroll {
@@ -371,7 +371,7 @@
   display: block;
   font-size: 28rpx;
   line-height: 1.7;
-  color: #4E5969;
+  color: var(--text-2);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -391,36 +391,36 @@
 /* ---------- 首页请假卡（1.0.5 追加，需求①②） ---------- */
 .leave-home { display: flex; flex-direction: column; padding: 24rpx 32rpx; }
 .lh-head { display: flex; align-items: baseline; justify-content: space-between; }
-.lh-title { font-size: 30rpx; font-weight: 600; color: #1D2129; }
-.lh-date { font-size: 22rpx; color: #86909C; }
+.lh-title { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
+.lh-date { font-size: 22rpx; color: var(--text-3); }
 .lh-body { display: flex; align-items: baseline; margin: 16rpx 0 12rpx; }
-.lh-num { font-size: 64rpx; font-weight: 700; color: #1D2129; line-height: 1; }
-.lh-num.warn { color: #D46B08; }
-.lh-unit { margin-left: 12rpx; font-size: 26rpx; color: #4E5969; }
-.lh-foot { display: flex; align-items: center; font-size: 24rpx; color: #86909C; }
+.lh-num { font-size: 64rpx; font-weight: 700; color: var(--text-1); line-height: 1; }
+.lh-num.warn { color: var(--warning-strong); }
+.lh-unit { margin-left: 12rpx; font-size: 26rpx; color: var(--text-2); }
+.lh-foot { display: flex; align-items: center; font-size: 24rpx; color: var(--text-3); }
 .lh-grp { margin-right: 24rpx; }
-.lh-more { margin-left: auto; color: #3370FF; }
+.lh-more { margin-left: auto; color: var(--brand); }
 .lh-classes { display: flex; flex-direction: column; margin-top: 12rpx; }
 .lh-cls {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 20rpx 0; border-bottom: 2rpx solid #EEF0F3;
+  padding: 20rpx 0; border-bottom: 2rpx solid var(--bg-fill);
 }
 .lh-cls:last-child { border-bottom: none; }
-.lh-cls-name { font-size: 28rpx; color: #1D2129; }
-.lh-cls-num { font-size: 28rpx; color: #D46B08; }
+.lh-cls-name { font-size: 28rpx; color: var(--text-1); }
+.lh-cls-num { font-size: 28rpx; color: var(--warning-strong); }
 .lh-empty {
-  padding: 20rpx 0; font-size: 24rpx; color: #86909C;
-  text-align: center; background: #F7F8FA; border-radius: 24rpx;
+  padding: 20rpx 0; font-size: 24rpx; color: var(--text-3);
+  text-align: center; background: var(--fill-soft); border-radius: 24rpx;
 }
 
 /* ---------- 请假名单（首页查看弹层，与 roster 同视觉） ---------- */
 .lv { padding: 8rpx 32rpx 40rpx; }
 .lv-grp { margin-top: 16rpx; }
-.lv-grp-t { display: block; margin-bottom: 8rpx; font-size: 26rpx; font-weight: 600; color: #1D2129; }
-.lv-row { display: flex; align-items: center; padding: 16rpx 0; border-top: 2rpx solid #EEF0F3; }
+.lv-grp-t { display: block; margin-bottom: 8rpx; font-size: 26rpx; font-weight: 600; color: var(--text-1); }
+.lv-row { display: flex; align-items: center; padding: 16rpx 0; border-top: 2rpx solid var(--bg-fill); }
 .lv-row:first-of-type { border-top: none; }
 .lv-info { flex: 1; min-width: 0; margin-left: 16rpx; display: flex; flex-direction: column; }
-.lv-name { font-size: 28rpx; color: #1D2129; }
+.lv-name { font-size: 28rpx; color: var(--text-1); }
 /* 「已过时段」角标（2026-10-09 需求①）：卡片大数字已改成**实时口径**，
  * 但弹层名单仍是日期口径（含已过时段）—— 不标出来的话，用户会看到
  * 「卡片说 0 人请假、名单里却有人」，以为两个数字打架。
@@ -433,7 +433,7 @@
   background: var(--bg-fill);
   border-radius: 8rpx;
 }
-.lv-sub { margin-top: 4rpx; font-size: 22rpx; color: #86909C; }
+.lv-sub { margin-top: 4rpx; font-size: 22rpx; color: var(--text-3); }
 /* 行内按钮：假条（实心=有图可看） / 传假条（幽灵=去上传）
  * 1.0.6：原来这里是「撤销」。撤销**只在请假登记里保留**（首页离登记入口太远，
  * 误触成本高），首页这一位让给更高频的假条。
@@ -468,8 +468,8 @@
 }
 .lv-goto-t { margin-right: 4rpx; }
 .lv-empty {
-  padding: 28rpx 0; font-size: 24rpx; color: #86909C; text-align: center;
-  background: #F7F8FA; border-radius: 24rpx;
+  padding: 28rpx 0; font-size: 24rpx; color: var(--text-3); text-align: center;
+  background: var(--fill-soft); border-radius: 24rpx;
 }
 
 /* ---------- 今日课次「已上完」灰化（2026-09-29 需求） ----------
@@ -479,8 +479,8 @@
 .course-row.done .course-name,
 .course-row.done .course-time,
 .course-row.done .course-room { color: #BFBFBF; }
-.course-row.done .course-bar.on { background: #E5E6EB; }   /* 本人(isMine)蓝条也退回灰 */
-.course-row.done .tag { background: #F2F3F5; color: #C9CDD4; }
+.course-row.done .course-bar.on { background: var(--line-1); }   /* 本人(isMine)蓝条也退回灰 */
+.course-row.done .tag { background: var(--bg-fill); color: var(--text-4); }
 
 /* 可点开的课次行（2026-10-09 需求②）：班长/副班长点它弹课堂情况。
  * ⚠️ 只给一个极轻的按压反馈，**不加箭头/下划线等「可点」暗示** ——
@@ -572,8 +572,8 @@
   gap: 12rpx;
   margin: 16rpx 32rpx 0;
   padding: 18rpx 28rpx;
-  background: #F0F5FF;
-  border: 2rpx solid #DCE8FF;
+  background: var(--brand-light);
+  border: 2rpx solid var(--brand-light-hover);
   border-radius: 24rpx;
   overflow: hidden;
   /* 收起靠 max-height 塌陷 —— 不能写 height:auto（WXSS 里 auto 不参与过渡）。
@@ -592,7 +592,7 @@
   border-width: 0;
   opacity: 0;
 }
-.home-feed-hover { background: #E3EDFF; }
+.home-feed-hover { background: var(--brand-light); }
 
 /* 只装一行的高度窗口：多出来的裁掉，track 上移时上一条自然滚出去 */
 .home-feed-body {
@@ -608,7 +608,7 @@
   height: 40rpx;
   line-height: 40rpx;
   font-size: 26rpx;
-  color: #245BDB;
+  color: var(--brand-press);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

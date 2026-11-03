@@ -61,6 +61,7 @@ page {
   --bg-page: #F5F6F8;
   --bg-card: #FFFFFF;
   --bg-fill: #F2F3F5;
+  --fill-soft: #F7F8FA;
   --bg-mask: rgba(0,0,0,0.45);
 
   /* 文字 */
@@ -87,10 +88,30 @@ page {
   --success-bg: #E8FFEA;
   --warning: #FF7D00;
   --warning-bg: #FFF7E8;
+  --warning-strong: #D46B08;
   --danger: #F53F3F;
   --danger-bg: #FFECE8;
   --purple: #7C5CFF;
   --purple-bg: #F3F0FF;
+
+  /* ---- 课程配色 S1–S5（课表色块 / 选修课角标）----
+   * 浅色 = 马卡龙底 + 深字，与历次观感逐值相同；
+   * 深色 = 同色相的**低透明度底** + 提亮字（见 .t-dark 里同名令牌的注释）。
+   * ⚠️ 只在这里定义，页面/组件不写死 —— 课格的内联 style 写的是
+   *   `var(--co-N-bg, <浅色兜底>)`，所以切主题时内联样式会自己跟着翻，不用重建数据。 */
+  --co-1-bg: #D6E0FF;
+  --co-1-fg: #245BDB;
+  --co-2-bg: #E6F7EE;
+  --co-2-fg: #009A29;
+  --co-3-bg: #FFF3E8;
+  --co-3-fg: #D46B08;
+  --co-4-bg: #F3F0FF;
+  --co-4-fg: #5E3BE8;
+  --co-5-bg: #E6F7F7;
+  --co-5-fg: #0AA5A8;
+  /* 个人选修课（与全班课次区分开） */
+  --co-p-bg: #EAF1FF;
+  --co-p-fg: #3370FF;
 
   /* 阴影：投影用中性黑（原始 Arco 配色），轻投影 + 微模糊 */
   --shadow-1: 0 4rpx 16rpx rgba(29,33,41,0.10);
@@ -140,6 +161,7 @@ page {
   --bg-page: #0E1116;
   --bg-card: #1C2027;
   --bg-fill: #262B33;
+  --fill-soft: #262B33;
   --bg-mask: rgba(0,0,0,0.65);
 
   /* 文字：浅色底反过来 —— 深色下白字是主色，灰字逐级变浅 */
@@ -166,10 +188,31 @@ page {
   --success-bg: #14301F;
   --warning: #FFA940;
   --warning-bg: #33240F;
+  --warning-strong: #FFA940;
   --danger: #FF6B6B;
   --danger-bg: #3A1A1A;
   --purple: #A78BFF;
   --purple-bg: #251E3D;
+
+  /* ---- 课程配色 S1–S5（深色版）----
+   * 🔴 不是「把浅色马卡龙压暗」：把 #D6E0FF 这类高明度色铺在深色页面上，
+   *    整片课表就是一大块**发亮**的色墙（用户 2026-11-04 报「色块比较亮」）。
+   *    深色改用**同色相的低透明度**叠在深蓝黑上 —— 得到「安静的暗色面 + 一点色相」，
+   *    色相记忆交给课格左侧那条 6rpx 色条（pages/timetable 的 .t-dark .tt-cell::before）。
+   * 字色比浅色版提亮一档：课名只有 22rpx，需要在小字号下仍过 4.5:1。 */
+  --co-1-bg: rgba(122, 162, 255, 0.16);
+  --co-1-fg: #8CB0FF;
+  --co-2-bg: rgba(61, 214, 140, 0.14);
+  --co-2-fg: #5FDC9C;
+  --co-3-bg: rgba(255, 169, 64, 0.15);
+  --co-3-fg: #FFB865;
+  --co-4-bg: rgba(167, 139, 255, 0.16);
+  --co-4-fg: #B49BFF;
+  --co-5-bg: rgba(45, 200, 200, 0.14);
+  --co-5-fg: #4FD3D3;
+  /* 个人选修课：比 S1 再亮一点，保证与「全班课」一眼能分开 */
+  --co-p-bg: rgba(122, 162, 255, 0.22);
+  --co-p-fg: #A8C6FF;
 
   /* 阴影：深色下投影几乎看不见（黑上加黑），靠 glass-shadow 撑玻璃的「浮起」感 */
   --shadow-1: 0 4rpx 16rpx rgba(0,0,0,0.40);
@@ -200,11 +243,15 @@ view, text, scroll-view, button, input, textarea, image {
 button::after { border: none; }
 
 /* ============ 容器 ============ */
-/* `.page` 不再是「画一层底色」，而是**让底下的极光背景透上来**（v0.7.17 起）：
-   底色与极光渐变统一由根节点 `page` 承担，这样玻璃卡片才有东西可模糊。 */
+/* 🔴 极光（页面底色）由根视图上的 `.t-light` / `.t-dark` 绘制（见各自作用域里的
+ *   background-color / background-image）。**这里绝不能写 `background`** ——
+ *   否则等价权重（0-1-0）且声明更靠后的 `.page { background: transparent }`
+ *   会盖掉 `.t-dark` 的暗色极光，结果「切了深色还是浅蓝」：`page{}` 那层浅色
+ *   兜底从透明视图后透出来。
+ *   `page{}` 仅保留**首帧兜底**：tClass 还没挂上时视图无主题背景、透出浅色极光
+ *   防白闪；theme.mount 把 tClass 推上根节点后，`.t-light`/`.t-dark` 立即接管。 */
 .page {
   min-height: 100vh;
-  background: transparent;
 }
 .page-body {
   padding: 0 32rpx;

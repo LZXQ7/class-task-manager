@@ -363,7 +363,6 @@ function auditNavBar(js) {
   if (!colorDef || !/^var\(--/.test(colorDef[1])) problems.push('color 默认值没走 var(--token)' + (colorDef ? '（实得 ' + colorDef[1] + '）' : '（读不到）'));
   if (/value\s*:\s*'rgba\(\s*255/.test(js)) problems.push('nav-bar 写死了半透明白底（深色下是一块惨白玻璃条）');
   if (!/applyTheme\s*\(/.test(js)) problems.push('没有对外的 applyTheme（页内设置项无法复用同一条切换逻辑）');
-  if (!/applyTheme\(next/.test(js)) problems.push('onToggleTheme 没有复用 applyTheme（两条入口会走样）');
   return problems;
 }
 {
@@ -374,10 +373,8 @@ function auditNavBar(js) {
   chk(colorDef && /^var\(--/.test(colorDef[1]), 'nav-bar 的 color 默认值走 var(--token)：' + (colorDef ? colorDef[1] : '(读不到)'));
   chk(auditNavBar(navJs).length === 0, 'nav-bar 令牌/入口判据全过：' + auditNavBar(navJs).join(' / '));
 
-  // ② 切换入口 + 对外的 applyTheme（页内设置项复用同一条逻辑）
-  chk(/onToggleTheme\s*\(/.test(navJs), 'nav-bar 有 onToggleTheme（切换按钮的 handler）');
+  // ② 对外的 applyTheme（页内「我的」页设置项复用同一条逻辑；左上角按钮已移除，仅保留此处入口）
   chk(/applyTheme\s*\(/.test(navJs), 'nav-bar 有对外的 applyTheme（页内「我的」页设置项复用，避免两条入口走样）');
-  chk(/applyTheme\(next/.test(navJs), 'onToggleTheme 复用 applyTheme（按钮与设置项同一条逻辑）');
   chk(/setMode\(/.test(navJs), 'nav-bar 调 theme.setMode 落库');
 
   // ③ 揭示动效形态
@@ -386,9 +383,7 @@ function auditNavBar(js) {
   chk(/pointer-events:\s*none/.test(navWxss), '揭示层 pointer-events: none（不拦点击）');
   chk(/will-change:\s*clip-path/.test(navWxss), '揭示层 will-change: clip-path（走合成器，逐帧 radius 才不掉帧）');
   const revealZ = /\.theme-reveal\s*\{[^}]*z-index:\s*(\d+)/.exec(navWxss);
-  const btnZ = /\.theme-btn\s*\{[^}]*z-index:\s*(\d+)/.exec(navWxss);
-  chk(revealZ && btnZ && Number(revealZ[1]) > Number(btnZ[1]),
-    '揭示层 z-index 高于按钮（' + (revealZ ? revealZ[1] : '?') + ' > ' + (btnZ ? btnZ[1] : '?') + '）');
+  chk(!!revealZ, '揭示层定义了 z-index（' + (revealZ ? revealZ[1] : '?') + '）');
   // 🔴 揭示层还必须高于**全站所有浮层**（bottom-sheet 1000 / dialog 1100）：
   //    主题切换是「整屏换肤」，遮罩只盖页面、弹层浮在上面不变色 ⇒ 看起来就是 bug。
   //    TOP_OVERLAY_Z 在模块作用域动态扫全仓 wxss 得来，不写死清单。
@@ -445,9 +440,9 @@ function auditNavBar(js) {
   const navInner = /<view class="nav[\s\S]*?\n<\/view>/.exec(navWxml);
   chk(!!navInner && navInner[0].indexOf('theme-btn') < 0 && navInner[0].indexOf('theme-reveal') < 0,
     '主题按钮与揭示层在 .nav **之外**（.nav 有 backdrop-filter，会让 fixed 退化成相对它定位）');
-  // ⑤ 按钮只在没有返回键时出现（否则顶走返回按钮）+ **受总开关控制**
-  chk(/wx:if="\{\{!showBack\s*&&\s*themeEnabled\}\}"/.test(navWxml),
-    '切换按钮 wx:if="{{!showBack && themeEnabled}}"（二级页左上角是返回键的地盘；开关关闭时不渲染）');
+  // ⑤ 左上角主题切换按钮已移除（用户要求只保留「我的」页入口）；开关逻辑仍由 themeEnabled 控制
+  chk(!/theme-btn/.test(navWxml) && !/\.theme-btn/.test(navWxss),
+    'nav-bar 已移除左上角主题切换按钮（仅保留「我的」页入口；开关仍由 themeEnabled 控制）');
   chk(/themeEnabled:\s*DARK_MODE_ENABLED/.test(navJs),
     'nav-bar 的 themeEnabled 直接取 config.DARK_MODE_ENABLED（首帧即正确，不用等 attached 纠正）');
   chk(/require\('\.\.\/\.\.\/utils\/config'\)/.test(navJs), 'nav-bar 引了 utils/config（开关唯一来源）');
@@ -636,27 +631,31 @@ console.log('\n── ⑦「我的」页外观设置项（二级页没有左上�
   const js = stripComments(read('miniprogram/pages/mine/index.js'));
   const wxml = stripComments(read('miniprogram/pages/mine/index.wxml'));
   const wxss = stripComments(read('miniprogram/pages/mine/index.wxss'));
-  chk(/themeOpts\s*:\s*\[/.test(js), 'mine 的 data 里有 themeOpts');
+  chk(/themeSegs\s*:\s*\[/.test(js), 'mine 的 data 里有 themeSegs');
   ['system', 'light', 'dark'].forEach((k) => {
-    chk(new RegExp("key\\s*:\\s*'" + k + "'").test(js), 'themeOpts 含 ' + k);
+    chk(new RegExp("key\\s*:\\s*'" + k + "'").test(js), 'themeSegs 含 ' + k);
   });
   chk(/onThemePick\s*\(/.test(js), 'mine 有 onThemePick（点选切换）');
   chk(/nav\.applyTheme\(/.test(js) || /\.applyTheme\(/.test(js), 'mine 复用 nav-bar 的 applyTheme（动效与按钮一致，不硬切）');
   chk(/id="mnNav"/.test(wxml), 'mine 的 nav-bar 挂了 id（selectComponent 要靠它拿实例）');
   chk(/selectComponent\('#mnNav'\)/.test(js), 'mine 用 selectComponent 拿 nav-bar 实例');
-  chk(/data-k="\{\{item\.key\}\}"/.test(wxml), '三态选项带 data-k');
-  // 总开关闭合时整卡不渲染（与 nav-bar 按钮同一开关，不能只藏一处）
-  chk(/<view wx:if="\{\{themeEnabled\}\}" class="card mn-card st-item st-4">/.test(wxml),
-    '外观卡 wx:if="{{themeEnabled}}" 受同一开关控制（开关关闭时不渲染）');
+  chk(/<segmented[^>]*bind:change="onThemePick"/.test(wxml), '外观控制用 segmented 组件并绑定 onThemePick');
+  // 总开关闭合时整行不渲染（与 nav-bar 按钮同一开关，不能只藏一处）
+  chk(/<view wx:if="\{\{themeEnabled\}\}" class="mn-theme st-item st-4">/.test(wxml),
+    '外观行 wx:if="{{themeEnabled}}" 受同一开关控制（开关关闭时不渲染）');
   chk(/themeEnabled:\s*config\.DARK_MODE_ENABLED/.test(js),
     'mine 的 themeEnabled 取 config.DARK_MODE_ENABLED（与 nav-bar 同源）');
-  chk(/themeMode\s*===\s*item\.key/.test(wxml), '选中态按 themeMode === item.key 判定');
+  chk(/value="\{\{themeMode\}\}"/.test(wxml), 'segmented 选中态按 value="{{themeMode}}" 绑定（与 themeMode 同步）');
   // 新写的样式必须走令牌
-  chk(/\.appear-radio\.on\s*\{[^}]*var\(--brand\)/.test(wxss), '外观卡的选中态走 var(--brand)');
-  chk(/\.appear-t\s*\{[^}]*var\(--text-1\)/.test(wxss), '外观卡标题走 var(--text-1)');
-  // 白名单：脏 dataset 不得把主题设成非法值
+  chk(/\.mn-theme-label\s*\{[^}]*var\(--text-1\)/.test(wxss), '外观行标签走 var(--text-1)（深色下反色）');
+  chk(/\.mn-theme\s*\{[^}]*var\(--glass-bg\)/.test(wxss), '外观行容器走 var(--glass-bg)（玻璃材质自动翻深色）');
+  // segmented 组件自身的深色适配（外观控制现在用它）：选中文字 + 深色轨道都走令牌
+  const segWxss = stripComments(read('miniprogram/components/segmented/index.wxss'));
+  chk(/\.seg-item\.on\s*\{[^}]*var\(--text-1\)/.test(segWxss), 'segmented 选中文字走 var(--text-1)（深色下不写死深色文字）');
+  chk(/\.t-dark \.seg\s*\{[^}]*background:\s*rgba\(\s*255/.test(segWxss), 'segmented 深色轨道走浅色低不透明度（不是亮白条）');
+  // 白名单：脏 key 不得把主题设成非法值
   chk(/key\s*!==\s*'system'\s*&&\s*key\s*!==\s*'light'\s*&&\s*key\s*!==\s*'dark'/.test(js),
-    'onThemePick 对 dataset.key 做了白名单校验');
+    'onThemePick 对 e.detail.key 做了白名单校验（非法值回落）');
 }
 
 /* ============================================================
@@ -785,6 +784,53 @@ console.log('\n── ⑨ 反向清单');
   chk(!/prefers-color-scheme/.test(appWxss), 'app.wxss 不用 prefers-color-scheme 做主方案（以 JS 算出的 class 为准）');
 }
 function appWxmlSafe(p) { return stripComments(read(p)); }
+
+/* ============================================================
+ * ⑩ 课程色块：色值必须走令牌，不能是 JS 里写死的裸 hex
+ * ------------------------------------------------------------
+ * 事故背景（2026-11-04，用户报「课表色块比较亮」）：
+ *   util.courseColor() 以前返回 '#D6E0FF' 这类裸 hex，被内联进
+ *   `style="background:..."`。**内联样式的优先级高于 class 规则**，
+ *   所以切深色时它不会翻 —— 整张课表仍是一片马卡龙色，在深色页上发光。
+ *   一旦色板回到裸 hex，深色适配会**静默失效**（页面不报错，只是不黑），
+ *   所以必须由门禁钉住形态：返回值只能是 `var(--co-N-xx, <浅色兜底>)`。
+ */
+console.log('\n── ⑩ 课程色块');
+{
+  const utilJs = stripComments(read('miniprogram/utils/util.js'));
+  const board = (utilJs.match(/const COURSE_COLORS\s*=\s*\[[\s\S]*?\];/) || [''])[0];
+  chk(!!board, 'util.js 有 COURSE_COLORS 色板（锚点命中）');
+  chk(!/\b(bg|fg)\s*:\s*'#[0-9a-fA-F]{3,8}'/.test(board),
+    '色板里没有裸 hex（裸 hex 内联后不随主题翻 ⇒ 深色下课表一片发光）');
+  chk((board.match(/var\(--co-/g) || []).length >= 10, '5 组色号的 bg / fg 全部走 var(--co-N-*)');
+  chk(/var\(--co-1-bg,\s*#[0-9a-fA-F]{3,8}\)/.test(board),
+    'var() 带浅色兜底（首帧 tClass 未挂上时不至于全军透明）');
+
+  // 令牌要两端都有 —— 缺一边 ⇒ 那一边的色块底色掉成透明
+  const lightBody = braceBlock(appWxss, '.t-light') || '';
+  const darkBody = braceBlock(appWxss, '.t-dark') || '';
+  const need = ['--co-1-bg', '--co-1-fg', '--co-2-bg', '--co-3-bg', '--co-4-bg', '--co-5-bg', '--co-5-fg', '--co-p-bg', '--co-p-fg'];
+  const missL = need.filter((t) => lightBody.indexOf(t) < 0);
+  const missD = need.filter((t) => darkBody.indexOf(t) < 0);
+  chk(!missL.length, '浅色作用域定义了全部课程色令牌' + (missL.length ? '（缺 ' + missL.join(',') + '）' : ''));
+  chk(!missD.length, '深色作用域定义了全部课程色令牌' + (missD.length ? '（缺 ' + missD.join(',') + '）' : ''));
+
+  // 课格：字色要下到块上（深色左侧色条靠 currentColor 取色），深色要真有一条色条
+  const ttWxml = stripComments(read('miniprogram/pages/timetable/index.wxml'));
+  chk(/style="background:\{\{co\.bg\}\};color:\{\{co\.fg\}\}/.test(ttWxml),
+    '课格把 color 也下到块上（色条要用 currentColor，写到子节点上就取不到了）');
+  const ttWxss = stripComments(read('miniprogram/pages/timetable/index.wxss'));
+  chk(/\.t-dark \.tt-cell::before\s*\{/.test(ttWxss), '深色课格有 ::before 左侧色条');
+  chk(/background:\s*currentColor/.test(ttWxss), '色条取 currentColor（与课名同色，不必逐色号写规则）');
+  chk(!/\.t-dark \.tt-cell\s*\{[^}]*background:\s*#/.test(ttWxss),
+    '深色课格块底没有写死 hex（真源在 --co-N-bg）');
+
+  // 变异自证：把 var() 换回裸 hex，上面那条必须先红
+  const mutated = board.replace("'var(--co-1-bg, #D6E0FF)'", "'#D6E0FF'");
+  chk(mutated !== board, '变异锚点命中（锚点漂移 ⇒ 这一组自证是假的，先修锚点）');
+  chk(/\b(bg|fg)\s*:\s*'#[0-9a-fA-F]{3,8}'/.test(mutated),
+    '变异：色板里塞回一个裸 hex → 被「没有裸 hex」那条抓住');
+}
 
 console.log('\n' + (failed ? '✗ ' + failed + ' 项未通过' : '✓ 深色模式体检全部通过'));
 process.exit(failed ? 1 : 0);

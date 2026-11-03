@@ -3,7 +3,7 @@
 
 .page {
   min-height: 100vh;
-  background: #F5F6F8;
+  background: var(--bg-page);
 }
 
 .hw {
@@ -24,7 +24,7 @@
   align-items: center;
   padding: 24rpx 28rpx;
   border-radius: 20rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
 }
 
 .hw-main {
@@ -43,7 +43,7 @@
   min-width: 0;
   font-size: 30rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 
 .hw-tag {
@@ -53,35 +53,35 @@
   border-radius: 999rpx;
   font-size: 22rpx;
   line-height: 32rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
 }
 
 /* 提交状态色：未交灰 / 待批蓝 / 已完成绿 / 有问题红 */
 .hw-tag.none {
-  color: #86909C;
-  background: #F2F3F5;
+  color: var(--text-3);
+  background: var(--bg-fill);
 }
 
 .hw-tag.PENDING {
-  color: #3370FF;
-  background: #E8F0FF;
+  color: var(--brand);
+  background: var(--brand-light);
 }
 
 .hw-tag.DONE {
-  color: #00B42A;
-  background: #E8FFEA;
+  color: var(--success);
+  background: var(--success-bg);
 }
 
 .hw-tag.REJECT {
-  color: #F53F3F;
-  background: #FFECE8;
+  color: var(--danger);
+  background: var(--danger-bg);
 }
 
 .hw-brief {
   margin-top: 10rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 .hw-meta {
@@ -91,7 +91,7 @@
   align-items: center;
   margin-top: 12rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 .hw-dot {
@@ -99,7 +99,7 @@
 }
 
 .hw-req {
-  color: #3370FF;
+  color: var(--brand);
 }
 
 /* 左滑露出的删除区（与通知页 notice 同规格：粉底圆角、与卡片保持间距不贴边）
@@ -117,8 +117,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #FFECE8;
-  color: #F53F3F;
+  background: var(--danger-bg);
+  color: var(--danger);
   border-radius: 12px;
   opacity: 0;
   transition: opacity .16s ease;
@@ -138,7 +138,7 @@
   padding: 120rpx 32rpx;
   text-align: center;
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 底部「发布作业」入口（仅班委 canReview 可见，固定悬浮，见 index.js onPublish）

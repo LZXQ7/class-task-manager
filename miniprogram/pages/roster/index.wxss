@@ -87,18 +87,18 @@
   font-size: 26rpx;
   font-weight: 500;
   color: var(--text-2);
-  background: #FFFFFF;
+  background: var(--bg-card);
   border: 1rpx solid var(--line-1);
   border-radius: var(--r-pill);
 }
 .mb-act + .mb-act { margin-left: 16rpx; }
 .mb-act:active { background: var(--bg-fill); }
 /* 「导入名单」= 主操作（品牌色浅底） */
-.mb-act-primary { color: var(--brand); background: var(--brand-light); border-color: #D6E4FF; }
-.mb-act-primary:active { background: #DCE8FF; }
+.mb-act-primary { color: var(--brand); background: var(--brand-light); border-color: var(--brand-light); }
+.mb-act-primary:active { background: var(--brand-light-hover); }
 /* 「请假登记」：橙色系与「录入」区分（沿用原橙色口径） */
-.mb-act-leave { color: #D46B08; background: #FFF7E8; border-color: #FFE7C2; }
-.mb-act-leave:active { background: #FFEFD1; }
+.mb-act-leave { color: var(--warning-strong); background: var(--warning-bg); border-color: var(--warning-bg); }
+.mb-act-leave:active { background: var(--warning-bg); }
 
 .mb-row {
   display: flex;
@@ -113,7 +113,7 @@
   right: 0;
   top: 0;
   height: 2rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 .mb-row.off { opacity: 0.55; }
 .mb-info {
@@ -132,7 +132,7 @@
   font-size: 30rpx;
   line-height: 44rpx;
   font-weight: 500;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .mb-bind {
   flex-shrink: 0;
@@ -141,18 +141,18 @@
   height: 32rpx;
   line-height: 32rpx;
   font-size: 20rpx;
-  color: #86909C;
-  background: #F2F3F5;
+  color: var(--text-3);
+  background: var(--bg-fill);
   border-radius: 999rpx;
 }
 .mb-bind.on {
-  color: #00B42A;
-  background: #E8FFEA;
+  color: var(--success);
+  background: var(--success-bg);
 }
 .mb-sub {
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .cnt-num { display: inline-block; min-width: 46rpx; text-align: center; }
 .mb-tag {
@@ -162,17 +162,17 @@
   height: 40rpx;
   line-height: 40rpx;
   font-size: 22rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
-.mb-tag.ga  { color: #3370FF; background: #F0F5FF; }
-.mb-tag.gb  { color: #7C5CFF; background: #F3F0FF; }
+.mb-tag.ga  { color: var(--brand); background: var(--brand-light); }
+.mb-tag.gb  { color: var(--purple); background: var(--purple-bg); }
 /* 「测试」标签已在 2026-10-08 随「人员列表不显示测试账号」一并删除：
    名单数据源 member.list 已在服务端无条件过滤，这个标签永不触发。 */
-.mb-tag.super     { color: #D46B08; background: #FFF3C2; }
-.mb-tag.counselor  { color: #0AA5A8; background: #E8FFFB; }
-.mb-tag.committee  { color: #3370FF; background: #F0F5FF; }
+.mb-tag.super     { color: var(--warning-strong); background: var(--warning-bg); }
+.mb-tag.counselor  { color: #0AA5A8; background: var(--success-bg); }
+.mb-tag.committee  { color: var(--brand); background: var(--brand-light); }
 
 /* 成员详情 */
 /* v0.7.25 终版：不用 height:100% —— sheet-body 是 scroll-view，内层 % 高度不可靠；
@@ -195,18 +195,18 @@
   /* v0.7.21 需求④：原来和面板底色一样偏灰（#4E5969 在灰玻璃上几乎融进去），
      详情里的这三行是「这个学生是谁」的主信息，用一级文字色压住底气。
      ⚠️ 只动文字，不动 .mb-abtn（「调至 A/B 组」等按钮保持原样，用户明确要求）。 */
-  color: #1D2129;
+  color: var(--text-1);
 }
-.mb-detail-grid text.bound { color: #00B42A; }
+.mb-detail-grid text.bound { color: var(--success); }
 .mb-detail-role {
   margin: 0 0 16rpx;
   padding: 12rpx 16rpx;
   border-radius: 24rpx;
   font-size: 24rpx;
 }
-.mb-detail-role.super     { color: #D46B08; background: #FFF3C2; }
-.mb-detail-role.committee { color: #3370FF; background: #F0F5FF; }
-.mb-detail-role.counselor { color: #0AA5A8; background: #E8FFFB; }
+.mb-detail-role.super     { color: var(--warning-strong); background: var(--warning-bg); }
+.mb-detail-role.committee { color: var(--brand); background: var(--brand-light); }
+.mb-detail-role.counselor { color: #0AA5A8; background: var(--success-bg); }
 .mb-detail-actions {
   margin-top: 32rpx;
   width: 100%;
@@ -234,8 +234,8 @@
   margin: 0 8% 16rpx 0;
   text-align: center;
   font-size: 28rpx;
-  color: #1D2129;
-  background: #F2F3F5;
+  color: var(--text-1);
+  background: var(--bg-fill);
   border-radius: 24rpx;
   overflow: hidden;
   white-space: nowrap;
@@ -252,20 +252,20 @@
   font-size: 30rpx;
   font-weight: 500;
 }
-.mb-abtn:active { background: #E5E6EB; }
-.mb-abtn.danger { color: #F53F3F; background: #FFECE8; }
-.mb-abtn.danger:active { background: #FFD9D5; }
+.mb-abtn:active { background: var(--line-1); }
+.mb-abtn.danger { color: var(--danger); background: var(--danger-bg); }
+.mb-abtn.danger:active { background: var(--danger-bg); }
 /* 「固定到主页」的已固定态（v0.7.17 需求⑥）：填充品牌蓝 + 白字，
    与一排灰按钮明显区分 —— 否则用户看不出这个人是「已经钉在首页」还是「可以钉」 */
-.mb-abtn.on { color: #FFFFFF; background: #3370FF; font-weight: 500; }
-.mb-abtn.on:active { background: #245BDB; }
+.mb-abtn.on { color: #FFFFFF; background: var(--brand); font-weight: 500; }
+.mb-abtn.on:active { background: var(--brand-press); }
 .mb-abtn.busy { opacity: .6; }
 .mb-super-hint {
   margin-top: 8rpx;
   width: 100%;
   text-align: center;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 导入名单 */
@@ -276,9 +276,9 @@
   padding: 24rpx;
   font-size: 26rpx;
   line-height: 40rpx;
-  color: #1D2129;
-  background: #F7F8FA;
-  border: 2rpx solid #F2F3F5;
+  color: var(--text-1);
+  background: var(--fill-soft);
+  border: 2rpx solid var(--bg-fill);
   border-radius: 24rpx;
 }
 .im-tip {
@@ -286,7 +286,7 @@
   margin-top: 16rpx;
   font-size: 24rpx;
   line-height: 34rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .im-btn {
   margin-top: 32rpx;
@@ -296,10 +296,10 @@
   font-size: 32rpx;
   font-weight: 500;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
   border-radius: 24rpx;
 }
-.im-btn:active { background: #245BDB; }
+.im-btn:active { background: var(--brand-press); }
 
 /* ============================================================
  * 名单导入增强（2026-09-25）：添加成员表单 / 预览分组 / 撤回
@@ -311,15 +311,15 @@
   display: block;
   margin-bottom: 12rpx;
   font-size: 26rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 .im-input {
   height: 92rpx;
   padding: 0 24rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 32rpx;
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 
 .im-actions { display: flex; flex-direction: row; margin-top: 40rpx; }
@@ -330,8 +330,8 @@
   text-align: center;
   margin-right: 16rpx;
   font-size: 28rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 32rpx;
 }
 .im-btn-primary {
@@ -342,17 +342,17 @@
   font-size: 28rpx;
   font-weight: 600;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
   border-radius: 32rpx;
 }
-.im-btn-primary.busy { background: #A8C1FF; }
+.im-btn-primary.busy { background: var(--brand-disable); }
 .im-btn-ghost:active { opacity: .85; }
 .im-btn-primary:active { opacity: .85; }
 
 .im-result {
   margin-top: 16rpx;
   font-size: 26rpx;
-  color: #00B42A;
+  color: var(--success);
 }
 
 /* 撤回入口 */
@@ -364,17 +364,17 @@
   margin-top: 32rpx;
   padding: 20rpx;
   font-size: 26rpx;
-  color: #F53F3F;
-  background: #FFECE8;
+  color: var(--danger);
+  background: var(--danger-bg);
   border-radius: 32rpx;
 }
-.im-revert:active { background: #FFD9D5; }
+.im-revert:active { background: var(--danger-bg); }
 
 /* 预览分组 */
 .im-sec-t {
   margin: 8rpx 0 20rpx;
   font-size: 26rpx;
-  color: #4E5969;
+  color: var(--text-2);
 }
 .im-pg {
   display: flex;
@@ -382,11 +382,11 @@
   align-items: flex-start;
   padding: 24rpx;
   margin-bottom: 16rpx;
-  background: #F7F8FA;
-  border: 2rpx solid #F2F3F5;
+  background: var(--fill-soft);
+  border: 2rpx solid var(--bg-fill);
   border-radius: 32rpx;
 }
-.im-pg.on { border-color: #3370FF; background: #F0F5FF; }
+.im-pg.on { border-color: var(--brand); background: var(--brand-light); }
 .im-pg-chk {
   flex-shrink: 0;
   width: 44rpx;
@@ -396,35 +396,35 @@
   text-align: center;
   font-size: 28rpx;
   color: #FFFFFF;
-  background: #FFFFFF;
-  border: 2rpx solid #C9CDD4;
+  background: var(--bg-card);
+  border: 2rpx solid var(--bg-fill);
   border-radius: 20rpx;
 }
-.im-pg-chk.on { background: #3370FF; border-color: #3370FF; }
+.im-pg-chk.on { background: var(--brand); border-color: var(--brand); }
 .im-pg-main { flex: 1; min-width: 0; }
 .im-pg-label {
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
   word-break: break-all;
 }
-.im-pg-meta { margin-top: 6rpx; font-size: 24rpx; color: #4E5969; }
-.im-pg-warn { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: #FF7D00; }
-.im-pg-sample { margin-top: 8rpx; font-size: 22rpx; color: #86909C; }
+.im-pg-meta { margin-top: 6rpx; font-size: 24rpx; color: var(--text-2); }
+.im-pg-warn { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: var(--warning); }
+.im-pg-sample { margin-top: 8rpx; font-size: 22rpx; color: var(--text-3); }
 .im-pg-sel {
   flex-shrink: 0;
   margin-left: 16rpx;
   padding: 8rpx 20rpx;
   font-size: 24rpx;
-  color: #3370FF;
-  background: #FFFFFF;
-  border: 2rpx solid #D6E0FF;
+  color: var(--brand);
+  background: var(--bg-card);
+  border: 2rpx solid var(--brand-light);
   border-radius: 999rpx;
 }
 .im-empty {
   padding: 60rpx 0;
   text-align: center;
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 「或直接导入表格」分隔 + 选文件按钮 */
@@ -434,14 +434,14 @@
   align-items: center;
   margin: 28rpx 0 20rpx;
   font-size: 22rpx;
-  color: #C9CDD4;
+  color: var(--text-4);
 }
 .im-or::before,
 .im-or::after {
   content: '';
   flex: 1;
   height: 2rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
 }
 .im-or text { margin: 0 16rpx; }
 .im-pick {
@@ -451,19 +451,19 @@
   justify-content: center;
   height: 88rpx;
   font-size: 28rpx;
-  color: #3370FF;
-  background: #FFFFFF;
-  border: 2rpx solid #D6E0FF;
+  color: var(--brand);
+  background: var(--bg-card);
+  border: 2rpx solid var(--brand-light);
   border-radius: 32rpx;
 }
 .im-pick text { margin-left: 10rpx; }
-.im-pick:active { background: #F0F5FF; }
+.im-pick:active { background: var(--brand-light); }
 .im-pick.busy { opacity: .6; }
 .im-file {
   display: block;
   margin-top: 12rpx;
   font-size: 24rpx;
-  color: #00B42A;
+  color: var(--success);
 }
 
 /* 自动新建班级开关 */
@@ -474,14 +474,14 @@
   justify-content: space-between;
   padding: 20rpx 24rpx;
   margin-bottom: 16rpx;
-  background: #F5F6F8;
-  border: 2rpx solid #F2F3F5;
+  background: var(--bg-page);
+  border: 2rpx solid var(--bg-fill);
   border-radius: 32rpx;
 }
 .im-switch-info { flex: 1; min-width: 0; padding-right: 16rpx; }
-.im-switch-title { display: block; font-size: 28rpx; color: #1D2129; }
-.im-switch-sub { display: block; margin-top: 4rpx; font-size: 22rpx; line-height: 30rpx; color: #86909C; }
-.im-pg-create { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: #00B42A; }
+.im-switch-title { display: block; font-size: 28rpx; color: var(--text-1); }
+.im-switch-sub { display: block; margin-top: 4rpx; font-size: 22rpx; line-height: 30rpx; color: var(--text-3); }
+.im-pg-create { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: var(--success); }
 
 /* ---------------- v0.7.9：筛选 chip / 空态 / 设置班委弹层 ---------------- */
 
@@ -496,15 +496,15 @@
   padding: 8rpx 24rpx;
   margin-right: 16rpx;
   font-size: 24rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 999rpx;
 }
 /* 同首页：.on 给出「变宽后的目标值」（8rpx 24rpx → 8rpx 34rpx），
    .chip-motion 负责过渡它，邻项才会平滑让位而不是瞬移 */
 .mb-chip.on {
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
   padding: 8rpx 34rpx;
 }
 
@@ -513,14 +513,14 @@
   padding: 80rpx 32rpx;
   text-align: center;
   font-size: 26rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 设置班委：职位列表 */
 .ps-title {
   padding: 4rpx 0 20rpx;
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .ps-list { margin-bottom: 8rpx; }
 .ps-item {
@@ -530,29 +530,29 @@
   justify-content: space-between;
   padding: 28rpx 24rpx;
   margin-bottom: 12rpx;
-  background: #F5F6F8;
-  border: 2rpx solid #F2F3F5;
+  background: var(--bg-page);
+  border: 2rpx solid var(--bg-fill);
   border-radius: 32rpx;
 }
 .ps-item.on {
-  background: #F0F5FF;
-  border-color: #D6E0FF;
+  background: var(--brand-light);
+  border-color: var(--brand-light);
 }
-.ps-item:active { background: #F0F5FF; }
-.ps-text { font-size: 30rpx; color: #1D2129; }
-.ps-item.on .ps-text { color: #3370FF; font-weight: 600; }
+.ps-item:active { background: var(--brand-light); }
+.ps-text { font-size: 30rpx; color: var(--text-1); }
+.ps-item.on .ps-text { color: var(--brand); font-weight: 600; }
 /* 授权职位（生活委员 / 班长兼团支书）：非超管置灰 —— 需求 D。
    只降透明度 + 去掉按压反馈，不隐藏：让人看得见「有这两个职位、但要找超管」。 */
 .ps-item.locked { opacity: 0.5; }
-.ps-item.locked:active { background: #F5F6F8; }
-.ps-lock { font-size: 24rpx; color: #86909C; }
+.ps-item.locked:active { background: var(--bg-page); }
+.ps-lock { font-size: 24rpx; color: var(--text-3); }
 .ps-cancel {
   margin-top: 8rpx;
   padding: 26rpx 0;
   text-align: center;
   font-size: 28rpx;
-  color: #F53F3F;
-  background: #FFECE8;
+  color: var(--danger);
+  background: var(--danger-bg);
   border-radius: 32rpx;
 }
 
@@ -567,7 +567,7 @@
 .mb-notes {
   margin-top: 24rpx;
   padding: 24rpx 20rpx 8rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 32rpx;
 }
 .mb-notes-head {
@@ -596,7 +596,7 @@
   gap: 8rpx;
   margin: 20rpx 0 8rpx;
   padding: 28rpx 24rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: 32rpx;
 }
 .mb-notes-empty-t { font-size: 27rpx; color: var(--text-2); font-weight: 500; }
@@ -607,7 +607,7 @@
   align-items: flex-start;
   margin-top: 16rpx;
   padding: 22rpx 20rpx 22rpx 26rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: 32rpx;
   position: relative;
   overflow: hidden;
@@ -620,9 +620,9 @@
   top: 0;
   bottom: 0;
   width: 6rpx;
-  background: #C9D3E6;
+  background: var(--brand-light);
 }
-.mb-note.mine::after { background: #3370FF; }
+.mb-note.mine::after { background: var(--brand); }
 .mb-note-main { flex: 1 1 auto; display: flex; flex-direction: column; gap: 12rpx; min-width: 0; }
 .mb-note-content {
   font-size: 28rpx;
@@ -634,21 +634,22 @@
 .mb-note-foot { display: flex; align-items: center; gap: 10rpx; }
 .mb-note-author { font-size: 24rpx; color: var(--text-2); }
 .mb-note-time { font-size: 24rpx; color: var(--text-3); }
-.mb-note-edit { margin-left: auto; font-size: 24rpx; color: #3370FF; }
+.mb-note-edit { margin-left: auto; font-size: 24rpx; color: var(--brand); }
 .mb-note-del {
   flex: 0 0 auto;
   margin-left: 18rpx;
   padding: 6rpx 16rpx;
   font-size: 24rpx;
   color: #E5484D;
-  background: #FFECE8;
+  background: var(--danger-bg);
   border-radius: 20rpx;
 }
+.t-dark .mb-note-del { color: var(--danger); }
 
 .mb-note-form {
   margin-top: 20rpx;
   padding: 20rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: 32rpx;
 }
 .mb-note-input {
@@ -658,8 +659,8 @@
   font-size: 28rpx;
   line-height: 1.6;
   color: var(--text-1);
-  background: #F7F8FA;
-  border: 2rpx solid #E5E6EB;
+  background: var(--fill-soft);
+  border: 2rpx solid var(--line-1);
   border-radius: 24rpx;
   box-sizing: border-box;
 }
@@ -670,7 +671,7 @@
   margin: 10rpx 0 4rpx;
 }
 .mb-note-counter { font-size: 23rpx; color: var(--text-3); }
-.mb-note-cancel { font-size: 25rpx; color: #86909C; padding: 4rpx 8rpx; }
+.mb-note-cancel { font-size: 25rpx; color: var(--text-3); padding: 4rpx 8rpx; }
 
 /* v0.7.25：弹层固定底栏（bottom-sheet footer 槽）—— 保存备注按钮常驻可见 */
 /* v0.7.32：底部留白改由 footer 内容自己承担（.sheet-footer 容器不再给） */
@@ -692,12 +693,12 @@
   font-size: 20rpx;
   text-align: center;
   color: #FFFFFF;
-  background: #F53F3F;
+  background: var(--danger);
   border-radius: 14rpx;
 }
 
 /* 名单里的「请假中」标签 */
-.mb-tag.leave { color: #D46B08; background: #FFF7E8; }
+.mb-tag.leave { color: var(--warning-strong); background: var(--warning-bg); }
 
 /* ---------- 请假登记弹层 ---------- */
 .lv { padding: 8rpx 32rpx 40rpx; }
@@ -705,11 +706,11 @@
   margin: 24rpx 0 12rpx;
   font-size: 26rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .lv-list {
   padding: 4rpx 20rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 24rpx;
 }
 .lv-row {
@@ -717,7 +718,7 @@
   align-items: center;
   padding: 16rpx 0;
 }
-.lv-row + .lv-row { border-top: 2rpx solid #EEF0F3; }
+.lv-row + .lv-row { border-top: 2rpx solid var(--bg-fill); }
 .lv-info {
   flex: 1;
   min-width: 0;
@@ -725,32 +726,32 @@
   display: flex;
   flex-direction: column;
 }
-.lv-name { font-size: 28rpx; color: #1D2129; }
-.lv-sub  { margin-top: 4rpx; font-size: 22rpx; color: #86909C; }
+.lv-name { font-size: 28rpx; color: var(--text-1); }
+.lv-sub  { margin-top: 4rpx; font-size: 22rpx; color: var(--text-3); }
 .lv-cancel {
   flex-shrink: 0;
   padding: 0 24rpx;
   height: 56rpx;
   line-height: 56rpx;
   font-size: 24rpx;
-  color: #D46B08;
-  background: #FFF7E8;
+  color: var(--warning-strong);
+  background: var(--warning-bg);
   border-radius: 999rpx;
 }
-.lv-cancel:active { background: #FFEFD1; }
+.lv-cancel:active { background: var(--warning-bg); }
 .lv-cancel.busy { opacity: .6; }
 .lv-empty {
   padding: 28rpx 0;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
   text-align: center;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 24rpx;
 }
 
 /* 分组标题（登记弹层与只读名单共用） */
 .lv-grp { margin-top: 16rpx; }
-.lv-grp-t { display: block; margin-bottom: 8rpx; font-size: 26rpx; font-weight: 600; color: #1D2129; }
+.lv-grp-t { display: block; margin-bottom: 8rpx; font-size: 26rpx; font-weight: 600; color: var(--text-1); }
 
 /* 头像网格（需求③：选人列表由「一人一行」改为头像网格图标形式，每行 4 个） */
 .lv-grid { display: flex; flex-wrap: wrap; margin-top: 8rpx; }
@@ -767,13 +768,13 @@
   margin-top: 8rpx;
   max-width: 100%;
   font-size: 24rpx;
-  color: #1D2129;
+  color: var(--text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lv-cell-tag { margin-top: 2rpx; font-size: 20rpx; color: #D46B08; }
-.lv-cell-hover { background: #F2F3F5; border-radius: 16rpx; }
+.lv-cell-tag { margin-top: 2rpx; font-size: 20rpx; color: var(--warning-strong); }
+.lv-cell-hover { background: var(--bg-fill); border-radius: 16rpx; }
 
 /* ⚠️ flex-wrap 是给「时段展开后」的：两个时间胶囊（648rpx）已经吃满 686rpx 内容宽，
    再加「改为全天」只能换行。不换行的话三个控件会被压扁 / 挤出屏幕外（实测溢出 114rpx）。 */
@@ -786,19 +787,19 @@
   height: 76rpx;
   padding: 0 20rpx;
   font-size: 26rpx;
-  color: #1D2129;
-  background: #F2F3F5;
+  color: var(--text-1);
+  background: var(--bg-fill);
   border-radius: 20rpx;
 }
 /* 「全天」这个**值**是可点的：按下必须有反馈，否则它长得和上面只读的日期胶囊一模一样，
    用户不会想到能按（旧版「很多人用不明白」的一半原因就在这儿）。 */
 .lv-date-hover { background: var(--line-1); }
-.lv-tilde { margin: 0 16rpx; font-size: 24rpx; color: #86909C; }
+.lv-tilde { margin: 0 16rpx; font-size: 24rpx; color: var(--text-3); }
 .lv-hint {
   margin-top: 12rpx;
   font-size: 22rpx;
   line-height: 32rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* 2026-11-02 需求①：时段多选胶囊（全天/上午/下午/晚上）。
@@ -812,14 +813,14 @@
   padding: 0 28rpx;
   text-align: center;
   font-size: 26rpx;
-  color: #4E5969;
-  background: #F2F3F5;
+  color: var(--text-2);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
 .lv-pchip.on {
   font-weight: 600;
-  color: #3370FF;
-  background: #E8F0FF;
+  color: var(--brand);
+  background: var(--brand-light);
 }
 
 .lv-search {
@@ -827,7 +828,7 @@
   align-items: center;
   height: 72rpx;
   padding: 0 20rpx;
-  background: #F2F3F5;
+  background: var(--bg-fill);
   border-radius: 999rpx;
 }
 /* 搜索框左侧的小圆标 + placeholder 灰字（placeholder-class 不会继承父级颜色，必须单独定义） */
@@ -842,13 +843,13 @@
   background: #86909C;
   border-radius: 50%;
 }
-.lv-search-ph { color: #86909C; }
+.lv-search-ph { color: var(--text-3); }
 /* 右侧清空 × */
 .lv-search-x {
   padding: 0 4rpx 0 14rpx;
   font-size: 32rpx;
   line-height: 1;
-  color: #86909C;
+  color: var(--text-3);
 }
 .lv-search-input {
   flex: 1;
@@ -856,14 +857,14 @@
   margin-left: 12rpx;
   height: 72rpx;
   font-size: 26rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .lv-cand {
   display: flex;
   align-items: center;
   padding: 18rpx 4rpx;
 }
-.lv-cand + .lv-cand { border-top: 2rpx solid #EEF0F3; }
+.lv-cand + .lv-cand { border-top: 2rpx solid var(--bg-fill); }
 
 /* ---------- 1.0.7 历史请假：筛选区 + 按日期分组 ---------- */
 
@@ -896,19 +897,19 @@
   padding: 0 20rpx;
   text-align: center;
   font-size: 24rpx;
-  color: #86909C;
-  background: #F2F3F5;
+  color: var(--text-3);
+  background: var(--bg-fill);
   border-radius: 16rpx;
 }
 .lv-dr.on {
   font-weight: 600;
-  color: #3370FF;
-  background: #E8F0FF;
+  color: var(--brand);
+  background: var(--brand-light);
 }
 .lv-drtilde {
   margin: 0 12rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .lv-clear {
   margin-left: 16rpx;
@@ -916,9 +917,9 @@
   height: 64rpx;
   line-height: 64rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
-.lv-clear:active { color: #3370FF; }
+.lv-clear:active { color: var(--brand); }
 
 /* 已选人员胶囊（多选结果的回显，可点 × 去掉） */
 .lv-picked {
@@ -932,8 +933,8 @@
   height: 48rpx;
   line-height: 48rpx;
   font-size: 22rpx;
-  color: #3370FF;
-  background: #E8F0FF;
+  color: var(--brand);
+  background: var(--brand-light);
   border-radius: 999rpx;
 }
 
@@ -943,34 +944,34 @@
 .lv-cands {
   margin-top: 10rpx;
   padding: 4rpx 16rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft);
   border-radius: 20rpx;
 }
 .lv-cands-empty {
   padding: 18rpx 8rpx;
   text-align: center;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .lv-cand2 {
   display: flex;
   align-items: center;
   padding: 14rpx 4rpx;
 }
-.lv-cand2 + .lv-cand2 { border-top: 2rpx solid #EEF0F3; }
+.lv-cand2 + .lv-cand2 { border-top: 2rpx solid var(--bg-fill); }
 .lv-cand2-n {
   margin-left: 12rpx;
   font-size: 26rpx;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .lv-cand2-s {
   margin-left: 10rpx;
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 .lv-cand2.on .lv-cand2-n {
   font-weight: 600;
-  color: #3370FF;
+  color: var(--brand);
 }
 
 /* 日期分组：组头与 .lv-sec-t / .lv-grp-t 同一种轻量标题，靠上方留白分组。
@@ -988,11 +989,11 @@
 .lv-hgrp-date {
   font-size: 26rpx;
   font-weight: 600;
-  color: #1D2129;
+  color: var(--text-1);
 }
 .lv-hgrp-c {
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3);
 }
 
 /* ---------- 1.0.6 请假 v2：今日/历史切换 + 时段 + 假条图片 ---------- */
@@ -1045,10 +1046,10 @@
   line-height: 56rpx;
   font-size: 24rpx;
   color: #FFFFFF;
-  background: #3370FF;
+  background: var(--brand);
   border-radius: 999rpx;
 }
-.lv-btn.ghost { color: #3370FF; background: #E8F0FF; }
+.lv-btn.ghost { color: var(--brand); background: var(--brand-light); }
 
 /* 历史行「删除」（2026-10-09）：只给已撤销的记录。
  * ⚠️ 形态照 `.lv-btn.ghost`（同高 56rpx、同圆角），**只用 danger token不用主色** ——
@@ -1073,7 +1074,7 @@
   width: 72rpx;
   height: 72rpx;
   overflow: hidden;
-  background: #F2F3F5;
+  background: var(--bg-fill);
   border-radius: 12rpx;
 }
 .lv-thumb-img { width: 72rpx; height: 72rpx; }
@@ -1084,7 +1085,7 @@
   line-height: 72rpx;
   text-align: center;
   font-size: 20rpx;
-  color: #3370FF;
+  color: var(--brand);
 }
 
 /* 状态标记：进行中（橙）/ 已结束（灰）/ 已撤销（灰）/ 未开始（蓝灰） */
@@ -1094,10 +1095,10 @@
   font-size: 20rpx;
   border-radius: 8rpx;
 }
-.lv-state.ONGOING { color: #D46B08; background: #FFF3E8; }
-.lv-state.ENDED { color: #86909C; background: #F2F3F5; }
-.lv-state.CANCELLED { color: #86909C; background: #F2F3F5; }
-.lv-state.UPCOMING { color: #3370FF; background: #E8F0FF; }
+.lv-state.ONGOING { color: var(--warning-strong); background: var(--warning-bg); }
+.lv-state.ENDED { color: var(--text-3); background: var(--bg-fill); }
+.lv-state.CANCELLED { color: var(--text-3); background: var(--bg-fill); }
+.lv-state.UPCOMING { color: var(--brand); background: var(--brand-light); }
 
 /* 归档角标：「N 天清除」—— 假条进了回收站倒计时才显示。
    ⚠️ 2026-10-09 必须写 max-width + ellipsis（用户实拍「这条太长了」）：
@@ -1114,8 +1115,8 @@
   margin-top: 4rpx;
   padding: 2rpx 10rpx;
   font-size: 20rpx;
-  color: #86909C;
-  background: #F2F3F5;
+  color: var(--text-3);
+  background: var(--bg-fill);
   border-radius: 8rpx;
 }
 
@@ -1161,7 +1162,7 @@
   padding: 2rpx 12rpx;
   font-size: 22rpx;
   color: var(--brand);
-  background: #F0F5FF;
+  background: var(--brand-light);
   border-radius: 16rpx;
 }
 .pin-note {

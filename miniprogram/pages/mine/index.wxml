@@ -120,31 +120,13 @@
     </view>
     </view>
 
-  <!-- 外观（深色模式 C-4）：二级页没有 nav-bar 左上角的切换按钮（那里是返回键的地盘），
-       所以「我的」页给一份完整的三态入口 —— 按钮只能循环，看不出当前是哪一档，
-       也无法直接回到「跟随系统」。切换走 nav-bar 的 applyTheme（圆形揭示动效与按钮完全一致）。
-       ⚠️ 本卡是 st-4，「关于」顺延到 st-5；st-item 档位必须从 st-1 连续，check-tab-enter 会验。
-       ⚠️ 2026-10-07：`wx:if="{{themeEnabled}}"` —— 深色模式总开关关闭时整卡不渲染。
-           档位号**保持 st-4 不变**（不重新编号）：check-tab-enter 是源码静态扫描，
-           隐藏后 st-1..st-5 照样连续；代价是运行时「关于」会晚一档入场（一个 ST_STEP_MS，
-           约 60ms），只在开关关闭期间存在，可接受 —— 重新编号会让恢复开关时布局顺序跳变。 -->
-  <view wx:if="{{themeEnabled}}" class="card mn-card st-item st-4">
-    <view
-      wx:for="{{themeOpts}}"
-      wx:key="key"
-      class="appear-opt"
-      data-k="{{item.key}}"
-      bindtap="onThemePick"
-      hover-class="tap-hover"
-      hover-start-time="0"
-      hover-stay-time="60"
-    >
-      <view class="appear-radio {{themeMode === item.key ? 'on' : ''}}"></view>
-      <view class="appear-txt">
-        <view class="appear-t">{{item.text}}</view>
-        <view class="appear-d">{{item.desc}}</view>
-      </view>
-    </view>
+  <!-- 外观（深色模式 C-4）：紧凑三段控制（自动 / 浅色 / 深色），复用全站 segmented 组件，
+       不再占整张卡。切换走 nav-bar 的 applyTheme（圆形揭示动效，与旧的上左角按钮同一段逻辑）。
+       ⚠️ 本行是 st-4，「关于」顺延到 st-5；st-item 档位必须从 st-1 连续，check-tab-enter 会验。
+       ⚠️ `wx:if="{{themeEnabled}}"` —— 深色模式总开关关闭时整行不渲染；档位号保持 st-4 不变。 -->
+  <view wx:if="{{themeEnabled}}" class="mn-theme st-item st-4">
+    <text class="mn-theme-label">外观</text>
+    <segmented items="{{themeSegs}}" value="{{themeMode}}" width="{{420}}" bind:change="onThemePick" />
   </view>
 
   <!-- 关于 -->
