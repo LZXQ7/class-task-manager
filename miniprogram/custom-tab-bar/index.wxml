@@ -1,6 +1,6 @@
 <!-- padding-bottom = 安全区高度；无安全区机型（安卓）由 JS 补 TABBAR_LIFT_PX，
      使「胶囊下沿 ~ 屏幕底」的距离与 iPhone 一致（见 index.js 顶部注释）。 -->
-<view class="tabbar-wrap" style="padding-bottom:{{tabbarPad}}px">
+<view class="tabbar-wrap {{tClass}}" style="padding-bottom:{{tabbarPad}}px">
   <view class="tabbar">
     <!-- 液态指示器（v0.7.14）：独立胶囊背景在标签间移动，先拉长再收拢 + 微回弹。
          放在 tab-item 之前 = 天然垫底，不遮文字、不拦命中（tab-item 自己 z-index:1）。

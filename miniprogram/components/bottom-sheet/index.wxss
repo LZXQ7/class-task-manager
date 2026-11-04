@@ -16,7 +16,8 @@
   right: 0;
   top: 0;
   bottom: 0;
-  background: rgba(0,0,0,0.45);
+  /* 深色下遮罩要更重（--bg-mask 0.45 → 0.65），否则深页面压不暗、弹层浮不起来 */
+  background: var(--bg-mask, rgba(0,0,0,0.45));
   opacity: 0;
   transition: opacity .24s ease;
 }
@@ -38,21 +39,21 @@
         头像 + 三行字 + 一两个按钮）看上去就是「一块暗色面板」。
         0.72 合成 ≈#DCDCDE，是干净的近白，同时仍有 28% 底色透上来保住玻璃感。
         原注释写的 0.66 其实一直没落到代码里，这次一并改成真实值。 */
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--sheet-bg, rgba(255, 255, 255, 0.72));
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+  box-shadow: inset 0 1rpx 0 var(--sheet-edge, rgba(255, 255, 255, 0.95));
   display: flex;
   flex-direction: column;
   transform: translateY(100%);
   transition: transform .24s cubic-bezier(.22, .61, .36, 1);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sheet-panel { background: rgba(255, 255, 255, 0.94); }
+  .sheet-panel { background: var(--sheet-solid, rgba(255, 255, 255, 0.94)); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .sheet-panel {
-    background: var(--bg-card);
+    background: var(--sheet-solid, rgba(255, 255, 255, 0.94));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -79,7 +80,7 @@
   width: 72rpx;
   height: 8rpx;
   border-radius: 999rpx;
-  background: rgba(78, 89, 105, 0.28);
+  background: var(--sheet-grab, rgba(78, 89, 105, 0.28));
 }
 /* 拖动/回弹/滑出期间关掉 CSS 过渡 —— 位移完全由内联 transform 跟手驱动 */
 .sheet-panel.drag { transition: none; }
@@ -105,7 +106,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 2rpx solid rgba(229,230,235,0.7);
+  border-bottom: 2rpx solid var(--sheet-line, rgba(229,230,235,0.7));
   flex-shrink: 0;
 }
 .sheet-title {
@@ -163,5 +164,5 @@
 .sheet-footer {
   flex-shrink: 0;
   padding: 20rpx 32rpx 0;
-  border-top: 2rpx solid rgba(229, 230, 235, 0.7);
+  border-top: 2rpx solid var(--sheet-line, rgba(229, 230, 235, 0.7));
 }

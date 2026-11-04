@@ -178,8 +178,18 @@ has(js, /popIndex:\s*index/, 'popIndex 改在落地页实例的 syncActive 里�
   };
   const get = () => ({ data: '' });   // icons 桩（模块顶部的 require 已被剥掉）
   const getApp = () => null;          // attached 里读 safeBottom，自证用不到
+  /* theme 桩：tabBar 2026-11-04 起自己挂主题 class（独立渲染树继承不到页面根令牌）。
+     沙箱里没有模块系统，require 行统一剥掉后用这个桩顶上，否则 data/attached 里
+     的 theme.themeClass() / theme.mount() 会 ReferenceError，整段自证直接崩。 */
+  const themeStub = {
+    themeClass: () => 't-light',
+    mount: () => {},
+    unmount: () => {}
+  };
   const src = js
-    .replace(/const\s*\{[^}]*\}\s*=\s*require\([^)]*\);?/, '')
+    // 🔴 剥掉**所有**顶层 require 行：旧正则只认解构 `const {…} = require(…)`，
+    //    碰到 `const theme = require(...)` 会漏掉 → 沙箱里 require 未定义直接崩。
+    .replace(/^\s*(?:const|let|var)\s+[^\n]*?=\s*require\([^\n]*\)\s*;?\s*$/gm, '')
     .replace(/\bsetTimeout\b/g, 'sandbox.setTimeout')
     .replace(/\bclearTimeout\b/g, 'sandbox.clearTimeout')
     .replace(/\bwx\./g, 'sandbox.wx.')
@@ -189,7 +199,7 @@ has(js, /popIndex:\s*index/, 'popIndex 改在落地页实例的 syncActive 里�
     + '\nsandbox.getHandoff = () => HANDOFF;';
   let compDef = null;
   const Component = (def) => { compDef = def; };
-  new Function('sandbox', 'get', 'getApp', 'Component', '"use strict";' + src)(sandbox, get, getApp, Component);
+  new Function('sandbox', 'get', 'getApp', 'Component', 'theme', '"use strict";' + src)(sandbox, get, getApp, Component, themeStub);
 
   if (!compDef) { bad('自证失败：没能从 index.js 解析出 Component 定义'); }
   else {

@@ -832,5 +832,80 @@ console.log('\n── ⑩ 课程色块');
     '变异：色板里塞回一个裸 hex → 被「没有裸 hex」那条抓住');
 }
 
+/* ============================================================
+ * ⑪ 浮层表面（弹层 / 对话框 / 底栏）—— 2026-11-04 用户报「各种弹层依旧是亮色」
+ * ------------------------------------------------------------
+ * 事故背景：bottom-sheet / dialog / custom-tab-bar 的面板底色一直是**硬编码白玻璃**
+ *   `background: rgba(255,255,255,.72)`；而标题 `color: var(--text-1)` 会翻白。
+ *   结果深色下是「白标题压浅灰板」——用户所说的半吊子适配。
+ *   页面内容层早就令牌化了，所以漏的只是**底板**这三个组件。
+ * 三条必须钉死的形态：
+ *   ① 表面令牌在 .t-light / .t-dark **两端齐备**（缺一端 ⇒ 那一端 var() 掉成透明）；
+ *   ② 组件里不许再出现裸 `background: rgba(255,255,255,…)`（必须走 var(..., 兜底)）；
+ *   ③ tabBar 是**独立渲染树**，继承不到页面根的 .t-dark ⇒ 必须自己挂主题 class，
+ *      并抵掉 .t-dark 自带的整屏极光背景（它是 fixed 底栏，不能画极光）。
+ */
+console.log('\n── ⑪ 浮层表面（弹层 / 对话框 / 底栏）');
+{
+  const lightBody = braceBlock(appWxss, '.t-light') || '';
+  const darkBody = braceBlock(appWxss, '.t-dark') || '';
+  const SURFACE = [
+    '--sheet-bg', '--sheet-solid', '--sheet-edge', '--sheet-line', '--sheet-grab',
+    '--dlg-bg', '--dlg-solid', '--dlg-edge', '--dlg-shadow',
+    '--tabbar-bg', '--tabbar-solid', '--tabbar-edge', '--tabbar-shadow', '--tabbar-highlight'
+  ];
+  const missL = SURFACE.filter((t) => lightBody.indexOf(t + ':') < 0);
+  const missD = SURFACE.filter((t) => darkBody.indexOf(t + ':') < 0);
+  chk(!missL.length, '浅色作用域定义了全部浮层表面令牌' + (missL.length ? '（缺 ' + missL.join(',') + '）' : ''));
+  chk(!missD.length, '深色作用域定义了全部浮层表面令牌' + (missD.length ? '（缺 ' + missD.join(',') + '）' : ''));
+  // 深色底必须是深蓝黑近实心，不能还是一张亮玻璃
+  const darkSheet = /--sheet-bg\s*:\s*rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(darkBody);
+  chk(!!darkSheet && Number(darkSheet[1]) < 80 && Number(darkSheet[2]) < 80 && Number(darkSheet[3]) < 80,
+    '深色弹层底是深蓝黑（不是白色 tint）—— 实测 RGB=' + (darkSheet ? darkSheet.slice(1, 4).join(',') : '?'));
+
+  /* 裸白底检测：只认「background 的值直接以白 rgba 开头」，
+     `var(--sheet-bg, rgba(255,255,255,.72))` 里的兜底不算（前面是逗号，不是冒号）。 */
+  const bareWhite = (src) => /(^|[;{\s])background\s*:\s*rgba\(\s*255\s*,\s*255\s*,\s*255/m.test(src);
+  const LAYERS = [
+    'miniprogram/components/bottom-sheet/index.wxss',
+    'miniprogram/components/dialog/index.wxss',
+    'miniprogram/custom-tab-bar/index.wxss'
+  ];
+  LAYERS.forEach((p) => {
+    const s = stripComments(read(p));
+    const rel = p.replace('miniprogram/', '');
+    chk(!bareWhite(s), rel + ' 没有裸白底（面板底色走 var(--…, 兜底)）');
+    chk(/var\(--(sheet|dlg|tabbar)-/.test(s), rel + ' 引用了浮层表面令牌');
+    chk(/var\(--bg-mask/.test(s) || /var\(--tabbar-/.test(s), rel + ' 遮罩/底栏也随主题翻色');
+    // 两条降级路径（check-glass 已守，这里再钉一次令牌化后的形态）
+    chk(/prefers-reduced-transparency[\s\S]{0,240}var\(--(sheet|dlg|tabbar)-solid/.test(s),
+      rel + ' 的「降低透明度」降级也走实心令牌（不再写死白）');
+  });
+
+  // 分隔线 / 拖动条也不能漏
+  const sheetWxss = stripComments(read('miniprogram/components/bottom-sheet/index.wxss'));
+  chk(/border-bottom:\s*2rpx solid var\(--sheet-line/.test(sheetWxss), 'bottom-sheet 头部线走 --sheet-line');
+  chk(/border-top:\s*2rpx solid var\(--sheet-line/.test(sheetWxss), 'bottom-sheet 底部线走 --sheet-line');
+  chk(/var\(--sheet-grab/.test(sheetWxss), '拖动指示条走 --sheet-grab');
+
+  /* tabBar：独立渲染树，必须自己挂主题；且要清掉 .t-dark 的极光背景副作用 */
+  const tbJs = stripComments(read('miniprogram/custom-tab-bar/index.js'));
+  const tbWxml = stripComments(read('miniprogram/custom-tab-bar/index.wxml'));
+  const tbWxss2 = stripComments(read('miniprogram/custom-tab-bar/index.wxss'));
+  chk(/tClass:\s*theme\.themeClass\(\)/.test(tbJs), 'tabBar data 有 tClass（独立渲染树继承不到页面根令牌）');
+  chk(/theme\.mount\(this\)/.test(tbJs) && /theme\.unmount\(this\)/.test(tbJs),
+    'tabBar 成对 mount/unmount（切主题跟随 + 销毁时不留死监听）');
+  chk(/class="tabbar-wrap \{\{tClass\}\}"/.test(tbWxml), 'tabBar 根节点真的挂了 tClass');
+  chk(/\.tabbar-wrap\.t-dark[\s\S]{0,180}background-image:\s*none/.test(tbWxss2),
+    'tabBar 抵掉了 .t-dark 的极光背景（fixed 底栏不能画整屏渐变）');
+
+  // 变异自证：任一处把 var() 换回裸白 → 「没有裸白底」必须判红
+  const sample = '  .sheet-panel {\r\n  background: rgba(255, 255, 255, 0.72);\r\n  }\r\n';
+  chk(bareWhite(sample), '变异：塞回裸白底 → 被「没有裸白底」抓住');
+  chk(!bareWhite('  .sheet-panel { background: var(--sheet-bg, rgba(255, 255, 255, 0.72)); }'),
+    '好样本：var() 里的浅色兜底不误报');
+  chk(!bareWhite(sheetWxss), '好样本：当前 bottom-sheet 源码不误报');
+}
+
 console.log('\n' + (failed ? '✗ ' + failed + ' 项未通过' : '✓ 深色模式体检全部通过'));
 process.exit(failed ? 1 : 0);

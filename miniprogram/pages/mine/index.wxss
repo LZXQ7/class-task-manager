@@ -24,7 +24,8 @@
   backdrop-filter: var(--glass-blur);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .mn-user { background: rgba(255, 255, 255, 0.9); }
+  /* 深色下走 --bg-card（= #1C2027），不能写死白底 —— 不支持模糊的安卓机上会是一整块白 */
+  .mn-user { background: var(--bg-card, rgba(255, 255, 255, 0.9)); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .mn-user { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }

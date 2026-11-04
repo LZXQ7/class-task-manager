@@ -43,25 +43,35 @@
      饱和度 180% → 200%。透明的那一半靠模糊 + 高光撑住可读性 ——
      纯降 alpha 不加大模糊，会变成「文字压着内容」的糊底。
      不支持模糊时仍降级为 .88（保留可见的半透明，不再回退到近乎实心）。 */
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
-  border: 1rpx solid rgba(255, 255, 255, 0.6);
+  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.6));
   box-shadow:
-    0 8rpx 28rpx rgba(29,33,41,0.14),
-    inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+    var(--tabbar-shadow, 0 8rpx 28rpx rgba(29,33,41,0.14)),
+    var(--tabbar-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.95));
   pointer-events: auto;
   overflow: hidden;
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .tabbar { background: rgba(255, 255, 255, 0.88); }
+  .tabbar { background: var(--tabbar-solid, rgba(255, 255, 255, 0.88)); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .tabbar {
-    background: var(--bg-card);
+    background: var(--tabbar-solid, rgba(255, 255, 255, 0.88));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+}
+/* 🔴 .t-dark / .t-light 是 app.wxss 里的**页面作用域**类，自带整屏极光背景
+   （background-color / -image / -attachment: fixed）。tabBar 为了继承主题令牌必须
+   挂同一个类，但它是 fixed 底栏容器，绝不能把极光画在自己身上 —— 用更高权重
+   (0-2-0) 把背景副作用清掉，只保留变量继承。 */
+.tabbar-wrap.t-dark,
+.tabbar-wrap.t-light {
+  background-color: transparent;
+  background-image: none;
+  background-attachment: scroll;
 }
 /* ============ 液态 Tab 指示器（2026-09-26 / v0.7.14 重做） ============
  * 截图①（Liquid Tab Indicator）口径：

@@ -137,6 +137,29 @@ page {
   --glass-shadow: 0 16rpx 64rpx rgba(29,33,41,0.15);
   --glass-highlight: inset 0 2rpx 0 rgba(255, 255, 255, 0.60);
 
+  /* ---- 浮层表面令牌（2026-11-04 深色适配）----
+   * 弹层 / 对话框 / 底栏是**压在遮罩之上**的独立表面，不能复用 --glass-bg：
+   *   · 遮罩已把背后的页面压暗，弹层再叠一层高透白玻璃会糊成灰板；
+   *   · 它们各自的 alpha 不同（sheet .72 / dialog .52 / tabbar .35），需逐值保留。
+   * 浅色值 = 原组件里写死的值**逐值相同**（浅色零变化）；深色值在 .t-dark 里重定义。
+   * ⚠️ 组件引用一律写 `var(--sheet-*, <浅色兜底>)`：首帧 tClass 还没挂上、
+   *   或 tabBar 这类独立渲染树拿不到主题时，兜底保证不会掉成透明。
+   * ⚠️ `check-dark-mode` 第 ⑪ 段守：禁止组件再写裸 `background: rgba(255,255,255,…)`。 */
+  --sheet-bg: rgba(255, 255, 255, 0.72);
+  --sheet-solid: rgba(255, 255, 255, 0.94);
+  --sheet-edge: rgba(255, 255, 255, 0.95);
+  --sheet-line: rgba(229, 230, 235, 0.7);
+  --sheet-grab: rgba(78, 89, 105, 0.28);
+  --dlg-bg: rgba(255, 255, 255, 0.52);
+  --dlg-solid: rgba(255, 255, 255, 0.95);
+  --dlg-edge: rgba(255, 255, 255, 0.7);
+  --dlg-shadow: 0 20rpx 60rpx rgba(29,33,41,0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+  --tabbar-bg: rgba(255, 255, 255, 0.35);
+  --tabbar-solid: rgba(255, 255, 255, 0.88);
+  --tabbar-edge: rgba(255, 255, 255, 0.6);
+  --tabbar-shadow: 0 8rpx 28rpx rgba(29,33,41,0.14);
+  --tabbar-highlight: inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+
   /* 极光背景（v0.7.19 回退为蓝调）：
      135° 浅蓝 → 靛 → 淡紫。玻璃必须压在**有颜色的渐变**上才显形 —— 「冰态果冻」
      那种多层堆叠感的来源，纯白底上做玻璃只会得到白卡；只把色相换回原来的蓝/靛/淡紫。
@@ -224,6 +247,27 @@ page {
   --glass-edge: rgba(200, 215, 245, 0.16);
   --glass-shadow: 0 16rpx 64rpx rgba(0,0,0,0.55);
   --glass-highlight: inset 0 2rpx 0 rgba(200, 215, 245, 0.10);
+
+  /* ---- 浮层表面令牌（深色版）----
+   * 🔴 不是「把白玻璃调暗」：弹层压在 rgba(0,0,0,.65) 遮罩上，背后已经很暗，
+   *    再用高透白 tint 会糊成一块灰板（浅色下 0.72 白是压在亮极光上才成立的）。
+   *    深色改用**深蓝黑近实心**（.94）+ 极弱冷色亮边，靠「比页面亮一档」显出浮起。
+   *    --sheet-line / --sheet-grab 同理：浅色是深灰，深色换成冷白低透明度。
+   *    底栏保留半透明（.55）以维持「液态玻璃」观感，但底色必须是深色。 */
+  --sheet-bg: rgba(30, 35, 46, 0.94);
+  --sheet-solid: rgba(26, 30, 39, 0.98);
+  --sheet-edge: rgba(200, 215, 245, 0.10);
+  --sheet-line: rgba(200, 215, 245, 0.12);
+  --sheet-grab: rgba(200, 215, 245, 0.26);
+  --dlg-bg: rgba(30, 35, 46, 0.94);
+  --dlg-solid: rgba(26, 30, 39, 0.98);
+  --dlg-edge: rgba(200, 215, 245, 0.14);
+  --dlg-shadow: 0 20rpx 60rpx rgba(0,0,0,0.55), inset 0 1rpx 0 rgba(200, 215, 245, 0.08);
+  --tabbar-bg: rgba(28, 33, 43, 0.55);
+  --tabbar-solid: rgba(26, 30, 39, 0.94);
+  --tabbar-edge: rgba(200, 215, 245, 0.14);
+  --tabbar-shadow: 0 8rpx 28rpx rgba(0,0,0,0.45);
+  --tabbar-highlight: inset 0 1rpx 0 rgba(200, 215, 245, 0.08);
 
   /* 极光背景（深色版）：深蓝黑 → 深靛 → 深紫。
      保留「有色渐变」这个前提 —— 深色下若给纯黑，玻璃 blur 出来的就是黑，

@@ -12,6 +12,7 @@
  *    按 getCurrentPages() 顶层路由直接初始化 active，实例一出生就是正确状态。
  */
 const { get } = require('../utils/icons');
+const theme = require('../utils/theme');
 
 const TABS = [
   { key: 'home', text: '首页', url: '/pages/home/index', icon: 'tab-home' },
@@ -110,6 +111,11 @@ Component({
   options: { addGlobalClass: true },
   data: {
     active: 0,
+    /* 🔴 主题 class 必须挂在 tabBar 自己身上：自定义 tabBar 是**独立于页面根节点**
+       的渲染树，拿不到 `<view class="page {{tClass}}">` 上定义的 CSS 变量 ——
+       不自己挂，底栏在深色下会一直保持浅色（用户 2026-11-04 截图所见）。
+       用 theme.mount/unmount 与页面走同一条订阅，切主题时自动跟随。 */
+    tClass: theme.themeClass(),
     popIndex: -1,            // 只在「点击切换」的那一项上播弹跳动画（attached 初始化不播，防闪烁）
     safeBottom: 0,
     /** 实际施加到 `.tabbar-wrap` 的 padding-bottom(px)：有安全区用安全区，无安全区用兜底留白 */
@@ -123,6 +129,9 @@ Component({
   lifetimes: {
     attached() {
       INSTANCES.add(this);
+      // 与页面共用同一条主题订阅：切主题时 tabBar 同步换 class。
+      // ⚠️ 必须配对 unmount，否则切主题会 setData 到已销毁实例（内存泄漏）。
+      theme.mount(this);
       this._route = this._currentRoute();
       const app = getApp && getApp();
       if (app) {
@@ -152,6 +161,7 @@ Component({
     },
     detached() {
       INSTANCES.delete(this);
+      theme.unmount(this);
       if (this._indTimer) { clearTimeout(this._indTimer); this._indTimer = null; }
     }
   },

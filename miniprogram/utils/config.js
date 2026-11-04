@@ -149,8 +149,19 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   ⑥ **新增/加强门禁**：`check-surface-tokens` 增「文本中性色」守门（禁写死 `#1D2129` 等，带变异自证）；
  *      `check-dark-mode` 新增课程色板段（色板禁裸 hex / 双主题令牌齐备 / 色条形态）。
  *   纯前端改动（wxss + 少量 js 色值返回方式），**无需重部署云函数**；前端需重新上传。
+ * **`1.0.8.24`** = 弹层 / 对话框 / 底栏深色适配（2026-11-04）：
+ *   ① 根因：三类浮层的底色 / 描边 / 阴影全是组件内硬编码 rgba(255,255,255,…)，不吃主题令牌；
+ *      `custom-tab-bar` 又是独立渲染树，页面根 `.t-dark` 的变量继承不到 ⇒ 切深色仍是白玻璃。
+ *   ② `app.wxss` 新增 14 个浮层专用双主题令牌 `--sheet-*` / `--dlg-*` / `--tabbar-*`：
+ *      `.t-light` 逐值等于原硬编码值（浅色零变化），`.t-dark` = 深蓝黑近实心底 + 冷白低透明描边；
+ *      `bottom-sheet` / `dialog` 的遮罩、底板、grab 条、分隔线及 @supports / 降低透明度两条降级全走令牌。
+ *   ③ `custom-tab-bar` 自己挂 `{{tClass}}` + `theme.mount/unmount`，wxss 加 0-2-0 覆盖抵掉整屏极光背景；
+ *      home / duty / manual / classinfo / mine 的 @supports 降级白底改 `var(--bg-card)`。
+ *   ④ `check-dark-mode` 新增第 ⑪ 段（令牌双端齐备 / 深色 RGB<80 / 裸白底禁用 / 变异自证）；
+ *      同步修 `check-glass` 变异 3 与 CRLF 兼容、`check-tabbar-liquid` 沙箱注入 themeStub。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.23';
+const APP_VERSION = '1.0.8.24';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

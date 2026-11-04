@@ -132,13 +132,22 @@ console.log('\n── 自证：降级路径缺失必被抓（变异必抓 + 好�
   const good = auditGlass(dialog);
   chk(good.length === 0, '好样本：dialog 现有写法无任何问题（不误报）');
 
-  const noSupports = dialog.replace(/@supports not \(\(backdrop-filter[\s\S]*?\n\}\n/, '');
+  /* ⚠️ 行尾符：本机 core.autocrlf=true，工作区 wxss 是 CRLF；仓库里存的是 LF。
+     变异正则必须同时认 `\n` 和 `\r\n`，否则「变异根本没生效」→ 假失败
+     （表现为变异 1/2 报红，但源码其实完全正常）。 */
+  const noSupports = dialog.replace(/@supports not \(\(backdrop-filter[\s\S]*?\r?\n\}\r?\n/, '');
   chk(noSupports !== dialog && auditGlass(noSupports).length > 0, '变异 1：删掉 `@supports not` 兜底 → 被抓住');
 
-  const noTransparency = dialog.replace(/@media \(prefers-reduced-transparency: reduce\)[\s\S]*?\n\}\n/, '');
+  const noTransparency = dialog.replace(/@media \(prefers-reduced-transparency: reduce\)[\s\S]*?\r?\n\}\r?\n/, '');
   chk(noTransparency !== dialog && auditGlass(noTransparency).length > 0, '变异 2：删掉 `prefers-reduced-transparency` 分支 → 被抓住');
 
-  const emptySupports = dialog.replace('background: rgba(255, 255, 255, 0.95);', '');
+  /* 变异 3 不绑具体色值：兜底块现在写的是 `var(--dlg-solid, rgba(...))`，
+     旧版用字符串 replace 找固定色值，令牌化后会「变异没生效」→ 假失败。
+     改成删掉 @supports 兜底块里的第一条 background 声明，与色值写法无关。 */
+  const emptySupports = dialog.replace(
+    /(@supports not \([^\n]*\)\s*\{[\s\S]*?)background\s*:\s*[^;]+;/,
+    '$1'
+  );
   chk(emptySupports !== dialog && auditGlass(emptySupports).length > 0, '变异 3：兜底块被掏空（不写 background）→ 被抓住');
 }
 
