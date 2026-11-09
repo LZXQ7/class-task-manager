@@ -240,11 +240,15 @@ function auditFeeLayout(js, wxml, wxss) {
     !mutCi.data.className, '实得 ' + JSON.stringify(mutCi.data.className));
 
   // 变异 B（内存）：把 fee 请求打成失败 = 还原事故②的线上表现
+  // ⚠️ 2026-11-08：统一请求层现在对网络类失败会自动重试 1 次（400ms 退避）。
+  //    这里必须等最终失败落定再断言，否则测到的是「重试还没结束」而不是页面失败态。
   failFee = true;
-  const mutFee = await settle((() => {
+  const mutFee = await (async () => {
     const p = loadPage('pages/fee/index.js', SUPER);
-    p.onLoad({}); p.onShow(); return p;
-  })());
+    p.onLoad({}); p.onShow();
+    await new Promise(r => setTimeout(r, 500));
+    return p;
+  })();
   failFee = false;
   ok('变异B·班费请求失败时，页面必须进失败态（断言承重）', mutFee.data.failed === true);
 

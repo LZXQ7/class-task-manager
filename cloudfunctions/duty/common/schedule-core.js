@@ -454,7 +454,7 @@ function slotOf(slots, weekday, period, kind) {
  * @param {string} scope   'A' | 'B' | null
  * @param {number} need    本节需要人数
  * @param {object} state   buildState() 产物（会被就地推进）
- * @param {object} opts    { usedInPlan, day, skipSeqs, avoidSameDay, busySeqs }
+ * @param {object} opts    { usedInPlan, day, skipSeqs, avoidSameDay, busySeqs, pairAvoid, sectionTaken }
  */
 function fillByRotation(roster, scope, need, state, opts) {
   const o = opts || {};
@@ -462,6 +462,10 @@ function fillByRotation(roster, scope, need, state, opts) {
   const day = o.day || new Set();
   const skipSet = new Set(o.skipSeqs || []);
   const avoidSameDay = !!o.avoidSameDay;
+  /* 「同一课次互斥对」透传给 pickBySeq：sectionTaken 是同一个 Set 引用，
+   * 兜底第二批取人时会把第一批并进来，互斥约束跨两批仍然成立。 */
+  const pairAvoid = o.pairAvoid || null;
+  const sectionTaken = o.sectionTaken || new Set();
   /* 跨天全局唯一护栏（一轮里每人最多排一次）。
    * 🔴 兜底分支复用同一份 base（avoidSeqs 始终是 usedInPlan），绝不撤掉它。
    * softSeqs：与 generate 同口径——avoidSameDay 关闭时退化为「软避让」（优先不排、没人时才用），
@@ -471,7 +475,9 @@ function fillByRotation(roster, scope, need, state, opts) {
     busySeqs: o.busySeqs || new Set(),
     avoidSameDay,
     softSeqs: o.softSeqs || null,
-    skipSeqs: skipSet
+    skipSeqs: skipSet,
+    pairAvoid,
+    sectionTaken
   };
   let res = pickBySeq(roster, scope, need, state, base);
   let picked = res.chosen;
@@ -481,7 +487,7 @@ function fillByRotation(roster, scope, need, state, opts) {
      *    pickBySeq 的「同课次不重复」只靠**调用内**的 localTaken，跨调用不保留；
      *    而兜底路径可能回绕并 clear() state.used，若不并入 avoidSeqs，
      *    同一节课就会把刚取过的人再取一次 —— 这是「示例成员56、示例成员56」的机制级来源。 */
-    picked.forEach(r => usedInPlan.add(r.seq));
+    picked.forEach(r => { usedInPlan.add(r.seq); sectionTaken.add(r.seq); });
     const extra = pickBySeq(roster, scope, res.short, state, base);
     picked = picked.concat(extra.chosen);
   }
@@ -601,6 +607,87 @@ function parseSubMap(text, rosterSeqs) {
 }
 
 /**
+ * 解析「X 号和 Y 号不要排在同一节课」的互斥要求（2026-11-08 用户反馈）。
+ *
+ * 🔴 为什么必须本地确定性解析：
+ *   旧版提示词的输出结构只有 assignments / unchanged / skipSeqs / notes，
+ *   完全没有承载「两人不能同课次」的字段；而 assignments 又明确**不被采信**
+ *   （validatePlan 一律按「课次先后 + 序号从小到大」重新配对）。
+ *   于是无论模型怎么理解、前端怎么显示，落库时都是连续取号 —— 1、2 号
+ *   在全体课里必然被排进同一节课。跟 parseStartSeqs 同理：这类硬约束
+ *   交给模型既表达不了、也验证不了，只能自己解析。
+ *
+ * 支持写法：
+ *   「1号和2号不安排在同一节课」「1号2号不要排一起」
+ *   「1号、2号不能同时值日」「1号和2号、3号和4号不要排一起」
+ *   「5号和6号分开」「1号跟2号不排一节」
+ * 明确不认（避免把别类指令误判成互斥对）：起点「从N号开始」、替班「X号替换Y号」、
+ *   跳过「N号不值日/请假/免排」。
+ *
+ * @param {string} text 使用者自由文本
+ * @param {Array<number>|Set<number>} rosterSeqs 合法序号集合
+ * @returns {Array<[number,number]>} 去重后的无序互斥对
+ */
+function parseAvoidPairs(text, rosterSeqs) {
+  const valid = new Set((rosterSeqs || []).map(Number));
+  const out = [];
+  const seen = new Set();
+  if (!text) return out;
+  const push = (a, b) => {
+    const x = Number(a), y = Number(b);
+    if (!valid.has(x) || !valid.has(y) || x === y) return;
+    const key = Math.min(x, y) + '-' + Math.max(x, y);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push([Math.min(x, y), Math.max(x, y)]);
+  };
+  String(text).split(/[，,；;。\n]+/).forEach((seg) => {
+    const s = String(seg || '').trim();
+    if (!s) return;
+    // 起点 / 替班 / 跳过 这类句式里的数字不是互斥对
+    if (/替换|代替|顶替|顶\s*\d|换|请假|不值日|跳过|免排|从\s*\d|开始|起排|往后/.test(s)) return;
+    const negative = /不|别|勿|不能|不要|不可|避免|分开|错开|隔开/.test(s);
+    const sameSection = /同一节|一节|同节|一节课|同一个|同一次|一起|同时|排一起|安排在一起|同班值日|同个值日|分开|错开|隔开/.test(s);
+    if (!negative || !sameSection) return;
+    let m;
+    // ①「1号和2号」「1号、2号」——按连接词成对，避免过度两两组合
+    const linked = /(\d+)\s*号?\s*(?:和|与|及|跟|、|连同)\s*(\d+)\s*号?/g;
+    const linkedPairs = [];
+    while ((m = linked.exec(s))) linkedPairs.push([m[1], m[2]]);
+    if (linkedPairs.length) {
+      linkedPairs.forEach(p => push(p[0], p[1]));
+      return;
+    }
+    // ②「1号2号不要排一起」——句内所有带「号」的合法序号两两互斥
+    const nums = [];
+    const re = /(\d+)\s*号/g;
+    while ((m = re.exec(s))) {
+      const q = Number(m[1]);
+      if (valid.has(q) && nums.indexOf(q) === -1) nums.push(q);
+      if (nums.length >= 6) break;
+    }
+    for (let i = 0; i < nums.length; i++) {
+      for (let j = i + 1; j < nums.length; j++) push(nums[i], nums[j]);
+    }
+  });
+  return out;
+}
+
+/** 把 [[1,2],[3,4]] 变成双向邻接表，供 pickBySeq 的「同课次互斥」过滤用 */
+function buildPairMap(pairs) {
+  const m = new Map();
+  (pairs || []).forEach((p) => {
+    const a = Number(p && p[0]), b = Number(p && p[1]);
+    if (!(a > 0) || !(b > 0) || a === b) return;
+    if (!m.has(a)) m.set(a, new Set());
+    if (!m.has(b)) m.set(b, new Set());
+    m.get(a).add(b);
+    m.get(b).add(a);
+  });
+  return m.size ? m : null;
+}
+
+/**
  * 把各课次「已有值日」并入去重集合。
  *
  * 🔴 2026-10-31 修复：旧版只把「保持原样」课次的人并入 usedInPlan，
@@ -661,13 +748,23 @@ function applySubstitution(memberSeqs, subMap) {
  * @param {object} ctx  buildAiContext 的产物（sessions/roster/state/idBySeq/avoidSameDay）
  * @param {object} raw  { assignments?, unchanged?, skipSeqs?, notes? }
  * @param {object} [subMap]  parseSubMap 的结果 { fromSeq: toSeq }
+ * @param {Array}  [avoidPairs] parseAvoidPairs 的结果 [[1,2],[3,4]]（同课次互斥）
  */
-function validatePlan(ctx, raw, subMap) {
+function validatePlan(ctx, raw, subMap, avoidPairs) {
   const warnings = [];
   let wrappedAny = false;
   const sessions = ctx.sessions;
   const byId = new Map(sessions.map(s => [s.sessionId, s]));
   const rosterBySeq = new Map(ctx.roster.map(r => [r.seq, r]));
+  const pairAvoid = buildPairMap(avoidPairs);
+  /* 「别排同一节课」≠「本轮别值日」。模型常把这件事误写进 skipSeqs，
+   * 把人从候选池里删掉（两人干脆不值日了）⇒ 这里按本地解析结果兜底剔除。 */
+  const pairSeqs = new Set();
+  (avoidPairs || []).forEach(p => { pairSeqs.add(Number(p[0])); pairSeqs.add(Number(p[1])); });
+  const hasPairInRow = (seqs) => !!pairAvoid && seqs.some(q => {
+    const s = pairAvoid.get(q);
+    return s && seqs.some(x => s.has(x));
+  });
 
   // AI 建议的人选仅用于事后解释，不参与配对
   const suggested = new Set();
@@ -685,7 +782,11 @@ function validatePlan(ctx, raw, subMap) {
       .map(Number).filter(sid => byId.has(sid))
   );
   const skipRaw = (Array.isArray(raw && raw.skipSeqs) ? raw.skipSeqs : [])
-    .map(Number).filter(n => rosterBySeq.has(n));
+    .map(Number).filter(n => rosterBySeq.has(n) && !pairSeqs.has(n));
+  if (pairSeqs.size && Array.isArray(raw && raw.skipSeqs)
+      && raw.skipSeqs.map(Number).some(n => pairSeqs.has(n))) {
+    warnings.push('「不排同一节课」的两人由程序分开安排，未把他们从本轮跳过');
+  }
 
   const usedSameDay = {};
   const usedInPlan = new Set();
@@ -778,7 +879,8 @@ function validatePlan(ctx, raw, subMap) {
     let picked = [];
     if (need > 0) {
       const r = fillByRotation(ctx.roster, s.groupScope, need, ctx.state, {
-        usedInPlan, day, skipSeqs, avoidSameDay: !!ctx.avoidSameDay, busySeqs: day, softSeqs: day
+        usedInPlan, day, skipSeqs, avoidSameDay: !!ctx.avoidSameDay, busySeqs: day, softSeqs: day,
+        pairAvoid, sectionTaken: new Set(keep)
       });
       if (r.wrapped) wrappedAny = true;
       picked = r.picked;
@@ -802,7 +904,20 @@ function validatePlan(ctx, raw, subMap) {
 
   // ③ 替班替换（「X号替换Y号」）：轮到 Y 改排 X，Y 本轮不值日
   if (subMap && Object.keys(subMap).length) {
+    const beforeSub = new Map(plan.map(p => [p.sessionId, p.memberSeqs.slice()]));
     plan.forEach(p => { p.memberSeqs = applySubstitution(p.memberSeqs, subMap); });
+    /* 替班可能把某人换成其互斥伙伴（本课次已有 1 号，替换又带进 2 号）⇒
+     * 破坏「不排同一节课」。这类课次整体回退替换：宁可替班不生效，也不破坏硬约束。 */
+    if (pairAvoid) {
+      let rolled = 0;
+      plan.forEach(p => {
+        if (hasPairInRow(p.memberSeqs)) {
+          p.memberSeqs = beforeSub.get(p.sessionId);
+          rolled++;
+        }
+      });
+      if (rolled) warnings.push('为避免与「不排同一节课」冲突，' + rolled + ' 个课次的替班未生效');
+    }
     plan.forEach(p => {
       p.memberIds = p.memberSeqs.map(q => ctx.idBySeq.get(q));
       p.names = p.memberSeqs.map(q => (rosterBySeq.get(q) || {}).name || '');
@@ -837,6 +952,14 @@ function validatePlan(ctx, raw, subMap) {
     warnings.push('AI 建议的 ' + aiOnly.sort((a, b) => a - b).join('、')
       + ' 号与「按课次先后取最小可用号」的顺位不一致，已按序号顺序重新配对');
   }
+  if (avoidPairs && avoidPairs.length) {
+    warnings.unshift('已按你的要求把 ' + avoidPairs.map(p => p.join('、') + ' 号').join(' / ')
+      + '分开，不安排在同一节课');
+  }
+  const keptPairRows = pairAvoid ? plan.filter(p => p.kept && hasPairInRow(p.memberSeqs)) : [];
+  if (keptPairRows.length) {
+    warnings.push('有 ' + keptPairRows.length + ' 个「保持原样」的课次原本就排了这几个人，按你的要求未改动');
+  }
   if (wrappedAny) warnings.push('本轮 56 人已轮到一遍，已开启新一轮，按序号继续往后排');
   if (repeated.length) {
     warnings.push('注意：' + Array.from(new Set(repeated)).sort((a, b) => a - b).join('、')
@@ -868,6 +991,8 @@ module.exports = {
   fillByRotation,
   parseSubMap,
   parseStartSeqs,
+  parseAvoidPairs,
+  buildPairMap,
   applyStartFrom,
   seedUsedFromExisting,
   applySubstitution,

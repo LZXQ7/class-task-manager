@@ -101,13 +101,15 @@ function buildState(roster, cursors) {
  * @param {string} scope   'A' | 'B'（分组课）| null（全体课，两组交替）
  * @param {number} n       本节需要几人
  * @param {object} state   buildState() 的产物（会被就地修改：游标前进、used 增补）
- * @param {object} [opt]   { avoidSeqs?, busySeqs?, inBatchSeqs?, avoidSameDay?, skipSeqs?, softSeqs? }
+ * @param {object} [opt]   { avoidSeqs?, busySeqs?, inBatchSeqs?, avoidSameDay?, skipSeqs?, softSeqs?, pairAvoid?, sectionTaken? }
  *                         全部按**序号**给出（AI 上下文的名册没有 id）。
  *                         avoidSeqs = 本次绝对不用（如本节已排的人）
  *                         busySeqs  = 当天已值日过（avoidSameDay 时启用）
  *                         inBatchSeqs = 本批次已排过
  *                         skipSeqs  = 本轮整体跳过（AI 路径的 skipSeqs）
  *                         softSeqs  = 软避让（本周已值过日的人）：优先不排，没人时才用
+ *                         pairAvoid = Map<seq, Set<seq>>「X 号和 Y 号不排同一节课」（只在**本课次**生效）
+ *                         sectionTaken = Set<seq> 本课次已定的人（原有值日 keep），与 pairAvoid 配套
  * @returns {{chosen:Array, cursors:{A,B}, wrapped:boolean, short:number}}
  */
 function pickBySeq(roster, scope, n, state, opt) {
@@ -117,6 +119,8 @@ function pickBySeq(roster, scope, n, state, opt) {
   const inBatch = o.inBatchSeqs || new Set();
   const skipSeqs = o.skipSeqs || null;
   const avoidSameDay = !!o.avoidSameDay;
+  const pairAvoid = o.pairAvoid || null;
+  const sectionTaken = o.sectionTaken || null;
 
   if (!state.cursors) state.cursors = { A: 0, B: 0 };
   if (!state.used) state.used = { A: new Set(), B: new Set() };
@@ -137,7 +141,28 @@ function pickBySeq(roster, scope, n, state, opt) {
 
   const localTaken = new Set();   // 本次调用内已取 —— 同一节课绝不排同一个人两次
   const soft = o.softSeqs || null;   // 软避让：优先不要，实在没人时才用
+  /* 「X 号和 Y 号不要排在同一节课」：只约束**本次调用**（= 一个课次），
+   * 不写进 state.used / avoidSeqs，所以两人仍会在别的课次各值一次日。
+   * localTaken 是随取随长的，usable() 每次重新求值 ⇒ 先被选中的人的互斥伙伴
+   * 在本课次剩下的名额里自动不可用了。sectionTaken 承载「本课次原有值日（keep）」，
+   * 补空缺时也要避开它们的互斥伙伴。
+   * ⚠️ 没传 pairAvoid 时这段完全不执行，generate / cron-weekly 行为零变化。 */
+  const blockedByPair = (seq) => {
+    if (!pairAvoid) return false;
+    for (const t of localTaken) {
+      const s = pairAvoid.get(t);
+      if (s && s.has(seq)) return true;
+    }
+    if (sectionTaken) {
+      for (const t of sectionTaken) {
+        const s = pairAvoid.get(t);
+        if (s && s.has(seq)) return true;
+      }
+    }
+    return false;
+  };
   const usable = (m) => !avoid.has(m.seq) && !localTaken.has(m.seq)
+    && !blockedByPair(m.seq)
     && (!avoidSameDay || (!busy.has(m.seq) && !inBatch.has(m.seq)));
   /* 软避让不能改变「按序号递增」这条主线的单调性，只在**同级候选里挑更靠前**的那个人：
    * 先找「不在软避让名单里且序号最小」的，找不到才退回「序号最小的那个」。

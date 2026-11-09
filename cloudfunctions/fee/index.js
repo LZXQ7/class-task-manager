@@ -3,12 +3,17 @@
  *
  * action: getSummary / setTotal / addExpense / deleteRecord
  *
- * 权限口径（与前端首页权限、util.POSITIONS 逐字一致）：
+ * 权限口径（与前端 util.feeRights / auth 下发的 feeRights 逐字一致）：
  *   · 总额设置：班费 = 超管 / 生活委员；团费 = 超管 / 班长兼团支书。
  *   · 消费登记 / 删记录：班费 = 班长兼团支书 / 副班长 / 生活委员 / 超管；
  *                       团费 = 班长兼团支书 / 超管。
  *   · 查看（getSummary）：所有已绑定成员（含普通成员，仅展示余额）。
  *   · 余额 = total - SUM(amount)，运行时计算，不落库。
+ *
+ * 2026-11-08 追加：后台可在成员编辑里**单独授予**「登记班费消费 / 登记团费消费」
+ *   （member.fee_perms，真源 common/fee-perms.js）。这是**只额外授予**：职位原有权限
+ *   一条不少；「设置总额」明确不在单独授予范围内，仍按职位。
+ *   ⚠️ 真正拦截只认本文件，前端能力位仅决定入口可见性。
  *
  * 图片：消费图片客户端直传云存储，服务端只存 fileID 数组（JSON）；
  *       删记录时顺手删云存储文件（删不掉不报错）。
@@ -18,6 +23,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const { getPool } = require('./common/db');
 const guard = require('./common/guard');
+const { hasFeePerm } = require('./common/fee-perms');
 const { BizError, ok, fail } = require('./common/resp');
 
 const TYPES = ['class', 'league'];
@@ -27,9 +33,14 @@ const MAX_AMOUNT = 1000000;
 
 /* ---------------- 权限判定（复用 guard 既有职位函数，口径与 MEMORY 铁律一致） ---------------- */
 
-/** 能否登记消费 / 删记录 */
+/**
+ * 能否登记消费 / 删记录 / 补凭证（三者同一权限，与职位口径一致）。
+ * ⚠️ hasFeePerm 必须在职位判定之前、且是「或」关系 —— 只额外授予，绝不削弱职位权限。
+ *    scripts/check-fee-perms.js 有变异自证：去掉这一行必须翻红。
+ */
 function feeManager(type, m) {
   if (guard.isSuper(m)) return true;
+  if (hasFeePerm(m, type)) return true;
   if (type === 'league') return guard.isMonitor(m);           // 班长兼团支书
   return guard.isMonitor(m) || guard.isViceMonitor(m) || guard.isDutyAdmin(m); // 班长兼团支书 / 副班长 / 生活委员
 }

@@ -9,6 +9,7 @@ const { getPool } = require('../common/db');
 const { BizError } = require('../common/resp');
 const { NOT_TEST } = require('../common/test-account');
 const { logAction } = require('./audit');
+const { FEE_PERM_KEYS, normalizeFeePerms, stringifyFeePerms } = require('../common/fee-perms');
 
 const ROLES = ['ADMIN', 'MONITOR', 'MEMBER'];
 const STATUSES = ['ACTIVE', 'LEAVE', 'DISABLED'];
@@ -34,6 +35,8 @@ function maskMember(r) {
     dutyCount: Number(r.duty_count || 0),
     dutyOff: Number(r.duty_off) === 1,
     remindBlock: Number(r.remind_block) === 1,
+    // 后台单独授予的班费消费登记权限（只额外授予，职位权限不在这里体现）
+    feePerms: normalizeFeePerms(r.fee_perms),
     bound: !!r.openid,
     lastDutyAt: typeof r.last_duty_at === 'string' ? r.last_duty_at.slice(0, 10) : r.last_duty_at
   };
@@ -44,9 +47,15 @@ function maskMember(r) {
  * @param {object} q
  * @param {number} [q.classId]   班级；不给则跨全部班（后台放开跨班）
  * @param {string} [q.keyword]   姓名 / 学号 模糊
+ * @param {string} [q.scope]     筛选作用域 ALL / COMMITTEE / A / B（四选一，与小程序名册页一致）
  * @param {number} [q.page]      从 1 起
- * @param {number} [q.pageSize]
+ * @param {number} [q.pageSize]  10 / 30 / 50；**0 = 全部**（不拼 LIMIT）
+ *
+ * ⚠️ 两条 SQL 都必须在 .query() 里**显式出现 NOT_TEST_SQL**：
+ *    scripts/check-admin-web.js 与 check-test-account-hidden.js 是按 .query() 片段
+ *    grep「NOT_TEST」字样兜底的，抽成公共 where 变量会让门禁静默失效。
  */
+const MEMBER_SCOPES = ['ALL', 'COMMITTEE', 'A', 'B'];
 async function listMembers(q = {}) {
   const pool = getPool();
   // ⚠️ 测试账号过滤必须**显式出现在每条人员 SQL 里**。
@@ -69,24 +78,43 @@ async function listMembers(q = {}) {
     where.push('m.group_tag = ?');
     args.push(String(q.groupTag));
   }
+  /* 筛选作用域（2026-11-08）：四选一，与小程序 pages/roster 的 _isCommittee 主路径同口径。
+   * 「班委」= role 是 ADMIN / MONITOR（封闭枚举里即 <> 'MEMBER'）且不是辅导员 X 组。
+   *   刻意写成 <> 而非 IN(...) / OR：后台 e2e 的 SQL mock 只支持 = / <> / LIKE，
+   *   用 IN / OR 会让 mock 静默漏掉整个条件（断言假绿）。语义等价且枚举封闭。
+   * 门禁 scripts/check-member-filters.js 看守白名单、口径一致性与「全部」分支。 */
+  const scopeRaw = String(q.scope || 'ALL');
+  const scope = MEMBER_SCOPES.indexOf(scopeRaw) >= 0 ? scopeRaw : 'ALL';
+  if (scope === 'COMMITTEE') {
+    where.push("m.role <> 'MEMBER' AND m.group_tag <> 'X'");
+  } else if (scope === 'A' || scope === 'B') {
+    where.push('m.group_tag = ?');
+    args.push(scope);
+  }
   if (q.keyword) {
     where.push('(m.name LIKE ? OR m.student_no LIKE ?)');
     const kw = '%' + String(q.keyword).trim() + '%';
     args.push(kw, kw);
   }
-  const pageSize = Math.min(200, Math.max(1, Number(q.pageSize) || 50));
-  const page = Math.max(1, Number(q.page) || 1);
+  // ⚠️ 0 是「全部」的合法值：绝不能 `Number(q.pageSize) || 50`（会把 0 吃掉变默认值）。
+  const rawSize = Number(q.pageSize);
+  const all = String(q.pageSize) === '0';
+  const pageSize = all ? 0 : Math.min(200, Math.max(1, Number.isFinite(rawSize) && rawSize > 0 ? rawSize : 50));
+  const page = all ? 1 : Math.max(1, Number(q.page) || 1);
+  // 附加条件为空时不拼 ' AND '（跨全部班且无筛选时原写法会生成语法错的空条件）
+  const extra = where.slice(1).join(' AND ');
+  const suffix = extra ? ' AND ' + extra : '';
 
   const [[cnt]] = await pool.query(
-    'SELECT COUNT(*) AS c FROM member m WHERE ' + NOT_TEST_SQL + ' AND ' + where.slice(1).join(' AND '),
+    'SELECT COUNT(*) AS c FROM member m WHERE ' + NOT_TEST_SQL + suffix,
     args
   );
   const [rows] = await pool.query(
-    'SELECT m.* FROM member m WHERE ' + NOT_TEST_SQL + ' AND ' + where.slice(1).join(' AND ') +
+    'SELECT m.* FROM member m WHERE ' + NOT_TEST_SQL + suffix +
     // 学号升序（2026-10-11 用户口径：成员按学号从小到大）。student_no 是定长数字串，
     // 字典序 = 数值序；追加 m.id 做同号兜底（理论上唯一），保证分页顺序稳定。
-    ' ORDER BY m.class_id, m.student_no, m.id LIMIT ? OFFSET ?',
-    args.concat([pageSize, (page - 1) * pageSize])
+    ' ORDER BY m.class_id, m.student_no, m.id' + (all ? '' : ' LIMIT ? OFFSET ?'),
+    all ? args : args.concat([pageSize, (page - 1) * pageSize])
   );
   return {
     total: Number(cnt.c || 0),
@@ -141,6 +169,14 @@ function validate(patch) {
     }
     patch.position = p;
   }
+  /* 单独授予的班费权限：必须是数组 + 白名单内，防止前端伪造任意值写库 */
+  if (patch.feePerms !== undefined) {
+    if (!Array.isArray(patch.feePerms)) throw new BizError(40001, '权限格式不合法');
+    patch.feePerms.forEach(function (k) {
+      if (FEE_PERM_KEYS.indexOf(k) < 0) throw new BizError(40001, '权限项不合法：' + k);
+    });
+    patch.feePerms = normalizeFeePerms(patch.feePerms);
+  }
   return patch;
 }
 
@@ -171,6 +207,7 @@ async function updateMember(id, patch, session, req) {
   if (patch.groupTag !== undefined) put('group_tag', patch.groupTag);
   if (patch.position !== undefined) put('position', patch.position);
   if (patch.dutyOff !== undefined) put('duty_off', patch.dutyOff ? 1 : 0);
+  if (patch.feePerms !== undefined) put('fee_perms', stringifyFeePerms(patch.feePerms));
 
   // is_super 一律走单独的 grant 接口，不在通用 patch 里顺手改 ——
   // 超级管理员是整个后台的权限根，不能当普通字段随手保存。
@@ -232,7 +269,7 @@ async function addMember(data, session, req) {
   if (dup.length) throw new BizError(40001, '学号已存在');
 
   const [r] = await pool.query(
-    'INSERT INTO member (class_id, name, student_no, group_tag, role, position, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO member (class_id, name, student_no, group_tag, role, position, status, fee_perms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     [
       classId,
       data.name,
@@ -240,7 +277,8 @@ async function addMember(data, session, req) {
       data.groupTag || 'A',
       data.role || 'MEMBER',
       data.position || '',
-      data.status || 'ACTIVE'
+      data.status || 'ACTIVE',
+      stringifyFeePerms(data.feePerms)
     ]
   );
   await logAction(session, {

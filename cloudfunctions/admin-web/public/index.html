@@ -122,7 +122,9 @@ window.__bootTimer = setTimeout(function () {
   if (l) l.hidden = false;
 }, 5000);
 </script>
-<div id="toast" class="toast" hidden></div>
+<!-- role/aria-live 默认值：app.js 未加载或抛异常时，通知仍有基础播报语义；
+     toast() 会按消息类型动态覆写 role 与 aria-live（错误升级为 alert）。 -->
+<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 <!-- SheetJS：课表 xlsx 解析在**浏览器侧**做（后端不引它，避免云函数包膨胀 + 冷启动变慢）。
      ⚠️ 走 CDN 意味着内网无外网时导入功能不可用 —— 其余功能（课程表/成员/班级/配置/审计）不受影响。
      onerror 只提示、不阻断页面：解析库挂掉不该让整个后台打不开。 -->

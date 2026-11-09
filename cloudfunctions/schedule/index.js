@@ -16,7 +16,7 @@ const {
   pickBySeq, buildState, loadDayBlocks, loadCursors, saveCursors, toSeqSet,
   loadWeekCursors, saveWeekCursors, syncGlobalCursors, dropWeekCursorsFrom,
   bumpCursorForManual, resolveNeed, loadSlots, slotOf, fillByRotation,
-  parseSubMap, parseStartSeqs, applyStartFrom, validatePlan
+  parseSubMap, parseStartSeqs, parseAvoidPairs, applyStartFrom, validatePlan
 } = require('./common/schedule-core');
 /* 测试账号唯一真源（见 common/test-account.js）。铁律：所有人员列表一律不展示，
  * 唯一例外是「超管手动排班」三处（名册 / 手动加人 / 换人）—— 需求④：把测试账号
@@ -45,7 +45,7 @@ const seqOf = week.seqOf;
 const AI_PROXY = process.env.AI_PROXY === undefined ? 'ai-proxy' : String(process.env.AI_PROXY);
 const AI_BASE = String(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
 const AI_MODEL = String(process.env.DEEPSEEK_MODEL || 'deepseek-chat');
-const AI_TIMEOUT_MS = Number(process.env.DEEPSEEK_TIMEOUT_MS || 45000);
+const AI_TIMEOUT_MS = Number(process.env.DEEPSEEK_TIMEOUT_MS || 15000);
 
 /** 走代理时密钥在 ai-proxy 侧，这里只关心代理是否可用 */
 function aiAvailable() {
@@ -91,8 +91,12 @@ const DEFAULT_AI_PROMPT = [
   '   下周接着从本周用到的最大号之后继续；直到全班 56 人都排过一次，才重新从 1 号开始。',
   '   dutyCountThisRound ≥ 1 的同学本轮已经排过，程序会自动跳过他们，不要再给他们排',
   '   （除非同组可用的人真的不够）。⚠️ 不要把他们写进 skipSeqs —— 见规则 A。',
+  '8. 【X号和Y号不排同一节课】使用者说「1号和2号不安排在同一节课的值日」「3号4号不要排一起」时，',
+  '   程序会把两人分到不同课次 —— 你【不要】为此做任何处理：既不要写进 skipSeqs',
+  '   （那等于「本轮不值日」，会把人从候选池删掉），也不要为避开他们改 assignments',
+  '   （assignments 本来就不采信）。照常输出 unchanged / skipSeqs / notes 即可。',
   '',
-  '# 四句最常见的口语该怎么理解（务必照此执行）',
+  '# 五句最常见的口语该怎么理解（务必照此执行）',
   'A. 「A 组 23 号之前全部排过了」「b 组 20 号之前全部排过了」这类话 = 这些同学本轮已排过，',
   '   本次不要再给他们排。⚠️ 这类情况**不要写进 skipSeqs**：轮转游标本来就从他们之后开始排，',
   '   程序会自动跳过；写进 skipSeqs 会把他们从候选池里删掉，反而导致后面的课次排不满。',
@@ -104,6 +108,8 @@ const DEFAULT_AI_PROMPT = [
   '   程序本身就会照做。你不用为此做任何额外处理（既不用写 unchanged，也不用写 skipSeqs）。',
   'D. 「A 组从 53 开始」「b 组从 52 开始」= 只是指定**本轮起点**，程序会把该组游标直接推到 52 / 51，',
   '   你什么都不用做 —— 尤其【不要】写进 skipSeqs（写了会把 1~51 号踢出候选池，后面的课次就排不满了）。',
+  'E. 「1号和2号不安排在同一节课」「3号4号不要排一起」= 见硬规则 8，程序自动分开，',
+  '   你什么都不用做 —— 尤其【不要】把其中任何一人写进 skipSeqs。',
   '',
   '# 输出要求',
   '只输出一个严格 JSON 对象，不要输出任何解释文字，不要用 Markdown 代码块包裹。结构如下：',
@@ -351,19 +357,33 @@ async function callAi(messages, timeoutMs, aiCfg) {
     if (!key) throw new BizError(40009, 'AI 未配置：请设置 DEEPSEEK_API_KEY 或为本班配置密钥');
     return callDeepSeekDirect(body, timeoutMs, key);
   }
-  // 函数间调用默认超时只有 15s，大模型经常超过，这里显式放宽
-  const res = await cloud.callFunction({
-    name: AI_PROXY,
-    data: {
-      action: 'chat',
-      token: process.env.AI_PROXY_TOKEN || '',
-      body,
-      // 自带配置（留空则由 ai-proxy 回落到平台密钥）
-      baseUrl: cfg.baseUrl || '',
-      apiKey: cfg.apiKey || ''
-    },
-    timeout: 55000
-  });
+  // 客户端云函数调用最多等 20s，后端不能拖到 45s 才报错 —— 那时客户端早已断开，
+  // 用户只看到「连接服务器失败」，拿不到任何归因。15s 内没结果就快速中止，
+  // 前端还能自动重试一次（deepseek-chat 实测 1.2~1.6s，完全不受影响）。
+  const AI_CALL_TIMEOUT_MS = 15000;
+  let res;
+  try {
+    res = await cloud.callFunction({
+      name: AI_PROXY,
+      data: {
+        action: 'chat',
+        token: process.env.AI_PROXY_TOKEN || '',
+        body,
+        // 自带配置（留空则由 ai-proxy 回落到平台密钥）
+        baseUrl: cfg.baseUrl || '',
+        apiKey: cfg.apiKey || ''
+      },
+      timeout: AI_CALL_TIMEOUT_MS
+    });
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    if (/timed?\s*out|timeout/i.test(msg)) {
+      throw new BizError(40010, '模型 15 秒内没有返回（客户端最多等 20 秒，已提前中止）。'
+        + '请检查「我的 → AI 设置」是否选了推理模型，改用 deepseek-chat；'
+        + '若只是偶发，直接再点一次「智能排班」即可自动重试。');
+    }
+    throw e;
+  }
   const r = (res && res.result) || {};
   if (r.errCode !== 0) {
     // 代理侧可能附带诊断（finish_reason / token 用量），拼进错误信息便于归因
@@ -1940,13 +1960,17 @@ const routes = {
         try { raw = parseJsonLoose(r.content); } catch (e) {
           throw new BizError(40010, 'AI 返回的不是合法 JSON，请重试或把描述写得更明确');
         }
+        const seqs = ctx2.roster.map(r => r.seq);
         // 「X号替换Y号」类替班指令从使用者自由文本里解析（仅 AI 指令临时说，无持久配置）
-        const subMap = parseSubMap(text, ctx2.roster.map(r => r.seq));
+        const subMap = parseSubMap(text, seqs);
+        /* 「1号和2号不排同一节课」：模型输出结构里没有这个字段、assignments 又不采信，
+         * 只能本地确定性解析（与起点指令同理），预览与落库各解析一次、结果必须一致。 */
+        const avoidPairs = parseAvoidPairs(text, seqs);
         /* 「A组从53开始 / B组从52开始」这类**起点**指令确定性解析并推进游标：
          * 不能指望模型 —— 它会把这句理解成「53 号之前都排过了」，写进 skipSeqs 把候选池抽干
          * （2026-10-31 用户截图：19 节里 16 节「未排」）。游标只前进不后退。 */
         const bumped = applyStartFrom(ctx2, parseStartSeqs(text, ctx2.roster));
-        const v = validatePlan(ctx2, raw, subMap);
+        const v = validatePlan(ctx2, raw, subMap, avoidPairs);
         if (bumped.length) {
           v.warnings.unshift('已按你的要求把轮转起点移到 ' + bumped.join(' / ') + ' 号');
         }
@@ -1999,10 +2023,13 @@ const routes = {
         const pool = getPool();
         const classId = guard.classIdOf(ctx);
         const built = await buildAiContext(pool, wk, classId);
-        // 替班指令（「X号替换Y号」）从使用者原始文本里重新解析，确保落库与预览一致
-        const subMap = parseSubMap(payload.text || '', built.roster.map(r => r.seq));
+        // 替班 / 起点 / 互斥对指令都从使用者原始文本里重新解析，确保落库与预览一致
+        const text = String(payload.text || '');
+        const seqs = built.roster.map(r => r.seq);
+        const subMap = parseSubMap(text, seqs);
+        const avoidPairs = parseAvoidPairs(text, seqs);
         // 起点指令（「A组从53开始」）同样重放，落库结果必须与预览一致
-        applyStartFrom(built, parseStartSeqs(payload.text || '', built.roster));
+        applyStartFrom(built, parseStartSeqs(text, built.roster));
         // 服务端二次校验：客户端传来的序号必须重新过一遍硬规则
         const v = validatePlan(built, {
           assignments: incoming.map(p => ({ sessionId: p.sessionId, memberSeqs: p.memberSeqs || [] })),
@@ -2012,7 +2039,7 @@ const routes = {
             : incoming.filter(p => p.kept).map(p => p.sessionId),
           skipSeqs: Array.isArray(payload.skipSeqs) ? payload.skipSeqs : [],
           notes: ''
-        });
+        }, subMap, avoidPairs);
         /* 保洁已并进同一条轮转流（v.cleaningPlan），与课程值日一起由 writePlan 落库。
          * 旧实现是「落完课程再补一遍保洁」，导致保洁只能捡整周课程排完后的周尾号
          * （用户 2026-10-31 实锤：周二第 2 节 9、11，下午打扫 410 却从 35 号起）。 */

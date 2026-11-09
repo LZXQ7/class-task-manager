@@ -78,7 +78,9 @@ const TABLES = {
     // ⚠️ 刻意放测试超管（学号 99 段）：验证「后台一律不显示测试账号」这条铁律
     { id: 69, class_id: 3, name: '测试超管', student_no: '0000000000', group_tag: 'A', role: 'ADMIN', is_super: 1, position: '', status: 'LEAVE', openid: null, duty_count: 0, duty_off: 0, remind_block: 0, last_duty_at: null },
     { id: 54, class_id: 3, name: '示例成员42', student_no: '2603010102', group_tag: 'B', role: 'ADMIN', is_super: 0, position: '班长兼团支书', status: 'ACTIVE', openid: 'o2', duty_count: 12, duty_off: 0, remind_block: 0, last_duty_at: '2026-10-09' },
-    { id: 55, class_id: 3, name: '李四', student_no: '2603010103', group_tag: 'A', role: 'MEMBER', is_super: 0, position: '', status: 'ACTIVE', openid: 'o3', duty_count: 2, duty_off: 0, remind_block: 0, last_duty_at: null },
+    // 2026-11-08 单独授权夹具：普通成员李四被额外授予「登记班费消费」（不改职位）。
+    // [7.6] 会在真实浏览器里验列表 tag / 弹层勾选态 / 保存回写。
+    { id: 55, class_id: 3, name: '李四', student_no: '2603010103', group_tag: 'A', role: 'MEMBER', is_super: 0, position: '', status: 'ACTIVE', openid: 'o3', duty_count: 2, duty_off: 0, remind_block: 0, last_duty_at: null, fee_perms: 'class' },
     { id: 56, class_id: 3, name: '王五', student_no: '2603010104', group_tag: 'B', role: 'MEMBER', is_super: 0, position: '', status: 'DISABLED', openid: 'o4', duty_count: 0, duty_off: 1, remind_block: 0, last_duty_at: null },
     { id: 57, class_id: 1, name: '一班同学', student_no: '2601010101', group_tag: 'A', role: 'MEMBER', is_super: 0, position: '', status: 'ACTIVE', openid: 'o5', duty_count: 1, duty_off: 0, remind_block: 0, last_duty_at: null }
   ],
@@ -187,7 +189,12 @@ function rowMatches(row, sql, args) {
   //   `group_scope = ?` 单独拎出来跟 'A' 比 —— 全体课（group_scope 为 NULL）
   //   直接被判否，于是「A 组视图」只剩本组课、全体课凭空消失。
   //   这就是 MEMORY 里记的「两条兜底路径互掩盖 ⇒ 变异抓不到」的同款陷阱。
-  const cond = sql.slice(whereAt).replace(/\(\s*\w+\.group_scope\s*=\s*\?\s+OR\s+\w+\.group_scope\s+IS NULL\s*\)/gi, ' ');
+  const cond0 = sql.slice(whereAt).replace(/\(\s*\w+\.group_scope\s*=\s*\?\s+OR\s+\w+\.group_scope\s+IS NULL\s*\)/gi, ' ');
+  /* 成员搜索是 `(m.name LIKE ? OR m.student_no LIKE ?)`。
+   * rowMatches 的逐条件求值天然是 AND，留着它会要求姓名和学号**同时**命中
+   * ⇒ 任何关键词都筛出 0 人（假空）。这里摘出片段，循环后按 OR 语义单独判一次。 */
+  const hasKwOr = /\(\s*m\.name LIKE \?\s+OR\s+m\.student_no LIKE \?\s*\)/i.test(cond0);
+  const cond = cond0.replace(/\(\s*m\.name LIKE \?\s+OR\s+m\.student_no LIKE \?\s*\)/gi, ' ');
   // 逐个条件： <col> <op> <val>  ；val 可能是 ? 或 '字面量'
   // ⚠️ 列名**可能带表前缀也可能不带**：`session s ... WHERE s.class_id = ?` 有前缀，
   //    而 `SELECT period_time FROM \`class\` WHERE id = ? LIMIT 1` 没有。
@@ -205,12 +212,21 @@ function rowMatches(row, sql, args) {
     else { expect = c.val.slice(1, -1); }
     const actual = row[c.col];
     if (c.op === '=' && String(actual) !== String(expect)) return false;
+    // 「仅班委」用 `role <> 'MEMBER'` / `group_tag <> 'X'`：不实现 <> 会让整个
+    // 筛选条件被解析后静默忽略（列表仍返回 4 人，断言假绿），必须补齐。
+    if ((c.op === '<>' || c.op === '!=') && String(actual) === String(expect)) return false;
     if (c.op === 'LIKE') {
-      // 只支持 'prefix%' 这一种形态，够用且不会写出一个假通配符实现
+      // 支持 'prefix%' / '%suffix' / '%both%'：成员搜索传的是 '%关键词%'，
+      // 只认前缀会把关键词查询全判成不匹配（列表假空）。
       const lit = String(expect);
-      if (lit.slice(-1) === '%') {
-        if (String(actual === null || actual === undefined ? '' : actual).indexOf(lit.slice(0, -1)) !== 0) return false;
-      } else if (String(actual) !== lit) return false;
+      const a = String(actual === null || actual === undefined ? '' : actual);
+      const lead = lit[0] === '%';
+      const tail = lit[lit.length - 1] === '%';
+      const stem = lit.slice(lead ? 1 : 0, tail ? -1 : undefined);
+      if (lead && tail) { if (a.indexOf(stem) < 0) return false; }
+      else if (tail) { if (a.indexOf(stem) !== 0) return false; }
+      else if (lead) { if (a.slice(-stem.length) !== stem) return false; }
+      else if (a !== lit) return false;
     }
     if (c.op === 'NOT LIKE') {
       // NOT_TEST('m') 展开后就是这个形态；不支持它 = 测试账号过滤被整条忽略
@@ -220,6 +236,14 @@ function rowMatches(row, sql, args) {
         : String(actual) === lit;
       if (hit) return false;
     }
+  }
+  if (hasKwOr) {
+    // 摘掉 OR 片段后，ai 正好停在关键词的两个 ? 之前（其后再无参与求值的 ?）
+    const raw = args[ai] === undefined ? '' : String(args[ai]);
+    const kw = raw.replace(/^%/, '').replace(/%$/, '');
+    const hit = String(row.name === null || row.name === undefined ? '' : row.name).indexOf(kw) >= 0 ||
+      String(row.student_no === null || row.student_no === undefined ? '' : row.student_no).indexOf(kw) >= 0;
+    if (!hit) return false;
   }
   return true;
 }
@@ -308,6 +332,124 @@ function applyWhere(rows, sql, args) {
   return out;
 }
 
+/**
+ * 使用统计专用 mock（2026-11-09）。
+ *
+ * 为什么单独接管：mod-usage.js 的查询全是聚合（GROUP BY / SUM(CASE) / COUNT(DISTINCT)），
+ * 通用 POOL 分支只会把 usage_event 当普通表返回原始行 —— SELECT 别名一个都没有，
+ * 前端拿到 undefined 就整页空白。这里按 SQL 特征返回**带正确别名**的聚合夹具。
+ *
+ * 「昨天」不是只验按钮样式：SQL 里出现昨天条件时，总 PV/UV 与概况数值会一起变，
+ * 浏览器里必须看到数字真的跟着变（否则就是按钮点了没发请求 / 后端没吃参数）。
+ */
+function todayStr(offset) {
+  const d = new Date();
+  d.setDate(d.getDate() - (offset || 0));
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function usageEventMock(s, args) {
+  const isY = /DATE\(ts\) = DATE_SUB\(CURDATE\(\), INTERVAL 1 DAY\)/.test(s);
+  // ① 顶部总计（PV / UV）—— 昨天口径下数值必须不同。
+  //    ⚠️ 明细排行 SQL 也含 COUNT(*) AS pv, COUNT(DISTINCT openid) AS uv，
+  //       但带 GROUP BY：不加这层排除会把 10 行排行吃掉只剩 1 行（横条断言假红）。
+  if (/COUNT\(\*\) AS pv, COUNT\(DISTINCT openid\) AS uv/.test(s) && !/GROUP BY/.test(s)) {
+    return [[{ pv: isY ? 17 : 42, uv: isY ? 4 : 9 }], []];
+  }
+  // ② 三时点累计用户
+  if (/COUNT\(DISTINCT CASE WHEN/.test(s)) return [[{ u0: 97, u1: 97, u7: 94 }], []];
+  // ③a 页面级对比·段聚合（cmpSegment 第一条 SQL）：pv/uv/覆盖功能数/活跃天数/三类 PV
+  //     数值按 from 的「日」派生，保证 A/B 两段日期不同 → 数值必然不同（不会假绿成同一份）
+  if (/COUNT\(DISTINCT event\) AS evCnt/.test(s)) {
+    const from = String((args && args[args.length - 2]) || '2026-11-01');
+    const dom = Number(from.slice(-2)) || 1;
+    return [[{
+      pv: 100 + dom * 2, uv: 6 + (dom % 4), evCnt: 8, dayCnt: 1,
+      pageViews: 70 + dom, opens: 20 + dom, actions: 30 + dom
+    }], []];
+  }
+  // ③a2 页面级对比·段分时（cmpSegment 第二条 SQL）：24 整点，值随段变
+  if (/GROUP BY HOUR\(ts\)/.test(s)) {
+    const from = String((args && args[args.length - 2]) || '2026-11-01');
+    const dom = Number(from.slice(-2)) || 1;
+    const base = 1 + (dom % 5);
+    const rows = [];
+    for (let h = 0; h < 24; h++) {
+      rows.push({
+        h: h,
+        visitUsers: base + (h % 4),
+        opens: base + (h % 3),
+        pageViews: base + (h === 9 ? 12 : (h === 19 ? 7 : 0))
+      });
+    }
+    return [rows, []];
+  }
+  // ③ 分时趋势：三天 × 24 小时 × 三指标
+  if (/HOUR\(ts\) AS h/.test(s)) {
+    const rows = [];
+    [0, 1, 7].forEach((off) => {
+      for (let h = 0; h < 24; h++) {
+        const base = off === 0 ? 1 : (off === 1 ? 2 : 0);
+        rows.push({
+          offDay: off, h: h,
+          visitUsers: base + (h % 3),
+          opens: base + (h % 4),
+          pageViews: base + (h === 11 ? 8 : (h === 7 ? 4 : 0))
+        });
+      }
+    });
+    return [rows, []];
+  }
+  // ④ 活跃概况：目标日 / 前一日 / 7 日前。
+  //    ⚠️ 目标日偏移藏在 args 末尾三个 IN (?, ?, ?) 参数里，不能靠 SQL 里的
+  //       DATE(ts)=昨天 判断 —— 概况 SQL 用的是 DATEDIFF，压根不含那串条件。
+  //       否则点「昨天」后前端按 targetOffset=1 取到的会是「前一日」那行（28/65/269）。
+  if (/AS offDay/.test(s)) {
+    const o = args.length >= 3 ? Number(args[args.length - 3]) : 0;
+    const isTargetY = o === 1;
+    return [[
+      { offDay: o, visitUsers: isTargetY ? 4 : 11, opens: isTargetY ? 6 : 17, pageViews: isTargetY ? 20 : 51 },
+      { offDay: o + 1, visitUsers: 28, opens: 65, pageViews: 269 },
+      { offDay: o + 7, visitUsers: 5, opens: 13, pageViews: 75 }
+    ], []];
+  }
+  // ⑤ 访问类型分布（设备平台的替代口径）
+  if (/GROUP BY kind/.test(s)) {
+    return [[{ kind: 'page_view', pv: 31, uv: 9 }, { kind: 'action', pv: 11, uv: 6 }], []];
+  }
+  // ⑥ 功能排行（同时供「访问来源 Top10」横条复用）
+  if (/GROUP BY event, kind, ref/.test(s)) {
+    const defs = [
+      ['home', 'page_view', '', 9, 6], ['duty', 'page_view', '', 5, 4],
+      ['fee_open', 'action', 'class', 4, 3], ['fee_open', 'action', 'league', 3, 2],
+      ['roster', 'page_view', '', 3, 3], ['notice_open', 'action', '', 2, 2],
+      ['timetable', 'page_view', '', 2, 2], ['mine', 'page_view', '', 1, 1],
+      ['about', 'action', '', 1, 1], ['homework_open', 'action', '', 1, 1]
+    ];
+    return [defs.map((d) => ({ event: d[0], kind: d[1], ref: d[2], pv: d[3], uv: d[4], lastTs: '2026-11-08 23:00' })), []];
+  }
+  // ⑦ Top 事件（逐日趋势用）
+  if (/GROUP BY event ORDER BY COUNT\(\*\) DESC LIMIT 8/.test(s)) {
+    return [[{ event: 'home' }, { event: 'duty' }], []];
+  }
+  if (/GROUP BY event, DATE_FORMAT/.test(s)) return [[], []];
+  // ⑧ 每日活跃总览
+  if (/GROUP BY DATE_FORMAT\(DATE\(ts\)/.test(s)) {
+    return [[{ d: todayStr(0), pv: 42 }, { d: todayStr(1), pv: 17 }, { d: todayStr(7), pv: 8 }], []];
+  }
+  // ⑨ 成员明细 / 功能点次
+  if (/LEFT JOIN member/.test(s) && /GROUP BY e\.openid, e\.class_id/.test(s)) {
+    return [[{
+      openid: 'o1', class_id: 3, memberName: '示例成员01', studentNo: '2099010101',
+      className: '示例专业A1班', pv: 12, activeDays: 3, lastTs: '2026-11-08 23:00'
+    }], []];
+  }
+  if (/GROUP BY e\.openid, e\.event, e\.ref/.test(s)) {
+    return [[{ openid: 'o1', event: 'home', ref: '', cnt: 8 }], []];
+  }
+  return [[], []];
+}
+
 const POOL = {
   calls: [],
   /** 课表接口的 group 参数（A/B），mock 靠它过滤 group_scope */
@@ -315,6 +457,9 @@ const POOL = {
   async query(sql, args) {
     POOL.calls.push({ sql: String(sql), args: args || [] });
     const s = String(sql);
+    // 使用统计的聚合查询全部走专用夹具：通用分支不认 GROUP BY / SUM(CASE)，
+    // 会把「昨天」这类条件当成普通 SELECT，导致统计页整页空白（断言假红）。
+    if (/FROM usage_event/i.test(s)) return usageEventMock(s, args || []);
     // INSERT 进会话表要真的记进去，否则后续 Cookie 校验查不到
     if (/INSERT INTO admin_session/i.test(s)) {
       const a = args || [];
@@ -443,10 +588,14 @@ const POOL = {
      *   断言「成员列表不含测试超管」反而会失败，看起来像代码有 bug，实则是 mock 不保真。
      */
     rows = applyWhere(rows, s, args);
-    const limit = s.match(/LIMIT \?/);
-    if (limit && args && args.length) {
-      const n = Number(args[args.length - 1]);
-      if (!isNaN(n) && n > 0) rows = rows.slice(0, n);
+    // 成员列表用 `LIMIT ? OFFSET ?`：args 末尾是 OFFSET，倒数第二才是 LIMIT。
+    // 早前一律取最后一个，第 1 页 offset=0 被当成「不限条数」，分页断言无法保真。
+    if (/LIMIT \?/i.test(s) && args && args.length) {
+      const hasOffset = /LIMIT\s+\?\s+OFFSET\s+\?/i.test(s);
+      const n = Number(args[hasOffset ? args.length - 2 : args.length - 1]);
+      const off = hasOffset ? Number(args[args.length - 1]) : 0;
+      if (!isNaN(n) && n > 0) rows = rows.slice(off, off + n);
+      else if (!isNaN(off) && off > 0) rows = rows.slice(off);
     }
     return [applyScalarSubqueries(rows, s), []];
   },
@@ -889,6 +1038,395 @@ function ok(name, cond, extra) {
       await page.waitForTimeout(700);
     }
     await page.screenshot({ path: path.join(SHOTS, '06b-member-switch-class.png'), fullPage: true });
+
+    /* --- 7.6 成员单独授予班费权限（2026-11-08） ---
+       check-fee-perms.js 是源码级门禁，证明不了三件运行时的事：
+       列表 tag 真渲染 / 编辑弹层勾选态真跟随库值 / 保存真把 fee_perms 回写。
+       这里在真实浏览器里走一遍并留截图。 */
+    console.log('\n[7.6] 成员单独授予权限');
+    await page.click('.nav-item[data-view="member"]');
+    await page.waitForSelector('.tbl', { timeout: 8000 });
+    await page.waitForTimeout(400);
+    const permList = await page.textContent('#view');
+    ok('列表显示额外授予的「登记班费」标签', permList.indexOf('+登记班费') >= 0);
+    ok('未授予团费的成员不显示团费标签', permList.indexOf('+登记团费') < 0);
+
+    const permRow = TABLES.member.find((m) => m.id === 55);
+    await page.click('[data-m-edit="55"]');
+    await page.waitForSelector('#f-perm-class', { timeout: 8000 });
+    ok('编辑弹层有两个权限勾选框',
+      await page.isVisible('#f-perm-class') && await page.isVisible('#f-perm-league'));
+    ok('已授予的「登记班费」为勾选态', await page.isChecked('#f-perm-class'));
+    ok('未授予的「登记团费」未勾选', !(await page.isChecked('#f-perm-league')));
+    await page.screenshot({ path: path.join(SHOTS, '06c-member-perms.png') });
+    // 弹层内容区比视口高：再滚到底截一张，确认第二个勾选框与说明文字排版正常
+    await page.$eval('.dlg-mask .dlg-bd', (el) => { el.scrollTop = el.scrollHeight; });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(SHOTS, '06d-member-perms-bottom.png') });
+
+    await page.check('#f-perm-league');
+    await page.click('.dlg-mask .dlg-ft .btn-primary');
+    await page.waitForTimeout(800);
+    ok('保存真的把 fee_perms 回写成 class,league',
+      permRow.fee_perms === 'class,league', '实际 ' + permRow.fee_perms);
+    ok('保存后列表出现「登记团费」标签',
+      (await page.textContent('#view')).indexOf('+登记团费') >= 0);
+    // 兜底清理弹层，避免挡住后续 [8] 班级配置页的点击
+    await page.evaluate(() => { const d = document.querySelector('.dlg-mask'); if (d) d.remove(); });
+
+    /* --- 7.7 成员列表：页大小 10/30/50/全部 + 四选一筛选（2026-11-08） ---
+       源码级判据在 check-member-filters.js；这里在真实浏览器里证明控件真发请求、
+       真改表格，且「全部」真的不分页、搜索与筛选真的叠加。 */
+    console.log('\n[7.7] 成员分页与筛选');
+    await page.click('.nav-item[data-view="member"]');
+    await page.waitForSelector('#m-size', { timeout: 8000 });
+    await page.waitForTimeout(300);
+    const rowsOf = () => page.$$eval('[data-m-edit]', (els) => els.length);
+    const hd = () => page.textContent('.card-hd');
+    const waitHd = (txt) => page.waitForFunction(
+      (t) => { const e = document.querySelector('.card-hd'); return !!e && e.textContent.indexOf(t) >= 0; },
+      txt, { timeout: 8000 });
+    const memberSqlSince = (n) => POOL.calls.slice(n)
+      .filter((c) => /SELECT m\.\* FROM member m/i.test(c.sql));
+
+    ok('默认每页 50 人', (await page.inputValue('#m-size')) === '50');
+    ok('默认「全部成员」选中', await page.isVisible('[data-scope="ALL"].active'));
+    ok('默认列出本班 4 名非测试成员', (await rowsOf()) === 4, '实际 ' + (await rowsOf()));
+
+    let c0 = POOL.calls.length;
+    await page.selectOption('#m-size', '10');
+    await waitHd('每页 10 人');
+    ok('切 10 人/页：标题更新', (await hd()).indexOf('每页 10 人') >= 0);
+    ok('切 10 人/页：真的把 pageSize=10 传给后端',
+      memberSqlSince(c0).some((c) => c.args.indexOf(10) >= 0));
+
+    await page.selectOption('#m-size', '30');
+    await waitHd('每页 30 人');
+    ok('切 30 人/页：标题更新', (await hd()).indexOf('每页 30 人') >= 0);
+
+    c0 = POOL.calls.length;
+    await page.selectOption('#m-size', '0');
+    await waitHd('已显示全部');
+    const allSql = memberSqlSince(c0);
+    ok('切「全部」：标题显示已显示全部', (await hd()).indexOf('已显示全部') >= 0);
+    ok('切「全部」：SQL 不带 LIMIT', allSql.length > 0 && allSql.every((c) => !/LIMIT \?/.test(c.sql)),
+      'SQL 条数 ' + allSql.length);
+    ok('切「全部」：不渲染分页按钮', (await page.$$('.pager')).length === 0);
+    ok('切「全部」：4 人都在', (await rowsOf()) === 4);
+    await page.screenshot({ path: path.join(SHOTS, '06e-member-filters.png') });
+
+    await page.selectOption('#m-size', '50');
+    await waitHd('每页 50 人');
+    await page.click('[data-scope="COMMITTEE"]');
+    await waitHd('仅班委');
+    let viewText = await page.textContent('#view');
+    ok('仅班委：只剩 2 人', (await rowsOf()) === 2, '实际 ' + (await rowsOf()));
+    ok('仅班委：含示例成员01/示例成员42', viewText.indexOf('示例成员01') >= 0 && viewText.indexOf('示例成员42') >= 0);
+    ok('仅班委：不含普通成员李四/王五',
+      viewText.indexOf('李四') < 0 && viewText.indexOf('王五') < 0);
+    ok('仅班委 chip 为选中态', await page.isVisible('[data-scope="COMMITTEE"].active'));
+
+    await page.click('[data-scope="A"]');
+    await waitHd('A 组');
+    viewText = await page.textContent('#view');
+    ok('A 组：只剩 2 人', (await rowsOf()) === 2);
+    ok('A 组：含示例成员01/李四，不含示例成员42/王五',
+      viewText.indexOf('示例成员01') >= 0 && viewText.indexOf('李四') >= 0 &&
+      viewText.indexOf('示例成员42') < 0 && viewText.indexOf('王五') < 0);
+
+    await page.click('[data-scope="B"]');
+    await waitHd('B 组');
+    viewText = await page.textContent('#view');
+    ok('B 组：只剩 2 人', (await rowsOf()) === 2);
+    ok('B 组：含示例成员42/王五，不含示例成员01/李四',
+      viewText.indexOf('示例成员42') >= 0 && viewText.indexOf('王五') >= 0 &&
+      viewText.indexOf('示例成员01') < 0 && viewText.indexOf('李四') < 0);
+
+    await page.click('[data-scope="ALL"]');
+    await waitHd('共 4 人');
+    ok('切回全部成员：4 人都在', (await rowsOf()) === 4);
+
+    await page.fill('#m-kw', '李四');
+    await page.press('#m-kw', 'Enter');
+    await waitHd('关键词');
+    viewText = await page.textContent('#view');
+    ok('搜索真的重渲染列表（只剩李四）', (await rowsOf()) === 1 && viewText.indexOf('李四') >= 0,
+      '实际行数 ' + (await rowsOf()));
+    ok('搜索关键词显示在标题上', (await hd()).indexOf('关键词「李四」') >= 0);
+    await page.click('[data-scope="B"]');
+    await page.waitForTimeout(400);
+    ok('搜索与筛选叠加：李四(A组) + B组 = 空态',
+      (await rowsOf()) === 0 && (await page.textContent('#view')).indexOf('当前筛选下没有成员') >= 0);
+    await page.click('[data-scope="ALL"]');
+    await page.fill('#m-kw', '');
+    await page.press('#m-kw', 'Enter');
+    await waitHd('共 4 人');
+    ok('清空搜索后恢复 4 人', (await rowsOf()) === 4);
+
+    /* --- 7.8 使用统计：昨天 + 四板块（2026-11-09） ---
+       源码级判据在 check-usage-insights.js；这里在真实浏览器里证明四块都渲染、
+       分时图固定 24 点、「昨天」真的把 days=-1 传到后端并换掉口径与数字。 */
+    console.log('\n[7.8] 使用统计：昨天 + 四板块');
+    await page.click('.nav-item[data-view="usage"]');
+    await page.waitForTimeout(700);
+    const usageText = await page.textContent('#view');
+    const trendLines = () => page.$$eval('.trend-svg .trend-line',
+      (els) => els.map((e) => e.getAttribute('d') || ''));
+    const srcVals = () => page.$$eval('.src-val', (els) => els.map((e) => e.textContent.trim()));
+    const totalVals = () => page.$$eval('.stat-row .stat-value',
+      (els) => els.map((e) => e.textContent.trim()));
+
+    ok('时间范围出现「昨天」按钮', (await page.$$('[data-rg="-1"]')).length === 1);
+    ok('三个板块标题齐全',
+      ['访问实时数据', '访问来源 Top10', '小程序活跃概况']
+        .every((x) => usageText.indexOf(x) >= 0));
+    let lines = await trendLines();
+    ok('分时趋势渲染今日/昨天/7天前三条折线', lines.length === 3, '实际 ' + lines.length);
+    ok('每条折线固定 24 个点（时间轴 0~23 时，23 段贝塞尔）', lines.length === 3 &&
+      lines.every((p) => (p.match(/ C /g) || []).length === 23),
+      '段数 ' + lines.map((p) => (p.match(/ C /g) || []).length).join('/'));
+    ok('活跃概况四项指标名齐全',
+      ['累计用户数', '日访问人数', '日打开次数', '日访问页面数'].every((x) => usageText.indexOf(x) >= 0));
+    const metricVals = await page.$$eval('.metric-value',
+      (els) => els.map((e) => e.textContent.trim()));
+    ok('活跃概况四卡显示 97 / 11 / 17 / 51',
+      metricVals.length === 4 && /^97/.test(metricVals[0]) && /^11/.test(metricVals[1]) &&
+      /^17/.test(metricVals[2]) && /^51/.test(metricVals[3]),
+      '实际 ' + JSON.stringify(metricVals));
+    ok('活跃概况带较前一日 / 较 7 日前对比',
+      usageText.indexOf('较前一日') >= 0 && usageText.indexOf('较 7 日前') >= 0);
+    ok('访问来源 Top10 有横条', (await page.$$('.src-bar')).length >= 5);
+    await page.screenshot({ path: path.join(SHOTS, '06f-usage-insights.png'), fullPage: true });
+
+    // 指标筛选：切「访问页面数」后折线点位必须真的变化（不是只换按钮高亮）
+    const beforePts = (await trendLines())[0];
+    await page.click('[data-tm="pageViews"]');
+    await page.waitForTimeout(200);
+    ok('分时指标切「访问页面数」后折线真的重绘', (await trendLines())[0] !== beforePts);
+    const beforeSrc = (await srcVals())[0];
+    await page.click('[data-sm="uv"]');
+    await page.waitForTimeout(200);
+    ok('来源指标切「访问人数」后横条数值真的变化', (await srcVals())[0] !== beforeSrc);
+    await page.click('[data-tm="visitUsers"]');
+    await page.click('[data-sm="pv"]');
+
+    // 「昨天」：按钮高亮 + SQL 用日期等值条件（不是 INTERVAL 1 DAY）+ 数字跟着变
+    const cu0 = POOL.calls.length;
+    await page.click('[data-rg="-1"]');
+    await page.waitForTimeout(700);
+    const ySql = POOL.calls.slice(cu0).map((c) => c.sql);
+    ok('点「昨天」按钮高亮', await page.isVisible('[data-rg="-1"].btn-primary'));
+    ok('点「昨天」后 SQL 用 DATE(ts)=昨天 等值条件',
+      ySql.some((q) => /DATE\(ts\) = DATE_SUB\(CURDATE\(\), INTERVAL 1 DAY\)/.test(q)));
+    ok('点「昨天」没有把 -1 当近 N 天参数塞进 SQL',
+      POOL.calls.slice(cu0).every((c) => c.args.indexOf(-1) < 0));
+    ok('点「昨天」后总浏览/点击变成 17', (await totalVals()).some((v) => v === '17'),
+      '实际 ' + JSON.stringify(await totalVals()));
+    const yMetrics = await page.$$eval('.metric-value',
+      (els) => els.map((e) => e.textContent.trim()));
+    ok('点「昨天」后活跃概况跟着切到昨天口径（4 / 6 / 20）',
+      yMetrics.length === 4 && /^4/.test(yMetrics[1]) && /^6/.test(yMetrics[2]) &&
+      /^20/.test(yMetrics[3]), '实际 ' + JSON.stringify(yMetrics));
+    ok('点「昨天」后每日轴只剩 1 天',
+      (await page.textContent('#view')).indexOf('共 1 天') >= 0);
+    await page.screenshot({ path: path.join(SHOTS, '06g-usage-yesterday.png'), fullPage: true });
+    // 还原默认范围，避免把 localStorage 里的 -1 带进后续用例
+    await page.click('[data-rg="30"]');
+    await page.waitForTimeout(400);
+
+    /* --- 7.9 使用统计动效（2026-11-09）：hover 预览 / 卡片 / chip / 入场 ---
+       源码级判据在 check-usage-insights.js；这里在真实浏览器里证明鼠标悬停
+       真的能唤出浮层、移开真的收起、准星与扇区高亮命中，以及 reduced-motion 生效。 */
+    console.log('\n[7.9] 使用统计：四类动效');
+    const tipVisible = () => page.$eval('#insight-tip',
+      (e) => e.classList.contains('is-visible')).catch(() => false);
+    const tipText = () => page.$eval('#insight-tip',
+      (e) => e.textContent.trim()).catch(() => '');
+    const tipHidden = () => page.$eval('#insight-tip',
+      (e) => e.getAttribute('aria-hidden')).catch(() => null);
+    ok('页面存在唯一预览浮层', (await page.$$('#insight-tip')).length === 1);
+
+    // ① 横条 hover → 「名称 / 数值 / 占比」预览气泡
+    const srcName = await page.$eval('.src-row .src-label', (e) => e.textContent.trim());
+    await (await page.$('.src-row')).hover();
+    await page.waitForTimeout(220);
+    ok('横条 hover 浮出预览气泡', await tipVisible());
+    ok('预览气泡含来源名', (await tipText()).indexOf(srcName) >= 0, '实际 ' + (await tipText()));
+    ok('预览气泡含占比', (await tipText()).indexOf('%') >= 0, '实际 ' + (await tipText()));
+    await page.screenshot({ path: path.join(SHOTS, '06j-usage-source-hover.png') });
+    const shownOnHover = await tipVisible();
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(220);
+    ok('鼠标移开后预览气泡收起', shownOnHover && !(await tipVisible()));
+    ok('浮层 aria-hidden 复位', (await tipHidden()) === 'true');
+
+    // ② 折线 hover → 时间段 + 三条系列数值 + 垂直准星
+    await (await page.$('.trend-svg')).hover();
+    await page.waitForTimeout(220);
+    const trendTip = await tipText();
+    ok('折线 hover 浮出时间段预览', /\d{2}:00/.test(trendTip), '实际 ' + trendTip);
+    ok('折线预览含今日/1天前/7天前三系列',
+      ['今日', '1 天前', '7 天前'].every((x) => trendTip.indexOf(x) >= 0), '实际 ' + trendTip);
+    ok('折线 hover 点亮垂直准星', (await page.$$('.trend-hover-layer.is-active')).length === 1);
+    // ②b 折线是平滑曲线（含贝塞尔 C 命令）而非直线（L），且带线下渐变面积
+    const trendPathD = await page.$eval('.trend-line', (e) => e.getAttribute('d') || '');
+    ok('折线是平滑曲线（d 含贝塞尔 C 命令，非直线 L）',
+      /C/.test(trendPathD), '实际前缀 ' + trendPathD.slice(0, 36));
+    ok('折线带线下渐变面积', (await page.$$('.trend-area')).length === 3);
+    ok('存在渐变定义', (await page.$$eval('linearGradient', (els) => els.length)) >= 3);
+    await page.screenshot({ path: path.join(SHOTS, '06h-usage-hover.png') });
+    const tipBox = await page.$eval('#insight-tip', (e) => {
+      const r = e.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    });
+    await page.screenshot({
+      path: path.join(SHOTS, '06l-usage-tip-detail.png'),
+      clip: {
+        x: Math.max(0, tipBox.x - 24), y: Math.max(0, tipBox.y - 24),
+        width: tipBox.w + 48, height: tipBox.h + 48
+      }
+    });
+
+    // ③ 卡片 hover → 轻微上浮 + 右上角导出按钮淡入
+    await (await page.$('.card-insight')).hover();
+    await page.waitForTimeout(240);
+    const cardTf = await page.$eval('.card-insight', (e) => getComputedStyle(e).transform);
+    ok('卡片 hover 有轻微上浮（不是原地位移）',
+      cardTf !== 'none' && cardTf !== 'matrix(1, 0, 0, 1, 0, 0)', '实际 ' + cardTf);
+    ok('卡片 hover 时右上角导出按钮淡入',
+      await page.$$eval('.card-hd-action',
+        (els) => els.length > 0 && Number(getComputedStyle(els[0]).opacity) > 0.9));
+    ok('导出按钮带 data-export 与无障碍标签',
+      await page.$$eval('.card-hd-action',
+        (els) => els.length > 0 && !!els[0].getAttribute('data-export') && !!els[0].getAttribute('aria-label')));
+
+    // ⑤ chip hover / 错峰入场 / 门控
+    const chipBefore = await page.$eval('[data-tm="opens"]', (e) => getComputedStyle(e).transform);
+    await page.hover('[data-tm="opens"]');
+    await page.waitForTimeout(220);
+    const chipAfter = await page.$eval('[data-tm="opens"]', (e) => getComputedStyle(e).transform);
+    ok('指标 chip hover 有位移反馈', chipBefore !== chipAfter,
+      '前 ' + chipBefore + ' / 后 ' + chipAfter);
+    const enter = await page.$$eval('.card-insight', (els) => els.map((e) => ({
+      name: getComputedStyle(e).animationName, delay: getComputedStyle(e).animationDelay
+    })));
+    ok('三张卡片带 card-enter 错峰入场',
+      enter.length === 3 && enter.every((x) => x.name === 'card-enter') &&
+      new Set(enter.map((x) => x.delay)).size >= 3,
+      '实际 ' + JSON.stringify(enter));
+    const gating = await page.evaluate(() => Array.from(document.styleSheets).some((s) => {
+      try {
+        return Array.from(s.cssRules).some((r) => r.conditionText &&
+          r.conditionText.indexOf('hover: hover') >= 0);
+      } catch (e) { return false; }
+    }));
+    ok('hover 动效被 (hover:hover) and (pointer:fine) 门控', gating);
+
+    // ⑥ reduced-motion：去掉位移，保留内容与淡入（先证默认偏好下动画是开着的，
+    //    否则「reduce 下 animationName=none」在没实现时也会假绿）
+    const rmBefore = await page.$eval('.card-insight', (e) => getComputedStyle(e).animationName);
+    ok('默认动效偏好下入场动画启用', rmBefore === 'card-enter', '实际 ' + rmBefore);
+    const hasReduceRule = await page.evaluate(() => Array.from(document.styleSheets).some((s) => {
+      try {
+        return Array.from(s.cssRules).some((r) => r.conditionText &&
+          r.conditionText.indexOf('prefers-reduced-motion') >= 0);
+      } catch (e) { return false; }
+    }));
+    ok('样式表声明 prefers-reduced-motion 降级', hasReduceRule);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.waitForTimeout(120);
+    const rm = await page.$eval('.card-insight', (e) => ({
+      name: getComputedStyle(e).animationName,
+      transform: getComputedStyle(e).transform
+    }));
+    ok('reduced-motion 下关闭位移动画', rm.name === 'none' && rmBefore === 'card-enter',
+      '实际 ' + JSON.stringify(rm));
+    await (await page.$('.card-insight')).hover();
+    await page.waitForTimeout(220);
+    const rmHoverTf = await page.$eval('.card-insight', (e) => getComputedStyle(e).transform);
+    ok('reduced-motion 下 hover 也不位移',
+      rmHoverTf === 'none' || rmHoverTf === 'matrix(1, 0, 0, 1, 0, 0)', '实际 ' + rmHoverTf);
+    await page.screenshot({ path: path.join(SHOTS, '06i-usage-reduced-motion.png') });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    /* ⑦ 页面级对比：对比的是**整个使用统计**（2026-11-09 用户要求），
+     *    开关在工具条，不是分时卡里的局部按钮；开启后顶部新建「对比总览」卡，
+     *    分时图跟随画 A/B 两段曲线，下方明细表仍按「时间范围」显示。 */
+    await page.click('[data-cmp="1"]');
+    await page.waitForSelector('.card-cmp', { timeout: 8000 });
+    await page.waitForTimeout(300);
+    ok('对比开关高亮', await page.$eval('[data-cmp="1"]', (e) => e.classList.contains('active')));
+    ok('工具条出现对比控件', !!(await page.$('.usage-cmp')));
+    // 布局守门（2026-11-09 用户要求）：对比控件必须与时间范围/班级范围同一行流式排布，
+    // 不能 flex-basis:100% 独占一整行、左边留一大片空白。
+    const boxOf = async () => page.evaluate(() => {
+      const b = (sel) => {
+        const e = document.querySelector(sel);
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width) };
+      };
+      return {
+        range: b('.usage-range'), scope: b('.usage-scope'),
+        cmp: b('.usage-cmp'), dates: b('[data-cmp-dates]')
+      };
+    });
+    const cmpGeo = await boxOf();
+    ok('对比控件与时间范围同一行（不独占一行）',
+      !!cmpGeo.range && !!cmpGeo.cmp && Math.abs(cmpGeo.range.y - cmpGeo.cmp.y) <= 12,
+      '实际 ' + JSON.stringify(cmpGeo));
+    ok('出现对比总览卡', !!(await page.$('.card-cmp')));
+    const cmpRowCount = (await page.$$('.cmp-tbl tbody tr')).length;
+    ok('对比总览列出 8 个指标', cmpRowCount === 8, '实际 ' + cmpRowCount);
+    const cmpDatesVisible = (await page.$$('.cmp-date:not(.hidden)')).length;
+    ok('单日模式只显示两个日期输入', cmpDatesVisible === 2, '实际 ' + cmpDatesVisible);
+    ok('单日模式 A / B 日期不同',
+      (await page.$eval('.cmp-date[data-cmpk="cmpA1"]', (e) => e.value)) !==
+      (await page.$eval('.cmp-date[data-cmpk="cmpB1"]', (e) => e.value)));
+    // 总览表首行（总次数）A/B 两列：数值必须各自独立，否则就是两段查了同一份数据
+    const cmpCells = await page.$$eval('.cmp-tbl tbody tr:first-child td',
+      (tds) => tds.map((t) => t.textContent.trim()));
+    ok('对比总览 A/B 数值各自独立', cmpCells.length >= 3 && cmpCells[0] !== cmpCells[1],
+      '实际 ' + JSON.stringify(cmpCells));
+    ok('对比总览有差值列', /^[+-]?\d/.test(cmpCells[2] || ''), '实际 ' + cmpCells[2]);
+    ok('对比总览有变化率', !!(await page.$('.cmp-pct')));
+    ok('对比模式分时只画两条曲线', (await page.$$('.trend-line')).length === 2,
+      '实际 ' + (await page.$$('.trend-line')).length);
+    ok('对比模式图例为两段标签', (await page.$$('.trend-lg')).length === 2);
+    await (await page.$('.trend-svg')).hover();
+    await page.waitForTimeout(220);
+    const cmpTip = await tipText();
+    ok('分时 hover 浮出两段数值', (await page.$$('#insight-tip .insight-tip-r')).length === 2,
+      '实际 ' + cmpTip);
+    await page.screenshot({ path: path.join(SHOTS, '08m-usage-cmp-overview.png'), fullPage: true });
+
+    // 切「区间」粒度：起止四个日期都可见，总览卡改为时间段口径
+    await page.click('[data-gran="range"]');
+    await page.waitForSelector('.card-cmp', { timeout: 8000 });
+    await page.waitForTimeout(300);
+    const cmpDatesRange = (await page.$$('.cmp-date:not(.hidden)')).length;
+    ok('区间模式显示 4 个日期输入', cmpDatesRange === 4, '实际 ' + cmpDatesRange);
+    ok('区间模式总览卡仍在', !!(await page.$('.card-cmp')));
+    ok('区间模式标注为时间段对比',
+      (await page.textContent('.card-cmp')).indexOf('时间段对比') >= 0);
+    const rangeGeo = await boxOf();
+    // 区间模式 4 个日期框比单日宽一倍，桌面 1440 下放不进第一行是合理的；
+    // 但折行后必须靠右续排（margin-left:auto），不能顶格从内容区最左另起一段。
+    ok('区间模式对比组折行也靠右续排（不顶格独占）',
+      !!rangeGeo.cmp && !!rangeGeo.range && rangeGeo.cmp.y > rangeGeo.range.y
+        ? rangeGeo.cmp.x > rangeGeo.range.x + 100
+        : rangeGeo.cmp.x > rangeGeo.range.x,
+      '实际 ' + JSON.stringify(rangeGeo));
+    await page.screenshot({ path: path.join(SHOTS, '08n-usage-cmp-range.png'), fullPage: true });
+
+    // 还原：单日 → 关闭，避免把对比态带进后续用例
+    await page.click('[data-gran="day"]');
+    await page.waitForTimeout(500);
+    await page.click('[data-cmp="0"]');
+    await page.waitForTimeout(500);
+    ok('关闭对比后总览卡消失', !(await page.$('.card-cmp')));
+    ok('关闭对比后分时恢复三条曲线',
+      (await page.$$('.trend-line')).length === 3, '实际 ' + (await page.$$('.trend-line')).length);
 
     /* --- 8. 班级配置 --- */
     console.log('\n[8] 账号班级');

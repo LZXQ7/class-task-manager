@@ -54,7 +54,16 @@ function call(name, action, payload, opt) {
   const loadingText = opt.loading;
   // opt.retry：仅对网络/超时类失败（errCode -1，见下方 fail 分支）重试；
   // 业务错误（含 40001/40002 未绑定）一律不重试，避免无意义的重复请求。
-  const maxRetry = (opt.retry > 0 && Number.isFinite(opt.retry)) ? Math.min(opt.retry, 3) : 0;
+  /* 2026-11-08「经常连接服务器失败」通用加固：
+   * 云函数冷启动 / 网络瞬断通常是**一次性的**（第二次容器已热就成功），
+   * 所以读类请求默认自动重试 1 次。写类请求**绝不**自动重试 —— 第一次可能已经
+   * 落库、只是响应在路上丢了，重放会造成重复记录。按 action 命名识别写操作，
+   * 调用方仍可用 opt.retry 显式覆盖（0 = 关，1~3 = 指定次数）。 */
+  const WRITE_ACTION = /(add|save|set|update|remove|delete|clear|publish|unpublish|apply|import|revert|confirm|cancel|bind|unbind|toggle|move|append|copy|submit|upsert|generate|reassign|swap|handle|track|send|create|mark|reset|upload)/i;
+  const defaultRetry = WRITE_ACTION.test(String(action)) ? 0 : 1;
+  const maxRetry = opt.retry === undefined
+    ? defaultRetry
+    : ((opt.retry > 0 && Number.isFinite(opt.retry)) ? Math.min(opt.retry, 3) : 0);
 
   function invoke() {
     return new Promise((resolve, reject) => {
@@ -89,8 +98,10 @@ function call(name, action, payload, opt) {
           // 也只有这样才看得见。
           const detail = raw || '请求失败（未返回错误信息）';
           console.error('[request] callFunction fail:', name, action, raw, e);
+          // 原始 errMsg 保留在 err.errMsg / 日志里（页面 _errText 能显示真因）。
+          // toast 不在这一层弹：还要自动重试，弹了会「失败→又成功」吓人一跳；
+          // 统一放到 run() 的最终失败分支，只提示一次。
           const err = mkErr(-1, detail);
-          if (needToast) wx.showToast({ title: err.errMsg, icon: 'none', duration: 2500 });
           reject(err);
         }
       });
@@ -103,6 +114,15 @@ function call(name, action, payload, opt) {
       if (maxRetry > 0 && attempt <= maxRetry && err && err.errCode === -1) {
         const delay = 400 * attempt;
         return new Promise((res) => setTimeout(res, delay)).then(() => run(attempt + 1));
+      }
+      // 最后一次仍失败：给用户一句能看懂的话 + 说明已经重试过，
+      // 别再把 `cloud.callFunction:fail …` 这类原始串直接甩到 toast 上。
+      if (needToast && err && err.errCode === -1) {
+        const tried = maxRetry > 0 ? '（已自动重试 ' + Math.min(attempt - 1, maxRetry) + ' 次）' : '';
+        wx.showToast({
+          title: '连接服务器失败' + tried + '，请检查网络后重试',
+          icon: 'none', duration: 3000
+        });
       }
       throw err;
     });

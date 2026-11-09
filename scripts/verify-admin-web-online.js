@@ -92,6 +92,44 @@ async function passRiskGate(page) {
   ok('登录框可见', await page.isVisible('#login-username'));
   ok('登录按钮可见', await page.isVisible('#login-btn'));
 
+  /* --- 2.5 使用统计四板块：线上码包内容核对（2026-11-09） ---
+     本地 e2e 用 mock DB 验渲染，这里验「部署上去的确实是这一版代码」+ 登录门禁。
+     判据用响应体里的字面量，不能只看 HTTP 200 —— CloudBase 的 SPA 兜底会把
+     任何找不到的路径也回 200 的 index.html，光看状态码会假绿。 */
+  console.log('\n[2.5] 使用统计新功能·线上静态核对');
+  const appResp = await page.request.get(URL_BASE + '/app.js');
+  const appBody = await appResp.text();
+  ok('/admin/app.js 返回 200', appResp.status() === 200, 'status=' + appResp.status());
+  ok('线上 app.js 含四个板块标题',
+    ['访问实时数据', '访问来源 Top10', '访问平台分布', '小程序活跃概况']
+      .every(x => appBody.indexOf(x) >= 0));
+  ok('线上 app.js 含「昨天」时间范围', appBody.indexOf("{ d: -1, t: '昨天' }") >= 0);
+  ok('线上 app.js 含设备平台未采集的诚实标注', appBody.indexOf('未采集设备平台') >= 0);
+  const cssResp = await page.request.get(URL_BASE + '/admin.css');
+  const cssBody = await cssResp.text();
+  ok('线上 admin.css 含四板块样式',
+    cssBody.indexOf('.insight-grid') >= 0 && cssBody.indexOf('.trend-svg') >= 0);
+  /* 动效静态核对（2026-11-09）：线上码包必须真的带 hover 预览与降级规则，
+     否则「部署成功」但用户看到的还是旧版静态页。 */
+  ok('线上 app.js 含 hover 预览浮层与事件委托',
+    appBody.indexOf('id="insight-tip"') >= 0 &&
+    appBody.indexOf('host.onmousemove = function (e)') >= 0);
+  ok('线上 app.js 含准星 / 横条预览 / 导出按钮',
+    appBody.indexOf('class="trend-crosshair"') >= 0 &&
+    appBody.indexOf('data-tip-kind="source"') >= 0 &&
+    appBody.indexOf('class="card-hd-action"') >= 0);
+  ok('线上 admin.css 含 --ease-out 令牌与入场 keyframes',
+    cssBody.indexOf('--ease-out: cubic-bezier(0.23, 1, 0.32, 1);') >= 0 &&
+    cssBody.indexOf('@keyframes card-enter') >= 0);
+  ok('线上 admin.css 含 reduced-motion 与 hover 门控',
+    cssBody.indexOf('@media (prefers-reduced-motion: reduce)') >= 0 &&
+    cssBody.indexOf('@media (hover: hover) and (pointer: fine)') >= 0);
+  const usageY = await page.request.get(URL_BASE + '/api/usage?days=-1');
+  ok('未登录 /api/usage?days=-1 = 401（昨天分支也受登录门禁）',
+    usageY.status() === 401, 'status=' + usageY.status());
+  const usageD = await page.request.get(URL_BASE + '/api/usage?days=30');
+  ok('未登录 /api/usage?days=30 = 401', usageD.status() === 401, 'status=' + usageD.status());
+
   // ⭐ 核心回归断言：app.js 必须真的执行了。
   // 判据不能靠「页面看起来正常」——app.js 挂掉时页面**照样渲染得一模一样**，
   // 只有事件绑没绑上这种「行为」差异。要用「点一下有没有发请求」来判。

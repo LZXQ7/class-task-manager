@@ -87,7 +87,11 @@ Page({
     const p = (app && app.globalData && app.globalData.profile) || null;
     const isSuper = !!(app && app.isSuper && app.isSuper());
     const isCounselor = !!(p && p.groupTag === 'X');
-    const feeR = util.feeRights({ isSuper, position: p ? p.position : '' });
+    const feeR = util.feeRights({
+      isSuper,
+      position: p ? p.position : '',
+      feeRights: p ? p.feeRights : null
+    });
     const showLeagueCard = feeR.showLeagueCard;
     // ⚠️ 字段名必须用组件的契约 { key, text }（components/segmented 的 properties 与 wxml
     //    都只认这两个名字）。写成 { value, label } 的后果：文字取不到 → 渲染成一个**没有字的
@@ -270,7 +274,11 @@ Page({
         util.toast('已补充图片');
         this._loadFee(true);
       })
-      .catch(() => { wx.hideLoading(); });
+      .catch((err) => {
+        wx.hideLoading();
+        console.error('[fee] 补充图片失败', err);
+        util.toast('补充图片失败，请重试');
+      });
   },
   /** 表单视图 → 列表视图（点「返回」）；已填的内容清空，避免返回后再填出现残留 */
   onFeeFormBack() {
@@ -353,7 +361,12 @@ Page({
         this.setData({ feeBusy: false, feeView: 'list', feeAmount: '', feeNote: '', feeImages: [] });
         this._loadFee(true);
       })
-      .catch(() => { wx.hideLoading(); this.setData({ feeBusy: false }); });
+      .catch((err) => {
+        wx.hideLoading();
+        this.setData({ feeBusy: false });
+        console.error('[fee] 登记消费失败', err);
+        util.toast('登记失败，请重试');
+      });
   },
   onFeeDeleteRecord(e) {
     const id = Number(e.currentTarget.dataset.id);

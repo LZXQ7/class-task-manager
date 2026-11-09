@@ -506,7 +506,8 @@ Page({
     const p = (app && app.globalData && app.globalData.profile) || this.data.profile;
     const r = util.feeRights({
       isSuper: !!(app && app.isSuper && app.isSuper()),
-      position: p ? p.position : ''
+      position: p ? p.position : '',
+      feeRights: p ? p.feeRights : null
     });
     // canSchedule 也并进来兜底（理论上已被 hasAny 覆盖，但能力位与职位口径将来若各自演进，
     // 「有权限却看不到入口」比「多显示一行」难查得多）
@@ -685,7 +686,11 @@ Page({
             this.setData({ profile: app.globalData.profile, avatarChar: this._avatarChar(app.globalData.profile) });
             util.toast('头像已更新');
           })
-          .catch(() => { wx.hideLoading(); });
+          .catch((err) => {
+            wx.hideLoading();
+            console.error('[mine] 头像更新失败', err);
+            util.toast('头像保存失败，请重试');
+          });
       },
       fail: () => {
         wx.hideLoading();

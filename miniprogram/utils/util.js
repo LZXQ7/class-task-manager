@@ -287,6 +287,24 @@ function feeRights(m) {
     showLeagueCard: false, hasAny: false
   };
   if (!m) return none;
+  /* 2026-11-08：后端下发的 feeRights 优先。
+   * 后台可在成员编辑里单独授予「登记班费/团费消费」，不必改职位；
+   * 能力位由 auth.login 每次启动实时下发 ⇒ 以后加减权限、甚至新增权限项都不用再发版。
+   * 旧缓存 profile 没有该字段时回退按职位推导（只额外授予，回退不会凭空多给权限）。
+   * ⚠️ 真正拦截在 fee 云函数，这里只决定入口显不显示。 */
+  const issued = m.feeRights;
+  if (issued && typeof issued === 'object') {
+    const canManageClass = !!issued.canManageClass;
+    const canManageLeague = !!issued.canManageLeague;
+    const canSetTotalClass = !!issued.canSetTotalClass;
+    const canSetTotalLeague = !!issued.canSetTotalLeague;
+    return {
+      canManageClass, canManageLeague,
+      canSetTotalClass, canSetTotalLeague,
+      showLeagueCard: true,
+      hasAny: canManageClass || canManageLeague
+    };
+  }
   const isSuper = !!m.isSuper;
   const pos = m.position || '';
   const isMonitor = pos === '班长兼团支书';

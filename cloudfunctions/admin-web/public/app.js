@@ -22,11 +22,26 @@
     view: 'overview',
     // 使用统计：默认「全部班级」总览（2026-10-18 用户要求直接看全部账号）
     usageAll: true,
+    // 使用统计：三个板块各自的指标筛选（纯本地重绘，不重拉 API）
+    usageTrendMetric: 'visitUsers',
+    usageSourceMetric: 'pv',
+    // 分时趋势对比两日：false=参照三线(今日/1天前/7天前)，true=任选两自然日叠加
+    // 页面级对比（2026-11-09 用户要求）：对比整个使用统计，不只是分时那张图
+    cmpOn: false,
+    cmpGran: 'day',   // day = 单日 vs 单日；range = 区间 vs 区间
+    cmpA1: '',        // A 段起（YYYY-MM-DD）
+    cmpA2: '',        // A 段止（单日模式恒等于 cmpA1）
+    cmpB1: '',
+    cmpB2: '',
     // 成员明细排序：默认按次数降序（2026-10-23 用户要求）
     memSort: { key: 'pv', dir: 'desc' },
     // 课表导入：解析结果暂存，确认时才提交
     importDraft: null,
     memberPage: 1,
+    // 成员列表：页大小 0 = 「全部」（后端不拼 LIMIT）；筛选与小程序名册页同为四选一
+    memberPageSize: 50,
+    memberScope: 'ALL',
+    memberKw: '',
     auditPage: 1,
     group: 'ALL',
     leaveStatus: 'ALL',
@@ -71,11 +86,17 @@
 
   function toast(msg, type) {
     var el = $('#toast');
-    el.textContent = msg;
+    var isError = type === 'err';
     el.className = 'toast' + (type ? ' toast-' + type : '');
+    // 普通结果是非打断式 status；只有关键错误升级为 alert（SPT 02 浮层与通知选型）。
+    // 不抢焦点、不把每次通知都播成打断式警告。
+    el.setAttribute('role', isError ? 'alert' : 'status');
+    el.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+    el.textContent = msg;
     el.hidden = false;
     clearTimeout(toast._t);
-    toast._t = setTimeout(function () { el.hidden = true; }, 2600);
+    // 错误与关键结果不能只在 2.6s 内一闪而过；成功/普通提示保持原节奏（SPT 02）。
+    toast._t = setTimeout(function () { el.hidden = true; }, isError ? 5200 : 2600);
   }
 
   /* ---------------- API 封装 ---------------- */
@@ -93,6 +114,12 @@
 
   function api(pathname, options) {
     options = options || {};
+    /* 2026-11-08「经常连接服务器失败」：云函数冷启动 / 网络瞬断多为一次性，
+     * 读请求（GET）默认自动重试 1 次；写请求绝不自动重试（避免重复提交）。 */
+    var maxRetry = options.retry === undefined
+      ? ((options.method || 'GET') === 'GET' ? 1 : 0) : options.retry;
+    var attempt = 0;
+    function once() {
     var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, options.timeoutMs || 25000) : null;
     var init = {
@@ -138,6 +165,22 @@
         return { ok: false, errMsg: '无法连接服务器，请确认后台服务是否正常运行' };
       })
       .finally(function () { if (timer) clearTimeout(timer); });
+    }
+    function run() {
+      attempt++;
+      return once().then(function (d) {
+        var netFail = d && d.ok === false
+          && /无法连接服务器|请求超时/.test(String(d.errMsg || ''));
+        if (netFail && attempt <= maxRetry) {
+          return new Promise(function (r) { setTimeout(r, 400 * attempt); }).then(run);
+        }
+        if (netFail && maxRetry > 0) {
+          d.errMsg = String(d.errMsg) + '（已自动重试 ' + maxRetry + ' 次）';
+        }
+        return d;
+      });
+    }
+    return run();
   }
 
   function needAuth(d) {
@@ -170,6 +213,12 @@
   var LS_CLASS = 'admin.web.classId';
   var LS_USAGE_ALL = 'admin.web.usageAll';
   var LS_USAGE_DAYS = 'admin.web.usageDays';
+  var LS_CMP_ON = 'admin.web.cmpOn';
+  var LS_CMP_GRAN = 'admin.web.cmpGran';
+  var LS_CMP_A1 = 'admin.web.cmpA1';
+  var LS_CMP_A2 = 'admin.web.cmpA2';
+  var LS_CMP_B1 = 'admin.web.cmpB1';
+  var LS_CMP_B2 = 'admin.web.cmpB2';
   var LS_MEM_SORT = 'admin.web.memSort';
   function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* 忽略：不影响功能 */ } }
@@ -1069,20 +1118,48 @@
   }
 
   /* ---------------- 成员 ---------------- */
+  /* 四选一筛选口径与小程序 pages/roster 的 groupFilter 一致；页大小 0 = 全部。
+   * 由 scripts/check-member-filters.js 看守前后端口径，勿只改一侧。 */
+  var MEMBER_SCOPE_ORDER = ['ALL', 'COMMITTEE', 'A', 'B'];
+  var MEMBER_SCOPE_LABEL = { ALL: '全部成员', COMMITTEE: '仅班委', A: 'A 组', B: 'B 组' };
+  var MEMBER_PAGE_SIZES = [10, 30, 50, 0];
+
   function renderMember(host) {
     if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
-    var qs = '?classId=' + state.classId + '&page=' + state.memberPage + '&pageSize=50';
+    var qs = '?classId=' + state.classId + '&page=' + state.memberPage +
+      '&pageSize=' + state.memberPageSize + '&scope=' + encodeURIComponent(state.memberScope) +
+      (state.memberKw ? '&keyword=' + encodeURIComponent(state.memberKw) : '');
     api('/api/members' + qs).then(function (d) {
       if (!d.ok) { host.innerHTML = errHtml(d); return; }
       var r = d.data;
+      var scopeBtns = MEMBER_SCOPE_ORDER.map(function (k) {
+        var on = state.memberScope === k;
+        return '<button type="button" class="seg-btn' + (on ? ' active' : '') +
+          '" data-scope="' + k + '" aria-pressed="' + on + '">' + MEMBER_SCOPE_LABEL[k] + '</button>';
+      }).join('');
+      var sizeOpts = MEMBER_PAGE_SIZES.map(function (n) {
+        return '<option value="' + n + '"' + (state.memberPageSize === n ? ' selected' : '') + '>' +
+          (n === 0 ? '全部' : n + ' 人') + '</option>';
+      }).join('');
+      var scopeTip = state.memberScope === 'ALL' ? '' : ' · ' + MEMBER_SCOPE_LABEL[state.memberScope];
+      var kwTip = state.memberKw ? ' · 关键词「' + esc(state.memberKw) + '」' : '';
+      var pageTip = state.memberPageSize === 0
+        ? '已显示全部'
+        : '第 ' + r.page + ' / ' + Math.max(1, Math.ceil(r.total / state.memberPageSize)) + ' 页 · 每页 ' + state.memberPageSize + ' 人';
       host.innerHTML =
         '<div class="toolbar">' +
-        '<input type="search" id="m-kw" class="input-search" placeholder="搜索姓名或学号">' +
+        '<input type="search" id="m-kw" class="input-search" placeholder="搜索姓名或学号（回车）" value="' + esc(state.memberKw) + '">' +
         '<div class="toolbar-right">' +
         '<button class="btn btn-primary" id="btn-add">新增成员</button>' +
         '</div></div>' +
+        '<div class="toolbar member-toolbar">' +
+        '<div class="seg member-scope" role="group" aria-label="成员筛选">' + scopeBtns + '</div>' +
+        '<div class="member-page-size">' +
+        '<label class="tb-label" for="m-size">每页显示</label>' +
+        '<select id="m-size" class="tb-select">' + sizeOpts + '</select>' +
+        '</div></div>' +
         '<div class="card">' +
-        '<div class="card-hd">共 ' + r.total + ' 人（不含测试账号）· 第 ' + r.page + ' 页</div>' +
+        '<div class="card-hd">共 ' + r.total + ' 人（不含测试账号）' + scopeTip + kwTip + ' · ' + pageTip + '</div>' +
         '<table class="tbl"><thead><tr>' +
         '<th>学号</th><th>姓名</th><th>分组</th><th>角色</th><th>职位</th><th>状态</th><th>值日数</th><th>操作</th>' +
         '</tr></thead><tbody>' +
@@ -1092,7 +1169,7 @@
             '<td>' + esc(m.name) + (m.isSuper ? ' <span class="tag tag-super">超管</span>' : '') + '</td>' +
             '<td>' + (m.groupTag === 'X' ? '—' : m.groupTag + ' 组') + '</td>' +
             '<td>' + roleText(m.role) + '</td>' +
-            '<td>' + esc(m.position || '—') + '</td>' +
+            '<td>' + esc(m.position || '—') + permTags(m.feePerms) + '</td>' +
             '<td>' + statusTag(m.status) + '</td>' +
             // duty_off（不排值日）必须在列表可见：值日是本小程序的核心业务，
             // 「这个人不参与排班」只藏在编辑弹层里的话，管理员在排班视图根本看不出来。
@@ -1103,20 +1180,39 @@
               (m.isSuper ? '取消超管' : '设为超管') + '</button>' +
             '<button class="link link-danger" data-m-del="' + m.id + '">删除</button>' +
             '</td></tr>';
-        }).join('') : '<tr><td colspan="8" class="empty">该班还没有成员</td></tr>') +
+        }).join('') : '<tr><td colspan="8" class="empty">' +
+          (state.memberKw || state.memberScope !== 'ALL' ? '当前筛选下没有成员' : '该班还没有成员') + '</td></tr>') +
         '</tbody></table></div>' +
-        pager(r.total, r.page, r.pageSize, function (p) { state.memberPage = p; reload(); });
+        (state.memberPageSize === 0 ? '' :
+          pager(r.total, r.page, r.pageSize, function (p) { state.memberPage = p; reload(); }));
 
       $('#btn-add', host).onclick = function () { openMemberDialog(null); };
       var kw = $('#m-kw', host);
+      // 搜索是筛选的一部分：真正重渲染列表（原来只弹「找到 N 人」却不改表格）。
+      // 与作用域 / 关键词叠加，且回车后回第 1 页；不用 input 即时刷，避免打字被 reload 打断焦点。
+      function applyKw() {
+        state.memberKw = kw.value.trim();
+        state.memberPage = 1;
+        reload();
+      }
       kw.onkeydown = function (e) {
         if (e.key !== 'Enter') return;
-        var v = kw.value.trim();
-        api('/api/members?classId=' + state.classId + '&page=1&pageSize=50' +
-          (v ? '&keyword=' + encodeURIComponent(v) : '')).then(function (r) {
-          if (!r.ok) { toast(r.errMsg, 'err'); return; }
-          toast('找到 ' + r.data.total + ' 人');
-        });
+        e.preventDefault();
+        applyKw();
+      };
+      kw.onsearch = function () { if (!kw.value) applyKw(); };  // 点搜索框自带的 × 立即还原
+      $$('[data-scope]', host).forEach(function (b) {
+        b.onclick = function () {
+          if (state.memberScope === b.dataset.scope) return;
+          state.memberScope = b.dataset.scope;
+          state.memberPage = 1;
+          reload();
+        };
+      });
+      $('#m-size', host).onchange = function () {
+        state.memberPageSize = Number(this.value);
+        state.memberPage = 1;
+        reload();
       };
       $$('[data-m-edit]', host).forEach(function (b) {
         b.onclick = function () { openMemberDialog(Number(b.dataset.mEdit)); };
@@ -1141,6 +1237,17 @@
         };
       });
     });
+  }
+
+  // 单独授予的班费权限标签（字面量与真源 FEE_PERM_KEYS 一致，由 check-fee-perms 看守）
+  var FEE_PERM_LABELS = { class: '登记班费', league: '登记团费' };
+  function hasPerm(list, k) { return !!(list && list.indexOf(k) >= 0); }
+  function permTags(list) {
+    if (!list || !list.length) return '';
+    return ' ' + list.map(function (k) {
+      return '<span class="tag tag-all" title="额外授予：' + esc(FEE_PERM_LABELS[k] || k) + '">+' +
+        esc(FEE_PERM_LABELS[k] || k) + '</span>';
+    }).join(' ');
   }
 
   function roleText(r) {
@@ -1221,7 +1328,16 @@
         }).join('') + '</select>') +
       fld('不参与值日轮换', '<select id="f-dutyoff">' +
         '<option value="0"' + (!m.dutyOff ? ' selected' : '') + '>否</option>' +
-        '<option value="1"' + (m.dutyOff ? ' selected' : '') + '>是（不排值日）</option></select>');
+        '<option value="1"' + (m.dutyOff ? ' selected' : '') + '>是（不排值日）</option></select>') +
+      // 单独授予（2026-11-08）：只额外给，不撤销职位自带权限；设置总额不在此列。
+      // ⚠️ 不能用 fld() 包多个 checkbox —— 外层是 <label>，点任意位置会误触第一个框。
+      '<div class="field"><span class="field-label">单独授予权限（班费）</span>' +
+      '<label class="chk"><input type="checkbox" id="f-perm-class"' +
+        (hasPerm(m.feePerms, 'class') ? ' checked' : '') + '> 可登记班费消费</label>' +
+      '<label class="chk"><input type="checkbox" id="f-perm-league"' +
+        (hasPerm(m.feePerms, 'league') ? ' checked' : '') + '> 可登记团费消费</label>' +
+      '<div class="hint">在职位权限之外额外授予，不会撤销任何职位自带权限；「设置总额」仍按职位。' +
+      '登记权限同时允许补充凭证与删除记录。</div></div>';
   }
   function readMemberForm(dlg) {
     return {
@@ -1231,7 +1347,13 @@
       role: $('#f-role', dlg).value,
       position: $('#f-position', dlg).value.trim(),
       status: $('#f-status', dlg).value,
-      dutyOff: $('#f-dutyoff', dlg).value === '1'
+      dutyOff: $('#f-dutyoff', dlg).value === '1',
+      feePerms: (function () {
+        var out = [];
+        var a = $('#f-perm-class', dlg); if (a && a.checked) out.push('class');
+        var b = $('#f-perm-league', dlg); if (b && b.checked) out.push('league');
+        return out;
+      }())
     };
   }
 
@@ -1454,6 +1576,8 @@
   }
 
   function pager(total, page, pageSize, onGo) {
+    // 「全部」（pageSize=0）不分页：除零会得到 Infinity，翻页按钮也会指向不存在的页
+    if (!pageSize || pageSize <= 0) return '';
     var pages = Math.max(1, Math.ceil(total / pageSize));
     if (pages <= 1) return '';
     return '<div class="pager">' +
@@ -1521,8 +1645,13 @@
     (daily || []).forEach(function (x) { map[String(x.d).slice(0, 10)] = x.pv; });
     var now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
     var start;
-    if (days > 0) {
+    var end = today;
+    // 「昨天」是单日轴：不能沿用 days>0 的「从 N 天前一路补到今天」，
+    // 否则点昨天会画出两根柱（昨天 + 今天），与日历日口径不符。
+    if (days === -1) { start = yesterday; end = yesterday; }
+    else if (days > 0) {
       start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (days - 1));
     } else {
       var keys = Object.keys(map).sort();
@@ -1535,12 +1664,490 @@
     }
     var out = [];
     var cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-    while (cur.getTime() <= today.getTime()) {
+    while (cur.getTime() <= end.getTime()) {
       var k = ymd(cur);
       out.push({ d: k, pv: map[k] || 0 });
       cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1);
     }
     return out;
+  }
+
+  /* ---------------- 使用统计增强（2026-11-09）：三板块渲染 ----------------
+   * 对齐微信「小程序数据助手」的版式，但数据全部来自自建 usage_event 埋点。
+   * ⚠️ 口径诚实：微信场景值（任务栏 / 相册等）没有采集，
+   *    所以「访问来源」按页面/功能入口展示，卡片上写明以避免误读成官方数据。
+   */
+  var TREND_METRICS = ['visitUsers', 'opens', 'pageViews'];
+  var TREND_METRIC_LABEL = {
+    visitUsers: '访问人数', opens: '打开次数', pageViews: '访问页面数'
+  };
+  var BINARY_METRICS = [
+    { key: 'pv', label: '打开次数' }, { key: 'uv', label: '访问人数' }
+  ];
+
+  /* ---------------- 使用统计动效（2026-11-09） ----------------
+   * 复刻微信「We分析」看板的 hover 预览：悬停出数值浮层 + 垂直准星，移开收起。
+   * 只用 transform / opacity 做动画，位置跟随也走 translate3d；
+   * 事件委托挂在 #view 上（onmousemove 属性赋值天然幂等），切指标只重绘容器。 */
+  var TREND_GEOM = { W: 720, H: 200, padL: 36, padR: 14, padT: 14, padB: 28 };
+  var TREND_DEFS = [
+    { off: 0, label: '今日', color: '#3370FF' },
+    { off: 1, label: '1 天前', color: '#FF7D00' },
+    { off: 7, label: '7 天前', color: '#00B42A' }
+  ];
+  var tipLastHtml = '';
+
+  function tipRow(color, label, val) {
+    return '<div class="insight-tip-r">' +
+      (color ? '<i style="background:' + color + '"></i>' : '') +
+      '<span>' + esc(label) + '</span><b>' + esc(String(val)) + '</b></div>';
+  }
+
+  function showInsightTip(html, ev) {
+    var tip = $('#insight-tip');
+    if (!tip) return;
+    var inner = $('.insight-tip-inner', tip);
+    // 内容没变就不重建 DOM：鼠标在同一行内移动时不该让浮层反复闪
+    if (inner && html !== tipLastHtml) { inner.innerHTML = html; tipLastHtml = html; }
+    var w = tip.offsetWidth || 180, h = tip.offsetHeight || 90;
+    var x = Math.max(8, Math.min(ev.clientX + 16, window.innerWidth - w - 10));
+    var y = Math.max(8, Math.min(ev.clientY - 10, window.innerHeight - h - 10));
+    tip.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
+    tip.classList.add('is-visible');
+    tip.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideInsightTip() {
+    var tip = $('#insight-tip');
+    if (!tip) return;
+    tip.classList.remove('is-visible');
+    tip.setAttribute('aria-hidden', 'true');
+  }
+
+  function clearInsightHover(host) {
+    if (!host) return;
+    $$('.trend-hover-layer.is-active, .src-row.is-active', host)
+      .forEach(function (e) {
+        e.classList.remove('is-active');
+      });
+  }
+
+  function onInsightMove(e, ins, rows) {
+    var t = e.target;
+    if (!t || !t.closest) { return; }
+    var host = $('#view');
+    clearInsightHover(host);
+
+    // ① 分时折线：按鼠标 X 换算小时，出「时间段 + 三条系列」预览 + 垂直准星
+    var svg = t.closest('.trend-svg');
+    if (svg) {
+      var r = svg.getBoundingClientRect();
+      if (!r.width) { hideInsightTip(); return; }
+      var g = TREND_GEOM;
+      var vx = (e.clientX - r.left) / r.width * g.W;
+      var hh = Math.max(0, Math.min(23, Math.round((vx - g.padL) / (g.W - g.padL - g.padR) * 23)));
+      var metric = state.usageTrendMetric;
+      var activeDefs, byOff = {};
+      if (state.cmpOn && (ins || {}).cmp && ins.cmp.on) {
+        // 页面级对比：两条线来自 insights.cmp.a / .b 的 24h 分时
+        var segA = ins.cmp.a || {}, segB = ins.cmp.b || {};
+        activeDefs = [
+          { off: 'A', label: cmpSegLabel(segA), color: '#3370FF' },
+          { off: 'B', label: cmpSegLabel(segB), color: '#FF7D00' }
+        ];
+        (segA.hourly || []).forEach(function (row) {
+          byOff.A = byOff.A || {};
+          byOff.A[Number(row.h)] = Number(row[metric] || 0);
+        });
+        (segB.hourly || []).forEach(function (row) {
+          byOff.B = byOff.B || {};
+          byOff.B[Number(row.h)] = Number(row[metric] || 0);
+        });
+      } else {
+        activeDefs = TREND_DEFS;
+        ((ins || {}).hourly || []).forEach(function (row) {
+          var b = byOff[row.offDay] = byOff[row.offDay] || {};
+          b[row.h] = Number(row[metric] || 0);
+        });
+      }
+      var html = '<span class="insight-tip-t">' + esc(pad2(hh) + ':00 - ' + pad2(hh + 1) + ':00') +
+        '</span>' + activeDefs.map(function (d) {
+          return tipRow(d.color, d.label, (byOff[d.off] || {})[hh] || 0);
+        }).join('');
+      var layer = $('.trend-hover-layer', svg);
+      if (layer) {
+        var cx = trendX(hh, g);
+        var cross = $('.trend-crosshair', layer);
+        if (cross) { cross.setAttribute('x1', cx.toFixed(1)); cross.setAttribute('x2', cx.toFixed(1)); }
+        // 曲线无 points 属性：数据点直接用与折线同一套 trendX/trendY 映射算坐标
+        var maxVh = 1;
+        activeDefs.forEach(function (d) {
+          for (var h = 0; h < 24; h++) maxVh = Math.max(maxVh, Number((byOff[d.off] || {})[h] || 0));
+        });
+        $$('.trend-line', svg).forEach(function (ln) {
+          var off = ln.getAttribute('data-off');
+          var v = (byOff[off] || {})[hh] || 0;
+          var dot = $('.trend-dot[data-off="' + off + '"]', layer);
+          if (dot) {
+            dot.setAttribute('cx', trendX(hh, g).toFixed(1));
+            dot.setAttribute('cy', trendY(v, g, maxVh).toFixed(1));
+          }
+        });
+        layer.classList.add('is-active');
+      }
+      showInsightTip(html, e);
+      return;
+    }
+
+    // ② 横条：口径在渲染时算好存 data-tip-*，这里不重算
+    var hit = t.closest('[data-tip-kind]');
+    if (hit) {
+      var kind = hit.getAttribute('data-tip-kind');
+      hit.classList.add('is-active');
+      showInsightTip('<span class="insight-tip-t">' +
+        (kind === 'source' ? '访问来源' : '访问类型') + '</span>' +
+        tipRow(hit.getAttribute('data-tip-color') || '#00B42A',
+          hit.getAttribute('data-tip-name') || '', hit.getAttribute('data-tip-val') || '0') +
+        tipRow('', '占比', (hit.getAttribute('data-tip-pct') || '0') + '%'), e);
+      return;
+    }
+    hideInsightTip();
+  }
+
+  /** 切指标时让新图表轻微淡入（transition 而非 keyframes，快速连点可打断） */
+  function swapIn(el, html) {
+    if (!el) return;
+    el.innerHTML = html;
+    el.classList.remove('is-swapped');
+    void el.offsetWidth;   // 强制一次样式计算，否则浏览器合并变更、过渡不会触发
+    el.classList.add('is-swapped');
+  }
+
+  function downloadCsv(filename, head, rows) {
+    var q = function (c) {
+      var s = String(c == null ? '' : c);
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    var lines = [head].concat(rows).map(function (r) { return r.map(q).join(','); });
+    var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function exportInsight(kind, ins, rows) {
+    var head, body, name;
+    ins = ins || {};
+    if (kind === 'trend') {
+      var m = state.usageTrendMetric;
+      if (state.cmpOn && (ins.cmp || {}).on) {
+        var cd = [
+          { off: 'A', label: cmpSegLabel(ins.cmp.a) },
+          { off: 'B', label: cmpSegLabel(ins.cmp.b) }
+        ];
+        var cby = { A: {}, B: {} };
+        ((ins.cmp.a || {}).hourly || []).forEach(function (r) { cby.A[Number(r.h)] = Number(r[m] || 0); });
+        ((ins.cmp.b || {}).hourly || []).forEach(function (r) { cby.B[Number(r.h)] = Number(r[m] || 0); });
+        head = ['小时'].concat(cd.map(function (d) { return d.label; }));
+        body = [];
+        for (var h = 0; h < 24; h++) {
+          body.push([pad2(h) + ':00'].concat(cd.map(function (d) {
+            return cby[d.off][h] || 0;
+          })));
+        }
+        name = '访问实时数据-对比分时.csv';
+      } else {
+        head = ['小时'].concat(TREND_DEFS.map(function (d) { return d.label; }));
+        var byOff = {};
+        (ins.hourly || []).forEach(function (r) {
+          var b = byOff[r.offDay] = byOff[r.offDay] || {};
+          b[r.h] = Number(r[m] || 0);
+        });
+        body = [];
+        for (var h2 = 0; h2 < 24; h2++) {
+          body.push([pad2(h2) + ':00'].concat(TREND_DEFS.map(function (d) {
+            return (byOff[d.off] || {})[h2] || 0;
+          })));
+        }
+        name = '访问实时数据-分时.csv';
+      }
+    } else if (kind === 'cmp') {
+      var ca = (ins.cmp || {}).a || {}, cb = (ins.cmp || {}).b || {};
+      head = ['指标', 'A 段 ' + cmpSegLabel(ca), 'B 段 ' + cmpSegLabel(cb), '差值 (A-B)', '变化率'];
+      body = CMP_METRICS.map(function (x) {
+        var va = cmpValue(ca, x.key), vb = cmpValue(cb, x.key);
+        var d = va - vb;
+        var pct = vb ? ((d / vb) * 100).toFixed(2) + '%' : '—';
+        return [x.label, fmtCmp(va, x.rate), fmtCmp(vb, x.rate), fmtCmp(d, x.rate), pct];
+      });
+      name = '使用统计-对比总览.csv';
+    } else if (kind === 'source') {
+      head = ['页面 / 功能入口', '打开次数 (PV)', '访问人数 (UV)'];
+      body = (rows || []).map(function (r) { return [eventLabel(r), r.pv || 0, r.uv || 0]; });
+      name = '访问来源Top10.csv';
+    } else {
+      head = ['指标', '目标日', '前一日', '7 日前'];
+      var o = Number(ins.targetOffset || 0), dm = {};
+      ((ins.summary || {}).days || []).forEach(function (r) { dm[r.offDay] = r; });
+      var z = { visitUsers: 0, opens: 0, pageViews: 0 };
+      var d0 = dm[o] || z, d1 = dm[o + 1] || z, d7 = dm[o + 7] || z;
+      var cum = (ins.summary || {}).cumulative || {};
+      body = [
+        ['累计用户数', cum.u0 || 0, cum.u1 || 0, cum.u7 || 0],
+        ['日访问人数', d0.visitUsers || 0, d1.visitUsers || 0, d7.visitUsers || 0],
+        ['日打开次数', d0.opens || 0, d1.opens || 0, d7.opens || 0],
+        ['日访问页面数', d0.pageViews || 0, d1.pageViews || 0, d7.pageViews || 0]
+      ];
+      name = '小程序活跃概况.csv';
+    }
+    downloadCsv(name, head, body);
+  }
+
+  // 属性前缀含等号和左引号：静态门禁可直接看到控件属性名，不必追函数参数
+  var CHIP_ATTRS = { trend: 'data-tm="', source: 'data-sm="' };
+  function insightChips(attr, items, cur) {
+    return '<div class="metric-chips">' + items.map(function (it) {
+      return '<button type="button" class="metric-chip' + (cur === it.key ? ' active' : '') +
+        '" ' + attr + esc(it.key) + '">' + esc(it.label) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  /** 折线坐标映射（trendSvg 与 hover 取点共用同一套，保证数据点落在曲线上） */
+  function trendX(h, g) { return g.padL + (g.W - g.padL - g.padR) * (h / 23); }
+  function trendY(v, g, maxV) {
+    var span = g.H - g.padT - g.padB;
+    return g.H - g.padB - span * (v / maxV);
+  }
+  /** Catmull-Rom → 三次贝塞尔，把「折线」变「平滑曲线」（对齐 We分析 视觉）。
+   *  minY 钳制：样条在「0 邻点 + 正邻点」处会向下过冲跌破基线，故所有 y 钳到 ≥ minY，
+   *  保证曲线与线下面积永不沉到 0 基准线之下。 */
+  function smoothTrendPath(pts, minY) {
+    if (pts.length < 2) return '';
+    var cy = function (y) { return (minY == null) ? y : Math.min(y, minY); };
+    var d = 'M ' + pts[0][0].toFixed(1) + ' ' + cy(pts[0][1]).toFixed(1);
+    for (var i = 0; i < pts.length - 1; i++) {
+      var p0 = pts[i - 1] || pts[i];
+      var p1 = pts[i];
+      var p2 = pts[i + 1];
+      var p3 = pts[i + 2] || p2;
+      var c1x = p1[0] + (p2[0] - p0[0]) / 6;
+      var c1y = cy(p1[1] + (p2[1] - p0[1]) / 6);
+      var c2x = p2[0] - (p3[0] - p1[0]) / 6;
+      var c2y = cy(p2[1] - (p3[1] - p1[1]) / 6);
+      d += ' C ' + c1x.toFixed(1) + ' ' + c1y.toFixed(1) + ' ' +
+        c2x.toFixed(1) + ' ' + c2y.toFixed(1) + ' ' +
+        p2[0].toFixed(1) + ' ' + cy(p2[1]).toFixed(1);
+    }
+    return d;
+  }
+  /** 线下渐变面积：平滑曲线顶部 + 封口到基线 */
+  function trendAreaPath(pts, baseY, minY) {
+    if (pts.length < 2) return '';
+    return smoothTrendPath(pts, minY) +
+      ' L ' + pts[pts.length - 1][0].toFixed(1) + ' ' + baseY.toFixed(1) +
+      ' L ' + pts[0][0].toFixed(1) + ' ' + baseY.toFixed(1) + ' Z';
+  }
+
+  /** 分时图网格 + y 轴刻度 + x 轴 24 整点标签（参照 / 对比两模式共用） */
+  function trendGridMarkup(g, maxV, baseY) {
+    var grid = '';
+    for (var gi = 0; gi <= 3; gi++) {
+      var gv = Math.round(maxV * gi / 3);
+      var gy = trendY(gv, g, maxV);
+      grid += '<line x1="' + g.padL + '" y1="' + gy.toFixed(1) + '" x2="' + (g.W - g.padR) +
+        '" y2="' + gy.toFixed(1) + '" stroke="var(--line)" stroke-width="1"></line>' +
+        '<text x="' + (g.padL - 8) + '" y="' + (gy + 4).toFixed(1) +
+        '" text-anchor="end" class="trend-axis-txt">' + gv + '</text>';
+    }
+    for (var h = 0; h < 24; h++) {
+      grid += '<text x="' + trendX(h, g).toFixed(1) + '" y="' + (g.H - 8) +
+        '" text-anchor="middle" class="trend-axis-txt trend-axis-x">' + pad2(h) + ':00</text>';
+    }
+    return grid;
+  }
+  /** 分时图 hover 层（垂直准星 + 每条线的数据点）；defs 决定准星点数与配色 */
+  function trendHoverLayer(g, padT, baseY, defs) {
+    return '<g class="trend-hover-layer">' +
+      '<line class="trend-crosshair" x1="' + g.padL + '" y1="' + padT + '" x2="' + g.padL +
+        '" y2="' + baseY + '"></line>' +
+      defs.map(function (d) {
+        return '<circle class="trend-dot" data-off="' + d.off + '" cx="' + g.padL +
+          '" cy="' + baseY + '" r="3.5" fill="' + d.color + '"></circle>';
+      }).join('') + '</g>';
+  }
+
+  /** 分时折线：固定今日 / 1 天前 / 7 天前三条，每条 24 个点（00:00~23:00），平滑曲线 + 渐变面积 */
+  function trendSvg(ins, metric) {
+    var g = TREND_GEOM;
+    var W = g.W, H = g.H, padL = g.padL, padR = g.padR, padT = g.padT, padB = g.padB;
+    var baseY = H - padB;
+    var byOff = {};
+    (ins.hourly || []).forEach(function (r) {
+      var b = byOff[r.offDay] = byOff[r.offDay] || {};
+      b[r.h] = Number(r[metric] || 0);
+    });
+    var defs = TREND_DEFS;
+    var maxV = 1;
+    defs.forEach(function (d) {
+      for (var h = 0; h < 24; h++) maxV = Math.max(maxV, Number((byOff[d.off] || {})[h] || 0));
+    });
+    var grid = trendGridMarkup(g, maxV, baseY);
+    var grads = '', areas = '', lines = '';
+    defs.forEach(function (d) {
+      var pts = [];
+      for (var h = 0; h < 24; h++) {
+        pts.push([trendX(h, g), trendY(Number((byOff[d.off] || {})[h] || 0), g, maxV)]);
+      }
+      var gid = 'trendGrad' + d.off;
+      grads += '<linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + d.color + '" stop-opacity="0.18"></stop>' +
+        '<stop offset="100%" stop-color="' + d.color + '" stop-opacity="0"></stop>' +
+        '</linearGradient>';
+      areas += '<path class="trend-area" data-off="' + d.off + '" fill="url(#' + gid + ')" stroke="none" d="' +
+        trendAreaPath(pts, baseY, baseY) + '"></path>';
+      lines += '<path class="trend-line" data-off="' + d.off + '" fill="none" stroke="' + d.color +
+        '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d="' + smoothTrendPath(pts, baseY) + '"></path>';
+    });
+    var legend = '<div class="trend-legend">' + defs.map(function (d) {
+      return '<span class="trend-lg"><i style="background:' + d.color + '"></i>' + d.label + '</span>';
+    }).join('') + '</div>';
+    var hoverLayer = trendHoverLayer(g, padT, baseY, defs);
+    return '<svg class="trend-svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="访问实时数据分时趋势">' +
+      '<defs>' + grads + '</defs>' + grid + areas + lines + hoverLayer + '</svg>' + legend;
+  }
+
+  /** 对比总览指标（渲染表与导出 CSV 共用同一份定义，避免两处口径漂移） */
+  var CMP_METRICS = [
+    { key: 'pv', label: '总次数', rate: false },
+    { key: 'uv', label: '使用人数', rate: false },
+    { key: 'perUser', label: '人均次数', rate: true },
+    { key: 'perDay', label: '日均次数', rate: true },
+    { key: 'pageViews', label: '页面浏览', rate: false },
+    { key: 'actions', label: '功能点击', rate: false },
+    { key: 'opens', label: '打开次数', rate: false },
+    { key: 'evCnt', label: '覆盖功能数', rate: false }
+  ];
+  /** 取指标值：人均/日均是派生值，其余直接读段聚合 */
+  function cmpValue(seg, key) {
+    if (!seg) return 0;
+    if (key === 'perUser') return seg.uv ? seg.pv / seg.uv : 0;
+    if (key === 'perDay') return seg.days ? seg.pv / seg.days : 0;
+    return Number(seg[key] || 0);
+  }
+  /** 对比数值格式：率值保留 1 位小数（人均可能 0.3），计数取整 */
+  function fmtCmp(v, rate) {
+    return rate ? (Math.round(v * 10) / 10).toFixed(1) : String(Math.round(v));
+  }
+  /** 对比段标签：单日显示完整日期，区间显示「起 ~ 止」 */
+  function cmpSegLabel(seg) {
+    if (!seg || !seg.from) return '—';
+    return seg.from === seg.to ? seg.from : seg.from + ' ~ ' + seg.to;
+  }
+
+  /** 页面级对比的分时叠加：A 段 / B 段各画一条 24h 曲线（区间段为各整点合计） */
+  function trendCmpSvg(ins, metric) {
+    var g = TREND_GEOM;
+    var W = g.W, H = g.H, padL = g.padL, padR = g.padR, padT = g.padT, padB = g.padB;
+    var baseY = H - padB;
+    var cmp = (ins && ins.cmp) || {};
+    var segA = cmp.a || {}, segB = cmp.b || {};
+    var defs = [
+      { off: 'A', label: cmpSegLabel(segA), color: '#3370FF' },
+      { off: 'B', label: cmpSegLabel(segB), color: '#FF7D00' }
+    ];
+    var bySeg = { A: {}, B: {} };
+    (segA.hourly || []).forEach(function (r) { bySeg.A[Number(r.h)] = Number(r[metric] || 0); });
+    (segB.hourly || []).forEach(function (r) { bySeg.B[Number(r.h)] = Number(r[metric] || 0); });
+    var maxV = 1;
+    defs.forEach(function (d) {
+      for (var h = 0; h < 24; h++) maxV = Math.max(maxV, Number(bySeg[d.off][h] || 0));
+    });
+    var grid = trendGridMarkup(g, maxV, baseY);
+    var grads = '', areas = '', lines = '';
+    defs.forEach(function (d) {
+      var pts = [];
+      for (var h = 0; h < 24; h++) {
+        pts.push([trendX(h, g), trendY(Number(bySeg[d.off][h] || 0), g, maxV)]);
+      }
+      var gid = 'trendGrad' + d.off;
+      grads += '<linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + d.color + '" stop-opacity="0.18"></stop>' +
+        '<stop offset="100%" stop-color="' + d.color + '" stop-opacity="0"></stop>' +
+        '</linearGradient>';
+      areas += '<path class="trend-area" data-off="' + d.off + '" fill="url(#' + gid + ')" stroke="none" d="' +
+        trendAreaPath(pts, baseY, baseY) + '"></path>';
+      lines += '<path class="trend-line" data-off="' + d.off + '" fill="none" stroke="' + d.color +
+        '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d="' + smoothTrendPath(pts, baseY) + '"></path>';
+    });
+    var legend = '<div class="trend-legend">' + defs.map(function (d) {
+      return '<span class="trend-lg"><i style="background:' + d.color + '"></i>' + esc(d.label) + '</span>';
+    }).join('') + '</div>';
+    var hoverLayer = trendHoverLayer(g, padT, baseY, defs);
+    return '<svg class="trend-svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="对比分时趋势">' +
+      '<defs>' + grads + '</defs>' + grid + areas + lines + hoverLayer + '</svg>' + legend;
+  }
+
+  /** 访问来源 Top10：按页面 / 功能入口的 PV/UV 排横条（非微信场景值） */
+  function sourceBars(rows, metric) {
+    var list = rows.slice().sort(function (a, b) {
+      return Number(b[metric] || 0) - Number(a[metric] || 0);
+    }).slice(0, 10);
+    if (!list.length) return '<div class="empty">暂无使用记录</div>';
+    var total = list.reduce(function (s, r) { return s + Number(r[metric] || 0); }, 0);
+    var max = list.reduce(function (m, r) { return Math.max(m, Number(r[metric] || 0)); }, 1);
+    return '<div class="src-list">' + list.map(function (r) {
+      var v = Number(r[metric] || 0);
+      var pct = total ? (v / total * 100).toFixed(2).replace(/\.00$/, '') : '0';
+      return '<div class="src-row" data-tip-kind="source" data-tip-name="' + esc(eventLabel(r)) +
+        '" data-tip-val="' + v + '" data-tip-pct="' + pct + '" data-tip-color="#00B42A">' +
+        '<span class="src-label">' + esc(eventLabel(r)) + '</span>' +
+        '<div class="src-track"><div class="src-bar" style="width:' +
+          Math.max(2, Math.round(v / max * 100)) + '%"></div></div>' +
+        '<span class="src-val">' + v + '</span>' +
+        '<span class="src-pct">' + pct + '%</span>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
+  /** 变化率：无基数时不编造百分比（如实写「— / 新增」） */
+  function deltaHtml(label, cur, base) {
+    var txt, cls;
+    if (!base) { txt = cur ? '新增' : '—'; cls = 'flat'; }
+    else {
+      var p = (cur - base) / base * 100;
+      txt = (p > 0 ? '+' : '') + p.toFixed(2) + '%';
+      cls = p > 0 ? 'up' : (p < 0 ? 'down' : 'flat');
+    }
+    return '<span class="metric-delta ' + cls + '">' + label + ' ' + txt + '</span>';
+  }
+
+  /** 小程序活跃概况：四卡 + 较前一日 / 较 7 日前 */
+  function summaryCards(ins) {
+    var o = Number(ins.targetOffset || 0);
+    var daysMap = {};
+    ((ins.summary || {}).days || []).forEach(function (r) { daysMap[r.offDay] = r; });
+    var cum = (ins.summary || {}).cumulative || {};
+    var zero = { visitUsers: 0, opens: 0, pageViews: 0 };
+    var d0 = daysMap[o] || zero, d1 = daysMap[o + 1] || zero, d7 = daysMap[o + 7] || zero;
+    var items = [
+      { label: '累计用户数', unit: '人', cur: Number(cum.u0 || 0), prev: Number(cum.u1 || 0), d7: Number(cum.u7 || 0) },
+      { label: '日访问人数', unit: '人', cur: Number(d0.visitUsers || 0), prev: Number(d1.visitUsers || 0), d7: Number(d7.visitUsers || 0) },
+      { label: '日打开次数', unit: '次', cur: Number(d0.opens || 0), prev: Number(d1.opens || 0), d7: Number(d7.opens || 0) },
+      { label: '日访问页面数', unit: '个', cur: Number(d0.pageViews || 0), prev: Number(d1.pageViews || 0), d7: Number(d7.pageViews || 0) }
+    ];
+    return '<div class="metric-grid">' + items.map(function (it) {
+      return '<div class="metric-card">' +
+        '<div class="metric-label">' + it.label + '</div>' +
+        '<div class="metric-value">' + it.cur + '<span class="metric-unit">' + it.unit + '</span></div>' +
+        '<div class="metric-cmp">' + deltaHtml('较前一日', it.cur, it.prev) +
+          deltaHtml('较 7 日前', it.cur, it.d7) + '</div>' +
+        '</div>';
+    }).join('') + '</div>';
   }
 
   function renderUsage(host) {
@@ -1562,17 +2169,42 @@
             (s0.dir === 'asc' || s0.dir === 'desc')) state.memSort = s0;
       } catch (e) { /* 脏数据回退默认 */ }
     }
+    /* 页面级对比：恢复开关 / 粒度 / 两段日期。
+     *  · 默认值按粒度不同：单日 = 今天 vs 昨天；区间 = 近 7 天 vs 前 7 天；
+     *  · 日期一律本地时区算（DB 与浏览器同区），用 ymd() 格式化成 YYYY-MM-DD。 */
+    var savedCmpOn = lsGet(LS_CMP_ON);
+    if (savedCmpOn !== null) state.cmpOn = savedCmpOn === '1';
+    var savedGran = lsGet(LS_CMP_GRAN);
+    if (savedGran === 'day' || savedGran === 'range') state.cmpGran = savedGran;
+    var _today = new Date();
+    var _dayAgo = function (n) {
+      return new Date(_today.getFullYear(), _today.getMonth(), _today.getDate() - n);
+    };
+    var _dA = state.cmpGran === 'range' ? _dayAgo(6) : _today;
+    var _dA2 = state.cmpGran === 'range' ? _today : _dA;
+    var _dB1 = state.cmpGran === 'range' ? _dayAgo(13) : _dayAgo(1);
+    var _dB2 = state.cmpGran === 'range' ? _dayAgo(7) : _dB1;
+    state.cmpA1 = lsGet(LS_CMP_A1) || ymd(_dA);
+    state.cmpA2 = lsGet(LS_CMP_A2) || ymd(_dA2);
+    state.cmpB1 = lsGet(LS_CMP_B1) || ymd(_dB1);
+    state.cmpB2 = lsGet(LS_CMP_B2) || ymd(_dB2);
     var days = state.usageDays;
     var classPart = state.usageAll ? '' : '&classId=' + state.classId;
-    api('/api/usage?days=' + days + classPart).then(function (d) {
+    // 对比参数始终带上：cmpOn=0 时后端不查，但保留日期便于下次开启时直接生效
+    var cmpPart = '&cmpOn=' + (state.cmpOn ? '1' : '0') + '&cmpGran=' + state.cmpGran +
+      '&cmpA1=' + encodeURIComponent(state.cmpA1) + '&cmpA2=' + encodeURIComponent(state.cmpA2) +
+      '&cmpB1=' + encodeURIComponent(state.cmpB1) + '&cmpB2=' + encodeURIComponent(state.cmpB2);
+    api('/api/usage?days=' + days + classPart + cmpPart).then(function (d) {
       if (!d.ok) { host.innerHTML = errHtml(d); return; }
       var o = d.data || {};
+      var responseInsights = o.insights || {};
       var rows = o.rows || [];
       var maxPv = rows.reduce(function (m, r) { return Math.max(m, r.pv); }, 1);
       var kindLabel = { page_view: '页面浏览', action: '功能点击' };
 
       var rangeBtns = [
-        { d: 1, t: '今天' }, { d: 7, t: '近 7 天' }, { d: 30, t: '近 30 天' }, { d: 0, t: '全部' }
+        { d: 1, t: '今天' }, { d: -1, t: '昨天' }, { d: 7, t: '近 7 天' },
+        { d: 30, t: '近 30 天' }, { d: 0, t: '全部' }
       ].map(function (x) {
         return '<button class="btn' + (days === x.d ? ' btn-primary' : '') +
           '" data-rg="' + x.d + '">' + x.t + '</button>';
@@ -1604,11 +2236,13 @@
       var maxDaily = axis.reduce(function (m, x) { return Math.max(m, x.pv); }, 1);
       // 轴说明：days=0（全部）时不能说「近 30 天」——后端 trend.days 也只是回显值
       // days=1 是「今天」，单独措辞，避免「近 1 天」的别扭说法
-      var axisNote = days === 1
-        ? '横轴：日期（今天，每日总次数）'
-        : (days
-          ? '横轴：日期（近 ' + days + ' 天，每日总次数）'
-          : '横轴：日期（全部，每日总次数）');
+      var axisNote = days === -1
+        ? '横轴：日期（昨天，每日总次数）'
+        : (days === 1
+          ? '横轴：日期（今天，每日总次数）'
+          : (days
+            ? '横轴：日期（近 ' + days + ' 天，每日总次数）'
+            : '横轴：日期（全部，每日总次数）'));
       var dailyHtml = '<div class="card card-usage"><div class="card-hd">每日活跃总览（点击/浏览总次数）</div>' +
         (axis.length
           ? '<div class="bars">' + axis.map(function (x) {
@@ -1683,17 +2317,148 @@
       var scopeBtns =
         '<button class="btn' + (state.usageAll ? ' btn-primary' : '') + '" data-ua="1">全部班级</button>' +
         '<button class="btn' + (state.usageAll ? '' : ' btn-primary') + '" data-ua="0">仅当前班级</button>';
-      // 左右布局：时间范围在左、班级范围在右（同一行，窄屏才换行）
+      // 页面级对比控件（2026-11-09）：对比的是**整个使用统计**，开关放在工具条，
+      // 不再藏在分时卡里。单日模式只显示 A/B 各一个日期；区间模式各显示起止。
+      var isRange = state.cmpGran === 'range';
+      var rangeCls = isRange ? '' : ' hidden';
+      var cmpDatesHtml = '<div class="cmp-dates" data-cmp-dates' + (state.cmpOn ? '' : ' hidden') + '>' +
+        '<span class="cmp-tag cmp-tag-a">A</span>' +
+        '<input type="date" class="cmp-date" data-cmpk="cmpA1" value="' + esc(state.cmpA1) + '" aria-label="A 段开始日期">' +
+        '<span class="cmp-to' + rangeCls + '">~</span>' +
+        '<input type="date" class="cmp-date cmp-end' + rangeCls + '" data-cmpk="cmpA2" value="' + esc(state.cmpA2) + '" aria-label="A 段结束日期">' +
+        '<span class="cmp-vs">vs</span>' +
+        '<span class="cmp-tag cmp-tag-b">B</span>' +
+        '<input type="date" class="cmp-date" data-cmpk="cmpB1" value="' + esc(state.cmpB1) + '" aria-label="B 段开始日期">' +
+        '<span class="cmp-to' + rangeCls + '">~</span>' +
+        '<input type="date" class="cmp-date cmp-end' + rangeCls + '" data-cmpk="cmpB2" value="' + esc(state.cmpB2) + '" aria-label="B 段结束日期">' +
+        '</div>';
+      var cmpTools = '<div class="usage-cmp">' +
+        '<span class="tb-label">对比</span>' +
+        '<div class="seg">' +
+          '<button type="button" class="seg-btn' + (state.cmpOn ? '' : ' active') + '" data-cmp="0">关闭</button>' +
+          '<button type="button" class="seg-btn' + (state.cmpOn ? ' active' : '') + '" data-cmp="1">开启</button>' +
+        '</div>' +
+        '<div class="seg cmp-gran' + (state.cmpOn ? '' : ' hidden') + '">' +
+          '<button type="button" class="seg-btn' + (isRange ? '' : ' active') + '" data-gran="day">单日</button>' +
+          '<button type="button" class="seg-btn' + (isRange ? ' active' : '') + '" data-gran="range">区间</button>' +
+        '</div>' +
+        cmpDatesHtml +
+        '</div>';
+      // 同一行流式排布：时间范围贴左，班级范围 + 对比靠右连成一串（2026-11-09 用户要求
+      // 对比不要单独占一行）；窄屏才自然换行
       var toolbar = '<div class="toolbar toolbar-usage">' +
         '<div class="usage-range"><span class="tb-label">时间范围</span>' + rangeBtns + '</div>' +
         '<div class="usage-scope"><span class="tb-label">班级范围</span>' + scopeBtns + '</div>' +
+        cmpTools +
         '</div>';
+      // 三板块（2026-11-09）：分时趋势 / 来源 Top10 / 活跃概况。
+      // 放在原有统计卡与表格之前，进页面第一屏就能看到概况，下面保留全部明细。
+      var ins = responseInsights;
+      var trendItems = TREND_METRICS.map(function (k) {
+        return { key: k, label: TREND_METRIC_LABEL[k] };
+      });
+      var cardNote = function (t) { return '<span class="card-hd-note">' + esc(t) + '</span>'; };
+      // hover 预览浮层：position:fixed + translate3d，不受 .card 的 overflow:hidden 裁切
+      var tipHtml = '<div id="insight-tip" class="insight-tip" role="tooltip" aria-hidden="true">' +
+        '<div class="insight-tip-inner"></div></div>';
+      // 卡片 0/60/120/180ms 错峰入场；导出按钮默认透明，hover / focus-within 才淡入
+      var enterStyle = function (i) { return ' style="--enter-delay:' + (i * 60) + 'ms"'; };
+      var cardAction = function (kind) {
+        return '<button type="button" class="card-hd-action" data-export="' + kind +
+          '" aria-label="导出该板块数据为 CSV" title="导出 CSV">导出</button>';
+      };
+      var cmpVisible = !!(state.cmpOn && ins.cmp && ins.cmp.on);
+      var baseEntry = cmpVisible ? 1 : 0;
+
+      /* 对比总览卡：A 段 / B 段 8 个指标并列 + 差值 + 变化率。
+       * 口径与明细表同源（usage_event），但时间段由上方对比控件决定，**不受「时间范围」影响**。 */
+      var cmpHtml = '';
+      if (cmpVisible) {
+        var ca = ins.cmp.a || {}, cb = ins.cmp.b || {};
+        var cmpRows = CMP_METRICS.map(function (x) {
+          var va = cmpValue(ca, x.key), vb = cmpValue(cb, x.key);
+          var diff = va - vb;
+          var pctHtml;
+          if (!vb) {
+            pctHtml = '<span class="cmp-pct flat">' + (va ? '新增' : '—') + '</span>';
+          } else {
+            var pct = diff / vb * 100;
+            pctHtml = '<span class="cmp-pct ' + (diff > 0 ? 'up' : (diff < 0 ? 'down' : 'flat')) + '">' +
+              (diff > 0 ? '+' : '') + pct.toFixed(1) + '%</span>';
+          }
+          return '<tr><th>' + esc(x.label) + '</th>' +
+            '<td class="td-no">' + fmtCmp(va, x.rate) + '</td>' +
+            '<td class="td-no">' + fmtCmp(vb, x.rate) + '</td>' +
+            '<td class="td-no">' + (diff > 0 ? '+' : '') + fmtCmp(diff, x.rate) + '</td>' +
+            '<td>' + pctHtml + '</td></tr>';
+        }).join('');
+        cmpHtml = '<div class="card card-insight card-cmp"' + enterStyle(0) + '>' +
+          '<div class="card-hd">对比总览' + cardNote(ins.cmp.gran === 'range' ? '时间段对比' : '单日对比') + cardAction('cmp') + '</div>' +
+          '<div class="tbl-wrap"><table class="tbl cmp-tbl"><thead><tr>' +
+          '<th>指标</th>' +
+          '<th><i class="cmp-dot cmp-dot-a"></i>A · ' + esc(cmpSegLabel(ca)) + '</th>' +
+          '<th><i class="cmp-dot cmp-dot-b"></i>B · ' + esc(cmpSegLabel(cb)) + '</th>' +
+          '<th>差值 (A−B)</th><th>变化</th>' +
+          '</tr></thead><tbody>' + cmpRows + '</tbody></table></div>' +
+          '<div class="muted-note">A / B 两段同一套埋点口径；下方「分时趋势」同步按这两段画线，' +
+            '功能排行与成员明细仍按上方「时间范围」显示。' +
+            (ins.cmp.gran === 'range' ? ' 区间模式下分时每点是该时段合计，UV 逐时去重后相加、不等于区间去重人数。' : '') +
+          '</div></div>';
+      }
+
+      var trendBody = cmpVisible
+        ? trendCmpSvg(ins, state.usageTrendMetric)
+        : trendSvg(ins, state.usageTrendMetric);
+      var realtimeHtml = '<div class="card card-insight"' + enterStyle(baseEntry) + '>' +
+        '<div class="card-hd">访问实时数据' + cardNote(cmpVisible
+          ? '对比：' + cmpSegLabel(ins.cmp.a) + ' vs ' + cmpSegLabel(ins.cmp.b)
+          : '自建埋点 · 今日 / 昨天 / 7 天前') + cardAction('trend') + '</div>' +
+        '<div class="insight-tools"><span class="tb-label">指标筛选</span>' +
+          insightChips(CHIP_ATTRS.trend, trendItems, state.usageTrendMetric) + '</div>' +
+        '<div id="trend-host" class="insight-host is-swapped">' + trendBody + '</div>' +
+        '<div class="muted-note">打开次数按「首页浏览」近似统计；访问页面数按页面浏览事件统计' +
+          (cmpVisible && ins.cmp.gran === 'range' ? '；区间对比为各整点合计' : '') + '</div>' +
+        '</div>';
+      var sourceHtml = '<div class="card card-insight"' + enterStyle(baseEntry + 1) + '>' +
+        '<div class="card-hd">访问来源 Top10' + cardNote('按页面 / 功能入口') + cardAction('source') + '</div>' +
+        '<div class="insight-tools"><span class="tb-label">指标筛选</span>' +
+          insightChips(CHIP_ATTRS.source, BINARY_METRICS, state.usageSourceMetric) + '</div>' +
+        '<div id="source-host" class="insight-host is-swapped">' + sourceBars(rows, state.usageSourceMetric) + '</div>' +
+        '<div class="muted-note">占比按当前指标在该榜内的合计计算；微信场景值（任务栏 / 相册等）未采集</div>' +
+        '</div>';
+      var summaryHtml = '<div class="card card-insight"' + enterStyle(baseEntry + 2) + '>' +
+        '<div class="card-hd">小程序活跃概况' + cardNote(days === -1 ? '目标日：昨天' : '目标日：今天') + cardAction('summary') + '</div>' +
+        summaryCards(ins) +
+        '<div class="muted-note">累计用户数为截至目标日出现过的去重人数；对比口径为前一日 / 7 日前的同指标</div>' +
+        '</div>';
+
       // 手机端（≤900px）布局（见 admin.css）：上面统一「功能/页面」——概览 stat-row +
       // 功能排行 tbl + 每日活跃图 card-usage 全宽堆叠；下面「成员明细」单独成块、成员卡两列并排
       // （left-right）。不再把功能排行与成员明细放在同一行左右并排（2026-10-23 用户要求）。
-      host.innerHTML = toolbar +
+      tipLastHtml = '';   // 浮层刚重建，内容缓存必须作废，否则切页回来会是空白
+      host.innerHTML = tipHtml + toolbar +
+        (cmpHtml ? '<div class="insight-grid">' + cmpHtml + '</div>' : '') +
+        '<div class="insight-grid">' + realtimeHtml + '</div>' +
+        '<div class="insight-grid">' + sourceHtml + '</div>' +
+        '<div class="insight-grid">' + summaryHtml + '</div>' +
         '<div class="usage-top">' + totalHtml + tbl + dailyHtml + '</div>' +
         '<div class="usage-members">' + memTbl + '</div>';
+
+      /* 事件委托挂在 host（#view）上：切指标只重绘容器、host 本身不换，无需重绑。
+         用 onmousemove/onmouseleave 属性赋值，重复 renderUsage 天然幂等，不会叠加监听。 */
+      host.onmousemove = function (e) { onInsightMove(e, ins, rows); };
+      host.onmouseleave = function () { hideInsightTip(); clearInsightHover(host); };
+      $$('[data-export]', host).forEach(function (b) {
+        b.onclick = function () {
+          try {
+            exportInsight(b.getAttribute('data-export'), ins, rows);
+            toast('已导出 CSV');
+          } catch (err) {
+            console.error('[usage-export] 导出失败', err && err.stack || err);
+            toast('导出失败，请重试', 'err');
+          }
+        };
+      });
 
       $$('[data-rg]', host).forEach(function (b) {
         b.onclick = function () {
@@ -1708,6 +2473,93 @@
           lsSet(LS_USAGE_ALL, state.usageAll ? '1' : '0');
           reload();
         };
+      });
+      /* 四板块的指标筛选：只换内存状态 + 重绘对应容器，不重拉 /api/usage。
+       * 数据一次请求已全部在客户端，重新发请求只会让「切指标」变慢且丢掉当前范围。 */
+      function bindMetricChips(attr, stateKey, redraw) {
+        $$('[' + attr + ']', host).forEach(function (b) {
+          b.onclick = function () {
+            state[stateKey] = b.getAttribute(attr);
+            $$('[' + attr + ']', host).forEach(function (x) {
+              x.classList.toggle('active', x === b);
+            });
+            redraw();
+          };
+        });
+      }
+      bindMetricChips('data-tm', 'usageTrendMetric', function () {
+        swapIn($('#trend-host', host), cmpVisible
+          ? trendCmpSvg(ins, state.usageTrendMetric)
+          : trendSvg(ins, state.usageTrendMetric));
+      });
+      /* 对比开关 / 粒度 / 日期：三者都会改变后端要查的数据，统一走 reload 重拉。
+       * 只本地重绘是不行的——关闭对比时总览卡要整块消失、开启时要新建，靠重渲染最干净。 */
+      function syncCmpCtl() {
+        $$('[data-cmp]', host).forEach(function (x) {
+          x.classList.toggle('active', x.dataset.cmp === (state.cmpOn ? '1' : '0'));
+        });
+        $$('[data-gran]', host).forEach(function (x) {
+          x.classList.toggle('active', x.dataset.gran === state.cmpGran);
+        });
+        var dates = $('[data-cmp-dates]', host);
+        if (dates) dates.classList.toggle('hidden', !state.cmpOn);
+        var granBox = $('.cmp-gran', host);
+        if (granBox) granBox.classList.toggle('hidden', !state.cmpOn);
+        var rg = state.cmpGran === 'range';
+        $$('.cmp-end, .cmp-to', host).forEach(function (x) {
+          x.classList.toggle('hidden', !rg);
+        });
+      }
+      $$('[data-cmp]', host).forEach(function (b) {
+        b.onclick = function () {
+          state.cmpOn = b.dataset.cmp === '1';
+          lsSet(LS_CMP_ON, state.cmpOn ? '1' : '0');
+          syncCmpCtl();
+          reload();
+        };
+      });
+      $$('[data-gran]', host).forEach(function (b) {
+        b.onclick = function () {
+          var g = b.dataset.gran === 'range' ? 'range' : 'day';
+          if (state.cmpGran === g) return;
+          state.cmpGran = g;
+          lsSet(LS_CMP_GRAN, g);
+          // 换粒度后沿用旧日期会拼出「单日却带起止」这种无意义组合，直接换成该粒度的默认段：
+          //   单日 = 今天 vs 昨天；区间 = 近 7 天 vs 前 7 天
+          var t = new Date();
+          var ago = function (n) { return new Date(t.getFullYear(), t.getMonth(), t.getDate() - n); };
+          if (g === 'range') {
+            state.cmpA1 = ymd(ago(6)); state.cmpA2 = ymd(t);
+            state.cmpB1 = ymd(ago(13)); state.cmpB2 = ymd(ago(7));
+          } else {
+            state.cmpA1 = state.cmpA2 = ymd(t);
+            state.cmpB1 = state.cmpB2 = ymd(ago(1));
+          }
+          lsSet(LS_CMP_A1, state.cmpA1); lsSet(LS_CMP_A2, state.cmpA2);
+          lsSet(LS_CMP_B1, state.cmpB1); lsSet(LS_CMP_B2, state.cmpB2);
+          syncCmpCtl();
+          reload();
+        };
+      });
+      // 日期变更：单日模式 A2/B2 必须跟着 A1/B1 走（否则后端拿到「单日却带区间止」）；
+      // 区间模式起止倒置由后端 parseCmpDate 之后统一纠序，前端不拦。
+      $$('.cmp-date', host).forEach(function (inp) {
+        inp.onchange = function () {
+          var k = inp.dataset.cmpk;
+          var lsMap = { cmpA1: LS_CMP_A1, cmpA2: LS_CMP_A2, cmpB1: LS_CMP_B1, cmpB2: LS_CMP_B2 };
+          if (!lsMap[k]) return;
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(inp.value)) return;   // 清空 / 半填不发请求
+          state[k] = inp.value;
+          lsSet(lsMap[k], inp.value);
+          if (state.cmpGran !== 'range') {
+            if (k === 'cmpA1') { state.cmpA2 = inp.value; lsSet(LS_CMP_A2, inp.value); }
+            if (k === 'cmpB1') { state.cmpB2 = inp.value; lsSet(LS_CMP_B2, inp.value); }
+          }
+          reload();
+        };
+      });
+      bindMetricChips('data-sm', 'usageSourceMetric', function () {
+        swapIn($('#source-host', host), sourceBars(rows, state.usageSourceMetric));
       });
       // 排序点击 → 本地重绘 tbody（不重拉 API）。重绘出的新行必须重新注入
       // data-label：applyTableLabels 用 labelsDone 守卫跳过已处理的表，

@@ -400,6 +400,11 @@ async function runtimeSelfTest() {
       if (id === './common/review-demo') {
         return require(path.join(ROOT, 'cloudfunctions', 'common', 'review-demo.js'));
       }
+      // 班费单独授权真源（2026-11-08）：同样是无状态纯函数，直接 require 真的，
+      // 不在门禁里抄第二份白名单；auth.login 下发 feeRights 时会用到。
+      if (id === './common/fee-perms') {
+        return require(path.join(ROOT, 'cloudfunctions', 'common', 'fee-perms.js'));
+      }
       throw new Error('门禁未桩化 require：' + id);
     };
     new Function('exports', 'require', 'module', 'console', src)(mod.exports, req, mod, { log() {}, error() {} });

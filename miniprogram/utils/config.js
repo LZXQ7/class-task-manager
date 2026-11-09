@@ -160,8 +160,17 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   ④ `check-dark-mode` 新增第 ⑪ 段（令牌双端齐备 / 深色 RGB<80 / 裸白底禁用 / 变异自证）；
  *      同步修 `check-glass` 变异 3 与 CRLF 兼容、`check-tabbar-liquid` 沙箱注入 themeStub。
  *   纯前端改动，无需重部署云函数。
+ * **`1.0.8.25`** = 网页管理后台「使用统计」重构版（2026-11-09）：
+ *   ① 分时折线 0 基准线钳制（Catmull-Rom 过冲不再跌破 0 线）；
+ *   ② 移除「访问平台分布」环形图板块（数据价值低）；
+ *   ③ x 轴按小时刻度（00:00–23:00）并随所选时间范围显示；
+ *   ④ 新增**页面级使用统计对比**：支持「单日 / 区间」两种粒度，A/B 两段各聚合
+ *      总次数、使用人数、人均次数、日均次数、页面浏览、功能点击、打开次数、覆盖功能数
+ *      八大指标 + 分时折线对照；对比控件与时间范围/班级同排，不独占整行。
+ *   纯后台改动（cloudfunctions/admin-web），部署用 `tcb fn code update admin-web --dir ./cloudfunctions/admin-web`；
+ *   小程序云函数与前端无需重部署（APP_VERSION 同步 bump 仅用于发版归档）。
  */
-const APP_VERSION = '1.0.8.24';
+const APP_VERSION = '1.0.8.25';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

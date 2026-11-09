@@ -11,6 +11,7 @@ const crypto = require('crypto');
 
 const { getPool } = require('./common/db');
 const guard = require('./common/guard');
+const { hasFeePerm } = require('./common/fee-perms');
 const reviewDemo = require('./common/review-demo');
 const week = require('./common/week');
 const { BizError, ok, fail } = require('./common/resp');
@@ -248,6 +249,21 @@ const routes = {
            *               入口可见性依据；真正拦截在 adjust.leaveApprove 的 guard.isLeaveApprover。
            */
           canApprove: !!(guard.isSuper(m) || guard.isMonitor(m) || guard.isViceMonitor(m)),
+          /*
+           * feeRights（2026-11-08）：班费 4 个能力位由后端统一下发，前端 util.feeRights
+           * **优先直接采用**，不再自己比对 position 字面量。
+           *   → 后台给成员单独授予消费登记权后，小程序不用再发版；以后新增权限项也只改后端。
+           * 旧缓存 profile 没有本字段时前端回退按职位推导（不会凭空多给权限）。
+           * ⚠️ 口径必须与 fee/index.js 的 feeManager / feeTotalSetter 逐字一致，
+           *    由 scripts/check-fee-perms.js 看守（含变异自证）。
+           * 真正拦截永远在 fee 云函数侧，这里只决定入口可见性。
+           */
+          feeRights: {
+            canManageClass: !!(guard.isSuper(m) || guard.isMonitor(m) || guard.isViceMonitor(m) || guard.isDutyAdmin(m) || hasFeePerm(m, 'class')),
+            canManageLeague: !!(guard.isSuper(m) || guard.isMonitor(m) || hasFeePerm(m, 'league')),
+            canSetTotalClass: !!(guard.isSuper(m) || guard.isDutyAdmin(m)),
+            canSetTotalLeague: !!(guard.isSuper(m) || guard.isMonitor(m))
+          },
           avatarUrl: m.avatar_url || '',
           // 微信提醒「额度耗尽」标记（v0.7.15）：cron 发订阅消息 43101 时置 1。
           // 「我的」页据此把提醒行改成「额度已用完 · 点此重新开启」。
