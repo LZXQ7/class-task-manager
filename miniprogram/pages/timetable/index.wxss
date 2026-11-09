@@ -710,6 +710,40 @@
 .ts-warn { font-size: 24rpx; color: var(--warning); line-height: 36rpx; padding: 4rpx 0; }
 .ts-del { font-size: 26rpx; color: var(--danger); padding: 8rpx 0 8rpx 16rpx; }
 
+/* 调课撤回浮条：底部居中、浮在 tabBar 之上；深色由 --text-1/--bg-card 令牌自动翻色 */
+.tt-undo-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(170rpx + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  max-width: 640rpx;
+  padding: 18rpx 12rpx 18rpx 28rpx;
+  border-radius: 100rpx;
+  background: var(--bg-card);
+  box-shadow: 0 12rpx 40rpx rgba(0, 0, 0, .18);
+  border: 2rpx solid var(--line-soft, var(--fill-soft));
+}
+.tt-undo-txt {
+  font-size: 26rpx;
+  color: var(--text-1);
+  max-width: 400rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tt-undo-act {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--brand, #3370FF);
+  padding: 6rpx 18rpx;
+  margin-left: 12rpx;
+}
+.tt-undo-x { font-size: 24rpx; color: var(--text-4); padding: 6rpx 14rpx 6rpx 4rpx; }
+
 /* 课格按压反馈：cell 背景是内联 style（按课程着色），tap-hover 加底色会被盖住，
    用整体轻微变暗代替；只动 opacity，不建包含块（页面有 FAB fixed 元素）。 */
 .tt-cell-hover { opacity: .78; }

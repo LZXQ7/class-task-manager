@@ -80,3 +80,7 @@ CODEBUDDY.md
 # 查询/探测日志产物（run_query.js / probe-fn-modules.js 生成，含运行期数据，不入库）
 scripts/_q_*.txt
 scripts/_probe_fn_modules.txt
+
+# 排班重复排查用的生产库快照（_dump_data.js 生成，含真实姓名/学号 = PII，绝不入库）
+scripts/_dump_w*.json
+scripts/_gate_rr_*.js

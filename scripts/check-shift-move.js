@@ -137,7 +137,9 @@ check('A7 shiftSet：传了就必须合法（不许把 undefined 当合法值放
   && /payload\.toPeriod !== undefined[\s\S]{0,200}?!\(toPeriod >= 1 && toPeriod <= 5\)/.test(SHIFTSET));
 check('A8 shiftSet：值日重算要用每个 target 的最终落位星期（toDay 缺省时不能传 null）',
   /const effDay = \(toDay >= 1 && toDay <= 7\) \? toDay : Number\(t\.dayOfWeek\)/.test(SHIFTSET)
-  && /syncDutyForShift\(conn, cfg, t\.sessionId, t\.week, kind, effDay, stats\)/.test(SHIFTSET));
+  // 2026-11-09 跨周调课：kind 多了一层「跨周按 OFF 撤掉源周值日」的三元
+  //（补课不在目标周凭空造值日行），effDay 仍必须是最终落位星期。
+  && /syncDutyForShift\(conn, cfg, t\.sessionId, t\.week,\s*crossWeek \? 'OFF' : kind, effDay, stats\)/.test(SHIFTSET));
 // ---- A9..A11：已于 2026-10-08 随「C3 四步向导」UI 整体回退而失效 ----
 // 背景：用户要求把临时调课回退到 C3 动手前（2026-10-07 09:39）的分段标签形态。
 // 这三条判据守的是**向导专属**的 `_currentPlanItem`：向导里「调到哪天」是**日期**

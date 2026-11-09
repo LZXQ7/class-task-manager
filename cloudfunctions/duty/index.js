@@ -168,23 +168,33 @@ const routes = {
       const sessionsOnDate = (targetDate) => {
         const targetWk = week.getWeek(cfg.termStart, targetDate);
         const out = [];
-        sessions.forEach((s) => {
-          if (!week.matchesWeeks(s.weeks, targetWk, s.week_rule)) return;
-          const slot = week.resolveSlot(s.id, s.day_of_week, s.period, targetWk, shifts);
-          if (!slot) return;                                        // 本周不上
+        const push = (s, day, period) => {
           if (s.group_scope && myTag && s.group_scope !== myTag) return;
-          if (week.classDateOf(cfg, targetWk, slot.day, cal) !== targetDate) return;
+          if (week.classDateOf(cfg, targetWk, day, cal) !== targetDate) return;
           out.push({
-            sessionId: s.id, period: slot.period, name: s.name, room: s.room || '',
+            sessionId: s.id, period: period, name: s.name, room: s.room || '',
             // ⚠️ 2026-10-09：首页「课堂情况」弹层要显示教师名。
             //    `course.teacher` 这一列一直存在（课表页 course.list 已在读），
             //    只是 sessionsOnDate 当初没SELECT 出来 —— 这里补上。
             //    空串兜底：老课次可能没填教师名，前端据此隐藏那一段而不是显示「undefined」。
             teacher: s.teacher || '',
             groupScope: s.group_scope,
-            periodTime: periods[slot.period] || null,
+            periodTime: periods[period] || null,
             isMine: myDuty ? myDuty.sessionId === s.id : false
           });
+        };
+        sessions.forEach((s) => {
+          if (!week.matchesWeeks(s.weeks, targetWk, s.week_rule)) return;
+          const slot = week.resolveSlot(s.id, s.day_of_week, s.period, targetWk, shifts);
+          if (!slot) return;                                        // 本周不上
+          push(s, slot.day, slot.period);
+        });
+        // 跨周补课（2026-11-09）：某节课从别的周补到这一周 —— 它不属于该课次本周的
+        // 常规落位（上面那轮已按常规位判过），必须单独追加，否则补课当天首页会显示「今日无课」。
+        week.incomingOf(shifts, targetWk).forEach((ov) => {
+          const s = sessions.find(x => Number(x.id) === Number(ov.sessionId));
+          if (!s) return;
+          push(s, Number(ov.toDay) || Number(s.day_of_week), Number(ov.toPeriod) || Number(s.period));
         });
         out.sort((a, b) => a.period - b.period);
         return out;

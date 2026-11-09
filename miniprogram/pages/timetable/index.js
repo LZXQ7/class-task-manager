@@ -147,6 +147,10 @@ Page({
     shiftKind: 'OFF',          // OFF=本周不上；MOVE=改到别的格子
     shiftToDay: 1,
     shiftToPeriod: 1,
+    /* 目标周次（2026-11-09 跨周调课）：labels[0] = 本周（同周改格子），labels[n] = 第 n 周。
+     * 选别的周 = 「这一周不上，补到那一周那一个格子」，源周与该课次在目标周的常规课互不影响。 */
+    shiftToWeekIndex: 0,
+    shiftToWeekLabels: [],
     shiftWeeks: [],            // 多周次模式选中的周次
     shiftWeekBtns: [],
     shiftSaving: false,
@@ -172,6 +176,8 @@ Page({
 
     /* 临时调课结果 */
     shiftItems: [],
+    /* 调课/撤回浮条：保存成功后 8 秒内可一键撤回上一次调课（2026-11-09 用户要求） */
+    undoBar: null,             // { text, sessionIds:[], weeks:[] }
 
     dayChips: DAYS,
     weekRules: WEEK_RULES,
@@ -465,6 +471,11 @@ Page({
         // 空/不合法列表不写盘（保留本地兜底），但「该班有没有课表」以云端为准：
         // 空列表 ⇒ hasTimetable=false ⇒ 学生走「课表待接入」、辅导员走「该班还没有课表」空态。
         tt.replaceSessions(list);
+        // 临时调课随课表一起下发（2026-11-09）：云端为准整体覆盖本地，
+        //   否则换设备 / 重装后「调课结果」为空，用户想撤回却找不到记录。
+        if (!Array.isArray(res) && res && Array.isArray(res.sessShifts)) {
+          tt.replaceSessShifts(res.sessShifts);
+        }
         this.setData({ hasTimetable: list.length > 0 });
         this._recomputeFab();
         this.load();                              // 用当前真源（云端或本地兜底）重渲染
@@ -1005,6 +1016,7 @@ Page({
   onShiftOpen() {
     this._syncShiftSessions();
     this._syncShiftWeekBtns();
+    this._syncShiftToWeeks();
     this._loadShiftItems();
     this._loadAiPrompt();
     this.setData({ shiftShow: true });
@@ -1037,6 +1049,19 @@ Page({
   onShiftToDay(e) { this.setData({ shiftToDay: Number(e.currentTarget.dataset.value) }); },
   onShiftToPeriod(e) { this.setData({ shiftToPeriod: Number(e.currentTarget.dataset.value) }); },
 
+  /** 目标周次下拉：0 = 本周（同周改格子），n = 第 n 周 */
+  _syncShiftToWeeks() {
+    const cur = Number(this.data.week) || 1;
+    const total = Number(this.data.totalWeeks) || 18;
+    const labels = ['本周（第 ' + cur + ' 周）'];
+    for (let i = 1; i <= total; i += 1) labels.push('第 ' + i + ' 周');
+    let idx = Number(this.data.shiftToWeekIndex) || 0;
+    if (idx > total) idx = 0;
+    this.setData({ shiftToWeekLabels: labels, shiftToWeekIndex: idx });
+  },
+
+  onShiftToWeek(e) { this.setData({ shiftToWeekIndex: Number(e.detail.value) }); },
+
   _targetSession() {
     const list = this._shiftSessions || [];
     return list[Number(this.data.shiftSessionIndex) || 0] || null;
@@ -1061,7 +1086,7 @@ Page({
   },
 
   /** 统一提交：成功后落本地并刷新课表；服务端告警（撞车等）用弹窗说清楚 */
-  _applyShift(payload, localItems, tipText) {
+  _applyShift(payload, localItems, tipText, undoInfo) {
     if (this.data.shiftSaving) return;
     this.setData({ shiftSaving: true });
     api.shiftSet(payload, { toast: false })
@@ -1082,6 +1107,7 @@ Page({
         } else {
           util.toast(tipText + ((r && r.resetPublish) ? '（需重新发布值日）' : ''));
         }
+        this._showUndoBar(undoInfo, tipText);
       })
       .catch((e) => {
         this.setData({ shiftSaving: false });
@@ -1089,7 +1115,48 @@ Page({
       });
   },
 
-  /** ① 本周调整：只改第 this.data.week 周 */
+  /* 调课刚保存后的「撤回」浮条（2026-11-09）：误调是最高频事故，
+   * 结果 tab 里的撤销太深，这里给 8 秒的可撤销窗口。 */
+  _showUndoBar(info, tipText) {
+    if (this._undoTimer) { clearTimeout(this._undoTimer); this._undoTimer = null; }
+    if (!info || !info.sessionIds || !info.sessionIds.length
+      || !info.weeks || !info.weeks.length) {
+      this.setData({ undoBar: null });
+      return;
+    }
+    this.setData({
+      undoBar: { text: tipText || '调课已生效', sessionIds: info.sessionIds, weeks: info.weeks }
+    });
+    this._undoTimer = setTimeout(() => {
+      this._undoTimer = null;
+      this.setData({ undoBar: null });
+    }, 8000);
+  },
+
+  onShiftUndoBarClose() {
+    if (this._undoTimer) { clearTimeout(this._undoTimer); this._undoTimer = null; }
+    this.setData({ undoBar: null });
+  },
+
+  onShiftUndoBar() {
+    const bar = this.data.undoBar;
+    if (!bar) return;
+    if (this._undoTimer) { clearTimeout(this._undoTimer); this._undoTimer = null; }
+    this.setData({ undoBar: null });
+    const ids = (bar.sessionIds || []).slice();
+    const wks = (bar.weeks || []).slice();
+    if (!ids.length || !wks.length) return;
+    api.shiftRemove({ sessionIds: ids, weeks: wks }, { toast: false })
+      .then(() => {
+        tt.removeSessShifts(ids, wks);
+        this.load();
+        this._loadShiftItems();
+        util.toast('已撤回');
+      })
+      .catch(err => util.toast((err && err.errMsg) || '撤回失败'));
+  },
+
+  /** ① 本周调整：只改第 this.data.week 周（可选「调到别的周」） */
   onShiftApplyWeek() {
     const s = this._targetSession();
     if (!s) { util.toast('请先选择课次'); return; }
@@ -1097,10 +1164,22 @@ Page({
     const move = this.data.shiftKind === 'MOVE';
     const toDay = move ? this.data.shiftToDay : null;
     const toPeriod = move ? this.data.shiftToPeriod : null;
+    // 目标周次：0 = 本周（同周改格子）；n = 第 n 周（把这次课补到那一周）
+    const pick = Number(this.data.shiftToWeekIndex) || 0;
+    const toWeek = (move && pick > 0) ? pick : null;
+    let tip;
+    if (!move) tip = '已设为本周不上';
+    else if (toWeek && toWeek !== wk) {
+      tip = '已调到第 ' + toWeek + ' 周 周' + util.weekdayShort(toDay) + '第 ' + toPeriod + ' 节';
+    } else tip = '已改到 周' + util.weekdayShort(toDay) + '第 ' + toPeriod + ' 节';
     this._applyShift(
-      { week: wk, sessionIds: [s.sessionId], kind: move ? 'MOVE' : 'OFF', toDay, toPeriod, note: '手动调课' },
-      [{ sessionId: s.sessionId, week: wk, kind: move ? 'MOVE' : 'OFF', toDay, toPeriod, note: '手动调课' }],
-      move ? ('已改到 周' + util.weekdayShort(toDay) + '第 ' + toPeriod + ' 节') : '已设为本周不上'
+      { week: wk, sessionIds: [s.sessionId], kind: move ? 'MOVE' : 'OFF', toDay, toPeriod, toWeek, note: '手动调课' },
+      [{
+        sessionId: s.sessionId, week: wk, kind: move ? 'MOVE' : 'OFF',
+        toDay, toPeriod, toWeek, note: '手动调课'
+      }],
+      tip,
+      { sessionIds: [s.sessionId], weeks: [wk] }
     );
   },
 
@@ -1139,7 +1218,8 @@ Page({
         sessionId: s.sessionId, week: wk, kind: move ? 'MOVE' : 'OFF',
         toDay, toPeriod, note: '多周次调课'
       })),
-      '已应用到 ' + weeks.length + ' 周'
+      '已应用到 ' + weeks.length + ' 周',
+      { sessionIds: [s.sessionId], weeks: weeks.slice() }
     );
   },
 
@@ -1171,7 +1251,8 @@ Page({
     this._applyShift(
       { dates, kind: 'OFF', note: '按日期取消' },
       local,
-      '已取消 ' + days.length + ' 天的课'
+      '已取消 ' + days.length + ' 天的课',
+      { sessionIds: local.map(x => x.sessionId), weeks: [wk] }
     );
   },
 
@@ -1289,10 +1370,24 @@ Page({
     const wk = this.data.week;
     const items = tt.sessShiftsOfWeek(wk).map((x) => {
       const fromText = '周' + util.weekdayShort(x.fromDay) + ' 第' + x.fromPeriod + ' 节';
+      let effText;
+      if (x.side === 'out') {
+        // 从本周调走：源周（本周）不上，补到别的周
+        effText = fromText + ' → 调到第 ' + x.toWeek + ' 周 周'
+          + util.weekdayShort(x.toDay) + ' 第' + x.toPeriod + ' 节';
+      } else if (x.side === 'in') {
+        // 从别的周补到本周
+        effText = '第 ' + x.fromWeek + ' 周 ' + fromText + ' → 本周 周'
+          + util.weekdayShort(x.toDay) + ' 第' + x.toPeriod + ' 节';
+      } else if (x.kind === 'OFF') {
+        effText = fromText + ' → 本周不上';
+      } else {
+        effText = fromText + ' → 周' + util.weekdayShort(x.toDay) + ' 第' + x.toPeriod + ' 节';
+      }
       return Object.assign({}, x, {
-        effText: x.kind === 'OFF'
-          ? (fromText + ' → 本周不上')
-          : (fromText + ' → 周' + util.weekdayShort(x.toDay) + ' 第' + x.toPeriod + ' 节')
+        // 跨周调课在「调出周 / 调入周」各出现一条，同一 sessionId 会撞 key
+        key: x.sessionId + '#' + x.fromWeek + '#' + (x.toWeek || 0),
+        effText: effText
       });
     });
     this.setData({ shiftItems: items });
@@ -1300,7 +1395,8 @@ Page({
 
   onShiftUndo(e) {
     const id = Number(e.currentTarget.dataset.id);
-    const wk = this.data.week;
+    // 跨周记录要按「记录所在的那一周」删（从别周调入时看的是目标周，但记录挂在源周）
+    const wk = Number(e.currentTarget.dataset.week) || this.data.week;
     util.confirm('撤销后这节课恢复原来的时间', '撤销临时调课').then((ok) => {
       if (!ok) return;
       api.shiftRemove({ week: wk, sessionIds: [id] }, { toast: false })
@@ -1314,19 +1410,31 @@ Page({
     });
   },
 
+  /**
+   * 撤销本周全部：逐条按各自的源周删。
+   * 不能再用「weeks=[当前周] 一次删完」—— 跨周调入的记录挂在**别的周**，
+   * 一次按周删会漏掉它们（用户会看到「撤销了但课还在」）。
+   */
   onShiftClearWeek() {
-    const wk = this.data.week;
-    if (!this.data.shiftItems.length) { util.toast('本周没有临时调课'); return; }
+    const items = this.data.shiftItems || [];
+    if (!items.length) { util.toast('本周没有临时调课'); return; }
     util.confirm('本周全部临时调课都会被撤销，课表恢复原样', '撤销本周全部调课').then((ok) => {
       if (!ok) return;
-      api.shiftRemove({ weeks: [wk] }, { toast: false })
-        .then(() => {
-          tt.removeSessShifts([], [wk]);
-          this.load();
-          this._loadShiftItems();
-          util.toast('已撤销本周全部临时调课');
-        })
-        .catch(err => util.toast((err && err.errMsg) || '撤销失败'));
+      const jobs = items.map(x => ({
+        id: Number(x.sessionId),
+        wk: Number(x.undoWeek || x.week || this.data.week)
+      }));
+      let seq = Promise.resolve();
+      jobs.forEach((j) => {
+        seq = seq.then(() => api.shiftRemove({ week: j.wk, sessionIds: [j.id] }, { toast: false }))
+          .then(() => { tt.removeSessShifts([j.id], [j.wk]); })
+          .catch(() => { /* 单条失败不阻断其余，最后统一刷新 */ });
+      });
+      seq.then(() => {
+        this.load();
+        this._loadShiftItems();
+        util.toast('已撤销本周全部临时调课');
+      });
     });
   },
 
@@ -1369,9 +1477,12 @@ Page({
   onHide() {
     // 切走 Tab：清掉当前节次高亮定时器，避免后台空转 / 对已销毁实例 setData
     if (this._curTimer) { clearTimeout(this._curTimer); this._curTimer = null; }
+    // 撤回浮条的 8 秒计时器：切走就没必要再留（再回来也不该冒出一个旧浮条）
+    if (this._undoTimer) { clearTimeout(this._undoTimer); this._undoTimer = null; }
   },
   onUnload() {
     if (this._curTimer) { clearTimeout(this._curTimer); this._curTimer = null; }
+    if (this._undoTimer) { clearTimeout(this._undoTimer); this._undoTimer = null; }
     theme.unmount(this);   // 深色模式（C-4）：摘掉主题订阅
     swipe.cancel(this);
     // A 组/B 组 FLIP 的打断令牌作废：链上还没醒的 setTimeout 自己退出，不再对已销毁实例 setData

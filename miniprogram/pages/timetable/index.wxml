@@ -420,6 +420,14 @@
           />
         </view>
 
+        <view wx:if="{{shiftKind === 'MOVE' && shiftTab === 'week'}}" class="f-block">
+          <text class="f-label">调到哪一周</text>
+          <picker mode="selector" range="{{shiftToWeekLabels}}" value="{{shiftToWeekIndex}}" bindchange="onShiftToWeek">
+            <view class="ts-pick">{{shiftToWeekLabels[shiftToWeekIndex] || '本周'}}</view>
+          </picker>
+          <text class="f-tip">留「本周」＝同一周里换个格子；选别的周＝这一周不上、这次课补到那一周的这一天</text>
+        </view>
+
         <view wx:if="{{shiftKind === 'MOVE'}}" class="f-block">
           <text class="f-label">改到</text>
           <view class="f-chips">
@@ -581,17 +589,17 @@
         <view class="f-block">
           <text class="f-label">第 {{week}} 周的临时调课（{{shiftItems.length}}）</text>
           <view wx:if="{{!shiftItems.length}}" class="cal-empty">本周没有临时调课</view>
-          <view wx:for="{{shiftItems}}" wx:key="sessionId" class="ts-item">
+          <view wx:for="{{shiftItems}}" wx:key="key" class="ts-item">
             <view class="ts-item-main">
               <text class="ts-item-name">{{item.name}}</text>
               <text class="ts-item-eff">{{item.effText}}</text>
             </view>
-            <text class="ts-del" data-id="{{item.sessionId}}" catchtap="onShiftUndo">撤销</text>
+            <text class="ts-del" data-id="{{item.sessionId}}" data-week="{{item.undoWeek}}" catchtap="onShiftUndo">撤销</text>
           </view>
           <view wx:if="{{shiftItems.length}}" class="ts-row">
             <view class="ts-btn ghost danger" bindtap="onShiftClearWeek">撤销本周全部临时调课</view>
           </view>
-          <text class="f-tip">调课会改变上课日期与值日日期；本周若已发布，调课后退回草稿，需要重新发布。</text>
+          <text class="f-tip">调课会改变上课日期与值日日期；本周若已发布，调课后退回草稿，需要重新发布。跨周调课在「调出周」与「调入周」两边各显示一条，点任一条的撤销都会整笔撤销。</text>
         </view>
 
         <view class="f-block">
@@ -666,4 +674,11 @@
 
     </view>
   </bottom-sheet>
+
+  <!-- 调课刚保存后的撤回浮条（8 秒窗口）：误调是最高频事故，给一次一键反悔 -->
+  <view wx:if="{{undoBar}}" class="tt-undo-bar">
+    <text class="tt-undo-txt">{{undoBar.text}}</text>
+    <text class="tt-undo-act" bindtap="onShiftUndoBar">撤回</text>
+    <text class="tt-undo-x" bindtap="onShiftUndoBarClose">✕</text>
+  </view>
 </view>

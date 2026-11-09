@@ -182,8 +182,14 @@ function pickBySeq(roster, scope, n, state, opt) {
     const used = state.used[g];
     const okOf = (m) => !used.has(m.seq) && usable(m);
     const cur = Number(state.cursors[g]) || 0;
-    // ① 补漏：序号在游标之前、但本轮还没排过的人
-    const missed = pool.filter(m => m.seq <= cur && okOf(m));
+    /* ① 补漏：序号在游标之前、但本轮还没排过的人。
+     * 🔴 2026-11-09（用户实锤 38 号周四手动、周五又被自动排上）：
+     *    「本周已经值过日的人」（soft = assignedWeek）**不算「漏排」**，不能沿着补漏
+     *    通道被补回来。回绕时 used 会被整体 clear，soft 里的人也一并「解封」——
+     *    若补漏不过滤 soft，游标一旦越过他（因为他本周已排过、理当跳过），
+     *    下一个课次就会把他当「被漏掉的人」补上 ⇒ 同一周内出现两次。
+     *    他真正的补排时机是**下一轮**（used 回绕后按序号自然轮到他），不是本周。 */
+    const missed = pool.filter(m => m.seq <= cur && okOf(m) && !(soft && soft.has(m.seq)));
     if (missed.length) return best(missed);
     // ② 正常推进
     const ahead = pool.filter(m => m.seq > cur && okOf(m));

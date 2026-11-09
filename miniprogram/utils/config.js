@@ -169,8 +169,22 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      八大指标 + 分时折线对照；对比控件与时间范围/班级同排，不独占整行。
  *   纯后台改动（cloudfunctions/admin-web），部署用 `tcb fn code update admin-web --dir ./cloudfunctions/admin-web`；
  *   小程序云函数与前端无需重部署（APP_VERSION 同步 bump 仅用于发版归档）。
+ * **`1.0.8.26`** = 跨周调课 + 调课撤回（2026-11-09，用户三连需求）：
+ *   ① **跨周调课**：临时调课「改到别的格子」新增「调到哪一周」。语义 = 源周这节课不上、
+ *      补到目标周的某天某节（补课是「多一次」，目标周该课次自己的常规课不受影响）。
+ *      DB：`session_shift` 加 `to_week`（NULL = 同周调课，旧行为完全兼容）。
+ *      `week.resolveSlot` 源周判空、新增 `week.incomingOf(shifts, wk)` 给渲染方追加补课；
+ *      course.allSessions 随课表下发全量调课（换设备 / 重装也能看到并能撤回）；
+ *      weekOccupants 撞车预检含补课；duty.home 今日/明日课次含补课。
+ *      补课当天**不自动生成值日**（避免在已排/已发布的表上凭空造行），保存时会提醒手动添加。
+ *   ② **调课撤回加强**：保存成功后有 8 秒「撤回」浮条（误调是最高频事故）；
+ *      结果列表的撤销与「本周全部撤销」按各记录的真实源周逐条删（跨周记录挂在别周，
+ *      按当前周一次删会漏）；跨周在源周 / 目标周两边各显示一条，点哪条都是整笔撤销。
+ *   ③ 门禁 `check-shift-crossweek.js`（24 项，含 3 组变异自证）；同步修 `check-shift-move` A8
+ *      与 `check-today-course` 的判据锚点。
+ *   云函数需重部署：course / duty / export / adjust / schedule / cron-weekly（含 common/week.js）。
  */
-const APP_VERSION = '1.0.8.25';
+const APP_VERSION = '1.0.8.26';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

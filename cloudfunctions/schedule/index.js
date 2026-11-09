@@ -1656,8 +1656,22 @@ const routes = {
             chosen.forEach(m => { m.mark += 1; });
           }
           if (slotRec) {
+            /* ── 槽位取人（2026-11-09 修两处「重复的人」）────────────────────────
+             * ① 缓存只在**全天槽**（period === null）复用：那种槽的语义是「这一批人
+             *    承包当天」，当天各节本来就该是同一批人。
+             *    **精确槽（period = n）绝不能跨课次复用** —— 同一节可以同时有 A 组和
+             *    B 组两门课（本班周五第1节：A 组「小学综合实践活动设计」+ B 组「三笔字」），
+             *    两门课命中同一个槽（duty_slot 没有分组维度），复用缓存 = 同一人在
+             *    同一节的两门课里各值一次。用户 2026-11-09 实锤：33 号（A 组）在第1节
+             *    两门课里各出现一次，且原本该排在 B 组课的 35 号被挤掉。
+             * ② 取人数的口径：全天槽取满 needN（缓存给当天各节复用）；精确槽只取
+             *    **本课次还缺的人数**（n − 已占）。旧版一律传 needN —— 手动已占 1 个
+             *    名额的课次仍取 2 人，多出那个被下面的 slice 丢掉，但游标与 used 已经
+             *    推进（幽灵消耗），序号被推过本该轮到的人 ⇒ 后续课次只剩「补漏」可选，
+             *    把本周已值过日的人补回来（用户实锤：38 号周四手动、周五又被自动排上）。 */
+            const reuseAllDay = slotRec.period === null;
             const ck = classDate + '|' + slotRec.id;
-            let people = slotCache.get(ck);
+            let people = reuseAllDay ? slotCache.get(ck) : null;
             if (!people) {
               if (slotRec.fixedSeq) {
                 /* 固定人槽：不参与轮转，也不推进游标 —— 「这个岗位本来就是他的」 */
@@ -1673,28 +1687,33 @@ const routes = {
                   });
                 }
               } else {
-                const p = pickBySeq(roster, s.group_scope, slotRec.needN, state, {
-                  avoidSeqs: toSeqSet(exclude, seqById),
-                  busySeqs: toSeqSet(blocks.busy, seqById),
-                  inBatchSeqs: toSeqSet(inBatch, seqById),
-                  avoidSameDay: !!rules.avoidSameDay,
-                  softSeqs: toSeqSet(assignedWeek, seqById)
-                });
-                if (p.wrapped) roundReset = true;
-                people = p.chosen;
-                if (p.short > 0) {
-                  warnings.push({
-                    type: 'SHORTAGE',
-                    sessionId: s.id,
-                    dayOfWeek: slot.day,
-                    period: slot.period,
-                    need: slotRec.needN,
-                    left: roster.length,
-                    message: '周' + (DAY_TEXT[slot.day - 1] || '?') + ' 岗位槽候选不足（还需 ' + p.short + ' 人）'
+                const wantN = reuseAllDay ? slotRec.needN : Math.max(0, n - chosen.length);
+                if (wantN > 0) {
+                  const p = pickBySeq(roster, s.group_scope, wantN, state, {
+                    avoidSeqs: toSeqSet(exclude, seqById),
+                    busySeqs: toSeqSet(blocks.busy, seqById),
+                    inBatchSeqs: toSeqSet(inBatch, seqById),
+                    avoidSameDay: !!rules.avoidSameDay,
+                    softSeqs: toSeqSet(assignedWeek, seqById)
                   });
+                  if (p.wrapped) roundReset = true;
+                  people = p.chosen;
+                  if (p.short > 0) {
+                    warnings.push({
+                      type: 'SHORTAGE',
+                      sessionId: s.id,
+                      dayOfWeek: slot.day,
+                      period: slot.period,
+                      need: wantN,
+                      left: roster.length,
+                      message: '周' + (DAY_TEXT[slot.day - 1] || '?') + ' 岗位槽候选不足（还需 ' + p.short + ' 人）'
+                    });
+                  }
+                } else {
+                  people = [];   // 本课次已排满（手动/沿用上周占满）→ 不取人
                 }
               }
-              slotCache.set(ck, people);
+              if (reuseAllDay) slotCache.set(ck, people);
             }
             /* 只补「本课次还缺的名额」：手动排过的人已在 chosen 里，不重复追加。
              * 🔴 名额要减掉 chosen.length（「沿用上周」已占的坑），

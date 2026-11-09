@@ -297,6 +297,9 @@ function resolveSlot(sessionId, dayOfWeek, period, week, map) {
   const ov = m[shiftKey(sessionId, week)];
   if (ov) {
     if (ov.kind === 'OFF') return null;
+    // 跨周调出（2026-11-09）：这节课被补到别的周去了，本周期不上。
+    //   只影响源周 —— 目标周查的是另一个 key，该课次在目标周原有的常规课照常。
+    if (ov.toWeek && Number(ov.toWeek) !== Number(week)) return null;
     return {
       day: Number(ov.toDay) || Number(dayOfWeek),
       period: Number(ov.toPeriod) || Number(period),
@@ -319,12 +322,36 @@ function upsertSessShifts(items) {
       kind: it.kind === 'MOVE' ? 'MOVE' : 'OFF',
       toDay: it.kind === 'MOVE' ? Number(it.toDay) || null : null,
       toPeriod: it.kind === 'MOVE' ? Number(it.toPeriod) || null : null,
+      // 跨周调课的目标周（2026-11-09）；空 = 同周
+      toWeek: it.kind === 'MOVE' ? (Number(it.toWeek) || null) : null,
       note: String(it.note || '')
     };
     if (i >= 0) list[i] = item; else list.push(item);
   });
   _write(KEY_SESS_SHIFTS, list);
   return list;
+}
+
+/**
+ * 全量替换临时调课（服务端 allSessions 随课表一起下发）。
+ * 之前端上只在**本机操作成功后**写本地缓存 ⇒ 换设备 / 重装 / 别的同学登录
+ * 都看不到调课，课表与「调课结果」列表会和真实库不一致。云端为准，这里整体覆盖。
+ */
+function replaceSessShifts(list) {
+  const arr = (list || []).map((it) => {
+    const kind = it && it.kind === 'MOVE' ? 'MOVE' : 'OFF';
+    return {
+      sessionId: Number(it && it.sessionId),
+      week: Number(it && it.week),
+      kind: kind,
+      toDay: kind === 'MOVE' ? (Number(it.toDay) || null) : null,
+      toPeriod: kind === 'MOVE' ? (Number(it.toPeriod) || null) : null,
+      toWeek: kind === 'MOVE' ? (Number(it.toWeek) || null) : null,
+      note: String((it && it.note) || '')
+    };
+  }).filter(x => x.sessionId && x.week);
+  _write(KEY_SESS_SHIFTS, arr);
+  return arr;
 }
 
 /** 删除若干条临时调课；weeks 为空数组表示不限周次 */
@@ -342,12 +369,16 @@ function removeSessShifts(sessionIds, weeks) {
 
 /** 本周的临时调课清单（供「调课结果」列表展示，已带上课程名） */
 function sessShiftsOfWeek(wk) {
+  const n = Number(wk);
   const byId = {};
   sessions().forEach(s => { byId[Number(s.id)] = s; });
   return sessShifts()
-    .filter(x => Number(x.week) === Number(wk))
+    .filter(x => Number(x.week) === n || (x.toWeek && Number(x.toWeek) === n))
     .map((x) => {
       const s = byId[Number(x.sessionId)] || {};
+      const fromWeek = Number(x.week);
+      const toWeek = x.toWeek ? Number(x.toWeek) : null;
+      const cross = !!(toWeek && toWeek !== fromWeek);
       return {
         sessionId: Number(x.sessionId),
         name: s.name || ('课次 #' + x.sessionId),
@@ -357,8 +388,15 @@ function sessShiftsOfWeek(wk) {
         kind: x.kind,
         toDay: x.toDay,
         toPeriod: x.toPeriod,
+        toWeek: toWeek,
+        fromWeek: fromWeek,
+        cross: cross,
+        // 'out' = 从本周调走；'in' = 从别的周调到本周；'self' = 同周内改格子 / 本周不上
+        side: cross ? (toWeek === n ? 'in' : 'out') : 'self',
+        // 撤回时服务端要按「记录所在的那一周」删，所以两侧都指向源周
+        undoWeek: fromWeek,
         note: x.note || '',
-        week: Number(x.week)
+        week: fromWeek
       };
     })
     .sort((a, b) => (a.fromDay - b.fromDay) || (a.fromPeriod - b.fromPeriod));
@@ -551,6 +589,47 @@ function sessionsOfWeek(wk) {
     });
   });
 
+  /* ⑤ 跨周调入（2026-11-09）：某节课被补到本周 —— 这是「多出来的一次」，
+   *   该课次在本周的常规课仍由上面 ①② 段正常产生（补课 ≠ 搬家）。
+   *   源周那条记录由 resolveSlot 判成「不上」，两侧合起来才是一笔完整调课。 */
+  sessShifts().forEach((x) => {
+    if (x.kind !== 'MOVE') return;
+    const toWk = Number(x.toWeek) || 0;
+    if (toWk !== Number(wk)) return;
+    if (Number(x.week) === toWk) return;         // 同周调课由 resolveSlot 处理
+    const s = sessions().find(y => Number(y.id) === Number(x.sessionId));
+    if (!s) return;
+    if (CLEAN_NAME_RE.test(s.name || '')) return;
+    const day = Number(x.toDay) || Number(s.day);
+    const period = Number(x.toPeriod) || Number(s.period);
+    const date = dateOfWeekDay(_termStart, wk, day) || '';
+    out.push({
+      sessionId: s.id,
+      courseId: s.cid,
+      name: s.name,
+      teacher: s.teacher,
+      room: fmtRoom(s.room),
+      weekRule: 'ALL',
+      weeks: s.weeks || '',
+      groupScope: s.group || null,
+      dutyCount: (s.dutyCount === 0 || s.dutyCount) ? Number(s.dutyCount) : 2,
+      dayOfWeek: day,
+      period: period,
+      note: s.note || '',
+      classDate: date,
+      originalDate: date,
+      shifted: true,
+      shiftKind: 'WEEK_IN',
+      isHoliday: false,
+      holidayName: '',
+      movedOut: false,
+      movedIn: true,
+      shiftToText: '',
+      shiftFromText: '第 ' + Number(x.week) + ' 周调入',
+      duties: []
+    });
+  });
+
   return out;
 }
 
@@ -588,6 +667,7 @@ module.exports = {
   shiftKey,
   sessShifts,
   saveSessShifts,
+  replaceSessShifts,
   sessShiftMap,
   resolveSlot,
   upsertSessShifts,

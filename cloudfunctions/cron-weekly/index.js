@@ -183,8 +183,15 @@ async function generateWeek(pool, wk, classId) {
       // 旧版这里的 rotationPick 已被删除（v0.7.31 轮转位置彻底改成显式游标）。
       let chosenM;
       if (slotRec) {
+        /* ── 槽位取人（与 schedule.generate 逐字同口径；2026-11-09 修两处「重复的人」）
+         * ① 缓存只在**全天槽**（period === null）复用；精确槽每个课次各取各的人 ——
+         *    同一节可能同时有 A/B 两组两门课，复用缓存 = 同一人在同一节值两门课。
+         * ② 精确槽只取「本课次还缺的人数」，不能传 needN —— 手动已占名额时多取的人
+         *    会被丢弃，但游标/used 已推进（幽灵消耗），后续课次会把本周已值过日的人
+         *    当「漏排」补回来。详见 schedule/index.js 同位置注释。 */
+        const reuseAllDay = slotRec.period === null;
         const ck = classDate + '|' + slotRec.id;
-        let people = slotCache.get(ck);
+        let people = reuseAllDay ? slotCache.get(ck) : null;
         if (!people) {
           if (slotRec.fixedSeq) {
             const fm = roster.find(r => Number(r.seq) === Number(slotRec.fixedSeq));
@@ -194,20 +201,25 @@ async function generateWeek(pool, wk, classId) {
                 + ' 的固定值日生（序号 ' + slotRec.fixedSeq + '）不在名册，本周跳过');
             }
           } else {
-            const p = pickBySeq(roster, s.group_scope, slotRec.needN, state, {
-              avoidSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
-              busySeqs: toSeqSet(blocks.busy, seqById),
-              inBatchSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
-              avoidSameDay: !!avoidSameDay,
-              softSeqs: toSeqSet(assignedWeek, seqById)
-            });
-            if (p.wrapped) roundReset = true;
-            if (p.short > 0) {
-              warnings.push('周' + (DAY_TEXT[slot.day - 1] || '?') + ' 岗位槽候选不足（还需 ' + p.short + ' 人）');
+            const wantN = reuseAllDay ? slotRec.needN : Math.max(0, n);
+            if (wantN > 0) {
+              const p = pickBySeq(roster, s.group_scope, wantN, state, {
+                avoidSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
+                busySeqs: toSeqSet(blocks.busy, seqById),
+                inBatchSeqs: toSeqSet(assignedByDate[classDate] || new Set(), seqById),
+                avoidSameDay: !!avoidSameDay,
+                softSeqs: toSeqSet(assignedWeek, seqById)
+              });
+              if (p.wrapped) roundReset = true;
+              if (p.short > 0) {
+                warnings.push('周' + (DAY_TEXT[slot.day - 1] || '?') + ' 岗位槽候选不足（还需 ' + p.short + ' 人）');
+              }
+              people = p.chosen;
+            } else {
+              people = [];
             }
-            people = p.chosen;
           }
-          slotCache.set(ck, people);
+          if (reuseAllDay) slotCache.set(ck, people);
         }
         /* 只补本课次名额：手动排过的人已在 manualFilled 里，不能重复追加 */
         chosenM = people.filter(m => !(manualFilled[Number(s.id)] || new Set()).has(m.id)).slice(0, n);

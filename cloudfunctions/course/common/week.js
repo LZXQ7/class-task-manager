@@ -341,20 +341,34 @@ const shiftKey = (sessionId, week) => Number(sessionId) + '#' + Number(week);
  */
 async function loadSessionShifts(pool, classId) {
   const map = {};
-  try {
-    let sql = 'SELECT session_id, week, kind, to_day, to_period, note FROM session_shift';
+  const put = (r) => {
+    map[shiftKey(r.session_id, r.week)] = {
+      sessionId: Number(r.session_id),
+      fromWeek: Number(r.week),
+      kind: r.kind,
+      toDay: r.to_day === null ? null : Number(r.to_day),
+      toPeriod: r.to_period === null ? null : Number(r.to_period),
+      // to_week（2026-11-09 跨周调课）：目标周次；NULL = 同周调课（旧行为）。
+      toWeek: (r.to_week === null || r.to_week === undefined) ? null : Number(r.to_week),
+      note: r.note || ''
+    };
+  };
+  const readRows = async (cols) => {
+    let sql = 'SELECT ' + cols + ' FROM session_shift';
     const args = [];
     if (classId) { sql += ' WHERE class_id = ?'; args.push(classId); }
     const [rows] = await pool.query(sql, args);
-    rows.forEach((r) => {
-      map[shiftKey(r.session_id, r.week)] = {
-        kind: r.kind,
-        toDay: r.to_day === null ? null : Number(r.to_day),
-        toPeriod: r.to_period === null ? null : Number(r.to_period),
-        note: r.note || ''
-      };
-    });
-  } catch (e) { /* session_shift 表未建：当作没有临时调课 */ }
+    return rows;
+  };
+  const COLS_NEW = 'session_id, week, kind, to_day, to_period, to_week, note';
+  const COLS_OLD = 'session_id, week, kind, to_day, to_period, note';
+  try {
+    (await readRows(COLS_NEW)).forEach(put);
+  } catch (e) {
+    // 老库还没执行 migrate-shift-toweek（无 to_week 列）→ 退回不带该列的查询，
+    // 全部按「同周调课」解释（toWeek=null），行为与升级前完全一致。
+    try { (await readRows(COLS_OLD)).forEach(put); } catch (e2) { /* 表未建：当作没有临时调课 */ }
+  }
   return map;
 }
 
@@ -366,6 +380,10 @@ function resolveSlot(sessionId, dayOfWeek, period, week, shifts) {
   const ov = shifts && shifts[shiftKey(sessionId, week)];
   if (ov) {
     if (ov.kind === 'OFF') return null;
+    // 跨周调出（2026-11-09）：这节课被排到 toWeek 那一周去了 ⇒ 本周期不上。
+    //   注意只影响**源周**：目标周查的是 shiftKey(sid, toWeek)，与这条记录的 key 不同，
+    //   所以该课次在目标周原有的常规课上不受影响（补课是「多一次」，不是「换过去」）。
+    if (ov.toWeek && Number(ov.toWeek) !== Number(week)) return null;
     return {
       day: ov.toDay || Number(dayOfWeek),
       period: ov.toPeriod || Number(period),
@@ -375,11 +393,34 @@ function resolveSlot(sessionId, dayOfWeek, period, week, shifts) {
   return { day: Number(dayOfWeek), period: Number(period), shifted: false };
 }
 
+/**
+ * 某一周「从别的周补过来」的课次（跨周调课的调入侧）。
+ * 与 resolveSlot 分工：resolveSlot 管「这节课本周在不在 / 挪到哪个格子」，
+ * 本函数管「本周凭空多出来的一次课」—— 它不属于该课次本周的常规落位，
+ * 必须由渲染方（课表、今日课程、撞车预检）显式追加，否则用户看不到补课。
+ * @returns {Array<{sessionId,fromWeek,toWeek,toDay,toPeriod,note,kind}>}
+ */
+function incomingOf(shifts, week) {
+  const wk = Number(week);
+  const out = [];
+  if (!shifts || !wk) return out;
+  Object.keys(shifts).forEach((k) => {
+    const ov = shifts[k];
+    if (!ov || ov.kind !== 'MOVE') return;
+    if (!ov.toWeek || Number(ov.toWeek) !== wk) return;
+    if (Number(ov.fromWeek) === wk) return;   // 同周调课由 resolveSlot 负责
+    out.push(ov);
+  });
+  return out.sort((a, b) => (Number(a.toDay) - Number(b.toDay))
+    || (Number(a.toPeriod) - Number(b.toPeriod))
+    || (Number(a.sessionId) - Number(b.sessionId)));
+}
+
 module.exports = {
   fmtDate, stampOf, nowStamp, addMinutes, todayStr, nowHHmm,
   getWeek, getDateOfWeekDay, weekStart, weekdayOf,
   matchesWeekRule, matchesWeeks, parseWeeks, isWeeksBlank, currentWeek, getConfig, periodMap, periodCount, effectiveStatus,
   dateStr, loadCalendar, classDateOf,
   seqOf,
-  shiftKey, loadSessionShifts, resolveSlot
+  shiftKey, loadSessionShifts, resolveSlot, incomingOf
 };

@@ -119,6 +119,18 @@ async function weekOccupants(pool, wk, shifts, classId) {
     if (!slot) return;
     out.push({ sessionId: r.id, name: r.name, day: slot.day, period: slot.period });
   });
+  // 跨周调入（2026-11-09）：本周凭空多出的一次补课，也要参与撞车判定，
+  // 否则「调到第 11 周周三第 4 节」会与那格已有的课撞上却静默通过。
+  week.incomingOf(shifts, wk).forEach((ov) => {
+    const r = rows.find(x => Number(x.id) === Number(ov.sessionId));
+    if (!r) return;
+    out.push({
+      sessionId: r.id,
+      name: r.name,
+      day: Number(ov.toDay) || Number(r.day_of_week),
+      period: Number(ov.toPeriod) || Number(r.period)
+    });
+  });
   return out;
 }
 
@@ -163,7 +175,10 @@ async function rollbackDutyMarkers(conn, ids) {
  *          如果撞上该成员当天已有的另一条值日（违反「同一天不重复」硬规则），
  *          就把跟着挪过来的那条删掉并计入 removed，交回超管用「手动排班」补人。
  */
-async function syncDutyForShift(conn, cfg, sessionId, wk, kind, toDay, stats) {
+async function syncDutyForShift(conn, cfg, sessionId, wk, kind, toDay, stats, toWk) {
+  // 跨周调课（2026-11-09）：值日要跟着落到**目标周**那一格，
+  // 所以计算日期用 effWk、UPDATE 时连 week 一起改；同周调课时 toWk 为空，行为与旧版一致。
+  const effWk = Number(toWk) || Number(wk);
   const [rows] = await conn.query(
     `SELECT id, member_id FROM duty WHERE session_id = ? AND week = ? AND status IN ('PENDING','ONGOING')`,
     [sessionId, wk]
@@ -189,13 +204,13 @@ async function syncDutyForShift(conn, cfg, sessionId, wk, kind, toDay, stats) {
     return;
   }
 
-  const date = week.getDateOfWeekDay(cfg.termStart, wk, toDay);
+  const date = week.getDateOfWeekDay(cfg.termStart, effWk, toDay);
   // 目标日期上已经存在的、属于这批人的其它值日 → 跟着挪过来就会同日重复
   const [dup] = await conn.query(
     `SELECT id FROM duty
       WHERE week = ? AND class_date = ? AND status <> 'SWAPPED_OUT'
         AND member_id IN (${phMem}) AND id NOT IN (${phIds})`,
-    [wk, date].concat(memIds).concat(ids)
+    [effWk, date].concat(memIds).concat(ids)
   );
   const dupIds = dup.map(r => Number(r.id));
   if (dupIds.length) {
@@ -214,7 +229,8 @@ async function syncDutyForShift(conn, cfg, sessionId, wk, kind, toDay, stats) {
   const keepIds = ids.filter(id => dupIds.indexOf(id) < 0);
   if (keepIds.length) {
     const phKeep = keepIds.map(() => '?').join(',');
-    await conn.query(`UPDATE duty SET class_date = ? WHERE id IN (${phKeep})`, [date].concat(keepIds));
+    await conn.query(`UPDATE duty SET class_date = ?, week = ? WHERE id IN (${phKeep})`,
+      [date, effWk].concat(keepIds));
     stats.moved += keepIds.length;
   }
 }
@@ -587,6 +603,7 @@ const routes = {
     handler: async (payload, ctx) => {
       const pool = getPool();
       const classId = await guard.resolveClassId(pool, ctx, payload);
+      const shiftMap = await week.loadSessionShifts(pool, classId);
       const [rows] = await pool.query(
         `SELECT s.id, s.course_id, c.name, c.teacher, c.room,
                 s.day_of_week, s.period, s.group_scope, s.weeks, s.week_rule, s.note,
@@ -615,7 +632,22 @@ const routes = {
           // （示例班级A每天 5 大课 + 1 保洁 ⇒ 显示「今天 6 节」，学生一看就知道错了）。
           kind: r.kind === 'CLEAN' ? 'CLEAN' : 'COURSE',
           note: r.note || ''
-        }))
+        })),
+        /* 临时调课随课表一起下发（2026-11-09）：
+         * 端上原先只在**本机操作后**写本地缓存，换设备 / 重装 / 别的同学登录都看不到调课，
+         * 于是「调课结果」列表常为空、用户以为没调过也没法撤。这里全量回传给端上覆盖。 */
+        sessShifts: Object.keys(shiftMap).map((k) => {
+          const ov = shiftMap[k];
+          return {
+            sessionId: Number(ov.sessionId),
+            week: Number(ov.fromWeek),
+            kind: ov.kind,
+            toDay: ov.toDay,
+            toPeriod: ov.toPeriod,
+            toWeek: ov.toWeek || null,
+            note: ov.note || ''
+          };
+        })
       };
     }
   },
@@ -642,9 +674,12 @@ const routes = {
       rows.forEach((r) => {
         const ov = shifts[week.shiftKey(r.id, wk)];
         if (!ov || !week.matchesWeeks(r.weeks, wk, r.week_rule)) return;
-        // 展示用的实际日期：OFF → 空；MOVE → 调课后的那一天
+        // 跨周调出（2026-11-09）：本节课本周没有，落位日期按「不上」处理
+        const crossOut = !!(ov.toWeek && Number(ov.toWeek) !== Number(wk));
+        // 展示用的实际日期：OFF / 跨周调出 → 空；MOVE → 调课后的那一天
         const day = ov.kind === 'OFF' ? null : (ov.toDay || Number(r.day_of_week));
-        const date = day === null ? '' : week.classDateOf(cfg, wk, day, cal);
+        const date = (day === null || crossOut) ? ''
+          : week.classDateOf(cfg, wk, day, cal);
         items.push({
           sessionId: Number(r.id),
           name: r.name,
@@ -656,8 +691,36 @@ const routes = {
           kind: ov.kind,
           toDay: ov.toDay,
           toPeriod: ov.toPeriod,
+          toWeek: crossOut ? Number(ov.toWeek) : null,
+          fromWeek: null,
+          crossOut: crossOut,
+          crossIn: false,
           note: ov.note || '',
           date: date || ''
+        });
+      });
+      // 本周从别的周补过来的课次（跨周调课的调入侧）
+      week.incomingOf(shifts, wk).forEach((ov) => {
+        const r = rows.find(x => Number(x.id) === Number(ov.sessionId));
+        if (!r) return;
+        const day = Number(ov.toDay) || Number(r.day_of_week);
+        items.push({
+          sessionId: Number(r.id),
+          name: r.name,
+          room: r.room || '',
+          teacher: r.teacher || '',
+          dayOfWeek: Number(r.day_of_week),
+          period: Number(r.period),
+          groupScope: r.group_scope || null,
+          kind: 'MOVE',
+          toDay: ov.toDay,
+          toPeriod: ov.toPeriod,
+          toWeek: Number(wk),
+          fromWeek: Number(ov.fromWeek),
+          crossOut: false,
+          crossIn: true,
+          note: ov.note || '',
+          date: week.classDateOf(cfg, wk, day, cal) || ''
         });
       });
       return {
@@ -681,6 +744,12 @@ const routes = {
       const note = String(payload.note || '').slice(0, 64);
       const toDay = kind === 'MOVE' ? Number(payload.toDay) : null;
       const toPeriod = kind === 'MOVE' ? Number(payload.toPeriod) : null;
+      // 🔴 跨周调课（2026-11-09）：MOVE 可以指定「调到第 N 周」。
+      //   toWeek 缺省 / 与源周相同 = 同周调课（旧行为，落库 to_week = NULL）。
+      //   语义是「源周这节课不上，内容补到目标周那一格」——**不是**把课次本身搬走，
+      //   所以该课次在目标周原有的常规课不受影响（补课是「多一次」）。
+      const rawToWeek = (payload.toWeek === undefined || payload.toWeek === null || payload.toWeek === '')
+        ? null : Number(payload.toWeek);
       //🔴 「按日期定位」（dates 有值）= 「整天挪到另一天」，节次不变。
       //   这种调用**本就不带 toDay/toPeriod**：前端界面（index.wxml 的
       //   shiftMode==='date' 分支）根本不渲染星期 / 节次选择器，只有
@@ -713,17 +782,48 @@ const routes = {
       const pool = getPool();
       const classId = guard.classIdOf(ctx);
       const cfg = await week.getConfig(pool, classId);
+      const totalWeeks = Number(cfg.totalWeeks) || 18;
+      let toWeek = null;
+      if (rawToWeek !== null) {
+        if (kind !== 'MOVE') throw new BizError(41001, '「本周不上」不需要目标周次');
+        if (!(rawToWeek >= 1 && rawToWeek <= totalWeeks)) {
+          throw new BizError(41001, '目标周次超出学期范围（1-' + totalWeeks + '）');
+        }
+        toWeek = rawToWeek;
+      }
       const targets = await expandTargets(pool, cfg, payload);
       if (!targets.length) throw new BizError(41001, '没有找到符合条件的课次，请检查周次 / 课次');
 
+      // 跨周 = 有 toWeek 且与（唯一的）源周不同；同周写库时仍落 NULL（老语义）
+      const srcWeeks = Array.from(new Set(targets.map(t => Number(t.week))));
+      const crossWeek = !!(kind === 'MOVE' && toWeek && !(srcWeeks.length === 1 && srcWeeks[0] === toWeek));
+      if (crossWeek) {
+        if (srcWeeks.length > 1) throw new BizError(41001, '跨周调课一次只能选一个原周次');
+        if (!(toDay >= 1 && toDay <= 7)) throw new BizError(41001, '请选择改到星期几');
+        if (!(toPeriod >= 1 && toPeriod <= 5)) throw new BizError(41001, '请选择改到第几节');
+      }
+      const writeToWeek = crossWeek ? toWeek : null;
+
       // 撞车预检：套用本次改动后，同一周同一个「星期 + 节次」是否挤了两门课
       const warnings = [];
+      if (crossWeek) {
+        // 补课是「目标周凭空多一次」，值日不自动生成（会在已发布 / 已排好的表上凭空造行，
+        // 和之后的一键生成打架）。只提醒，需要时到值日页手动加。
+        warnings.push('补课：第 ' + toWeek + ' 周 周' + (DAY_TEXT[toDay - 1] || '?') + '第 ' + toPeriod
+          + ' 节，该次不自动生成值日（需要时请在值日页手动添加）');
+      }
       const pre = await week.loadSessionShifts(pool);
       const merged = Object.assign({}, pre);
       targets.forEach(t => {
-        merged[week.shiftKey(t.sessionId, t.week)] = { kind, toDay, toPeriod, note };
+        merged[week.shiftKey(t.sessionId, t.week)] = {
+          sessionId: t.sessionId, fromWeek: Number(t.week),
+          kind, toDay, toPeriod, toWeek: writeToWeek, note
+        };
       });
-      const weeks = Array.from(new Set(targets.map(t => t.week))).sort((a, b) => a - b);
+      // 源周（这节课没了）和目标周（多出一次补课）都要查撞车
+      const weeks = Array.from(new Set(
+        targets.map(t => Number(t.week)).concat(writeToWeek ? [writeToWeek] : [])
+      )).sort((a, b) => a - b);
       for (const wk of weeks) {
         const occ = await weekOccupants(pool, wk, merged, cfg.classId || 1);
         const seen = {};
@@ -752,13 +852,18 @@ const routes = {
           //   值日就会停在旧日期上变成孤儿（课已挪走、值日没跟）。
           const effDay = (toDay >= 1 && toDay <= 7) ? toDay : Number(t.dayOfWeek);
           await conn.query(
-            `INSERT INTO session_shift (class_id, session_id, week, kind, to_day, to_period, note, created_by)
-             VALUES (?,?,?,?,?,?,?,?)
+            `INSERT INTO session_shift (class_id, session_id, week, kind, to_day, to_period, to_week, note, created_by)
+             VALUES (?,?,?,?,?,?,?,?,?)
              ON DUPLICATE KEY UPDATE kind = VALUES(kind), to_day = VALUES(to_day),
-                                     to_period = VALUES(to_period), note = VALUES(note)`,
-            [classId, t.sessionId, t.week, kind, toDay, toPeriod, note, ctx.member.id]
+                                     to_period = VALUES(to_period), to_week = VALUES(to_week),
+                                     note = VALUES(note)`,
+            [classId, t.sessionId, t.week, kind, toDay, toPeriod, writeToWeek, note, ctx.member.id]
           );
-          await syncDutyForShift(conn, cfg, t.sessionId, t.week, kind, effDay, stats);
+          // 跨周调课：源周这节课不上了 ⇒ 本周值日整批撤掉（与「本周不上」同一处理）。
+          // 目标周**不**凭空造值日行（会在已排 / 已发布的表上多出孤儿行，且与之后的一键生成打架），
+          // 需要时由用户在值日页手动添加 —— shiftSet 的 warnings 已明确提示。
+          await syncDutyForShift(conn, cfg, t.sessionId, t.week,
+            crossWeek ? 'OFF' : kind, effDay, stats);
         }
         await conn.commit();
       } catch (e) {
@@ -776,6 +881,8 @@ const routes = {
         written: targets.length,
         weeks,
         kind,
+        toWeek: writeToWeek,
+        crossWeek: !!writeToWeek,
         moved: stats.moved,
         removed: stats.removed,
         warnings,
@@ -805,14 +912,19 @@ const routes = {
       if (!weeks.length) throw new BizError(41001, '请选择要撤销的周次');
       const phWk = weeks.map(() => '?').join(',');
 
-      // 先记下本周「真正被本次撤销影响」的课次，撤销后据此复位值日日期
-      let touchedIds = ids.slice();
-      if (!touchedIds.length) {
-        const [rows] = await pool.query(
-          `SELECT DISTINCT session_id FROM session_shift WHERE class_id = ? AND week IN (${phWk})`, [classId].concat(weeks)
-        );
-        touchedIds = rows.map(r => Number(r.session_id));
-      }
+      // 删除前先抓下将被清掉的记录（含跨周目标 to_week / to_day）：
+      //   ① 撤销后据此复位值日；② 跨周调课的值日此刻在**目标周**，得连 week 一起挪回来。
+      const selPh = ids.length
+        ? ` AND session_id IN (${ids.map(() => '?').join(',')})`
+        : '';
+      const [victims] = await pool.query(
+        `SELECT session_id, week, kind, to_day, to_period, to_week FROM session_shift
+          WHERE class_id = ? AND week IN (${phWk})` + selPh,
+        [classId].concat(weeks).concat(ids)
+      );
+      const touchedIds = Array.from(new Set(
+        (ids.length ? ids : victims.map(v => Number(v.session_id)))
+      ));
 
       let deleted = 0;
       if (ids.length) {
@@ -831,11 +943,33 @@ const routes = {
 
       // 复位值日日期：课次原星期 → 该周的实际日期（仍会尊重「按天调课」）
       let restored = 0;
+      const sessById = {};
       if (touchedIds.length) {
         const phId = touchedIds.map(() => '?').join(',');
         const [sess] = await pool.query(
           `SELECT id, day_of_week FROM session WHERE class_id = ? AND id IN (${phId})`, [classId].concat(touchedIds)
         );
+        sess.forEach((s) => { sessById[Number(s.id)] = s; });
+
+        // 跨周调课的逆向（2026-11-09）：值日已被挪到「目标周 · 目标星期」，
+        // 撤销后要连 week 一起挪回源周的原星期，否则课表复原了、值日却留在别的周。
+        for (const v of victims) {
+          const toWk = Number(v.to_week) || 0;
+          const fromWk = Number(v.week);
+          if (!toWk || toWk === fromWk) continue;
+          const s = sessById[Number(v.session_id)];
+          if (!s) continue;
+          const toD = week.getDateOfWeekDay(cfg.termStart, toWk, Number(v.to_day) || Number(s.day_of_week));
+          const homeD = week.classDateOf(cfg, fromWk, s.day_of_week, cal) ||
+            week.getDateOfWeekDay(cfg.termStart, fromWk, s.day_of_week);
+          const [r] = await pool.query(
+            `UPDATE duty SET class_date = ?, week = ? WHERE session_id = ? AND class_id = ?
+               AND week = ? AND class_date = ? AND status IN ('PENDING','ONGOING')`,
+            [homeD, fromWk, s.id, classId, toWk, toD]
+          );
+          restored += (r && r.affectedRows) || 0;
+        }
+
         for (const s of sess) {
           for (const wk of weeks) {
             const d = week.classDateOf(cfg, wk, s.day_of_week, cal) ||
@@ -850,11 +984,15 @@ const routes = {
         }
       }
 
-      const resetPublish = await toDraftWeeks(pool, weeks, classId);
+      // 跨周调课的目标周若已发布，也要退回草稿（那边课表同样变了）
+      const draftWeeks = Array.from(new Set(
+        weeks.concat(victims.map(v => Number(v.to_week)).filter(n => n && Number.isInteger(n)))
+      )).sort((a, b) => a - b);
+      const resetPublish = await toDraftWeeks(pool, draftWeeks, classId);
       console.log(JSON.stringify({
-        fn: 'course', action: 'shiftRemove', member: ctx.member.id, classId, deleted, restored, weeks
+        fn: 'course', action: 'shiftRemove', member: ctx.member.id, classId, deleted, restored, weeks: draftWeeks
       }));
-      return { deleted, restored, weeks, resetPublish };
+      return { deleted, restored, weeks: draftWeeks, resetPublish };
     }
   },
 

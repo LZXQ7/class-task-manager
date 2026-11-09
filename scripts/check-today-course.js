@@ -47,8 +47,13 @@ assertTrue(/week\.getWeek\(cfg\.termStart, targetDate\)/.test(dutyCf),
   '按目标日期重算周次（周日的明天是下周一，跨周天然正确）');
 assertTrue(/week\.resolveSlot\(s\.id, s\.day_of_week, s\.period, targetWk, shifts\)/.test(dutyCf),
   '过 resolveSlot：临时调课 OFF 不出现、MOVE 用挪过去的星期 / 节次');
-assertTrue(/week\.classDateOf\(cfg, targetWk, slot\.day, cal\) !== targetDate/.test(dutyCf),
+assertTrue(/week\.classDateOf\(cfg, targetWk, (?:slot\.)?day, cal\) !== targetDate/.test(dutyCf),
   '用 classDateOf(...) === targetDate 判定「这一节到底上不上在目标日期」');
+// 2026-11-09 跨周调课：补课不属于该课次本周的常规落位，必须单独追加进今日课次，
+// 否则「补到下周周三第4节」那天首页会显示「今日无课」。
+assertTrue(/week\.incomingOf\(shifts, targetWk\)/.test(dutyCf)
+  && /push\(s, Number\(ov\.toDay\)[\s\S]{0,80}Number\(ov\.toPeriod\)/.test(dutyCf),
+  '跨周补课也进今日 / 明日课次（incomingOf 追加，落在 to_day/to_period）');
 assertTrue(/week\.loadCalendar\(pool\)/.test(dutyCf),
   '先 loadCalendar 拿校历（holidays / shifts / makeup）');
 assertTrue(!/const weekday = week\.weekdayOf\(today\)/.test(dutyCf),
