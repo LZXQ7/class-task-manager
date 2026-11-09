@@ -264,6 +264,32 @@ const shifts = () => _read(KEY_SHIFTS, SEED_SHIFTS);
 const saveHolidays = list => _write(KEY_HOLIDAYS, list);
 const saveShifts = list => _write(KEY_SHIFTS, list);
 
+/**
+ * 一次性清理旧版「本地调课」残留（2026-11-09，1.0.8.27）。
+ *
+ * 1.0.8.26 之前，临时调课**只写本机**、从不下发（`_syncFromCloud` 那时也不收 sessShifts）。
+ * 于是出现一个不对称的死角：服务端把某条调课删掉（或撤销）后，本机那条**永远留着**
+ * ⇒ 那节课在这一周被永久藏掉，用户在界面上怎么调都调不回来。
+ * 实锤：误把第 11 周「微课设计与制作」设成本周不上，库里的记录已删除，
+ *       端上仍看不见 —— 这就是本条迁移要解决的现象。
+ *
+ * 真源已统一到云端（`allSessions` 随课表下发 sessShifts ⇒ `replaceSessShifts` 全量覆盖），
+ * 所以这里**清一次**本地缓存即可：之后每次进课表页都由云端重建，不会再有幽灵调课。
+ * 用独立标记键保证只清一次，不会反复抹掉正常调课。
+ */
+const KEY_SESS_SHIFTS_PURGED = 'timetable_sess_shifts_purged_v1';
+function _purgeLegacySessShifts() {
+  try {
+    if (wx.getStorageSync(KEY_SESS_SHIFTS_PURGED)) return;
+    wx.removeStorageSync(KEY_SESS_SHIFTS);
+    wx.setStorageSync(KEY_SESS_SHIFTS_PURGED, 1);
+  } catch (e) {
+    // 清理失败不影响渲染（最坏只是继续用旧缓存），但必须留痕，别做空 catch
+    console.error('[timetable] 清理本地调课残留失败', e);
+  }
+}
+_purgeLegacySessShifts();
+
 /* ------------------- 临时调课（按周生效的课次例外） -------------------
  * 存的是一个数组（wx.Storage 读写数组最稳），每项：
  *   { sessionId, week, kind: 'OFF' | 'MOVE', toDay, toPeriod, note }

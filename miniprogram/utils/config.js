@@ -183,8 +183,15 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   ③ 门禁 `check-shift-crossweek.js`（24 项，含 3 组变异自证）；同步修 `check-shift-move` A8
  *      与 `check-today-course` 的判据锚点。
  *   云函数需重部署：course / duty / export / adjust / schedule / cron-weekly（含 common/week.js）。
+ * **`1.0.8.27`** = 清除「幽灵调课」（2026-11-09，用户报第11周B组第4节取消后调不回来）：
+ *   旧版临时调课只写本机、从不下发，服务端删掉记录后本机那条永久残留 ⇒
+ *   那节课在这一周被永久藏掉，界面上怎么调都不显示。
+ *   修法：`data/timetable.js` 模块加载时做**一次性**清理（键 `timetable_sess_shifts_purged_v1`），
+ *   清空本地 `timetable_sess_shifts_v1` 后由 `allSessions` 下发的 sessShifts 重建。
+ *   自检：`node scripts/_verify_week11.js`（云端真值渲染）/ `... purge`（清理 + 只清一次 + 变异自证）。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.26';
+const APP_VERSION = '1.0.8.27';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。
