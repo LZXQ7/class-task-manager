@@ -63,6 +63,9 @@ page {
   --bg-fill: #F2F3F5;
   --fill-soft: #F7F8FA;
   --bg-mask: rgba(0,0,0,0.45);
+  /* segmented 选中胶囊：浅色 = 原 .seg-ind 的 --bg-card 值，逐值相同（零变化）。
+     深色在 .t-dark 另给一份亮 tint；组件内不能写 .t-dark .seg-ind（跨组件不命中）。 */
+  --seg-ind: #FFFFFF;
 
   /* 文字 */
   --text-1: #1D2129;
@@ -186,6 +189,8 @@ page {
   --bg-fill: #262B33;
   --fill-soft: #262B33;
   --bg-mask: rgba(0,0,0,0.65);
+  /* 选中胶囊比 --glass-bg(0.10) 更亮的冷白 tint —— 深色下必须「浮起」而非凹陷。 */
+  --seg-ind: rgba(150, 170, 210, 0.18);
 
   /* 文字：浅色底反过来 —— 深色下白字是主色，灰字逐级变浅 */
   --text-1: #F2F3F5;

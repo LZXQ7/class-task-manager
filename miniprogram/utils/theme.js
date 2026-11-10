@@ -17,12 +17,24 @@ let currentMode = 'system';
 let resolved = 'light';
 let inited = false;
 
+/**
+ * 读手机系统当前外观（'dark' | 'light'）。
+ * 🔴 2026-11-11 修「自动深色不跟随系统」：`wx.getWindowInfo()` **只返回窗口尺寸，
+ *    不含 theme**；早先写成 `(wx.getWindowInfo() || wx.getSystemInfoSync())`，
+ *    前者恒有值 ⇒ 短路掉后者 ⇒ `info.theme` 恒 undefined ⇒ 恒返回 'light'，
+ *    冷启动「自动」档永远是浅色（用户实测切系统外观不变）。
+ *    theme 由 `wx.getAppBaseInfo()`（基础库 2.20.1+）或 `wx.getSystemInfoSync()`
+ *    在 app.json `darkmode:true` 下返回，两条通道都保留以兼容低版本。
+ */
 function getSystemTheme() {
   try {
-    const info = (wx.getWindowInfo && wx.getWindowInfo()) || wx.getSystemInfoSync();
+    const info = (wx.getAppBaseInfo && wx.getAppBaseInfo()) || wx.getSystemInfoSync();
     return info && info.theme === 'dark' ? 'dark' : 'light';
   } catch (e) {
-    return 'light';
+    try {
+      const si = wx.getSystemInfoSync();
+      return si && si.theme === 'dark' ? 'dark' : 'light';
+    } catch (_) { return 'light'; }
   }
 }
 
@@ -87,6 +99,22 @@ function setMode(mode) {
   try { wx.setStorageSync(KEY, mode); } catch (e) { /* ignore */ }
   resolve();
   notify();
+  return resolved;
+}
+
+/**
+ * 回前台重新核对系统外观（2026-11-11）。
+ * ------------------------------------------------------------
+ * 小程序退到后台后，用户可能在系统设置里切了深浅色，而 `wx.onThemeChange`
+ * 未必补发 ⇒ 回前台时 `resolved` 还是旧值。App.onShow 调本函数重算一次，
+ * 只有真正变了才 notify（避免每次回前台都让所有页面白 setData 一次）。
+ * ⚠️ 不能复用 init()：它带 `inited` 幂等守卫，第二次调用直接返回旧值。
+ */
+function resync() {
+  if (!DARK_MODE_ENABLED || currentMode !== 'system') return resolved;
+  const before = resolved;
+  resolve();
+  if (resolved !== before) notify();
   return resolved;
 }
 
@@ -173,6 +201,7 @@ module.exports = {
   loadMode,
   getSystemTheme,
   setMode,
+  resync,
   getMode: () => currentMode,
   getResolved: () => resolved,
   themeClass,

@@ -190,8 +190,19 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   清空本地 `timetable_sess_shifts_v1` 后由 `allSessions` 下发的 sessShifts 重建。
  *   自检：`node scripts/_verify_week11.js`（云端真值渲染）/ `... purge`（清理 + 只清一次 + 变异自证）。
  *   纯前端改动，无需重部署云函数。
+ * **`1.0.8.28`** = 三项用户报障收口（2026-11-11）：
+ *   ① 课程表页已添加的选修课点不动 —— `_build()` 逐字段重建 course 丢了 personal/pid/mine，
+ *      `_ensureDuties()` 又用纯全班课次重建网格把选修课整片抹掉；改为浅拷贝透传 + 重建后再 merge 一次。
+ *   ② 调课后值日不同步 —— `shiftSet` 跨周强制按 OFF 删值日且从不传目标周；改为整批搬到目标格
+ *      （人不变），冲突查询补 session_id 维度避免 uq_duty 1062 回滚整笔调课，搬移行标 MANUAL、
+ *      撤销时复原 AUTO；新增 `week.dutySlotOf()` 给四处值日读取端解析跨周落位。
+ *   ③ 深色模式 —— week-switcher / segmented 组件内 `.t-dark` 后代选择器跨组件不命中，表面改走
+ *      `var(--glass-*, 浅色兜底)` 令牌继承并补专用 `--seg-ind`；`getSystemTheme()` 改读
+ *      `wx.getAppBaseInfo()`（getWindowInfo 不含 theme），`app.onShow` 调 `theme.resync()` 补回前台事件丢失，
+ *      app.json 原生条 / 底栏接入 theme.json 的 @变量。
+ *   云函数需重部署：course / duty / export / adjust / schedule / cron-weekly（含 common/week.js）。
  */
-const APP_VERSION = '1.0.8.27';
+const APP_VERSION = '1.0.8.28';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

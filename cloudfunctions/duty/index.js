@@ -60,7 +60,8 @@ async function deriveMyDuties(pool, classId, memberId) {
   for (const d of rows) {
     const status = week.effectiveStatus(d, periods);
     if (dutyBucket(status) === 'other') continue; // 换走的行不计入本人值日
-    const slot = week.resolveSlot(d.session_id, d.day_of_week, d.period, d.week, shifts)
+    // 2026-11-11：跨周调课随课搬到目标周的值日行，shift 仍挂在源周 key ⇒ dutySlotOf
+    const slot = week.dutySlotOf(d, shifts, d.week)
       || { day: d.day_of_week, period: d.period };
     list.push({
       id: d.id,
@@ -114,7 +115,8 @@ const routes = {
       let myDuty = null;
       if (myRows.length) {
         const d = myRows[0];
-        const slot = week.resolveSlot(d.session_id, d.day_of_week, d.period, d.week, shifts)
+        // 2026-11-11：跨周调课随课搬到目标周的值日行，shift 仍挂在源周 key ⇒ dutySlotOf
+        const slot = week.dutySlotOf(d, shifts, d.week)
           || { day: d.day_of_week, period: d.period };
         // 同伴
         const [peers] = await pool.query(
@@ -406,8 +408,9 @@ const routes = {
       if (!rows.length) throw new BizError(41001, '值日不存在');
       const d = rows[0];
       // 临时调课后的真实落位（节次可能变了；duty 表里没有节次这一列）
-      const slot = week.resolveSlot(d.session_id, d.day_of_week, d.period, d.week,
-        await week.loadSessionShifts(pool, classId)) || { day: d.day_of_week, period: d.period };
+      // 2026-11-11：跨周搬移行用 dutySlotOf 反查补课格，裸 resolveSlot 会退回源周节次
+      const slot = week.dutySlotOf(d, await week.loadSessionShifts(pool, classId), d.week)
+        || { day: d.day_of_week, period: d.period };
       // 同班该课次所有人
       const [peers] = await pool.query(
         `SELECT m.name, m.group_tag, m.student_no, d.status FROM duty d JOIN member m ON m.id = d.member_id

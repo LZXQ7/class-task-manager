@@ -276,6 +276,9 @@ App({
     this._recheckAuth();
     this._checkUpdate();
     pullRemoteConfig();   // 远程配置下发：回前台刷新（60s 节流在内部）
+    // 🔴 2026-11-11：系统在后台被切了深浅色时，微信未必补发 wx.onThemeChange，
+    //    回前台重核一次，否则「自动」档会卡在旧主题（resync 只在真变了才通知页面）。
+    try { theme.resync(); } catch (e) { /* 主题不可用不该拖垮回前台 */ }
   },
 
   /**

@@ -131,8 +131,11 @@ const courseSrc = fs.readFileSync(COURSE_PATH, 'utf8');
 
 ok(/to_week/.test(courseSrc) && /writeToWeek/.test(courseSrc),
   'shiftSet 读写 to_week（跨周落库）');
-ok(/crossWeek \? 'OFF' : kind/.test(courseSrc),
-  '跨周调课按 OFF 撤掉源周值日（不在目标周凭空造值日行）');
+ok(/syncDutyForShift\(conn, cfg, t\.sessionId, t\.week,\s*kind, effDay, stats, writeToWeek\)/.test(courseSrc),
+  '跨周调课把目标周传给 syncDutyForShift（值日随课搬到目标格，人不变）');
+ok(!/crossWeek \? 'OFF' : kind/.test(courseSrc),
+  '跨周调课不再按 OFF 撤掉源周值日');
+ok(/值日已随课移动/.test(courseSrc), '保存后提示「值日已随课移动」');
 ok(/incomingOf\(shifts, wk\)/.test(courseSrc),
   'weekOccupants 把跨周补课纳入撞车预检');
 ok(/sessShifts: Object\.keys\(shiftMap\)/.test(courseSrc),

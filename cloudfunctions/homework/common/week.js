@@ -416,11 +416,41 @@ function incomingOf(shifts, week) {
     || (Number(a.sessionId) - Number(b.sessionId)));
 }
 
+/**
+ * 值日行的「展示落位」（2026-11-11 跨周调课值日随课搬移）。
+ * ------------------------------------------------------------
+ * `duty` 表不存星期 / 节次，读取时靠 resolveSlot 从 session + session_shift 解析。
+ * 但跨周 MOVE 时值日行会连 `week` / `class_date` 一起搬到目标周，而
+ * session_shift 的 key 仍是 `sid#源周` ⇒ resolveSlot(sid, …, 目标周) 查不到，
+ * 会退回课次原本的星期 / 节次（用户例子里节次都是第 4 节看不出来，改到第 2 节就露馅）。
+ *
+ * 这里用「该行实际日期的星期」去匹配本周的跨周补课记录：命中就用补课的
+ * toDay / toPeriod 覆盖；没命中完全走 resolveSlot（旧行为零变化）。
+ * ⚠️ 只给 **duty 读取端** 用，课表渲染方继续用 resolveSlot / incomingOf，
+ *    否则会把「补课是多一次、目标周常规课不受影响」的语义改坏。
+ * @param {object} d duty 行（需含 session_id / day_of_week / period / class_date）
+ * @param {object} shifts week.loadSessionShifts() 的结果
+ * @param {number} wk 该 duty 行**自己**的周次（不是当前周！）
+ */
+function dutySlotOf(d, shifts, wk) {
+  const base = resolveSlot(d.session_id, d.day_of_week, d.period, wk, shifts);
+  if (!base) return null;
+  const actualDow = weekdayOf(String(d.class_date).slice(0, 10));
+  const inc = incomingOf(shifts, wk).find(o =>
+    Number(o.sessionId) === Number(d.session_id) && Number(o.toDay) === Number(actualDow));
+  if (!inc) return base;
+  return {
+    day: Number(inc.toDay) || base.day,
+    period: Number(inc.toPeriod) || base.period,
+    shifted: true
+  };
+}
+
 module.exports = {
   fmtDate, stampOf, nowStamp, addMinutes, todayStr, nowHHmm,
   getWeek, getDateOfWeekDay, weekStart, weekdayOf,
   matchesWeekRule, matchesWeeks, parseWeeks, isWeeksBlank, currentWeek, getConfig, periodMap, periodCount, effectiveStatus,
   dateStr, loadCalendar, classDateOf,
   seqOf,
-  shiftKey, loadSessionShifts, resolveSlot, incomingOf
+  shiftKey, loadSessionShifts, resolveSlot, incomingOf, dutySlotOf
 };

@@ -31,11 +31,15 @@
   align-items: center;
   justify-content: center;
   border-radius: 38rpx;
-  background: rgba(255, 255, 255, 0.52);
-  border: 1rpx solid rgba(255, 255, 255, 0.62);
+  /* 🔴 2026-11-11 修「深色下课程表 / 值日页上方日期还是浅色」：
+     组件 wxss 里写死色值永远翻不了深色 —— `.t-dark` 挂在**页面根节点**（组件外部），
+     组件内 `.t-dark .ws-bubble` 后代选择器跨组件匹配不到（官方：组件内避免后代选择器）。
+     改为 `var(--token, 浅色兜底)`，靠 CSS 变量从页面根继承翻色（与 nav-bar / tabbar 同范式）。 */
+  background: var(--glass-bg-strong, rgba(255, 255, 255, 0.52));
+  border: 1rpx solid var(--glass-edge, rgba(255, 255, 255, 0.62));
   box-shadow:
     0 8rpx 22rpx rgba(31, 38, 135, 0.12),
-    inset 0 1rpx 0 rgba(255, 255, 255, 0.92);
+    var(--glass-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.92));
   transition: transform .18s cubic-bezier(.32, 1.2, .64, 1), opacity .18s ease;
 }
 /* 到头（第 1 周还往左 / 最后一周还往右）：气泡压暗，说明「这边没有了」 */
@@ -57,11 +61,11 @@
   align-items: center;
   justify-content: center;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.42);
-  border: 1rpx solid rgba(255, 255, 255, 0.55);
+  background: var(--glass-bg, rgba(255, 255, 255, 0.42));
+  border: 1rpx solid var(--glass-edge, rgba(255, 255, 255, 0.55));
   box-shadow:
     0 8rpx 24rpx rgba(31, 38, 135, 0.10),
-    inset 0 1rpx 0 rgba(255, 255, 255, 0.9);
+    var(--glass-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.9));
   transition: transform .18s cubic-bezier(.32, 1.2, .64, 1), opacity .18s ease;
 }
 .ws-card-hover {
@@ -113,15 +117,26 @@
 .ws-status.draft { background: rgba(134, 144, 156, 0.14); color: var(--text-3); }
 .ws-status.published { background: rgba(0, 180, 42, 0.12); color: var(--success); }
 .ws-status.archived { background: rgba(124, 92, 255, 0.14); color: var(--purple); }
-/* ---------- 深色（2026-11-04）----------
- * 浅色材质是「半透明白 + 白描边 + 靛蓝投影」；深色下白 tint 会糊成一块灰白硬片，
- * 白描边 + 白内高光还会显出「塑料反光」。换成与 .card 同一套深色玻璃口径：
- * 低不透明度冷色 tint + 弱亮边 + 黑投影（字色本来就走 --text-N，会自己翻）。 */
-.t-dark .ws-bubble,
-.t-dark .ws-card {
-  background: var(--glass-bg-strong);
-  border-color: var(--glass-edge);
-  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.38), var(--glass-highlight);
+/* ---------- 深色（2026-11-11 改为令牌继承）----------
+ * 旧写法把深色覆盖写成「组件内后代选择器」（祖先是页面根的 .t-dark，后代是组件内的
+ * 日期卡 / 气泡）——小程序组件样式隔离下祖先部分匹配不到，深色下整条规则不生效，
+ * 用户截图里看到的仍是白底白描边日期卡。现在上面三处表面色全部走
+ * `var(--token, 浅色兜底)`，深色由 .t-dark 的令牌值自动翻色，组件内不再需要
+ * （也不允许）任何以页面根祖先为条件的后代选择器。
+ *
+ * 两条降级路径：兜底也必须跟着主题走，绝不能再写死白底。 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ws-bubble,
+  .ws-card {
+    background: var(--bg-card);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ws-bubble,
+  .ws-card {
+    background: var(--bg-card);
+    box-shadow: 0 8rpx 24rpx rgba(31, 38, 135, 0.10);
+  }
 }
 /* 系统开启「减少动态效果」：按下反馈退化为只换透明度（不做缩放） */
 @media (prefers-reduced-motion: reduce) {

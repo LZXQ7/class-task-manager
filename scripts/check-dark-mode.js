@@ -469,7 +469,15 @@ console.log('\n── ⑥ theme.js 行为（真模块 + 假 wx）');
 function loadTheme(srcText, darkEnabled) {
   const store = {};
   const calls = [];
+  /*
+   * 🔴 真机 API 契约（2026-11-11 修「自动深色不跟随系统」）：
+   *   `wx.getWindowInfo()` **只返回窗口尺寸，不含 theme**；theme 由
+   *   `wx.getAppBaseInfo()` / `wx.getSystemInfoSync()` 在 darkmode:true 下返回。
+   *   早先门禁把带 theme 的 sys 直接挂给 getWindowInfo ⇒ 伪造了字段，
+   *   「getWindowInfo() 读不到 theme」这个线上 bug 永远测不出来（假绿）。
+   */
   const sys = { theme: 'light', windowWidth: 375, windowHeight: 812 };
+  const windowInfo = { windowWidth: 375, windowHeight: 812, statusBarHeight: 20, pixelRatio: 2 };
   const cbs = [];
   const prevWx = global.wx;
   /*
@@ -490,7 +498,8 @@ function loadTheme(srcText, darkEnabled) {
   global.wx = {
     getStorageSync(k) { return store[k]; },
     setStorageSync(k, v) { store[k] = v; calls.push(['set', k, v]); },
-    getWindowInfo() { return sys; },
+    getWindowInfo() { return windowInfo; },   // 真机：不含 theme
+    getAppBaseInfo() { return sys; },
     getSystemInfoSync() { return sys; },
     onThemeChange(cb) { cbs.push(cb); }
   };
@@ -533,7 +542,8 @@ const T = loadTheme(themeSrc, true);
   // 前置断言：假 wx 真的挂上了（否则下面全是无意义的假失败）
   chk(global.wx && typeof global.wx.onThemeChange === 'function', '假 wx 已挂到 global.wx（模块里的裸 wx.xxx 才绑得上）');
   const th = T.mod;
-  ['init', 'setMode', 'getMode', 'getResolved', 'themeClass', 'mount', 'unmount', 'onThemeChange', 'offThemeChange'].forEach((k) => {
+  ['init', 'setMode', 'getMode', 'getResolved', 'themeClass', 'mount', 'unmount',
+    'onThemeChange', 'offThemeChange', 'resync'].forEach((k) => {
     chk(typeof th[k] === 'function', 'theme.js 导出 ' + k + '()');
   });
 
@@ -590,6 +600,47 @@ const T = loadTheme(themeSrc, true);
     '非法模式 themeClass 仍返回合法 class（不会算出空 class 导致主题作用域整体失效）');
   th.setMode('system');
   T.restore();
+}
+
+/* ============================================================
+ * ⑥c 真机 API 契约：冷启动「自动」必须按手机系统外观初始化（2026-11-11 用户报障）
+ * ------------------------------------------------------------
+ * 根因：`getSystemTheme()` 用 `wx.getWindowInfo()` 读 `.theme`，但该 API 不返回此字段，
+ * 且 `|| wx.getSystemInfoSync()` 因短路永不执行 ⇒ 恒 'light' ⇒ 冷启动永远浅色。
+ * 这里用「不含 theme 的 getWindowInfo + 系统深色」的假 wx 精确复现用户症状。
+ * ============================================================ */
+console.log('\n── ⑥c 真机 API 契约（自动模式跟随手机深色）');
+{
+  const Tsys = loadTheme(themeSrc, true);
+  Tsys.setSystem('dark');
+  Tsys.store.theme_mode = undefined;
+  const initResolved = Tsys.mod.init();
+  chk(initResolved === 'dark', '冷启动「自动」+ 系统深色 ⇒ 解析为 dark（修复前恒 light）', initResolved);
+  chk(Tsys.mod.themeClass() === 't-dark', '冷启动首帧就挂 t-dark（不会先闪一下浅色）');
+  chk(Tsys.mod.getSystemTheme() === 'dark', 'getSystemTheme() 读得到真机系统深色');
+  Tsys.restore();
+
+  // 回前台补偿：小程序在后台时用户改了系统外观，微信未必补发 onThemeChange
+  const T4 = loadTheme(themeSrc, true);
+  T4.setSystem('light');
+  T4.store.theme_mode = undefined;
+  T4.mod.init();
+  T4.setSystem('dark');   // 直接改系统值、不触发回调（模拟事件丢失）
+  chk(T4.mod.getResolved() === 'light', '回前台前 resolved 仍是旧值（事件丢失场景成立）');
+  if (typeof T4.mod.resync === 'function') {
+    const r = T4.mod.resync();
+    chk(r === 'dark' && T4.mod.getResolved() === 'dark',
+      'resync() 补核对系统主题 ⇒ 自动档重新变深（回前台兜底）', r);
+    T4.mod.setMode('light');
+    T4.setSystem('dark');
+    chk(T4.mod.resync() === 'light', '手动档 resync 不覆盖用户选择');
+  } else {
+    chk(false, 'resync() 缺失 ⇒ 回前台无法纠正系统外观变化');
+  }
+  T4.restore();
+  const appJs = read('miniprogram/app.js');
+  chk(/onShow\([\s\S]{0,600}?theme\.resync\(/.test(appJs),
+    'app.js onShow 调 theme.resync()（每次回前台重核对系统外观）');
 }
 
 /* ============================================================
@@ -652,7 +703,8 @@ console.log('\n── ⑦「我的」页外观设置项（二级页没有左上�
   // segmented 组件自身的深色适配（外观控制现在用它）：选中文字 + 深色轨道都走令牌
   const segWxss = stripComments(read('miniprogram/components/segmented/index.wxss'));
   chk(/\.seg-item\.on\s*\{[^}]*var\(--text-1\)/.test(segWxss), 'segmented 选中文字走 var(--text-1)（深色下不写死深色文字）');
-  chk(/\.t-dark \.seg\s*\{[^}]*background:\s*rgba\(\s*255/.test(segWxss), 'segmented 深色轨道走浅色低不透明度（不是亮白条）');
+  chk(/\.seg\s*\{[^}]*background:\s*var\(--glass-bg/.test(segWxss),
+    'segmented 轨道底色走 var(--glass-bg, 浅色兜底)（组件内 .t-dark 后代选择器不命中）');
   // 白名单：脏 key 不得把主题设成非法值
   chk(/key\s*!==\s*'system'\s*&&\s*key\s*!==\s*'light'\s*&&\s*key\s*!==\s*'dark'/.test(js),
     'onThemePick 对 e.detail.key 做了白名单校验（非法值回落）');
@@ -905,6 +957,76 @@ console.log('\n── ⑪ 浮层表面（弹层 / 对话框 / 底栏）');
   chk(!bareWhite('  .sheet-panel { background: var(--sheet-bg, rgba(255, 255, 255, 0.72)); }'),
     '好样本：var() 里的浅色兜底不误报');
   chk(!bareWhite(sheetWxss), '好样本：当前 bottom-sheet 源码不误报');
+}
+
+/* ============================================================================
+ * ⑫ 组件表面：week-switcher 日期卡 / segmented 轨道（2026-11-11 用户报障）
+ * ------------------------------------------------------------
+ * 用户原话：「深色模式，课程表、值日页上方的日期显示还是浅色」。
+ * 两页共用的 <week-switcher> 把白玻璃写死在**组件自己的 wxss**，深色覆盖写成
+ * `.t-dark .ws-card` 后代选择器；但 `.t-dark` 挂在**页面根节点**（组件外部），
+ * 小程序组件样式隔离下祖先部分匹配不到 ⇒ 深色下日期卡仍是白底白描边。
+ * 正解：组件内一律 `var(--token, 浅色兜底)`，靠 CSS 变量继承翻色
+ *（与 nav-bar 的 bg / custom-tab-bar 的 --tabbar-* 同一范式）。
+ * ========================================================================== */
+console.log('\n── ⑫ 组件表面（日期卡 / 分段轨道）');
+{
+  const COMP = [
+    { p: 'miniprogram/components/week-switcher/index.wxss', nodes: ['.ws-bubble', '.ws-card'], forbidDescendant: true },
+    { p: 'miniprogram/components/segmented/index.wxss', nodes: ['.seg'], forbidDescendant: false }
+  ];
+  /* 只查「声明冒号后直接是白 rgba」：
+     var(--token, rgba(255,255,255,.52)) 里的浅色兜底是合法且必要的（首帧 tClass 未挂上时用），
+     前面是逗号不是冒号，不会被误报；box-shadow 里的白内高光同样允许写在 var 兜底里。 */
+  const bareWhiteSurface = (src) =>
+    /(^|[;{\s])(background|border(?:-color)?)\s*:\s*(1rpx\s+solid\s+)?rgba\(\s*255\s*,\s*255\s*,\s*255/im.test(src);
+  COMP.forEach(({ p, nodes, forbidDescendant }) => {
+    const s = stripComments(read(p));
+    const rel = p.replace('miniprogram/', '');
+    chk(!bareWhiteSurface(s), rel + ' 没有写死的白底 / 白描边 / 白内高光（表面走 var(--…, 兜底)）');
+    nodes.forEach((n) => {
+      const esc = n.replace('.', '\\.');
+      const m = new RegExp(esc + '\\s*\\{([^}]*)\\}').exec(s);
+      chk(!!m && /var\(--glass-/.test(m[1]), rel + ' ' + n + ' 表面走玻璃令牌（深色自动翻色）');
+    });
+    // week-switcher 的两页日期卡是本次报障主体：组件内绝不许再靠 `.t-dark <内部节点>` 翻色
+    if (forbidDescendant) {
+      chk(!/\.t-dark\s+\.(ws|seg|nav)-/.test(s),
+        rel + ' 不再用组件内 `.t-dark <内部节点>` 后代选择器（页面根的 t-dark 跨组件不命中）');
+    }
+  });
+  const ws = stripComments(read('miniprogram/components/week-switcher/index.wxss'));
+  chk(/@supports not/.test(ws) && /prefers-reduced-transparency/.test(ws),
+    'week-switcher 有「不支持模糊」与「降低透明度」两条降级路径');
+  chk(/var\(--bg-card/.test(ws), 'week-switcher 降级底色走 --bg-card（深色不反白）');
+  const appJson = read('miniprogram/app.json');
+  chk(/"darkmode"\s*:\s*true/.test(appJson) && /"@navigationBarBackgroundColor"/.test(appJson),
+    'app.json 原生条颜色用 @变量 引用 theme.json（darkmode 配置完整）');
+  // 变异自证（内存字符串，不写盘）
+  const bad = '  .ws-card {\r\n  background: rgba(255, 255, 255, 0.42);\r\n  }\r\n';
+  chk(bareWhiteSurface(bad), '变异：塞回写死白底 → 「没有裸白表面」抓住');
+  chk(!bareWhiteSurface('  .ws-card { background: var(--glass-bg-strong, rgba(255, 255, 255, 0.52)); }'),
+    '好样本：var() 里的浅色兜底不误报');
+  chk(!bareWhiteSurface(ws), '好样本：当前 week-switcher 源码不误报');
+
+  /* ------------------------------------------------------------
+   * 同族残留（2026-11-11）：segmented 选中胶囊 `.seg-ind` 基础是
+   * `var(--bg-card)`（深色 #1C2027，比轨道还暗 ⇒ 读成「凹陷」），
+   * 深色覆盖却写成组件内 `.t-dark .seg-ind`（祖先在页面根，跨组件不命中）。
+   * 正解与 .seg 相同：专用令牌 --seg-ind，浅/深各一份，浅色值等于原值零变化。
+   * ---------------------------------------------------------- */
+  console.log('\n── ⑫b segmented 选中胶囊（深色不凹陷）');
+  const seg = stripComments(read('miniprogram/components/segmented/index.wxss'));
+  const appWxss = stripComments(read('miniprogram/app.wxss'));
+  chk(/\.seg-ind\s*\{[^}]*background:\s*var\(--seg-ind/.test(seg),
+    '.seg-ind 底色走 var(--seg-ind, 浅色兜底)（不靠组件内后代选择器翻色）');
+  chk(!/\.t-dark\s+\.seg-ind/.test(seg),
+    'segmented 不再有组件内 .t-dark .seg-ind 后代选择器（跨组件不命中）');
+  chk((appWxss.match(/--seg-ind\s*:/g) || []).length >= 2,
+    'app.wxss 的 .t-light / .t-dark 各定义一份 --seg-ind');
+  const badInd = seg.replace(/var\(--seg-ind[^)]*\)/, 'var(--bg-card)');
+  chk(badInd !== seg && !/\.seg-ind\s*\{[^}]*background:\s*var\(--seg-ind/.test(badInd),
+    '变异：换回 --bg-card ⇒ 判据翻红（不是假绿）');
 }
 
 console.log('\n' + (failed ? '✗ ' + failed + ' 项未通过' : '✓ 深色模式体检全部通过'));

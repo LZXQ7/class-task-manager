@@ -538,7 +538,9 @@ Page({
           }));
         });
         this._dutyWeek = wk;
-        this._build(tt.sessionsOfWeek(wk));
+        // 🔴 必须再 merge 一次选修课：这里用纯全班课次重建网格会把个人选修课整片抹掉
+        //   （表现为「点开任一普通课详情拉值日后，选修课突然消失」，2026-11-11 一并修）。
+        this._build(this._mergePersonal(tt.sessionsOfWeek(wk)));
         // 详情正开着：把新拿到的名单回填进去
         if (this.data.detailShow && this.data.detail) {
           const co = (this._courses || []).find(c => Number(c.sessionId) === Number(this.data.detail.sessionId));
@@ -771,8 +773,15 @@ Page({
       if (ci < 0) return;
       const cell = grid[p - 1][ci];
       const col = colorOf(c.courseId);
-      cell.courses.push({
-        key: c.sessionId,                   // wx:key 用：个人选修课与全班课次不会撞
+      // 🔴 2026-11-11 修「已添加的选修课点不动、无法修改」：
+      //   早先这里逐字段重建 course 对象，把 _personalToCell() 造好的
+      //   personal / pid / mine 三个身份字段整个丢掉，还把 key 写成 sessionId
+      //   （选修课恒 0）、用 courseColor() 覆盖了选修课专属配色 ⇒ WXML 的
+      //   data-personal / data-pid 渲染成空、data-sid=0，onCell 把它当空格子静默 return。
+      //   改为**基于原对象浅拷贝**，身份字段（含以后新增的）一律透传；
+      //   其余显式字段保持原口径，普通课渲染零回归。
+      cell.courses.push(Object.assign({}, c, {
+        key: c.personal ? ('p' + c.pid) : c.sessionId,   // wx:key：个人选修课用 'p'+pid，不与全班课次撞
         sessionId: c.sessionId,
         name: c.name,
         room: c.room,
@@ -797,11 +806,11 @@ Page({
         dowText: util.weekdayShort(d),
         dayOfWeek: d,
         period: p,
-        bg: col.bg,
-        fg: col.fg,
+        bg: c.personal ? c.bg : col.bg,                  // 选修课专属配色不被 courseColor 覆盖
+        fg: c.personal ? c.fg : col.fg,
         // A 组 ⇄ B 组 FLIP 的内联样式落点（v0.7.21 需求⑤）；wxml 用 style="background:{{co.bg}};{{co.flip}}"
         flip: ''
-      });
+      }));
     });
     grid.forEach(row => row.forEach(cell => { cell.empty = cell.courses.length === 0; }));
 

@@ -1219,7 +1219,9 @@ async function loadWeekDuties(pool, wk, shifts, classId) {
       ORDER BY d.class_date, s.period, (s.kind = 'CLEAN'), s.id, d.id`, [Number(classId) || 1, wk]
   );
   return rows.map((d) => {
-    const slot = week.resolveSlot(d.session_id, d.day_of_week, d.period, wk, shifts);
+    // 2026-11-11：跨周调课搬过来的值日行，session_shift 仍挂在源周 key，
+    // 裸 resolveSlot(目标周) 查不到会退回原星期 / 节次 ⇒ 必须用 dutySlotOf。
+    const slot = week.dutySlotOf(d, shifts, wk);
     if (!slot) return d;
     return Object.assign({}, d, { day_of_week: slot.day, period: slot.period });
   });

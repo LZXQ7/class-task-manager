@@ -205,12 +205,18 @@ async function syncDutyForShift(conn, cfg, sessionId, wk, kind, toDay, stats, to
   }
 
   const date = week.getDateOfWeekDay(cfg.termStart, effWk, toDay);
-  // 目标日期上已经存在的、属于这批人的其它值日 → 跟着挪过来就会同日重复
+  // 目标周里会撞上两类既有值日（跟着挪过去必须先把它们让开）：
+  //   ① 目标日期上这批人已有的其它值日（原来的「同一天不重复」口径）；
+  //   ② 目标周**同一课次**上这批人的常规值日 —— duty 唯一键是
+  //      uq_duty(session_id, week, member_id)，不先删掉，下面的 UPDATE 会撞 1062
+  //      把整笔调课事务回滚，前端只看到「保存失败」（2026-11-11 跨周值日随课搬移时补）。
+  // session_id 全局唯一，故无需 class_id 也能精确定位到本班的这一课次。
   const [dup] = await conn.query(
     `SELECT id FROM duty
-      WHERE week = ? AND class_date = ? AND status <> 'SWAPPED_OUT'
-        AND member_id IN (${phMem}) AND id NOT IN (${phIds})`,
-    [effWk, date].concat(memIds).concat(ids)
+      WHERE week = ? AND status <> 'SWAPPED_OUT'
+        AND member_id IN (${phMem}) AND id NOT IN (${phIds})
+        AND (session_id = ? OR class_date = ?)`,
+    [effWk].concat(memIds).concat(ids).concat([sessionId, date])
   );
   const dupIds = dup.map(r => Number(r.id));
   if (dupIds.length) {
@@ -229,7 +235,12 @@ async function syncDutyForShift(conn, cfg, sessionId, wk, kind, toDay, stats, to
   const keepIds = ids.filter(id => dupIds.indexOf(id) < 0);
   if (keepIds.length) {
     const phKeep = keepIds.map(() => '?').join(',');
-    await conn.query(`UPDATE duty SET class_date = ?, week = ? WHERE id IN (${phKeep})`,
+    // 跨周搬移的行视同「手动锁定」：一键生成会 DELETE ... WHERE source='AUTO'，
+    // 而跨周补课格不参与自动轮转 ⇒ 不改 source 的话下次生成值时它会凭空消失。
+    // 撤销调课时由 shiftRemove 的跨周逆向把 source 复原为 AUTO（同周调课零变化）。
+    const cross = Number(effWk) !== Number(wk);
+    await conn.query(
+      `UPDATE duty SET class_date = ?, week = ?${cross ? ", source = 'MANUAL'" : ''} WHERE id IN (${phKeep})`,
       [date, effWk].concat(keepIds));
     stats.moved += keepIds.length;
   }
@@ -805,13 +816,9 @@ const routes = {
       const writeToWeek = crossWeek ? toWeek : null;
 
       // 撞车预检：套用本次改动后，同一周同一个「星期 + 节次」是否挤了两门课
+      // 2026-11-11 用户口径：跨周调课的值日**整批随课搬到目标格**（人不变），
+      // 不再提示「该次不自动生成值日 / 请手动添加」；搬了几条在事务后按 stats.moved 追加提示。
       const warnings = [];
-      if (crossWeek) {
-        // 补课是「目标周凭空多一次」，值日不自动生成（会在已发布 / 已排好的表上凭空造行，
-        // 和之后的一键生成打架）。只提醒，需要时到值日页手动加。
-        warnings.push('补课：第 ' + toWeek + ' 周 周' + (DAY_TEXT[toDay - 1] || '?') + '第 ' + toPeriod
-          + ' 节，该次不自动生成值日（需要时请在值日页手动添加）');
-      }
       const pre = await week.loadSessionShifts(pool);
       const merged = Object.assign({}, pre);
       targets.forEach(t => {
@@ -859,11 +866,12 @@ const routes = {
                                      note = VALUES(note)`,
             [classId, t.sessionId, t.week, kind, toDay, toPeriod, writeToWeek, note, ctx.member.id]
           );
-          // 跨周调课：源周这节课不上了 ⇒ 本周值日整批撤掉（与「本周不上」同一处理）。
-          // 目标周**不**凭空造值日行（会在已排 / 已发布的表上多出孤儿行，且与之后的一键生成打架），
-          // 需要时由用户在值日页手动添加 —— shiftSet 的 warnings 已明确提示。
+          // 2026-11-11 用户口径：跨周 MOVE 的值日**随课整批搬到目标周目标格**（人不变）。
+          // 第 8 参 writeToWeek 让 syncDutyForShift 连 week / class_date 一起改，
+          // 并把行标成 MANUAL 以免下次一键生成抹掉；只动 PENDING / ONGOING，
+          // 已过日期且带 duty_log 的历史值日保留不动（用户明确要求）。
           await syncDutyForShift(conn, cfg, t.sessionId, t.week,
-            crossWeek ? 'OFF' : kind, effDay, stats);
+            kind, effDay, stats, writeToWeek);
         }
         await conn.commit();
       } catch (e) {
@@ -871,6 +879,11 @@ const routes = {
         throw e;
       } finally {
         conn.release();
+      }
+      if (crossWeek && stats.moved > 0) {
+        warnings.push('值日已随课移动：' + stats.moved + ' 人从第 ' + srcWeeks.join('/')
+          + ' 周移到第 ' + toWeek + ' 周周' + (DAY_TEXT[toDay - 1] || '?')
+          + '第 ' + toPeriod + ' 节（名单不变）');
       }
       const resetPublish = await toDraftWeeks(pool, weeks, classId);
       console.log(JSON.stringify({
@@ -963,8 +976,8 @@ const routes = {
           const homeD = week.classDateOf(cfg, fromWk, s.day_of_week, cal) ||
             week.getDateOfWeekDay(cfg.termStart, fromWk, s.day_of_week);
           const [r] = await pool.query(
-            `UPDATE duty SET class_date = ?, week = ? WHERE session_id = ? AND class_id = ?
-               AND week = ? AND class_date = ? AND status IN ('PENDING','ONGOING')`,
+            `UPDATE duty SET class_date = ?, week = ?, source = 'AUTO' WHERE session_id = ? AND class_id = ?
+               AND week = ? AND class_date = ? AND source = 'MANUAL' AND status IN ('PENDING','ONGOING')`,
             [homeD, fromWk, s.id, classId, toWk, toD]
           );
           restored += (r && r.affectedRows) || 0;

@@ -19,18 +19,18 @@
   ],
   "window": {
     "navigationStyle": "custom",
-    "navigationBarBackgroundColor": "#FFFFFF",
-    "navigationBarTextStyle": "black",
-    "backgroundColor": "#F5F6F8",
-    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "@navigationBarBackgroundColor",
+    "navigationBarTextStyle": "@navigationBarTextStyle",
+    "backgroundColor": "@backgroundColor",
+    "backgroundTextStyle": "@backgroundTextStyle",
     "enablePullDownRefresh": false
   },
   "tabBar": {
     "custom": true,
-    "color": "#C9CDD4",
-    "selectedColor": "#3370FF",
-    "backgroundColor": "#FFFFFF",
-    "borderStyle": "white",
+    "color": "@tabBarColor",
+    "selectedColor": "@tabBarSelectedColor",
+    "backgroundColor": "@tabBarBackgroundColor",
+    "borderStyle": "@tabBarBorderStyle",
     "list": [
       { "pagePath": "pages/home/index", "text": "首页" },
       { "pagePath": "pages/timetable/index", "text": "课程表" },

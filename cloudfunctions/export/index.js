@@ -43,10 +43,11 @@ const routes = {
            * （用户 2026-10-25 纠正，保洁节次就是第4节，不是每天最后） */
           ORDER BY d.class_date, s.period, (s.kind = 'CLEAN')`, [classId, wk]
       );
-      // 临时调课后的真实节次：duty 表不含节次，得靠 resolveSlot 解析才准
+      // 临时调课后的真实节次：duty 表不含节次，得解析才准。
+      // 2026-11-11 跨周值日随课搬移 ⇒ 用 dutySlotOf（shift 挂在源周，裸 resolveSlot 查不到）。
       const shifts = await week.loadSessionShifts(pool, classId);
       rows.forEach((d) => {
-        const slot = week.resolveSlot(d.session_id, d.day_of_week, d.period, wk, shifts);
+        const slot = week.dutySlotOf(d, shifts, wk);
         if (slot) d.period = slot.period;
       });
       rows.sort((a, b) => {
