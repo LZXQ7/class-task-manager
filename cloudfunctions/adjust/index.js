@@ -652,6 +652,9 @@ const routes = {
       const pool = getPool();
       const classId = await guard.resolveClassId(pool, ctx, payload);
       const date = normDate(payload.date) || week.todayStr();
+      // 体验模式（guard.isDemoMember，与登录 demo 标记同源）：「常驻」= 去掉「仅今天生效」过滤，
+      // 返回演示班全部请假记录（含过期/未来），否则演示者看不到过期请假，体验断裂（2026-11-12 需求）。
+      const isDemo = await guard.isDemoMember(pool, ctx);
       const [rows] = await pool.query(
         `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date,
                 l.start_time, l.end_time, l.periods, l.leave_image,
@@ -659,11 +662,11 @@ const routes = {
            FROM leave_request l
            JOIN member m ON m.id = l.member_id
           WHERE l.class_id = ? AND l.status = 'APPROVED'
-            AND l.start_date <= ? AND l.end_date >= ?
+            ${isDemo ? '' : 'AND l.start_date <= ? AND l.end_date >= ?'}
             AND m.class_id = ? AND m.status <> 'DISABLED'
             AND m.group_tag <> 'X' AND ${notTest('m')}
           ORDER BY m.student_no`,
-        [classId, date, date, classId]
+        isDemo ? [classId, classId] : [classId, date, date, classId]
       );
       /* ⚠️ 口径分层（2026-10-08 定，别再合并成一套）：
        *   list / stat = **日期口径**（今天有生效请假的全列，含已过时段半天假）
@@ -720,6 +723,8 @@ const routes = {
     handler: async (payload, ctx) => {
       const me = guard.requireLeaveView(ctx);
       const pool = getPool();
+      // 体验模式（与登录 demo 同源）：常驻 = 去掉「仅今天生效」过滤，返回演示班全部请假记录。
+      const isDemo = await guard.isDemoMember(pool, ctx);
       const date = normDate(payload.date) || week.todayStr();
       if (guard.isCounselor(me)) {
         const ids = await guard.staffClassIds(pool, me);
@@ -732,9 +737,9 @@ const routes = {
           const [r] = await pool.query(
             `SELECT l.start_time, l.end_time, l.periods
                FROM leave_request l JOIN member m ON m.id = l.member_id
-              WHERE l.class_id = ? AND l.status = 'APPROVED' AND l.start_date <= ? AND l.end_date >= ?
+              WHERE l.class_id = ? AND l.status = 'APPROVED' ${isDemo ? '' : 'AND l.start_date <= ? AND l.end_date >= ?'}
                 AND m.group_tag <> 'X' AND ${notTest('m')}`,
-            [cid, date, date]
+            isDemo ? [cid] : [cid, date, date]
           );
           // 实时口径：此刻真在请假时段内（多时段下按「当前时段是否入选中集合」判定）
           const n = r.filter(x => inLeaveWindow(x, clock)).length;
@@ -751,11 +756,11 @@ const routes = {
            FROM leave_request l
            JOIN member m ON m.id = l.member_id
           WHERE l.class_id = ? AND l.status = 'APPROVED'
-            AND l.start_date <= ? AND l.end_date >= ?
+            ${isDemo ? '' : 'AND l.start_date <= ? AND l.end_date >= ?'}
             AND m.class_id = ? AND m.status <> 'DISABLED'
             AND m.group_tag <> 'X' AND ${notTest('m')}
           ORDER BY m.student_no`,
-        [classId, date, date, classId]
+        isDemo ? [classId, classId] : [classId, date, date, classId]
       );
       const clock2 = week.nowHHmm();
       const list = rows.map(r => ({

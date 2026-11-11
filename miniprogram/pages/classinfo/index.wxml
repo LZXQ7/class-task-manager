@@ -73,6 +73,7 @@
     <view class="ci-cd card st-item st-2">
       <view class="ci-cd-head">
         <text class="ci-cd-title">倒数日</text>
+        <view wx:if="{{demo}}" class="ci-cd-pin">体验版常驻</view>
         <view class="ci-cd-add" bindtap="onCdAdd" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
           <text class="ci-cd-add-t">+ 添加</text>
         </view>

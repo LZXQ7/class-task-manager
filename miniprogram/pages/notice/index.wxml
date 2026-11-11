@@ -35,6 +35,7 @@
   />
 
   <block wx:else>
+    <view wx:if="{{demo}}" class="nt-pin">体验版常驻 · 展示演示班全部通知（含历史）</view>
     <view
       wx:for="{{list}}"
       wx:key="id"

@@ -5,6 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>班级任务管理 · 后台</title>
+<script>
+/* 设备形态真源 = UA（2026-11-11 用户要求）：手机端 / 电脑端版式按设备 UA 切换，
+   不再用窗口宽度（@media max-width）判断 —— 桌面把窗口缩窄不该变成手机版，
+   大屏手机 / 平板也不该因为宽度够就套桌面表格。
+   ⚠️ 必须在 <head> 内、样式表之前跑：否则首屏先按桌面渲染再跳手机版，会闪一下。
+   ⚠️ 客户端判定而非服务端按 UA 返回不同 HTML：网关/CDN 缓存的是同一份页面。 */
+(function () {
+  var ua = navigator.userAgent || '';
+  var ud = navigator.userAgentData;
+  var mobile = (ud && ud.mobile === true) ||
+    /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|Mobile|Windows Phone|HarmonyOS|webOS|BlackBerry/i.test(ua) ||
+    /* iPadOS 13+ 默认报 Macintosh 桌面 UA，用多点触控补判，否则平板会错走桌面版 */
+    (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));
+  document.documentElement.classList.add(mobile ? 'ua-mobile' : 'ua-desktop');
+  window.__DEVICE_MOBILE__ = !!mobile;
+}());
+</script>
 <!--⚠️ 静态资源必须带 **/admin 前缀**，不能写 /app.js、也不能靠相对路径。
     原因（2026-10-10 线上实测踩坑）：gatewayPath="/admin" 意味着**网关只转发 /admin 前缀的路径**。
     实测 /admin/app.js=200，而 /app.js=404、/admin.css=404。
@@ -77,7 +94,7 @@
         <button class="btn btn-ghost btn-block" id="logout-btn">退出登录</button>
       </div>
     </aside>
-    <!-- 抽屉遮罩：手机端滑出菜单时盖住内容区，点它收起。
+    <!-- 抽屉遮罩：手机 UA（ua-mobile）滑出菜单时盖住内容区，点它收起。
          ⚠️ 不能加 hidden 属性——[hidden]{display:none!important} 会压过
          .side-backdrop.show 的 display，导致遮罩永远出不来（2026-10-22 实踩）；
          显隐完全由 .show 类控制（基础 .side-backdrop{display:none}）。 -->
@@ -86,7 +103,7 @@
     <main class="content">
       <header class="topbar">
         <div class="topbar-left">
-          <!-- 汉堡按钮：仅手机端(≤900px)显示，桌面端隐藏；点开左侧抽屉菜单 -->
+          <!-- 汉堡按钮：仅手机 UA（ua-mobile）显示，电脑 UA 隐藏；点开左侧抽屉菜单 -->
           <button class="menu-btn" id="menu-btn" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="side">
             <span class="menu-bar"></span><span class="menu-bar"></span><span class="menu-bar"></span>
           </button>

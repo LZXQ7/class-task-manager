@@ -270,6 +270,8 @@
   font-weight: 600;
   color: var(--text-1);
 }
+/* 体验版常驻标识（2026-11-12）：演示态下倒数日展示全部记录（含过期），明确提示用户 */
+.ci-cd-pin { flex: none; margin-left: 12rpx; padding: 2rpx 12rpx; font-size: 20rpx; line-height: 1.4; color: #fff; background: #ff9500; border-radius: 16rpx; }
 .ci-cd-add {
   display: flex;
   align-items: center;

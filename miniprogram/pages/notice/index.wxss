@@ -30,6 +30,16 @@
   align-items: center;
   margin: 24rpx 32rpx 0;
 }
+/* 体验版常驻提示条（2026-11-12）：演示态下通知列表展示全部记录（含历史） */
+.nt-pin {
+  margin: 24rpx 32rpx 0;
+  padding: 14rpx 20rpx;
+  font-size: 24rpx;
+  line-height: 34rpx;
+  color: #fff;
+  background: #ff9500;
+  border-radius: 12rpx;
+}
 .nt-tiptext {
   flex: 1;
   min-width: 0;

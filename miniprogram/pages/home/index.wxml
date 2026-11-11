@@ -231,6 +231,7 @@
         <block wx:if="{{leaveHomeMode === 'class'}}">
           <view class="lh-head">
             <text class="lh-title">{{leaveHomeClassName ? leaveHomeClassName + ' · 请假' : '本班请假'}}</text>
+            <view wx:if="{{demo}}" class="lh-pin">体验版常驻</view>
             <text wx:if="{{leaveHomeDate}}" class="lh-date">{{leaveHomeDate}}</text>
           </view>
           <!-- ⚠️ 2026-10-09：数字从 `stat`（日期口径）改成 **`now`（实时口径）**——
@@ -257,7 +258,7 @@
           </view>
         </block>
         <block wx:else>
-          <view class="lh-head"><text class="lh-title">各班请假人数</text></view>
+          <view class="lh-head"><text class="lh-title">各班请假人数</text><view wx:if="{{demo}}" class="lh-pin">体验版常驻</view></view>
           <view class="lh-classes">
             <view
               wx:for="{{leaveHomeClasses}}"
@@ -319,6 +320,7 @@
        首页离登记入口太远、误触成本高），弹层底部补一行去登记的入口把撤销接回来。 -->
   <bottom-sheet show="{{leaveHomeShow}}" title="{{leaveHomeViewTitle}}" bind:close="onLeaveHomeClose">
     <view class="lv">
+      <view wx:if="{{demo}}" class="lv-pin">体验版常驻 · 展示演示班全部请假（含过期/未来）</view>
       <view wx:if="{{leaveHomeListA.length}}" class="lv-grp">
         <text class="lv-grp-t">A 组 · {{leaveHomeListA.length}} 人</text>
         <view wx:for="{{leaveHomeListA}}" wx:key="leaveId" class="lv-row">

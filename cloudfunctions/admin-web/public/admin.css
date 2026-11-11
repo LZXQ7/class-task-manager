@@ -236,7 +236,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .topbar-left { display: flex; align-items: center; min-width: 0; }
 
-/* 汉堡按钮：桌面端隐藏，手机端(≤900px)才显示（见下方媒体查询） */
+/* 汉堡按钮：电脑 UA 隐藏，仅手机 UA（.ua-mobile）显示（见下方 UA 版式段） */
 .menu-btn {
   display: none;            /* 桌面默认隐藏，避免挤占顶栏 */
   flex: none;
@@ -312,8 +312,9 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .stat-hint { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
 /* ---------------- 表格 ---------------- */
-/* 窄屏自适应：表格包一层横向滚动容器（卡片本身 overflow:hidden 不能滚），
-   min-width 保证列不被挤到错行——手机上横向滑动查看（2026-10-22） */
+/* 表格：包一层横向滚动容器（卡片本身 overflow:hidden 不能滚），
+   min-width 保证列不被挤到错行——电脑 UA 窄窗口时横向滑动查看（2026-10-22）。
+   手机 UA 下由 .ua-mobile 规则改成「每行一张卡片」，不走这条横向滚动。 */
 .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .tbl-wrap .tbl { min-width: 640px; }
 .tbl { width: 100%; border-collapse: collapse; }
@@ -637,136 +638,167 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .src-tab.active { background: var(--brand); border-color: var(--brand); color: #fff; }
 .src-tab.active:hover:not(:disabled) { background: var(--brand); border-color: var(--brand); }
 
-@media (max-width: 900px) {
-  /* ⚠️ 手机端：侧栏改为离屏抽屉，靠 .open 滑入（不再压成 64px 图标条——
+/* ---------------- 手机 UA 版式（2026-11-11：窗口宽度 → 设备 UA） ----------------
+   入口：index.html 在 <head> 按 navigator.userAgent 给 <html> 打 .ua-mobile / .ua-desktop。
+   下面规则只在 .ua-mobile 下命中：电脑 UA 把窗口缩到再窄也是桌面版，
+   手机 UA 宽度再大也是手机版。宽度媒体查询不再承担版式切换。 */
+/* ⚠️ 手机端：侧栏改为离屏抽屉，靠 .open 滑入（不再压成 64px 图标条——
      那种做法把所有文字用 font-size:0 藏掉，手机上几乎不可用，2026-10-22 改） */
-  .side {
-    position: fixed; top: 0; left: 0; bottom: 0;
-    width: 260px; max-width: 82vw;
-    z-index: 50;
-    transform: translateX(-100%);
-    transition: transform .25s ease;
-    overflow-y: auto;
-    padding: 16px 12px;
-    padding-top: calc(16px + env(safe-area-inset-top));   /* 刘海屏安全区 */
-  }
-  .side.open { transform: translateX(0); }
-  .side-backdrop.show { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.40); }
+.ua-mobile .side {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: 260px; max-width: 82vw;
+  z-index: 50;
+  transform: translateX(-100%);
+  transition: transform .25s ease;
+  overflow-y: auto;
+  padding: 16px 12px;
+  padding-top: calc(16px + env(safe-area-inset-top));   /* 刘海屏安全区 */
+}
 
-  /* 汉堡按钮显示；顶栏左组把按钮和标题并排 */
-  .menu-btn { display: inline-flex; }
+.ua-mobile .side.open { transform: translateX(0); }
 
-  /* 滚动模型改到整页（body），顶栏吸顶常驻 */
-  .view { overflow: visible; padding: 14px 14px calc(28px + env(safe-area-inset-bottom)); }
-  .topbar {
-    position: sticky; top: 0; z-index: 30;
-    padding: calc(14px + env(safe-area-inset-top)) 14px 14px;
-  }
+.ua-mobile .side-backdrop.show { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.40); }
 
-  /* 触控目标 ≥44px（手指好点）；导航项放大并竖向居中 */
-  .nav-item { min-height: 44px; display: flex; align-items: center; font-size: 15px; }
-  .btn { min-height: 44px; }
+/* 汉堡按钮显示；顶栏左组把按钮和标题并排 */
+.ua-mobile .menu-btn { display: inline-flex; }
 
-  /* 班级选择器在窄屏别撑爆：允许收缩、限宽 */
-  .class-picker { min-width: 0; }
-  .class-picker select { min-width: 0; max-width: 42vw; }
+/* 滚动模型改到整页（body），顶栏吸顶常驻 */
+.ua-mobile .view { overflow: visible; padding: 14px 14px calc(28px + env(safe-area-inset-bottom)); }
 
-  /* 成员筛选与页大小：窄屏各占一行，触控目标 ≥44px */
-  .member-scope, .member-page-size { width: 100%; }
-  .member-scope .seg-btn { flex: 1; min-height: 44px; padding: 6px 8px; }
-  .member-page-size .tb-select { flex: 1; min-height: 44px; }
+.ua-mobile .topbar {
+  position: sticky; top: 0; z-index: 30;
+  padding: calc(14px + env(safe-area-inset-top)) 14px 14px;
+}
 
-  /* ⚠️ 手机版表格：从「横向滚动」彻底改为「每行一张卡片」。
+/* 触控目标 ≥44px（手指好点）；导航项放大并竖向居中 */
+.ua-mobile .nav-item { min-height: 44px; display: flex; align-items: center; font-size: 15px; }
+
+.ua-mobile .btn { min-height: 44px; }
+
+/* 班级选择器在窄屏别撑爆：允许收缩、限宽 */
+.ua-mobile .class-picker { min-width: 0; }
+
+.ua-mobile .class-picker select { min-width: 0; max-width: 42vw; }
+
+/* 成员筛选与页大小：窄屏各占一行，触控目标 ≥44px */
+.ua-mobile .member-scope, .ua-mobile .member-page-size { width: 100%; }
+
+.ua-mobile .member-scope .seg-btn { flex: 1; min-height: 44px; padding: 6px 8px; }
+
+.ua-mobile .member-page-size .tb-select { flex: 1; min-height: 44px; }
+
+/* ⚠️ 手机版表格：从「横向滚动」彻底改为「每行一张卡片」。
      桌面表格硬塞手机必然拥挤/截断（用户 2026-10-22 反馈成员使用明细显示不全），
      卡片化后「字段名在左、值在右」，chips 单独整行，彻底可读。
      data-label 由 app.js 的 MutationObserver 按 <th> 文本自动注入。 */
-  .tbl-wrap { overflow: visible; }
-  .tbl-wrap .tbl { min-width: 0; }
-  .tbl thead { display: none; }
-  .tbl, .tbl tbody, .tbl tr, .tbl td { display: block; width: auto; }
-  .tbl tr {
-    border: none;                 /* 🔴 细边框在白底上会让两张卡之间的间隙
-                                     「闭合成一个空矩形」（2026-10-22 用户截图圈出），
-                                     改用投影与 .stat 卡一致，卡片立体可分 */
-    border-radius: 10px;
-    margin-bottom: 14px;
-    background: var(--panel);
-    box-shadow: var(--shadow);
-    overflow: hidden;
-  }
-  .tbl tbody tr:last-child { margin-bottom: 0; }
-  .tbl tbody tr:hover { background: var(--panel); }
-  .tbl td {
-    border-bottom: 1px solid var(--line);
-    padding: 10px 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    text-align: right;
-  }
-  .tbl td:last-child { border-bottom: none; }
-  .tbl td::before {
-    content: attr(data-label);
-    flex: none;
-    margin-right: auto;     /* 把值推到右侧 */
-    font-size: 13px; font-weight: 500; color: var(--text-2);
-    text-align: left;
-  }
-  /* 含功能 chips 的单元格：标签在上、chips 整行换行，不挤成一行 */
-  .tbl td.ev-cell { display: block; text-align: left; }
-  .tbl td.ev-cell::before { display: block; margin-bottom: 6px; }
-  .ev-cell .ev-list { justify-content: flex-start; }
-  /* 卡片态下隐藏 PV 行内迷你条，避免挤压数值 */
-  .tbl td .pv-bar { display: none; }
+.ua-mobile .tbl-wrap { overflow: visible; }
 
-  /* 表格所在的外层卡（.card-tbl，由 app.js 注入）在手机上退化为纯标题区：
+.ua-mobile .tbl-wrap .tbl { min-width: 0; }
+
+.ua-mobile .tbl thead { display: none; }
+
+.ua-mobile .tbl, .ua-mobile .tbl tbody, .ua-mobile .tbl tr, .ua-mobile .tbl td { display: block; width: auto; }
+
+.ua-mobile .tbl tr {
+  border: none;                 /* 🔴 细边框在白底上会让两张卡之间的间隙
+                                   「闭合成一个空矩形」（2026-10-22 用户截图圈出），
+                                   改用投影与 .stat 卡一致，卡片立体可分 */
+  border-radius: 10px;
+  margin-bottom: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.ua-mobile .tbl tbody tr:last-child { margin-bottom: 0; }
+
+.ua-mobile .tbl tbody tr:hover { background: var(--panel); }
+
+.ua-mobile .tbl td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: right;
+}
+
+.ua-mobile .tbl td:last-child { border-bottom: none; }
+
+.ua-mobile .tbl td::before {
+  content: attr(data-label);
+  flex: none;
+  margin-right: auto;     /* 把值推到右侧 */
+  font-size: 13px; font-weight: 500; color: var(--text-2);
+  text-align: left;
+}
+
+/* 含功能 chips 的单元格：标签在上、chips 整行换行，不挤成一行 */
+.ua-mobile .tbl td.ev-cell { display: block; text-align: left; }
+
+.ua-mobile .tbl td.ev-cell::before { display: block; margin-bottom: 6px; }
+
+.ua-mobile .ev-cell .ev-list { justify-content: flex-start; }
+
+/* 卡片态下隐藏 PV 行内迷你条，避免挤压数值 */
+.ua-mobile .tbl td .pv-bar { display: none; }
+
+/* 表格所在的外层卡（.card-tbl，由 app.js 注入）在手机上退化为纯标题区：
      白底 → 透明。否则「白卡叠白卡」，卡片间隙里露出的是外层卡的白底，
      上下边框 + 圆角在 12px 间隙里闭合成一个「空矩形」（用户截图圈出），
      卡片完全看不出是分开的。退化后白卡行直接浮在灰底（--bg）上。 */
-  .card.card-tbl { background: transparent; box-shadow: none; overflow: visible; }
+.ua-mobile .card.card-tbl { background: transparent; box-shadow: none; overflow: visible; }
 
-  /* ⚠️ 手机版布局重构（2026-10-23）：上面统一「功能/页面」——概览 stat-row +
-     功能排行 tbl + 每日活跃图 card-usage 全部占满整行堆叠；下面「成员明细」单独成块，
-     成员卡两列并排（left-right）。不再把功能排行与成员明细放在同一行左右并排。 */
-  .usage-top { display: block; }
-  .usage-top > .stat-row,
-  .usage-top > .card,
-  .usage-top > .card-usage { width: auto; }
-  .usage-members { margin-top: 16px; }
-  /* 成员明细：两列并排（成员卡 left-right）；直接 grid 化 tbody，tr 卡自然流入两列 */
-  .usage-members .tbl tbody {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    align-items: start;
-  }
-  .usage-members .tbl tbody tr { margin-bottom: 0; }  /* 间距改由 grid gap 控制 */
-  /* 窄列成员卡：label 置顶（不再左右挤压），保证窄列可读 */
-  .usage-members .tbl td { display: block; text-align: left; }
-  .usage-members .tbl td::before { display: block; margin: 0 0 4px; }
+/* ⚠️ 手机版布局（2026-10-23 重构，2026-11-11 去掉重复的功能排行）：
+     「每日活跃图」全宽堆叠在下面的 .usage-top；「成员明细」单独成块、成员卡两列并排。
+     总览 stat-row 已置顶到所有 insight 卡之上（用户要求），不再放进 .usage-top。 */
+.ua-mobile .usage-top { display: block; }
 
-  /* 概览统计卡：手机上 2 列紧凑、字号略缩 */
-  .stat-row { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
-  .stat { padding: 14px; }
-  .stat-value { font-size: 22px; }
+.ua-mobile .usage-top > .card, .ua-mobile .usage-top > .card-usage { width: auto; }
 
-  /* 表单两列并排在手机上堆叠，不被压扁 */
-  .field-row { flex-direction: column; }
-  /* 工具栏允许换行，按钮不被挤掉 */
-  .toolbar { flex-wrap: wrap; }
-  /* 弹层在小屏少留白，利用宽度 */
-  .dlg-mask { padding: 16px; }
+.ua-mobile .usage-members { margin-top: 16px; }
+
+/* 成员明细：两列并排（成员卡 left-right）；直接 grid 化 tbody，tr 卡自然流入两列 */
+.ua-mobile .usage-members .tbl tbody {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
 }
 
-/* ⚠️ 手机版两列适用范围：仅「成员明细」在 ≤900px 呈两列（含 375/390 等常见手机宽度），
-   窄列可读性靠上面 .usage-members .tbl td 的「label 置顶」堆叠布局保证，故不再退化单列。
-   功能/页面（概览+功能排行+每日图）在上方统一全宽堆叠（2026-10-23）。
-   若后续反馈极小屏（≤360px）成员两列仍偏挤，再在此加 @media(max-width:360px){.usage-members .tbl tbody{grid-template-columns:1fr}}。 */
+.ua-mobile .usage-members .tbl tbody tr { margin-bottom: 0; }
+
+/* 间距改由 grid gap 控制 */
+/* 窄列成员卡：label 置顶（不再左右挤压），保证窄列可读 */
+.ua-mobile .usage-members .tbl td { display: block; text-align: left; }
+
+.ua-mobile .usage-members .tbl td::before { display: block; margin: 0 0 4px; }
+
+/* 概览统计卡：手机上 2 列紧凑、字号略缩 */
+.ua-mobile .stat-row { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+
+.ua-mobile .stat { padding: 14px; }
+
+.ua-mobile .stat-value { font-size: 22px; }
+
+/* 表单两列并排在手机上堆叠，不被压扁 */
+.ua-mobile .field-row { flex-direction: column; }
+
+/* 工具栏允许换行，按钮不被挤掉 */
+.ua-mobile .toolbar { flex-wrap: wrap; }
+
+/* 弹层在小屏少留白，利用宽度 */
+.ua-mobile .dlg-mask { padding: 16px; }
+
+
+/* ⚠️ 成员明细两列适用范围：手机 UA 下两列（不再按 375/390 等宽度判定，
+   也不再为 ≤360px 退化单列）。窄列可读性靠 .ua-mobile .usage-members .tbl td
+   的「label 置顶」堆叠布局保证。总览数字卡置顶、每日活跃图在 .usage-top 全宽堆叠。 */
 
 /* ---------------- 使用统计四板块（2026-11-09） ----------------
    全部是新增类名，不覆盖既有 .stat-row / .bars / .tbl 规则；
-   窄屏媒体查询放在文件最后，确保压过上面的桌面 grid。 */
+   手机版规则统一挂在 .ua-mobile 下（不再用宽度媒体查询压桌面 grid）。 */
 /* 对齐 We分析：卡片间距 16px、内容左右留白 20px、控件间距 12/8px */
 .insight-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
 .insight-grid-2 { grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -864,20 +896,29 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .metric-delta.down { color: var(--err); }
 .metric-delta.flat { color: var(--text-3); }
 
-@media (max-width: 900px) {
-  .insight-grid { grid-template-columns: 1fr; }
-  .insight-grid-2 { grid-template-columns: 1fr; }
-  .metric-grid { grid-template-columns: 1fr 1fr; }
-  .metric-card { padding: 12px; }
-  .metric-value { font-size: 22px; }
-  .src-label { width: 76px; flex-basis: 76px; }
-  /* 手机上工具栏必然逐行堆叠，对比组取消靠右推出，改为贴左铺满 */
-  .toolbar-usage .usage-cmp { margin-left: 0; }
-}
-@media (max-width: 480px) {
-  .metric-grid { grid-template-columns: 1fr; }
-  .trend-legend { gap: 12px; }
-}
+/* ---------------- 手机 UA 版式（2026-11-11：窗口宽度 → 设备 UA） ----------------
+   入口：index.html 在 <head> 按 navigator.userAgent 给 <html> 打 .ua-mobile / .ua-desktop。
+   下面规则只在 .ua-mobile 下命中：电脑 UA 把窗口缩到再窄也是桌面版，
+   手机 UA 宽度再大也是手机版。宽度媒体查询不再承担版式切换。 */
+.ua-mobile .insight-grid { grid-template-columns: 1fr; }
+
+.ua-mobile .insight-grid-2 { grid-template-columns: 1fr; }
+
+.ua-mobile .metric-grid { grid-template-columns: 1fr 1fr; }
+
+.ua-mobile .metric-card { padding: 12px; }
+
+.ua-mobile .metric-value { font-size: 22px; }
+
+.ua-mobile .src-label { width: 76px; flex-basis: 76px; }
+
+/* 手机上工具栏必然逐行堆叠，对比组取消靠右推出，改为贴左铺满 */
+.ua-mobile .toolbar-usage .usage-cmp { margin-left: 0; }
+
+/* 手机 UA 内的图例微调（原「≤480px」宽度微调，2026-11-11 并入 UA 口径）：
+   版式切换只认 UA；原「指标卡退单列」已撤，手机 UA 统一保持两列紧凑布局。 */
+.ua-mobile .trend-legend { gap: 12px; }
+
 
 /* ---------------- 使用统计动效（2026-11-09） ----------------
    复刻 We分析看板：hover 数值预览 / 卡片反馈 / 指标切换 / 首屏错峰入场。
@@ -980,8 +1021,11 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   .trend-hover-layer { transition: opacity .12s ease; }
 }
 
-@media (max-width: 900px) {
-  .insight-tip { max-width: 240px; }
-  /* 触屏没有 hover，导出按钮常显，避免功能不可达 */
-  .card-hd-action { opacity: 1; transform: none; }
-}
+/* ---------------- 手机 UA 版式（2026-11-11：窗口宽度 → 设备 UA） ----------------
+   入口：index.html 在 <head> 按 navigator.userAgent 给 <html> 打 .ua-mobile / .ua-desktop。
+   下面规则只在 .ua-mobile 下命中：电脑 UA 把窗口缩到再窄也是桌面版，
+   手机 UA 宽度再大也是手机版。宽度媒体查询不再承担版式切换。 */
+.ua-mobile .insight-tip { max-width: 240px; }
+
+/* 触屏没有 hover，导出按钮常显，避免功能不可达 */
+.ua-mobile .card-hd-action { opacity: 1; transform: none; }

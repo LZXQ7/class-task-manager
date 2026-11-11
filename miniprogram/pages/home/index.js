@@ -47,6 +47,8 @@ Page({
     hwFeedQueue: [],
     hwFeedIdx: 0,
     statusBarHeight: 20,
+    // 体验模式标记（与登录 demo 同源）：true 时请假卡/名单展示「体验版常驻」标识（2026-11-12）。
+    demo: false,
     loading: true,
     failed: false,
     unbound: false,
@@ -154,6 +156,7 @@ Page({
     // 并订阅切换 —— 之后用户在任何页切主题，本页都会跟着重挂。
     theme.mount(this);
     this.setData({ statusBarHeight: app.globalData.statusBarHeight || 20 });
+    this.setData({ demo: !!(app.globalData && app.globalData.demo) });
     this._renderDate();
   },
 

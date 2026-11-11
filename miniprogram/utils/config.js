@@ -202,7 +202,7 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      app.json 原生条 / 底栏接入 theme.json 的 @变量。
  *   云函数需重部署：course / duty / export / adjust / schedule / cron-weekly（含 common/week.js）。
  */
-const APP_VERSION = '1.0.8.28';
+const APP_VERSION = '1.0.8.29';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

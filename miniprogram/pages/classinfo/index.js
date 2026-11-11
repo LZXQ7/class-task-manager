@@ -24,6 +24,8 @@ const STALE_MS = 20000;
 Page({
   data: {
     statusBarHeight: 20,
+    // 体验模式标记（与登录 demo 同源）：true 时倒数日区展示「体验版常驻」标识（2026-11-12）。
+    demo: false,
     /** Tab 入场动画序号：0 = 还没进过（播完整版），之后在 1 / 2 之间轮换（轻量版） */
     animSeq: 0,
     /** 入场动画就绪标记：false = 根节点挂 pa-hold（块透明），等首屏身份 + 数据就绪再统一开播 */
@@ -86,6 +88,7 @@ Page({
     const app = getApp();
     theme.mount(this);   // 深色模式：挂 t-light / t-dark 到本页根节点
     this.setData({ statusBarHeight: (app && app.globalData && app.globalData.statusBarHeight) || 20 });
+    this.setData({ demo: !!(app && app.globalData && app.globalData.demo) });
   },
 
   onUnload() {

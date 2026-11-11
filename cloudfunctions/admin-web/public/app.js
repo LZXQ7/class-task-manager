@@ -54,6 +54,14 @@
     return Array.prototype.slice.call((root || document).querySelectorAll(sel));
   };
 
+  /* 设备形态真源：index.html 在 <head> 按 UA 注入的 <html> class（2026-11-11 用户要求）。
+     ⚠️ 不用 innerWidth / matchMedia —— 手机端 / 电脑端版式必须跟设备 UA 走，
+     不能跟窗口大小走；admin.css 的手机版规则全部挂在 .ua-mobile 下，与此同源。 */
+  function isMobileDevice() {
+    if (typeof window.__DEVICE_MOBILE__ === 'boolean') return window.__DEVICE_MOBILE__;
+    return document.documentElement.classList.contains('ua-mobile');
+  }
+
   function esc(s) {
     return String(s === null || s === undefined ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -2199,8 +2207,6 @@
       var o = d.data || {};
       var responseInsights = o.insights || {};
       var rows = o.rows || [];
-      var maxPv = rows.reduce(function (m, r) { return Math.max(m, r.pv); }, 1);
-      var kindLabel = { page_view: '页面浏览', action: '功能点击' };
 
       var rangeBtns = [
         { d: 1, t: '今天' }, { d: -1, t: '昨天' }, { d: 7, t: '近 7 天' },
@@ -2215,22 +2221,9 @@
         stat('总使用人数', o.total ? o.total.uv : 0, '去重成员') +
         '</div>';
 
-      var tbl = '<div class="card"><div class="card-hd">功能使用情况排行（按次数）</div>' +
-        '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-        '<th>功能 / 页面</th><th>类型</th><th>次数 (PV)</th><th>人数 (UV)</th><th>最近活跃</th>' +
-        '</tr></thead><tbody>' +
-        (rows.length ? rows.map(function (r) {
-          var pct = Math.max(2, Math.round(r.pv / maxPv * 100));
-          return '<tr>' +
-            '<td><span class="ev-name">' + esc(eventLabel(r)) + '</span>' +
-              '<span class="ev-key">' + esc(r.event) + (r.ref ? '/' + esc(r.ref) : '') + '</span></td>' +
-            '<td>' + (kindLabel[r.kind] || esc(r.kind)) + '</td>' +
-            '<td class="td-no">' + r.pv + '<span class="pv-bar" style="width:' + pct + '%"></span></td>' +
-            '<td class="td-no">' + r.uv + '</td>' +
-            '<td class="td-no">' + esc(r.lastTs || '—') + '</td>' +
-            '</tr>';
-        }).join('') : '<tr><td colspan="5" class="empty">暂无使用记录</td></tr>') +
-        '</tbody></table></div></div>';
+      /* 2026-11-11 用户要求：删掉那张「按次数排行的功能/页面表格」。
+         它与「访问来源 Top10」读的是同一份 rows（按 event 聚合的埋点），只是换了张表格皮，
+         属于重复信息；榜单只保留 Top10 横条，顺带清掉 maxPv / kindLabel 死代码。 */
 
       var axis = buildDailyAxis(days, (o.trend && o.trend.daily) || []);
       var maxDaily = axis.reduce(function (m, x) { return Math.max(m, x.pv); }, 1);
@@ -2401,7 +2394,7 @@
           '<th>差值 (A−B)</th><th>变化</th>' +
           '</tr></thead><tbody>' + cmpRows + '</tbody></table></div>' +
           '<div class="muted-note">A / B 两段同一套埋点口径；下方「分时趋势」同步按这两段画线，' +
-            '功能排行与成员明细仍按上方「时间范围」显示。' +
+            '访问来源与成员明细仍按上方「时间范围」显示。' +
             (ins.cmp.gran === 'range' ? ' 区间模式下分时每点是该时段合计，UV 逐时去重后相加、不等于区间去重人数。' : '') +
           '</div></div>';
       }
@@ -2432,16 +2425,17 @@
         '<div class="muted-note">累计用户数为截至目标日出现过的去重人数；对比口径为前一日 / 7 日前的同指标</div>' +
         '</div>';
 
-      // 手机端（≤900px）布局（见 admin.css）：上面统一「功能/页面」——概览 stat-row +
-      // 功能排行 tbl + 每日活跃图 card-usage 全宽堆叠；下面「成员明细」单独成块、成员卡两列并排
-      // （left-right）。不再把功能排行与成员明细放在同一行左右并排（2026-10-23 用户要求）。
+      /* 板块顺序（2026-11-11 用户要求）：总览数字卡置顶，排在「访问实时数据」之上。
+         手机 UA 布局（见 admin.css 的 .ua-mobile）：总览 stat-row + 每日活跃图全宽堆叠，
+         下面「成员明细」单独成块、成员卡两列并排；重复的功能/页面排行表格已删。 */
       tipLastHtml = '';   // 浮层刚重建，内容缓存必须作废，否则切页回来会是空白
       host.innerHTML = tipHtml + toolbar +
+        totalHtml +
         (cmpHtml ? '<div class="insight-grid">' + cmpHtml + '</div>' : '') +
         '<div class="insight-grid">' + realtimeHtml + '</div>' +
         '<div class="insight-grid">' + sourceHtml + '</div>' +
         '<div class="insight-grid">' + summaryHtml + '</div>' +
-        '<div class="usage-top">' + totalHtml + tbl + dailyHtml + '</div>' +
+        '<div class="usage-top">' + dailyHtml + '</div>' +
         '<div class="usage-members">' + memTbl + '</div>';
 
       /* 事件委托挂在 host（#view）上：切指标只重绘容器、host 本身不换，无需重绑。
@@ -2563,7 +2557,7 @@
       });
       // 排序点击 → 本地重绘 tbody（不重拉 API）。重绘出的新行必须重新注入
       // data-label：applyTableLabels 用 labelsDone 守卫跳过已处理的表，
-      // 不清掉的话桌面排序后缩窗到手机端，卡片标签会全部丢失。
+      // 不清掉的话重绘出的新行没有 data-label，手机 UA 下卡片字段名会全部丢失。
       var memTbody = $('[data-mem-tbody]', host);
       function redrawMemRows() {
         if (!memTbody) return;
@@ -2701,7 +2695,8 @@
       api('/api/auth/logout', { method: 'POST' }).then(showLogin);
     });
 
-    // 手机端抽屉菜单（≤900px）：汉堡按钮开/关，遮罩点击关，切到桌面尺寸自动关
+    // 手机 UA 抽屉菜单：汉堡按钮开/关，遮罩点击关。
+    // ⚠️ 版式只认 UA（见 isMobileDevice）：窗口缩窄不再切成桌面版，也不该顺手关掉抽屉。
     var sideEl = $('#side');
     var backdropEl = $('#side-backdrop');
     var menuBtn = $('#menu-btn');
@@ -2720,7 +2715,7 @@
     });
     backdropEl.addEventListener('click', closeDrawer);
     window.addEventListener('resize', function () {
-      if (window.innerWidth > 900) closeDrawer();
+      if (!isMobileDevice()) closeDrawer();
     });
 
     $('#nav').addEventListener('click', function (e) {
@@ -2729,15 +2724,15 @@
     });
 
     // 手机版表格卡片化：自动给每个 <td> 注入 data-label（取对应 <th> 文本），
-    // 配合 ≤900px 的 CSS 把表格渲染成「每行一张卡片」。用 MutationObserver 覆盖所有
-    // 异步渲染的表格，无需逐个视图改模板（2026-10-22 重设计）。
+    // 配合 .ua-mobile 的 CSS 把表格渲染成「每行一张卡片」。用 MutationObserver 覆盖所有
+    // 异步渲染的表格，无需逐个视图改模板（2026-10-22 重设计；2026-11-11 改按 UA 生效）。
     function applyTableLabels(root) {
       $$('.tbl', root).forEach(function (tbl) {
         if (tbl.dataset.labelsDone) return;
-        // 给表格的外层 .card 补 card-tbl：手机端（≤900px）该卡退化为透明标题区，
+        // 给表格的外层 .card 补 card-tbl：手机 UA 下该卡退化为透明标题区，
         // 否则白卡叠白卡在 12px 间隙里闭合成「空矩形」，卡片看不出分开（2026-10-22 修）
         var card = tbl.closest('.card');
-        if (card) card.classList.add('card-tbl');
+        if (card && isMobileDevice()) card.classList.add('card-tbl');
         var ths = tbl.querySelectorAll('thead th');
         // 🔴 必须按行遍历、行内按列号对位——querySelectorAll('tbody td') 是跨行
         //    连续编号，直接用全局下标会让第 2 行起 ths[i] 越界、标签全部丢失

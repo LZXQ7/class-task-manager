@@ -393,6 +393,8 @@
 .lh-head { display: flex; align-items: baseline; justify-content: space-between; }
 .lh-title { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
 .lh-date { font-size: 22rpx; color: var(--text-3); }
+/* 体验版常驻标识（2026-11-12）：演示态下请假卡展示全部记录（含过期/未来），明确提示用户 */
+.lh-pin { flex: none; margin-left: 12rpx; padding: 2rpx 12rpx; font-size: 20rpx; line-height: 1.4; color: #fff; background: #ff9500; border-radius: 16rpx; }
 .lh-body { display: flex; align-items: baseline; margin: 16rpx 0 12rpx; }
 .lh-num { font-size: 64rpx; font-weight: 700; color: var(--text-1); line-height: 1; }
 .lh-num.warn { color: var(--warning-strong); }
@@ -415,6 +417,8 @@
 
 /* ---------- 请假名单（首页查看弹层，与 roster 同视觉） ---------- */
 .lv { padding: 8rpx 32rpx 40rpx; }
+/* 体验版常驻提示条（2026-11-12）：演示态请假名单弹层 */
+.lv-pin { margin-bottom: 16rpx; padding: 14rpx 20rpx; font-size: 24rpx; line-height: 34rpx; color: #fff; background: #ff9500; border-radius: 12rpx; }
 .lv-grp { margin-top: 16rpx; }
 .lv-grp-t { display: block; margin-bottom: 8rpx; font-size: 26rpx; font-weight: 600; color: var(--text-1); }
 .lv-row { display: flex; align-items: center; padding: 16rpx 0; border-top: 2rpx solid var(--bg-fill); }

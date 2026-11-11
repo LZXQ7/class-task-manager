@@ -113,7 +113,7 @@ Page({
     // 生产环境普通成员仍不可见，逻辑不变。
     const isDemo = !!(app && app.globalData && app.globalData.demo);
     const canPublish = isDemo || !!(app && app.isAdmin && app.isAdmin()) || !!(p && p.groupTag === 'X');
-    this.setData({ isSuper: s, canClear: !!(s && p.test), canPublish });
+    this.setData({ isSuper: s, canClear: !!(s && p.test), canPublish, demo: isDemo });
 
     /* 按班查看（2026-10-28 需求）：从班级信息页切到某个班后点「通知」会带
      * `?classId=xx&name=示例班级C`。带班进来 = 只看这个班的通知（后端 msgList 有班级视角）；

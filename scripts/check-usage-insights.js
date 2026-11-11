@@ -245,7 +245,10 @@ async function audit(X) {
   need(has(X.css, '.insight-grid {'), 'cssInsightGrid');
   need(has(X.css, '.trend-svg {'), 'cssTrendSvg');
   need(has(X.css, '.src-bar {'), 'cssSourceBar');
-  need(has(X.css, '@media (max-width: 900px)'), 'cssMobileMedia');
+  // 2026-11-11：手机版版式改由设备 UA（index.html 注入 .ua-mobile）驱动，
+  // 不再用 @media (max-width: 900px)；详细判据在 check-admin-usage-layout.js。
+  need(has(X.css, '.ua-mobile .insight-grid'), 'cssUaMobileGrid');
+  need(!has(X.css, '@media (max-width: 900px)'), 'cssNoWidth900Media');
   need(/\.insight-grid\s*\{[^}]*grid-template-columns:\s*1fr/.test(X.css), 'cssMobileStack');
 
   /* ⑥ 动效（2026-11-09）：hover 预览 / 卡片反馈 / chip / 入场

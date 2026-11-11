@@ -713,14 +713,18 @@ const routes = {
           )
       AND NOT EXISTS (SELECT 1 FROM notice_msg_delete d WHERE d.notice_id = n.id AND d.member_id = ?)
       -- 只看「绑定之后」发布的通知：bind_time 是绑定时刻（存量成员上线时统一置基线），
-      -- 发布早于绑定的（含历史测试通知）一律不显示（2026-09-25 用户定）
-      AND n.created_at > COALESCE((SELECT bind_time FROM member WHERE id = ?), '2000-01-01')
+      -- 发布早于绑定的（含历史测试通知）一律不显示（2026-09-25 用户定）。
+      -- 体验模式（isDemo，与登录 demo 同源）例外：演示身份要看到演示班**全部**通知（含历史），
+      -- 否则过期/历史通知在体验里看不到，体验断裂（2026-11-12 需求）。
+      ${isDemo ? '' : "AND n.created_at > COALESCE((SELECT bind_time FROM member WHERE id = ?), '2000-01-01')"}
       ${demoClause}
     ORDER BY n.id DESC LIMIT 100`,
   [me.id, me.id,
-   viewClassId, viewClassId, viewClassId, viewClassId,
-   viewClassId, counselorOnly, me.id, isSuper ? 1 : 0, me.id, myClassId, myClassId, me.id, meIsCommittee ? 1 : 0,
-   me.id, me.id, ...demoIds, ...demoIds]
+   viewClassId, viewClassId, viewClassId, viewClassId, viewClassId,
+   counselorOnly, me.id, isSuper ? 1 : 0, me.id, myClassId, myClassId, me.id, meIsCommittee ? 1 : 0,
+   me.id,
+   ...(isDemo ? [] : [me.id]),
+   ...demoIds, ...demoIds]
 );
       /*
        * 「与我相关」判定（2026-10-24 用户反馈：超管虽因 oversight 看得到**全部**通知，

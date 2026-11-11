@@ -92,22 +92,40 @@ async function passRiskGate(page) {
   ok('登录框可见', await page.isVisible('#login-username'));
   ok('登录按钮可见', await page.isVisible('#login-btn'));
 
-  /* --- 2.5 使用统计四板块：线上码包内容核对（2026-11-09） ---
+  /* --- 2.5 使用统计板块：线上码包内容核对（2026-11-09 建，2026-11-11 校准） ---
      本地 e2e 用 mock DB 验渲染，这里验「部署上去的确实是这一版代码」+ 登录门禁。
      判据用响应体里的字面量，不能只看 HTTP 200 —— CloudBase 的 SPA 兜底会把
-     任何找不到的路径也回 200 的 index.html，光看状态码会假绿。 */
-  console.log('\n[2.5] 使用统计新功能·线上静态核对');
+     任何找不到的路径也回 200 的 index.html，光看状态码会假绿。
+     ⚠️ 修掉两条过期判据：「访问平台分布」板块与「未采集设备平台」文案在 11-09
+     重构时已换成「访问来源 Top10」+ 微信场景值说明，HEAD 里早就没有，旧断言会一直假红；
+     同时补上本轮三项需求（总览置顶 / 去重复排行 / UA 版式）的线上判据。 */
+  console.log('\n[2.5] 使用统计板块·线上静态核对');
   const appResp = await page.request.get(URL_BASE + '/app.js');
   const appBody = await appResp.text();
   ok('/admin/app.js 返回 200', appResp.status() === 200, 'status=' + appResp.status());
-  ok('线上 app.js 含四个板块标题',
-    ['访问实时数据', '访问来源 Top10', '访问平台分布', '小程序活跃概况']
+  ok('线上 app.js 含三个板块标题',
+    ['访问实时数据', '访问来源 Top10', '小程序活跃概况']
       .every(x => appBody.indexOf(x) >= 0));
   ok('线上 app.js 含「昨天」时间范围', appBody.indexOf("{ d: -1, t: '昨天' }") >= 0);
-  ok('线上 app.js 含设备平台未采集的诚实标注', appBody.indexOf('未采集设备平台') >= 0);
+  ok('线上 app.js 含微信场景值未采集的诚实标注',
+    appBody.indexOf('微信场景值') >= 0 && appBody.indexOf('未采集') >= 0);
+  ok('线上 app.js 总览数字卡置顶（在「访问实时数据」之前）',
+    /tipHtml \+ toolbar \+\s*totalHtml \+/.test(appBody));
+  ok('线上 app.js 已移除重复的功能/页面排行表格',
+    appBody.indexOf('功能使用情况排行') === -1 &&
+    appBody.indexOf("'<div class=\"usage-top\">' + dailyHtml + '</div>'") >= 0);
   const cssResp = await page.request.get(URL_BASE + '/admin.css');
   const cssBody = await cssResp.text();
-  ok('线上 admin.css 含四板块样式',
+  const htmlResp = await page.request.get(URL_BASE);
+  const htmlBody = await htmlResp.text();
+  ok('线上 index.html 含 UA 首屏判定（且早于样式表）',
+    htmlBody.indexOf('navigator.userAgent') > 0 &&
+    htmlBody.indexOf('navigator.userAgent') < htmlBody.indexOf('/admin/admin.css') &&
+    htmlBody.indexOf('ua-mobile') >= 0 && htmlBody.indexOf('__DEVICE_MOBILE__') >= 0);
+  ok('线上 admin.css 版式按 UA 而非窗口宽度',
+    cssBody.indexOf('.ua-mobile .side') >= 0 &&
+    cssBody.indexOf('@media (max-width: 900px)') === -1);
+  ok('线上 admin.css 含统计板块样式',
     cssBody.indexOf('.insight-grid') >= 0 && cssBody.indexOf('.trend-svg') >= 0);
   /* 动效静态核对（2026-11-09）：线上码包必须真的带 hover 预览与降级规则，
      否则「部署成功」但用户看到的还是旧版静态页。 */
