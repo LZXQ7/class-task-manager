@@ -240,6 +240,7 @@ Page({
   },
   /** 给「已有消费记录」补图（仅管理人；当前图数 < 9 才能补）。选图即上传追加，不进表单。 */
   onFeeAppendTap(e) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选图、不上传
     if (!this.data.feeCanManage) return;
     const id = Number(e.currentTarget.dataset.id);
     if (!id) return;
@@ -258,6 +259,7 @@ Page({
     });
   },
   _uploadAndAppend(id, local) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：兜底拦截
     wx.showLoading({ title: '上传图片 0/' + local.length, mask: true });
     let done = 0;
     Promise.all(local.map((p, i) =>
@@ -287,6 +289,7 @@ Page({
   onFeeAmountInput(e) { this.setData({ feeAmount: String(e.detail.value || '') }); },
   onFeeNoteInput(e) { this.setData({ feeNote: String(e.detail.value || '') }); },
   onFeePickImage() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选图
     const left = 9 - this.data.feeImages.length;
     if (left <= 0) { util.toast('图片最多 9 张'); return; }
     wx.chooseMedia({
@@ -334,6 +337,7 @@ Page({
     }).catch(() => util.toast('图片预览失败'));
   },
   onFeeSubmit() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不登记消费
     if (this.data.feeBusy) return;
     const amount = Number(this.data.feeAmount);
     if (!Number.isFinite(amount) || amount <= 0) { util.toast('请填写大于 0 的金额'); return; }

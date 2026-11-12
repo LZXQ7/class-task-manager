@@ -18,7 +18,24 @@ const Module = require('module');
 
 const ADMIN = path.join(__dirname, '..', 'cloudfunctions', 'admin-web');
 const SHOTS = path.join(__dirname, '..', 'outputs', 'admin-web');
-const CHROME = 'C:/Users/PC/AppData/Local/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-win64/chrome-headless-shell.exe';
+/* Chromium 路径自动探测（2026-11-12）：原来写死 chromium_headless_shell-1223，
+ * playwright 升级到 1234 后 e2e 直接「executable doesn't exist」——把版本号写死
+ * 等于每次 playwight 更新都要改门禁。改为扫 ms-playwright 下最新的
+ * chromium_headless_shell-* / chromium-*，取第一个真实存在的可执行文件。 */
+const CHROME = (function () {
+  const root = 'C:/Users/PC/AppData/Local/ms-playwright';
+  const cands = [];
+  try {
+    fs.readdirSync(root).sort().reverse().forEach(function (d) {
+      const shell = path.join(root, d, 'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
+      const full = path.join(root, d, 'chrome-win', 'chrome.exe');
+      if (fs.existsSync(shell)) cands.push(shell);
+      if (fs.existsSync(full)) cands.push(full);
+    });
+  } catch (e) { /* 目录不存在则落到下面的兜底 */ }
+  return cands[0] || path.join(root, 'chromium_headless_shell-1223',
+    'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
+})();
 const { chromium } = require('C:/Users/PC/.dsh/skills/dashi-ppt/project/node_modules/playwright-core');
 
 /* ---------------- 夹具 ---------------- */
@@ -81,7 +98,9 @@ const TABLES = {
     // 2026-11-08 单独授权夹具：普通成员李四被额外授予「登记班费消费」（不改职位）。
     // [7.6] 会在真实浏览器里验列表 tag / 弹层勾选态 / 保存回写。
     { id: 55, class_id: 3, name: '李四', student_no: '2603010103', group_tag: 'A', role: 'MEMBER', is_super: 0, position: '', status: 'ACTIVE', openid: 'o3', duty_count: 2, duty_off: 0, remind_block: 0, last_duty_at: null, fee_perms: 'class' },
-    { id: 56, class_id: 3, name: '王五', student_no: '2603010104', group_tag: 'B', role: 'MEMBER', is_super: 0, position: '', status: 'DISABLED', openid: 'o4', duty_count: 0, duty_off: 1, remind_block: 0, last_duty_at: null },
+    // openid 刻意留空（2026-11-12）：成员列表新增「绑定」列后，需要同时验到
+    // 「已绑定」与「未绑定」两种渲染；王五的 openid 不被任何其它断言依赖。
+    { id: 56, class_id: 3, name: '王五', student_no: '2603010104', group_tag: 'B', role: 'MEMBER', is_super: 0, position: '', status: 'DISABLED', openid: null, duty_count: 0, duty_off: 1, remind_block: 0, last_duty_at: null },
     { id: 57, class_id: 1, name: '一班同学', student_no: '2601010101', group_tag: 'A', role: 'MEMBER', is_super: 0, position: '', status: 'ACTIVE', openid: 'o5', duty_count: 1, duty_off: 0, remind_block: 0, last_duty_at: null }
   ],
   session: [
@@ -1010,6 +1029,14 @@ function ok(name, cond, extra) {
     ok('超管有标记', mem.indexOf('超管') >= 0);
     ok('停用状态有标记', mem.indexOf('停用') >= 0);
     ok('不参与值日标记可见', mem.indexOf('是（不排值日）') >= 0 || mem.indexOf('不排值日') >= 0);
+    // 2026-11-12：绑定情况并入成员列表（原独立「绑定」页已删），这里验真渲染：
+    // 表头有「绑定」列，且已绑定（示例成员01 o1）/ 未绑定（王五 openid=null）两种标签都出得来。
+    const memHead = await page.textContent('#view .tbl thead');
+    ok('成员表头含「绑定」列', /绑定/.test(memHead), memHead.replace(/\s+/g, ' '));
+    ok('绑定列渲染「已绑定」', mem.indexOf('已绑定') >= 0);
+    ok('绑定列渲染「未绑定」', mem.indexOf('未绑定') >= 0);
+    ok('独立绑定页已移除（导航无 binding）',
+      (await page.$$('.nav-item[data-view="binding"]')).length === 0);
     await page.screenshot({ path: path.join(SHOTS, '06-member.png'), fullPage: true });
 
     /* --- 7.5 右上角切班：就地刷新，不跳回概览（2026-10-10 用户要求） ---

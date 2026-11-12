@@ -272,6 +272,7 @@ Page({
 
   /** 选图 → 直传云存储拿 fileID（二进制不经过云函数），暂存用于提交与预览 */
   onPickImage() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选图、不上传
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
@@ -291,8 +292,6 @@ Page({
       }
     });
   },
-
-  onRemoveImage() { this.setData({ imageFileId: '', imageThumb: '' }); },
 
   /** 预览假条：fileID 先换临时 URL（带缓存）再 previewImage */
   onPreviewImage(e) {
@@ -324,6 +323,7 @@ Page({
   },
 
   onSubmitApply() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不真正提交
     if (this.data.submitting) return;
     const { startDate, endDate, leavePeriods, imageFileId, reasonNote } = this.data;
     if (!startDate || !endDate) { util.toast('请选择请假日期'); return; }
@@ -349,6 +349,7 @@ Page({
 
   /* ---------------- 我的申请：撤回（仅 PENDING） ---------------- */
   onWithdraw(e) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不弹确认、不撤回
     const id = Number(e.currentTarget.dataset.id);
     if (!id) return;
     util.confirmStrict('撤回这条请假申请？撤回后需重新提交。', '撤回申请')
@@ -363,9 +364,10 @@ Page({
   },
 
   /* ---------------- 审批：通过 / 驳回（仅审批人） ---------------- */
-  onApprove(e) { this._doApprove(Number(e.currentTarget.dataset.id), true); },
+  onApprove(e) { if (util.readonlyBlocked()) return; this._doApprove(Number(e.currentTarget.dataset.id), true); },
 
   onReject(e) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不弹确认、不驳回
     const id = Number(e.currentTarget.dataset.id);
     util.confirmStrict('驳回这条请假申请？驳回后申请人可重新提交。', '驳回请假')
       .then((act) => { if (act === 'confirm') this._doApprove(id, false); });

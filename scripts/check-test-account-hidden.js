@@ -97,6 +97,16 @@ const WHITELIST = [
       '门禁的语句切片读到第一个 return 就断了，看不到 else 分支里的过滤。' +
       '这条的口径由同文件另两处**无分支**的 COMMITTEE（464 行）与 POSITION（479 行）SQL 保证 —— ' +
       '那两处门禁在判、失败就会红；这里放行的是同一个 pushNoticeMsg 的第一段。'
+  },
+  {
+    fn: 'member',
+    find: "group_tag = 'X' AND ",
+    reason: '教职工名册（member.staffList，2026-11-11 报障修复）：X 组是教职工账号，' +
+      '**不是学生名册**。新号占位学号前缀是 STAFF；而 99 段的 4 个合成测试账号全在 A/B 组。' +
+      '在册辅导员 id=72 的历史占位学号恰好落在 0000000000… 段，若按 NOT_TEST 过滤，' +
+      '整张名单会被抹成 0 行（用户看到「教职工没有了」）。此列表又仅超管可见（requireSuper），' +
+      '不面向普通用户 ⇒ 不按学号过滤，只排除 DISABLED。' +
+      'scripts/check-staff-list-visible.js 守着「不许再加回 NOT_TEST」，改这里前先读它。'
   }
 ];
 

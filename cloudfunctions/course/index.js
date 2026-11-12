@@ -1879,7 +1879,7 @@ const routes = {
       const classId = guard.classIdOf(ctx);
       const pool = getPool();
       const [rows] = await pool.query(
-        `SELECT id, name, teacher, room, day_of_week, period, weeks, week_rule, created_at
+        `SELECT id, name, teacher, room, day_of_week, period, weeks, week_rule, group_tag, created_at
            FROM personal_course
           WHERE class_id = ? AND member_id = ?
           ORDER BY day_of_week, period, id`,
@@ -1894,7 +1894,9 @@ const routes = {
           dayOfWeek: Number(r.day_of_week),
           period: Number(r.period),
           weeks: r.weeks || '',
-          weekRule: r.week_rule || 'ALL'
+          weekRule: r.week_rule || 'ALL',
+          // 选修课归属组（A/B）：仅本人所在组的课表视图才显示该课，不跨组泄漏
+          groupTag: r.group_tag || ''
         }))
       };
     }
@@ -1952,9 +1954,9 @@ const routes = {
       );
       if (Number(cnt[0].n) >= 2) throw new BizError(41001, '每人最多添加 2 门选修课');
       const [r] = await pool.query(
-        `INSERT INTO personal_course (class_id, member_id, name, teacher, room, day_of_week, period, weeks, week_rule)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
-        [classId, member.id, name, teacher, room, dayOfWeek, period, weeksStr, weekRule]
+        `INSERT INTO personal_course (class_id, member_id, name, teacher, room, day_of_week, period, weeks, week_rule, group_tag)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [classId, member.id, name, teacher, room, dayOfWeek, period, weeksStr, weekRule, member.group_tag || '']
       );
       return { id: Number(r.insertId), updated: false };
     }

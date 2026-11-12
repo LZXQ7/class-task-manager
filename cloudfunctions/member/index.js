@@ -1272,6 +1272,7 @@ const routes = {
    * 为什么单开一路而不是复用 `list{public:'manage'}`：
    *   manage 分支对非超管套了 `NOT_TEST`，而既有辅导员（示例成员57）的占位学号正好落在 99 段
    *   —— 复用会让辅导员自己看不见自己。又不想为了教职工去动「99 段只有超管可见」这条既有规则。
+   * ⚠️ 因此**本路 SQL 绝不能拼 NOT_TEST()**：见下方 2026-11-11 修复说明。
    * ⚠️ **不回 staff_code 本身**，只回状态（有无待用码 / 何时过期）：
    *   码只在 addStaff / staffCode 的响应里明文出现一次 —— 否则普通班委也能从列表把码抄走，
    *   拿去自己绑定，等于冒充教职工。
@@ -1281,8 +1282,16 @@ const routes = {
     handler: async (payload, ctx) => {
       guard.requireSuper(ctx); // v0.7.16：教职工名册收归超管；账号是全局的，不再按班过滤
       const pool = getPool();
+      /* 🔴 2026-11-11 修「教职工管理里一个教职工都没有」：
+       *   NOT_TEST() 展开为 student_no NOT LIKE '0000000000%'，而在册辅导员 id=72 的
+       *   **占位学号**恰好是 0000000000…（历史遗留），整表被过滤成 0 行 —— 从 10-13
+       *   初始基线起就与本注释上方「单开一路」的意图自相矛盾。
+       *   教职工（X 组）不是学生名册：新号占位学号前缀是 'STAFF'，99 段的 4 个合成
+       *   测试账号全在 A/B 组；此列表又仅超管可见（requireSuper）。
+       *   ⇒ 这里**不按学号过滤测试账号**，只排除 DISABLED；豁免已登记在
+       *     scripts/check-test-account-hidden.js 的 WHITELIST，勿再加回 NOT_TEST。 */
       const [rows] = await pool.query(
-        "SELECT id, name, position, openid, staff_code, staff_code_expire, class_id FROM member WHERE group_tag = 'X' AND " + NOT_TEST() + " AND status != 'DISABLED' ORDER BY id"
+        "SELECT id, name, position, openid, staff_code, staff_code_expire, class_id FROM member WHERE group_tag = 'X' AND status != 'DISABLED' ORDER BY id"
       );
       // 每人绑定的班级（staff_class 多对多；无映射时回退主班 class_id 展示存量数据）
       const [binds] = await pool.query('SELECT staff_id, class_id FROM staff_class ORDER BY class_id');

@@ -630,7 +630,7 @@ Page({
       weekRule: p.weekRule || 'ALL',
       weeks: p.weeks || '',
       weekText: weekText(p.weeks || ''),
-      groupScope: null,                   // 无分组语义，所有分组视图都显示
+      groupScope: (p.groupTag === 'A' || p.groupTag === 'B') ? p.groupTag : null, // 仅添加者所在组视图显示；旧数据无 group_tag 兜底全显示
       dutyCount: 0,
       duties: [],
       classDate: '',
@@ -652,7 +652,7 @@ Page({
     };
   },
 
-  /** 全班课次 + 个人选修课 合并（个人课次不参与分组过滤，所有视图都显示） */
+  /** 全班课次 + 个人选修课 合并（选修课带 group_tag → 仅本人所在组视图显示；旧数据无 group_tag 兜底全显示） */
   _mergePersonal(classCourses) {
     const pc = (this._personal || []).map(p => this._personalToCell(p));
     return classCourses.concat(pc);

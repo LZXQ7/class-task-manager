@@ -312,7 +312,11 @@ Page({
         this.setData({ staffList, staffChips });
         this._applyFilter();
       })
-      .catch(() => {});
+      .catch((e) => {
+        // 🔴 2026-11-11：空 catch 会把后端错误伪装成「一个教职工都没有」，必须留痕 + 提示
+        console.error('[classes] staffList failed', (e && e.stack) || e);
+        util.toast('教职工列表加载失败，请重试');
+      });
   },
 
   /** 新建表单里的班级多选 chip */
@@ -584,6 +588,7 @@ Page({
   onWbBack() { this.setData({ wbPhase: 'input' }); },
 
   onWbPickFile() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选文件、不导入
     if (this.data.wbBusy) return;
     if (!wx.chooseMessageFile) { util.toast('当前微信版本不支持选择文件'); return; }
     wx.chooseMessageFile({
@@ -632,6 +637,7 @@ Page({
 
   /** 兜底：大文件才走云存储上传（函数端仍支持 fileId 下载） */
   _wbUploadCloud(f, name) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：兜底拦截
     const ext = String(name.split('.').pop() || '').toLowerCase();
     const cloudPath = 'import/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
     wx.showLoading({ title: '上传中', mask: true });

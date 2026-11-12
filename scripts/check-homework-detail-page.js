@@ -87,7 +87,7 @@ const apiStub = {
   homeworkSubmit: async (p) => { calls.submit.push(p); return { ok: true }; },
   homeworkReview: async (p) => { calls.review.push(p); return { ok: true }; }
 };
-const utilStub = { toast: (m) => calls.toast.push(m) };
+const utilStub = { toast: (m) => calls.toast.push(m), isDemo: () => false, isTrial: () => false, isReadonly: () => false, readonlyBlocked: () => false };
 const requestStub = {
   uploadFile: async (p) => 'cloud://test-env/' + p,
   // 云文件 ID → 临时 http 链接（预览/下载都走这里；cloud:// 不能直接喂 previewImage）

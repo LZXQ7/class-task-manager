@@ -789,18 +789,23 @@ t('请假：后端 listLeave/updateLeave 存在且安全属性齐全（2026-10-1
   assert.ok(/function openLeaveEditDialog/.test(js), '前端缺 openLeaveEditDialog');
 });
 
-t('绑定情况：概览含各班绑定数 + 前端绑定视图（2026-10-12 新增能力）', () => {
+t('绑定情况：概览含各班绑定数 + 成员列表内联绑定列（2026-11-12 合并，原独立绑定页已删除）', () => {
   const src = fs.readFileSync(path.join(ROOT, 'lib', 'mod-config.js'), 'utf8');
   const js = readPub('app.js');
   const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
   // 后端：overview 必须统计各班已绑定人数（openid 非空）
   assert.ok(/boundCnt/.test(src), 'overview 应统计已绑定人数（boundCnt）');
   assert.ok(/boundCount/.test(src), 'overview 应映射 boundCount');
-  // 前端：导航入口 + 视图 + 概览展示
-  assert.ok(/data-view="binding"/.test(html), '导航缺绑定入口');
-  assert.ok(/function renderBinding/.test(js), '前端缺 renderBinding');
-  assert.ok(/binding:\s*\{\s*title:\s*'绑定'/.test(js), 'VIEWS 应含 binding');
+  // 前端：绑定状态并入成员列表（数据来自 maskMember 的 bound 字段）
+  assert.ok(/<th>绑定<\/th>/.test(js), '成员列表缺「绑定」列');
+  assert.ok(/m\.bound/.test(js), '成员列表应使用 bound 字段渲染绑定状态');
+  assert.ok(/<span class="tag tag-ok">已绑定<\/span>/.test(js), '绑定列缺「已绑定」标签');
+  assert.ok(/<span class="tag tag-off">未绑定<\/span>/.test(js), '绑定列缺「未绑定」标签');
   assert.ok(/c\.boundCount/.test(js), '概览应展示各班已绑定人数');
+  // 独立绑定页已删除：导航入口、视图名、渲染函数都不应残留
+  assert.ok(!/data-view="binding"/.test(html), '独立绑定页已合并，导航不应再有绑定入口');
+  assert.ok(!/function renderBinding/.test(js), '独立绑定页已合并，不应再有 renderBinding');
+  assert.ok(!/binding:\s*\{\s*title:\s*'绑定'/.test(js), 'VIEWS 不应再有 binding');
 });
 
 t('主教室设置：main_room 字段 + 改时同步保洁课次名/房间（新增能力）', () => {

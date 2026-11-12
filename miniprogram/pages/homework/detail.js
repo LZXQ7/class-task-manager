@@ -441,6 +441,7 @@ Page({
     this.setData({ submitShow: false });
   },
   onChooseFile() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选图、不上传
     const h = this.data.homework || {};
     const cur = this.data.files || [];
     const nImg = cur.filter(f => f.kind === 'IMAGE').length;
@@ -471,6 +472,7 @@ Page({
   },
 
   onChooseDoc() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选文件、不上传
     const h = this.data.homework || {};
     const cur = this.data.files || [];
     const nFile = cur.filter(f => f.kind === 'FILE').length;
@@ -528,6 +530,7 @@ Page({
   },
 
   onSubmit() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不提交
     const files = this.data.files || [];
     const rt = String((this.data.homework || {}).requireType || 'NONE');
     // 要求提交材料校验（与后端 submit 同口径）：NONE 不强制；其余至少 1 个指定类型

@@ -155,7 +155,30 @@ Page({
       { key: 'dark', text: '深色' }
     ],
     /** 当前模式（'system' | 'light' | 'dark'）—— 只读展示 + 点击切换用，别处不要散落字面量 */
-    themeMode: 'system'
+    themeMode: 'system',
+
+    /* -------- 赞赏组件（「喜欢开发者」，基础库 3.17.5+） --------
+       官方兼容口径：新增组件在旧版本「不会被处理，但也不报错」⇒ 不挡就会在页尾留白。
+       🔴 版本号必须逐段数值比较，不能按字符串比（官方明确 '2.29.1' > '2.3.0' 为 false）。
+       取版本优先 wx.getAppBaseInfo（2.20.1+），低版本回落 getSystemInfoSync；
+       取不到 / 抛错一律按「不支持」兜底 —— 宁可不显示，也不留一块空白占位。
+       ⚠️ 全小程序只允许一个页面放 reward 组件，本页是唯一入口（见 index.wxml 页尾）。 */
+    rewardSupported: (function () {
+      try {
+        const info = (wx.getAppBaseInfo && wx.getAppBaseInfo()) || wx.getSystemInfoSync();
+        const cur = String((info && info.SDKVersion) || '').split('.').map(Number);
+        const min = [3, 17, 5];
+        for (let i = 0; i < min.length; i++) {
+          const part = cur[i] || 0;
+          if (part > min[i]) return true;
+          if (part < min[i]) return false;
+        }
+        return true;
+      } catch (e) {
+        console.error('[mine] rewardSupported 探测失败', e);
+        return false;
+      }
+    })()
   },
 
   onLoad() {
@@ -636,6 +659,7 @@ Page({
    * 取消选图不提示；其他错误轻提示。
    */
   onPickAvatar() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选图、不上传头像
     const me = this.data.profile;
     if (!me) { util.toast('请先绑定班级'); return; }
     wx.chooseMedia({
@@ -668,6 +692,7 @@ Page({
 
   /** 本地图片 → 上传云存储 → 更新头像 URL（与旧 chooseAvatar 链路一致）。 */
   _uploadAvatar(tempPath) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：兜底拦截
     const app = getApp();
     const me = this.data.profile;
     const memberId = (me && me.id) || 'me';

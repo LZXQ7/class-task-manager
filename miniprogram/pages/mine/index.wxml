@@ -139,6 +139,25 @@
   </view>
 
   <view class="mn-unbind-hint">如需解绑，请联系班级管理员手动处理</view>
+
+  <!-- 「喜欢开发者」赞赏组件（基础库 3.17.5+）：官方内置组件，页面直接放置即可 ——
+       作者标识 / 头像 / 喜欢人数 / 跳转链接由后台按用户身份下发，前端零配置，
+       组件自包含全部交互、不向页面抛事件，所以这里没有 bind 事件、也不需要 json 注册。
+       ⚠️ 全小程序只允许一个页面放本组件（多放时只有第一个展示的页面会渲染），
+          本页是唯一入口，别再往别的页面复制。
+       ⚠️ 低版本基础库由 wx:if 挡掉：官方说明新增组件在旧版本「不处理也不报错」，
+          不挡就会在页尾留一段空白；判定值在 data.rewardSupported（逐段数值比版本）。
+       ⚠️ 不挂 st-item：本页 st-1~st-5 档位连续，check-tab-enter 会验序列，
+          新增入场块会撞档位；与上方说明文字、下方 mn-foot 一样直接显示即可。
+       ⚠️ theme 固定 transparent（无背景）：2026-11-12 用户实拍反馈「页尾有块白底」——
+          早先按 tClass 动态给 white / black，文档明确 white = 组件画 #FFFFFF 纯白实底卡片，
+          与本页淡蓝紫玻璃卡片割裂。改回官方默认的无背景，组件自绘内容落在页面底色上。
+          ⚠️ 别再改回 white / light；深色下若文字偏淡另议（black 是 #2C2C2C 实底，同样有块感）。
+          判据见 scripts/check-reward-theme.js。 -->
+  <view wx:if="{{rewardSupported}}" class="mn-reward">
+    <reward theme="transparent" />
+  </view>
+
   <view class="mn-foot"></view>
   </spring-scroll>
 

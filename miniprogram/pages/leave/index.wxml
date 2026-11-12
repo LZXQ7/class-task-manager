@@ -57,14 +57,11 @@
 
         <view class="lv-field">
           <text class="lv-label">假条<text class="lv-req">必传</text></text>
-          <view wx:if="{{imageThumb}}" class="lv-img-row">
-            <image class="lv-img" src="{{imageThumb}}" mode="aspectFill" data-fid="{{imageFileId}}" bindtap="onPreviewImage" />
-            <view class="lv-img-del" data-fid="{{imageFileId}}" bindtap="onRemoveImage" hover-class="press-dim" hover-stay-time="60">删除</view>
-          </view>
-          <view wx:else class="lv-upload" bindtap="onPickImage" hover-class="press-dim" hover-stay-time="60">
+          <view class="lv-upload" bindtap="onPickImage" hover-class="press-dim" hover-stay-time="60">
             <app-icon name="photo-plus" variant="brand" size="{{36}}" />
-            <text class="lv-upload-t">上传假条照片</text>
+            <text class="lv-upload-t">{{imageThumb ? '重新上传假条照片' : '上传假条照片'}}</text>
           </view>
+          <view wx:if="{{imageThumb}}" class="lv-uploaded-tip">已上传假条照片，点上方按钮可重传</view>
         </view>
 
         <view class="f-actions">

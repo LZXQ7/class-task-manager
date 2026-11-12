@@ -1202,6 +1202,7 @@ _clockNow() {
    *    也不会在云存储里留下孤儿图。
    */
   _uploadLeaveImage(leaveId) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选图、不上传
     if (!this.data.canLeave) { util.toast('仅班委可上传假条'); return; }
     wx.chooseMedia({
       count: 1,
@@ -1807,6 +1808,7 @@ _clockNow() {
 
   /** 从聊天里选一个 Excel / CSV 文件（微信只允许从小程序外部选文件） */
   onImportPickFile() {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选文件、不导入
     if (this.data.importBusy) return;
     if (!wx.chooseMessageFile) { util.toast('当前微信版本不支持选择文件，请改用上面的粘贴方式'); return; }
     /*
@@ -1832,6 +1834,7 @@ _clockNow() {
   },
 
   _uploadAndPreview(f) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：兜底拦截
     const name = f.name || 'roster.xlsx';
     const ext = String(name.split('.').pop() || '').toLowerCase();
     if (['xlsx', 'csv'].indexOf(ext) < 0) {

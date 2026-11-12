@@ -5,6 +5,9 @@
  * - 统一错误提示与鉴权事件广播
  */
 const ENV_ID = '<YOUR_ENV_ID>';
+// 部分门禁在**无 require 的 vm 沙盒**里加载本文件（如 check-network-retry，只验重试逻辑），
+// 故做存在性判断：沙盒内 util=null，体验版守卫跳过；真机 / Node 下正常加载 util。
+const util = (typeof require === 'function') ? require('./util') : null;
 
 let inited = false;
 function cloudInit() {
@@ -60,6 +63,17 @@ function call(name, action, payload, opt) {
    * 落库、只是响应在路上丢了，重放会造成重复记录。按 action 命名识别写操作，
    * 调用方仍可用 opt.retry 显式覆盖（0 = 关，1~3 = 指定次数）。 */
   const WRITE_ACTION = /(add|save|set|update|remove|delete|clear|publish|unpublish|apply|import|revert|confirm|cancel|bind|unbind|toggle|move|append|copy|submit|upsert|generate|reassign|swap|handle|track|send|create|mark|reset|upload)/i;
+  // 只读预览态（演示班级 demo / 体验版 trial，2026-11-12）：写类操作一律拦截，
+  // 绝不真正上报服务器 —— 演示班是所有体验者共享的一个班，任一条写入都会被别人看见。
+  // 统一回 40099（静默，不弹 toast：自动埋点等后台调用不该打扰用户），
+  // 用户主动点击的入口由各 handler 顶部的 util.readonlyBlocked() 弹提示。
+  if (util && util.isReadonly() && WRITE_ACTION.test(String(action))) {
+    // opt.toast !== false ⇒ 用户主动发起的操作（排班生成、发通知、课次增删等
+    // 没在 handler 顶部加守卫的入口）→ 补一次提示，避免「点了没反应」。
+    // 后台自动调用（埋点 / 预热 / 切身份恢复）都传 toast:false ⇒ 静默，不打扰。
+    if (needToast) util.toast('演示班级仅预览，操作不会真实保存');
+    return Promise.reject(mkErr(40099, '演示班级仅预览，操作不会真实保存'));
+  }
   const defaultRetry = WRITE_ACTION.test(String(action)) ? 0 : 1;
   const maxRetry = opt.retry === undefined
     ? defaultRetry
@@ -132,6 +146,12 @@ function call(name, action, payload, opt) {
 
 /** 上传本地文件到云存储 */
 function uploadFile(cloudPath, filePath) {
+  // 只读预览态（演示班级 / 体验版，2026-11-12）：文件一律不真正上传云存储，
+  // 避免假条、作业附件等违规内容进入共享桶被后续体验者看到。
+  // 直传云存储不经过云函数，后端无权拦截 —— 这里是唯一闸口。
+  if (util && util.isReadonly()) {
+    return Promise.reject(mkErr(40099, '演示班级仅预览，图片/文件不会真正上传'));
+  }
   cloudInit();
   return wx.cloud.uploadFile({ cloudPath, filePath }).then(r => r.fileID);
 }

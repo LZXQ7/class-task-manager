@@ -361,6 +361,13 @@
   line-height: 40rpx;
   color: var(--text-3);
 }
+/* 「喜欢开发者」赞赏组件容器（基础库 3.17.5+）：组件按 theme="transparent" 无背景，
+   外层只负责与上方说明文字的间距和左右安全边距，不写背景色（白底来自组件 theme=white，已弃用）。
+   ⚠️ 别给容器加 overflow 裁剪或固定高度：组件 width 按「可用宽度」百分比算，
+      换算后小于 max(屏宽 × 85%, 216px) 时官方会整卡不展示。 */
+.mn-reward {
+  margin: 40rpx 32rpx 0;
+}
 .mn-foot {
   height: 180rpx;
 }

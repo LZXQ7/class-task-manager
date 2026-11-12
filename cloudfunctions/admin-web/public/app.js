@@ -45,8 +45,7 @@
     auditPage: 1,
     group: 'ALL',
     leaveStatus: 'ALL',
-    leaveKw: '',
-    bindingFilter: 'all'
+    leaveKw: ''
   };
 
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
@@ -208,7 +207,6 @@
     config:    { title: '系统配置', render: renderConfig },
     audit:     { title: '操作审计', render: renderAudit },
     leave:     { title: '请假',     render: renderLeave },
-    binding:   { title: '绑定',     render: renderBinding },
     usage:     { title: '使用统计', render: renderUsage },
     rules:     { title: '排班规则', render: renderRules }
   };
@@ -311,65 +309,6 @@
     return '<div class="stat"><div class="stat-value">' + value + '</div>' +
       '<div class="stat-label">' + esc(label) + '</div>' +
       '<div class="stat-hint">' + esc(hint) + '</div></div>';
-  }
-
-  /* ---------------- 绑定情况 ---------------- */
-  // 只读视图：展示当前班级每位成员的微信绑定状态（已绑定 / 未绑定），
-  // 顶部给出「本班 X 人，已绑定 Y 人，绑定率 Z%」汇总，并提供 全部/已绑定/未绑定 筛选。
-  // 绑定数据复用 /api/members 的 bound 字段，筛选在前端做（班级人数通常 < 200，一次拉全）。
-  function renderBinding(host) {
-    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
-    var cls = currentClass();
-    var filter = state.bindingFilter;
-
-    function load() {
-      api('/api/members?classId=' + state.classId + '&page=1&pageSize=300').then(function (d) {
-        if (!d.ok) { host.innerHTML = errHtml(d); return; }
-        var all = d.data.items;
-        var total = d.data.total;
-        var bound = all.filter(function (m) { return m.bound; }).length;
-        var rate = total ? Math.round(bound / total * 100) : 0;
-        var view = all.filter(function (m) {
-          if (filter === 'bound') return m.bound;
-          if (filter === 'unbound') return !m.bound;
-          return true;
-        });
-        host.innerHTML =
-          '<div class="toolbar">' +
-          '<select id="bd-filter" class="input-search">' +
-          '<option value="all">全部</option>' +
-          '<option value="bound">已绑定</option>' +
-          '<option value="unbound">未绑定</option>' +
-          '</select>' +
-          '<div class="toolbar-right"><button class="btn" id="bd-refresh">刷新</button></div>' +
-          '</div>' +
-          '<div class="card">' +
-          '<div class="card-hd">' + esc(cls ? cls.name : '') + ' · 绑定情况</div>' +
-          '<div class="summary">本班共 ' + total + ' 人，已绑定微信 ' + bound + ' 人，绑定率 ' + rate + '%</div>' +
-          (total ? '' : '<div class="empty">该班还没有成员</div>') +
-          '<table class="tbl"><thead><tr>' +
-          '<th>学号</th><th>姓名</th><th>分组</th><th>绑定状态</th><th>成员状态</th>' +
-          '</tr></thead><tbody>' +
-          view.map(function (m) {
-            return '<tr>' +
-              '<td class="td-no">' + esc(m.studentNo) + '</td>' +
-              '<td>' + esc(m.name) + (m.isSuper ? ' <span class="tag tag-super">超管</span>' : '') + '</td>' +
-              '<td>' + (m.groupTag === 'X' ? '—' : m.groupTag + ' 组') + '</td>' +
-              '<td>' + (m.bound ? '<span class="tag tag-ok">已绑定</span>' : '<span class="tag tag-off">未绑定</span>') + '</td>' +
-              '<td>' + statusTag(m.status) + '</td>' +
-              '</tr>';
-          }).join('') +
-          '</tbody></table></div>';
-        var sf = $('#bd-filter', host);
-        if (sf) {
-          sf.value = filter;
-          sf.onchange = function () { state.bindingFilter = sf.value; filter = sf.value; load(); };
-        }
-        var rf = $('#bd-refresh', host);
-        if (rf) rf.onclick = function () { load(); };
-      });
-    }
-    load();
   }
 
   /* ---------------- 课程表 ---------------- */
@@ -1169,7 +1108,9 @@
         '<div class="card">' +
         '<div class="card-hd">共 ' + r.total + ' 人（不含测试账号）' + scopeTip + kwTip + ' · ' + pageTip + '</div>' +
         '<table class="tbl"><thead><tr>' +
-        '<th>学号</th><th>姓名</th><th>分组</th><th>角色</th><th>职位</th><th>状态</th><th>值日数</th><th>操作</th>' +
+        // 「状态」= 成员在册状态（正常 / 请假 / 停用）；「绑定」= 是否已绑微信（openid）。
+        // 2026-11-12 用户要求：绑定情况并入成员列表，原独立的「绑定」页已删除。
+        '<th>学号</th><th>姓名</th><th>分组</th><th>角色</th><th>职位</th><th>状态</th><th>绑定</th><th>值日数</th><th>操作</th>' +
         '</tr></thead><tbody>' +
         (r.items.length ? r.items.map(function (m) {
           return '<tr>' +
@@ -1179,6 +1120,10 @@
             '<td>' + roleText(m.role) + '</td>' +
             '<td>' + esc(m.position || '—') + permTags(m.feePerms) + '</td>' +
             '<td>' + statusTag(m.status) + '</td>' +
+            // 绑定状态来自 /api/members 的 bound 字段（openid 是否为空），与小程序登录态同源。
+            '<td>' + (m.bound
+              ? '<span class="tag tag-ok">已绑定</span>'
+              : '<span class="tag tag-off">未绑定</span>') + '</td>' +
             // duty_off（不排值日）必须在列表可见：值日是本小程序的核心业务，
             // 「这个人不参与排班」只藏在编辑弹层里的话，管理员在排班视图根本看不出来。
             '<td>' + m.dutyCount + (m.dutyOff ? ' <span class="tag tag-warn">不排值日</span>' : '') + '</td>' +
@@ -1188,7 +1133,7 @@
               (m.isSuper ? '取消超管' : '设为超管') + '</button>' +
             '<button class="link link-danger" data-m-del="' + m.id + '">删除</button>' +
             '</td></tr>';
-        }).join('') : '<tr><td colspan="8" class="empty">' +
+        }).join('') : '<tr><td colspan="9" class="empty">' +
           (state.memberKw || state.memberScope !== 'ALL' ? '当前筛选下没有成员' : '该班还没有成员') + '</td></tr>') +
         '</tbody></table></div>' +
         (state.memberPageSize === 0 ? '' :

@@ -188,6 +188,64 @@ function toast(title, duration) {
   wx.showToast({ title: String(title).slice(0, 28), icon: 'none', duration: duration || 1800 });
 }
 
+/**
+ * 演示班级（demo 态）判定 —— 只读预览的真源。
+ * ------------------------------------------------------------
+ * 2026-11-12 需求澄清：「体验版」= **演示班级**（未绑定班级的人在口令页点「一键体验」
+ * 进入的 class 104），不是微信的 envVersion === 'trial'。
+ *
+ * 为什么必须拦：演示班虽是全虚拟数据，但**所有体验者共享同一个班**——
+ *   谁传的假条 / 作业附件，后来的体验者都能在列表里看见（违规图事件即由此而来）。
+ *
+ * 真源：app.globalData.demo，由 auth.login 的 demo 位权威下发（guard.isDemoMember：
+ *   生效身份属演示班）、口令页「一键体验」置 true、「切换正式版」清 false。
+ * ⚠️ **不可缓存**：切换身份 / 退出演示后必须立即失效，否则会误拦超管的正式版操作。
+ */
+function isDemo() {
+  try {
+    if (typeof getApp !== 'function') return false;
+    const g = getApp();
+    return !!(g && g.globalData && g.globalData.demo);
+  } catch (e) { return false; }
+}
+
+/**
+ * 是否体验版环境（trial）。
+ * 判定真源：wx.getAccountInfoSync().miniProgram.envVersion === 'trial'
+ *   （'develop'=开发版 / 'trial'=体验版 / 'release'=正式版）。
+ * 作为 demo 之外的环境级兜底：体验版环境里未进演示班的写操作同样不该落到生产库。
+ * 环境值进程内恒定，可缓存；异常兜底 false。
+ */
+let _trialFlag = undefined;
+function isTrial() {
+  if (_trialFlag !== undefined) return _trialFlag;
+  let t = false;
+  try {
+    const env = (wx.getAccountInfoSync && wx.getAccountInfoSync().miniProgram && wx.getAccountInfoSync().miniProgram.envVersion) || '';
+    t = (env === 'trial');
+  } catch (e) { t = false; }
+  _trialFlag = t;
+  return t;
+}
+
+/** 只读预览态：演示班级（demo）或体验版环境（trial）—— 上传/写操作一律不真正执行 */
+function isReadonly() {
+  return isDemo() || isTrial();
+}
+
+/**
+ * 只读守卫：在「上传文件 / 写操作」handler 入口调用。
+ * 返回 true 表示**应拦截**（已弹提示），调用方直接 return；false 表示放行。
+ * 全站统一文案，避免各处各写一句导致口径漂移。
+ * @param {string} [msg] 自定义提示
+ */
+function readonlyBlocked(msg) {
+  if (!isReadonly()) return false;
+  const def = isDemo() ? '演示班级仅预览，操作不会真实保存' : '体验版仅预览不可操作';
+  toast(msg || def);
+  return true;
+}
+
 /** 二次确认弹窗 */
 function confirm(content, title) {
   return new Promise((resolve) => {
@@ -430,5 +488,6 @@ module.exports = {
    *    同类事故（fee 页 setData 写错变量名被 catch 吞）同源，见 MEMORY「吞异常」条目。 */
   classNameOf,
   toast, confirm, confirmStrict, throttleTap, randPath, pad, roleTag, POSITIONS, GRANTED_POSITIONS,
+  isDemo, isTrial, isReadonly, readonlyBlocked,
   feeRights
 };

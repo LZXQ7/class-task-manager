@@ -926,6 +926,7 @@ Page({
    *    fileID，所以重传不用改后端，也不会留下两张孤儿图。
    */
   _uploadLeaveImage(leaveId) {
+    if (util.readonlyBlocked()) return;   // 只读预览（演示班 / 体验版）：不选图、不上传
     if (!this.data.canLeave) { util.toast('仅班委可上传假条'); return; }
     wx.chooseMedia({
       count: 1,

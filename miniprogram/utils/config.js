@@ -201,8 +201,24 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      `wx.getAppBaseInfo()`（getWindowInfo 不含 theme），`app.onShow` 调 `theme.resync()` 补回前台事件丢失，
  *      app.json 原生条 / 底栏接入 theme.json 的 @变量。
  *   云函数需重部署：course / duty / export / adjust / schedule / cron-weekly（含 common/week.js）。
+ * **`1.0.8.29`** = 演示班只读沙盒 + 体验模式常驻（2026-11-11~12）：
+ *   ① 演示班级（口令页「一键体验」，class 104）改为**只读预览**：`util.isReadonly()` 同时认
+ *      演示态 `app.globalData.demo` 与微信体验版环境；`request.js` 在云存储直传与写类调用双闸拦截，
+ *      用户主动操作补一次提示、后台自动调用保持静默。口径纠正：演示班 ≠ 微信 trial 环境。
+ *   ② 通知 / 请假 / 倒数日按演示态常驻展示（去期数据不再被过滤），加「体验版常驻」标识。
+ *   ③ 教职工列表 `staffList` 去掉误加的 `NOT_TEST()`；请假表单移除假条黄色预览图；
+ *      个人选修课仅显示在添加者所在组。
+ * **`1.0.8.30`** = 「我的」页尾接入「喜欢开发者」赞赏组件（2026-11-12）：
+ *   ① 官方内置 `<reward>` 标签（基础库 3.17.5+），零配置、无需 json 注册与事件绑定；
+ *      `data.rewardSupported` **逐段数值**比较 SDKVersion（不可用字符串比，官方明确 '2.29.1' > '2.3.0' 为 false），
+ *      `getAppBaseInfo` → `getSystemInfoSync` 回落，取不到 / 抛错一律不渲染，`wx:if` 挡低版本空白。
+ *   ② `theme` 固定 `transparent`：初版按 tClass 给 `white`/`black`，用户实拍发现页尾纯白实底
+ *      与淡蓝紫玻璃卡片割裂（文档明确 white = 组件自绘 #FFFFFF 卡片）⇒ 改回官方默认无背景。
+ *   ③ 全小程序**只允许一个页面放置**本组件，本页是唯一入口；不挂 `st-item`（避免撞入场动画档位）。
+ *   ④ 新增门禁 `scripts/check-reward-theme.js`（唯一页面 / 禁 white·light / 必须有 wx:if / 容器不写死背景）。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.29';
+const APP_VERSION = '1.0.8.30';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。
