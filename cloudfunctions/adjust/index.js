@@ -16,6 +16,8 @@ const { getPool } = require('./common/db');
 const guard = require('./common/guard');
 const week = require('./common/week');
 const { BizError, ok, fail } = require('./common/resp');
+// 演示班级写操作硬闸（2026-11-13）：请假/换班/倒数日全在本函数，是本次违规假条穿透的链路
+const reviewDemo = require('./common/review-demo');
 
 const REASONS = ['COURSE', 'SICK', 'INTERN', 'OTHER'];
 /**
@@ -1380,6 +1382,9 @@ exports.main = async (event) => {
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
+    /* 演示班级只读硬闸（2026-11-13）：演示身份下所有写操作（含请假登记/上传假条/审批）
+       一律 40010，绝不落库。读操作在建表返回前就 return，零开销。 */
+    await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     if (route.auth && route.auth.needAdmin) guard.requireAdmin(ctx);
     if (route.auth && route.auth.needSuper) guard.requireSuper(ctx);

@@ -215,6 +215,16 @@ const routes = {
         // 演示态（体验版 / 免绑定预览）标记：true 时前端不显示「模拟中」横幅、按钮变为「切换正式版」。
         // 判定口径与 guard 一致：生效身份 is_review_demo 或所属班级为演示班（2026-10-29）。
         demo: await guard.isDemoMember(pool, ctx),
+        /*
+         * 真实绑定身份是否超管（2026-11-13）：「切换测试账号」「切换体验版 / 切换正式版」
+         * 两枚入口**只给本人就是超管的路径**显示。
+         * 为什么不能只看 member.is_super：口令页 / 一键体验（auth.reviewDemo）进的演示班，
+         *   生效身份本身就是演示班超管（is_super=1）—— 普通体验者因此在「我的 → 更多」里
+         *   白看到这两项，而它们底层的 switchAccount / switchDemo 都要求**真实身份**是超管，
+         *   点了只会报「仅超级管理员可切换」。口径与那两条路由的校验逐字一致：
+         *   ctx.realMember && isSuper(ctx.realMember)（realMember 未被 impersonate 替换）。
+         */
+        realIsSuper: !!(ctx.realMember && guard.isSuper(ctx.realMember)),
         role: m ? m.role : null,
         classId,
         member: m ? {
@@ -733,6 +743,7 @@ exports.main = async (event) => {
     const ctx = await guard.getContext();
     /* 演示态（生效班级为演示班，含免绑定 reviewDemo / 超管 switchDemo）：拦截破坏性动作
        （v1.0.6.4，2026-10-29 扩展判定为「演示班」；原 is_review_demo 列已不再由 reviewDemo 写入） */
+    await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);   // 演示班级只读硬闸（写名单一律拒）
     if (await guard.isDemoMember(getPool(), ctx) && reviewDemo.isDeniedAction(action)) {
       throw new BizError(40010, '演示模式：该操作不会真实执行');
     }

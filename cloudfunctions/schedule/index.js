@@ -9,6 +9,7 @@ const { getPool } = require('./common/db');
 const guard = require('./common/guard');
 const week = require('./common/week');
 const { BizError, ok, fail } = require('./common/resp');
+const reviewDemo = require('./common/review-demo');   // 演示班级写操作硬闸（2026-11-13）
 /* 轮转取人内核：唯一实现在 common/round-robin.js，经 common/schedule-core.js 再导出，
  * cron-weekly 的每周自动生成与 AI 计划校验共用同一份 —— 三条链路必须给出同样的名单。
  * 2026-10-07 v2：轮转位置 = 独立游标（class.round_cursor_a/b），不再用 duty_count 推断。 */
@@ -2858,6 +2859,7 @@ exports.main = async (event) => {
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
     ctxMember = ctx.member;
+    await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);   // 演示班级只读硬闸
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     if (route.auth && route.auth.needAdmin) guard.requireAdmin(ctx);
     if (route.auth && route.auth.needSuper) guard.requireSuper(ctx);

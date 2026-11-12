@@ -112,8 +112,11 @@
       <app-icon name="arrow-right" variant="gray" size="{{32}}" />
     </view>
     <!-- 体验版演示态 →「返回登录页」（口令页）（2026-10-29）：清演示身份 → 未绑定 → 回口令页。
-         仅 `demo && isTrial` 显示；超管正式版的演示态退出仍走「更多 → 切换正式版」。 -->
-    <view wx:if="{{demo && isTrial}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onBackToLogin">
+         显示条件（2026-11-13 扩展）：`demo && (本人非超管 || isTrial)`。
+           · 本人非超管 = 从口令页 / 一键体验进来的体验者 —— 他们不再有「切换正式版」
+             （见下方两行 isSuper && realIsSuper），这里必须留一个退出口，否则正式版里卡在演示班；
+           · 本人是超管 = 超管演示态：体验版仍走这里，正式版仍走「更多 → 切换正式版」（原行为不变）。 -->
+    <view wx:if="{{demo && (!realIsSuper || isTrial)}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onBackToLogin">
       <app-icon name="logout" variant="gray" size="{{40}}" />
       <text class="mn-row-text">返回登录页</text>
       <app-icon name="arrow-right" variant="gray" size="{{32}}" />
@@ -322,8 +325,11 @@
   <bottom-sheet show="{{moreShow}}" title="更多" bind:close="onMoreClose">
     <view class="mn-more">
       <!-- 切换测试账号（仅超管）：一键换到测试身份验证不同角色视角。
-           模拟态下的「恢复本人」由顶部红色护栏条统一承担（v1.0.5）。 -->
-      <view wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSwitch">
+           模拟态下的「恢复本人」由顶部红色护栏条统一承担（v1.0.5）。
+           ⚠️ 条件必须 `isSuper && realIsSuper`（2026-11-13）：口令页 / 一键体验进演示班时，
+              生效身份是演示班超管（isSuper 为真）但本人不是超管 —— 这类体验者不该看到本行
+              （switchAccount 要求真实身份是超管，点了只会报错）。 -->
+      <view wx:if="{{isSuper && realIsSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSwitch">
         <app-icon name="people" variant="brand" size="{{40}}" />
         <text class="mn-row-text">切换测试账号</text>
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
@@ -334,8 +340,10 @@
              · demo=false（正式版态）→ 文案「切换体验版」，点击进入演示态；
              · demo=true （演示态）  → 文案「切换正式版」，点击 recover 退出演示态（reLaunch 回首页）。
            与「切换测试账号」共用同一个 impersonation 行（互斥），故二者不会同时生效；
-           切换测试账号的顶部「模拟中」横幅行为保持不变。 -->
-      <view wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSwitchDemo">
+           切换测试账号的顶部「模拟中」横幅行为保持不变。
+           ⚠️ 条件 `isSuper && realIsSuper`（2026-11-13）：只有**本人是超管**才给这两枚入口。
+              从口令页 / 一键体验进演示班的体验者不再看到「切换正式版」，退出改由上方「返回登录页」承担。 -->
+      <view wx:if="{{isSuper && realIsSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSwitchDemo">
         <app-icon name="swap" variant="brand" size="{{40}}" />
         <text class="mn-row-text">{{demo ? '切换正式版' : '切换体验版'}}</text>
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />

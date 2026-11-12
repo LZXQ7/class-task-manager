@@ -76,6 +76,109 @@ const DENY_ACTIONS = [
 
 const DENY_SET = new Set(DENY_ACTIONS);
 
+/**
+ * 演示班级「写操作硬闸」名单（2026-11-13）
+ * ================================================================
+ * 背景（线上实况）：演示班是所有体验者共享的同一个班（class.is_demo=1），
+ *   任一人上传的假条 / 附件都会出现在后来的体验者列表里。2026-11-12 先做了前端只读
+ *   （util.readonlyBlocked + request 双闸），但**前端拦不住旧客户端**——
+ *   实测 2026-11-13 00:23 仍有体验者在演示班成功上传假条并写回 leave_request
+ *   （根因：请假走 adjust 云函数，那条链路压根没挂演示闸）。
+ *
+ * 口径（用户 2026-11-12/13 明确要求）：**演示班级一律只读，任何写操作都不落库**。
+ *   宁可审核员少点两下，也不能让违规内容污染共享的演示班被其他人看见。
+ *
+ * 为什么用「显式写名单 + 默认放行」而不是「写类关键词正则」：
+ *   实测正则会把读操作误判成写 —— `swapCandidates`（换班候选列表）、
+ *   `getApplyList`、`downloadApply` 全被 /swap|apply/ 命中；反过来 `leaveApprove`
+ *   （审批=写）、`staffCode`（生成绑定码=写）、`msgRestore`（恢复=写）不含关键词会漏。
+ *   名单是好样本，门禁 check-demo-backend-readonly 反向钉住：凡路由名命中写类关键词
+ *   却不在本名单 → 直接红，强迫维护。
+ *
+ * ⚠️ 刻意**不放**名单的几个「必须放行」：
+ *   auth.login / auth.reviewDemo / auth.switchDemo（进演示班）
+ *   auth.switchAccount（退出演示班，拦了就卡死在里面出不来）
+ *   auth.checkToken / resolveScene / reviewDemoStatus（纯读，状态查询）
+ */
+const DEMO_WRITE_ACTIONS = [
+  /* —— adjust：请假 / 换班 / 倒数日（本次穿透的漏洞就在这）—— */
+  'addLeave', 'applyLeave', 'leaveApply', 'leaveImageSet', 'leaveDelete', 'leaveMyCancel',
+  'leaveApprove',                         // 审批通过/驳回 = 写（正则漏判的典型）
+  'applySwap', 'cancel', 'cancelLeave', 'confirm',
+  'countdownAdd', 'countdownDelete',
+  /* —— auth：绑定与开关（演示班不允许改任何身份/后门状态）—— */
+  'bind', 'bindStaff', 'unbind', 'updateAvatar', 'setBindOpen', 'reviewDemoSet',
+  /* —— class：班级结构 —— */
+  'create', 'update', 'delete', 'setActive',
+  /* —— course：课表 / 选修课 / 调课 —— */
+  'electiveSave', 'electiveDelete', 'mySave', 'myDelete', 'myClear', 'myImport',
+  'upsert', 'sessionAppend', 'sessionAppendRemove', 'sessionBatchMove',
+  'shiftSet', 'shiftRemove', 'saveShift', 'removeShift', 'saveHoliday', 'removeHoliday',
+  'importTimetable', 'applyTimetable', 'handleApply', 'publishToClass', 'copyFrom', 'syncFromClass',
+  /* —— duty：值日确认 —— */
+  'confirm', 'undoConfirm',
+  /* —— fee：班费 —— */
+  'addExpense', 'deleteRecord', 'feeAppendImages', 'setTotal',
+  /* —— homework：作业 —— */
+  'publish', 'submit', 'delete', 'review',
+  /* —— media：通知 / 附件 —— */
+  'msgPublish', 'msgDelete', 'msgRecycleClear', 'publishNotice', 'clearNotices',
+  'appNoticePublish', 'deleteAttachment', 'markNoticeRead', 'msgRead', 'msgRestore', 'testRemind',
+  /* —— member：成员 / 权限 / 教职工 —— */
+  'addMember', 'addStaff', 'staffCode', 'staffBindClasses', 'staffUnbind', 'staffDelete',
+  'removeMember', 'setRole', 'setPosition', 'setStatus', 'updateGroup', 'unbind',
+  'noteSave', 'noteDelete', 'pinToggle', 'importCsv', 'importExcel', 'importBatches',
+  'revertImport', 'remindReopen',
+  /* —— schedule：排班生成 / 发布 / 换人 —— */
+  'generate', 'publish', 'unpublish', 'clear', 'addManual', 'remove', 'reassign', 'reassignUndo',
+  'setRules', 'setSlots',
+  'aiApply', 'aiSettingSave', 'aiSettingClear', 'aiSettingTest'
+];
+
+const DEMO_WRITE_SET = new Set(DEMO_WRITE_ACTIONS);
+
+/* 演示班 id 集合缓存：演示班结构极少变动，60s 足够；避免每笔写操作都查一次库。
+   进程级（云函数容器内）缓存，容器回收即失效，无跨实例不一致风险。 */
+let _demoIdsCache = null;
+let _demoIdsAt = 0;
+async function _demoIds(pool, guard) {
+  const now = Date.now();
+  if (_demoIdsCache && now - _demoIdsAt < 60000) return _demoIdsCache;
+  _demoIdsCache = await guard.demoClassIds(pool);
+  _demoIdsAt = now;
+  return _demoIdsCache;
+}
+
+/**
+ * 演示班级写操作硬闸：在**业务云函数** exports.main 取到 ctx 之后调用。
+ *
+ * 性能：**非写名单的 action 第一行就 return，一次库都不查** —— 读操作零开销；
+ *   只有命中写名单才判身份，且演示班 id 集合走 60s 缓存。
+ *
+ * @param {object} pool  mysql 连接池
+ * @param {object} guard cloudfunctions/common/guard.js（传进来避免循环依赖）
+ * @param {object} ctx   guard.getContext() 的返回值
+ * @param {string} action 本次请求的 action
+ * @throws {BizError} 40010（演示身份 + 写操作）
+ */
+async function gateDemoWrite(pool, guard, ctx, action) {
+  const a = String(action || '');
+  if (!DEMO_WRITE_SET.has(a)) return false;
+  const me = ctx && (ctx.member || ctx.realMember);
+  if (!me) return false;
+  // 与 guard.isDemoMember 同口径：is_review_demo=1 或生效班级属演示班
+  if (Number(me.is_review_demo) === 1) {
+    throw new BizError(40010, '演示班级仅预览，操作不会真实保存');
+  }
+  /* 能力探测：check-*.js 的门禁桩（假 guard）只实现被测成员，未必有 demoClassIds。
+     生产 guard 一定有 → 这里只是让门禁沙盒里的写路径不因缺方法抛 TypeError
+     （那会把「非演示身份」误判成 50000，反把门禁弄红）。拿不到演示班集合 ⇒ 无法判定 ⇒ 放行。 */
+  if (typeof guard.demoClassIds !== 'function') return false;
+  const ids = await _demoIds(pool, guard);
+  if (!ids.includes(Number(me.class_id))) return false;
+  throw new BizError(40010, '演示班级仅预览，操作不会真实保存');
+}
+
 /** 是否演示态身份（member.is_review_demo = 1） */
 function isReviewDemo(member) {
   return !!(member && Number(member.is_review_demo) === 1);
@@ -97,4 +200,7 @@ function denyDemo(member, action) {
   }
 }
 
-module.exports = { DENY_ACTIONS, isReviewDemo, isDeniedAction, denyDemo };
+module.exports = {
+  DENY_ACTIONS, isReviewDemo, isDeniedAction, denyDemo,
+  DEMO_WRITE_ACTIONS, gateDemoWrite
+};

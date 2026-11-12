@@ -275,7 +275,7 @@ const pinSqlOf = (pool) => {
         if (id === './common/db') return { getPool: () => pool };
         if (id === './common/guard') return guard;
         if (id === './common/resp') return { BizError, ok: d => ({ errCode: 0, data: d }), fail: (c, m) => ({ errCode: c, errMsg: m }) };
-        if (id === './common/review-demo') return { isReviewDemo: () => false, denyDemo: () => {}, isDeniedAction: () => false };
+        if (id === './common/review-demo') return { isReviewDemo: () => false, denyDemo: () => {}, isDeniedAction: () => false, gateDemoWrite: async () => false };
         return { todayStr: () => NOW_STR, dateStr: x => String(x), getConfig: async () => ({}), log: async () => {}, parseXlsx: () => ({}), sheetToText: () => '' };
       };
       new Function('exports', 'require', 'module', 'console', m1)(mod.exports, req, mod, { log() {}, error() {} });

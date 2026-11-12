@@ -14,6 +14,7 @@ const { getPool } = require('./common/db');
 const guard = require('./common/guard');
 const week = require('./common/week');
 const { BizError, ok, fail } = require('./common/resp');
+const reviewDemo = require('./common/review-demo');   // 演示班级写操作硬闸（2026-11-13）
 
 const DAY_MS = 86400000;
 // 补录窗口天数改由 schedule_rules.makeup_days 远程配置（默认 3）。见 confirm 内读取。
@@ -512,6 +513,7 @@ exports.main = async (event) => {
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
+    await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);   // 演示班级只读硬闸
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     if (route.auth && route.auth.needAdmin) guard.requireAdmin(ctx);
     const data = await route.handler(payload, ctx);

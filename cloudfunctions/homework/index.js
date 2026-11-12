@@ -23,6 +23,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const { getPool } = require('./common/db');
 const guard = require('./common/guard');
 const { BizError, ok, fail } = require('./common/resp');
+const reviewDemo = require('./common/review-demo');   // 演示班级写操作硬闸（2026-11-13）
 /* 测试账号唯一真源（见 common/test-account.js）：统计与名单口径一律排除，
  * 与 member.list / duty / fee 同套铁律。 */
 const { NOT_TEST } = require('./common/test-account');
@@ -587,6 +588,7 @@ exports.main = async (event) => {
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
     const ctx = await guard.getContext();
+    await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);   // 演示班级只读硬闸
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     const data = await route.handler(payload, ctx);
     return ok(data);

@@ -42,16 +42,18 @@ function pullRemoteConfig() {
  * ⚠️ 解绑 / 身份失效（_handleUnbound）必须清掉，绝不能让人看到上一位成员的身份。
  */
 const PROFILE_CACHE_KEY = 'profileCache';
-/** 读缓存：{ profile, switched, demo }（switched = 模拟态；demo = 切换体验版态，见 utils/impersonate.js） */
+/** 读缓存：{ profile, switched, demo, realIsSuper }
+ *  （switched = 模拟态；demo = 切换体验版态，见 utils/impersonate.js；
+ *    realIsSuper = 真实绑定身份是超管，2026-11-13 用于「更多」里两枚超管专属入口的可见性） */
 function readCachedAuth() {
   try {
     const v = wx.getStorageSync(PROFILE_CACHE_KEY);
     return (v && typeof v === 'object' && v.profile) ? v : null;
   } catch (e) { return null; }
 }
-function writeCachedAuth(profile, switched, demo) {
+function writeCachedAuth(profile, switched, demo, realIsSuper) {
   try {
-    if (profile) wx.setStorageSync(PROFILE_CACHE_KEY, { profile: profile, switched: !!switched, demo: !!demo });
+    if (profile) wx.setStorageSync(PROFILE_CACHE_KEY, { profile: profile, switched: !!switched, demo: !!demo, realIsSuper: !!realIsSuper });
     else wx.removeStorageSync(PROFILE_CACHE_KEY);
   } catch (e) { /* 缓存失败不影响主流程 */ }
 }
@@ -110,6 +112,11 @@ App({
     openid: '',
     bound: false,
     demo: false,     // 切换体验版（演示态）标记：true 时不显示顶部「模拟中」横幅、按钮变为「切换正式版」
+    /* 真实绑定身份是超管（2026-11-13）：登录权威下发，**不受 impersonation 影响**。
+       口令页 / 一键体验进演示班时生效身份也是演示班超管，只看 profile.isSuper 会让普通体验者
+       在「我的 → 更多」看到「切换测试账号 / 切换正式版」两项（点不动）。
+       「更多」这两项的可见性 = isSuper && realIsSuper。 */
+    realIsSuper: false,
     profile: null,   // { id, name, role, groupTag, studentNoMasked, status }
     config: null,    // { name, termStart, totalWeeks, periodTime, currentWeek }
     /* 启动参数 */
@@ -145,6 +152,7 @@ App({
       this.globalData.profile = cached.profile || null;
       this.globalData.switched = !!cached.switched;
       this.globalData.demo = !!cached.demo;
+      this.globalData.realIsSuper = !!cached.realIsSuper;
     }
     // 与 profile 同款同步占位：config.periodTime 也先还原，避免首屏合并选修课退化为「第N节」
     const cachedCfg = readCachedConfig();
@@ -184,8 +192,9 @@ App({
     g.profile = null;
     g.switched = false;
     g.demo = false;
+    g.realIsSuper = false;   // 解绑后「本人是超管」也必须失效，否则下一位绑定者会继承
     g.authChecked = true;
-    writeCachedAuth(null, false, false);      // v0.7.32：身份缓存必须一起清，绝不能留上一位成员
+    writeCachedAuth(null, false, false, false);      // v0.7.32：身份缓存必须一起清，绝不能留上一位成员
     try { mem.clear(); } catch (e) {}
     try { clearCachedConfig(); } catch (e) {}
     try { notice.invalidate(); } catch (e) {}
@@ -319,11 +328,14 @@ App({
     return this._recheckAuth();
   },
 
-  /** 身份指纹（重校前后比对用）：任一维度变了就当「身份变了」 */
+  /** 身份指纹（重校前后比对用）：任一维度变了就当「身份变了」
+   *  ⚠️ realIsSuper 必须在内（2026-11-13）：升级后的首次冷启动，storage 里还没有这个字段
+   *     ⇒ 先按 false 占位、login 回来才是 true；不进指纹的话「我的」页 onShow 拿到的是旧值
+   *     且判定为「身份没变」，两枚超管入口要等下次切页才出来。 */
   _identitySig() {
     const g = this.globalData;
     const p = g.profile || {};
-    return [p.id || 0, p.role || '', p.position || '', p.groupTag || '', p.classId || 0, g.switched ? 1 : 0].join('/');
+    return [p.id || 0, p.role || '', p.position || '', p.groupTag || '', p.classId || 0, g.switched ? 1 : 0, g.realIsSuper ? 1 : 0].join('/');
   },
 
   onError(err) {
@@ -443,8 +455,9 @@ App({
       if (g.config) writeCachedConfig(g.config);
       g.switched = !!(r && r.switched);   // 超管「切换测试账号」模拟态
       g.demo = !!(r && r.demo);           // 演示态标记由 login 权威下发（免绑定 reviewDemo / 超管 switchDemo）
+      g.realIsSuper = !!(r && r.realIsSuper);   // 真实身份是超管（不受 impersonation 影响）
       g.authChecked = true;
-      writeCachedAuth(g.profile, g.switched, g.demo);   // v0.7.32：落身份缓存（未绑定 → null 即清除）
+      writeCachedAuth(g.profile, g.switched, g.demo, g.realIsSuper);   // v0.7.32：落身份缓存（未绑定 → null 即清除）
 
       // 体验版（trial）演示态**不跨进程留存**（2026-10-29 需求②）：冷启动若仍处于演示身份
       // （impersonation 映射还在），先清掉再回登录态 —— 保证「退出小程序再进 = 口令页」，
@@ -458,7 +471,8 @@ App({
           g.config = r2 && r2.config ? r2.config : g.config;
           g.switched = !!(r2 && r2.switched);
           g.demo = !!(r2 && r2.demo);
-          writeCachedAuth(g.profile, g.switched, g.demo);
+          g.realIsSuper = !!(r2 && r2.realIsSuper);
+          writeCachedAuth(g.profile, g.switched, g.demo, g.realIsSuper);
         } catch (e) {
           console.warn('[app] 体验版清理演示态失败', e);
         }
@@ -556,7 +570,8 @@ App({
     if (g.config) writeCachedConfig(g.config);
     g.switched = !!(r && r.switched);
     g.demo = !!(r && r.demo);   // 演示态标记由 login 权威下发，不再因非模拟态而被误清（2026-10-29）
-    writeCachedAuth(g.profile, g.switched, g.demo);   // v0.7.32：切换测试账号 / 恢复本人 后同步身份缓存
+    g.realIsSuper = !!(r && r.realIsSuper);   // 真实身份是超管（切换体验版 / 切换测试账号后可能变化）
+    writeCachedAuth(g.profile, g.switched, g.demo, g.realIsSuper);   // v0.7.32：切换测试账号 / 恢复本人 后同步身份缓存
     return g;
   },
 
@@ -597,6 +612,15 @@ App({
   isSuper() {
     const p = this.globalData.profile;
     return !!(p && p.role === 'ADMIN' && p.isSuper);
+  },
+
+  /**
+   * 真实绑定身份是否超管（2026-11-13）：`isSuper()` 看的是**生效身份**，演示态下它恒为
+   * 演示班超管；本函数看的是**本人**（login 下发的 realIsSuper，不受 impersonation 影响）。
+   * 用途：口令页 / 一键体验进演示班的普通体验者，不该看到「切换测试账号 / 切换正式版」。
+   */
+  isRealSuper() {
+    return !!this.globalData.realIsSuper;
   },
 
   /**

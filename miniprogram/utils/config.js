@@ -217,8 +217,20 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   ③ 全小程序**只允许一个页面放置**本组件，本页是唯一入口；不挂 `st-item`（避免撞入场动画档位）。
  *   ④ 新增门禁 `scripts/check-reward-theme.js`（唯一页面 / 禁 white·light / 必须有 wx:if / 容器不写死背景）。
  *   纯前端改动，无需重部署云函数。
+ * **`1.0.8.31`** = 演示班入口可见性收口（2026-11-13，用户明确口径：「除非超管从我的页更多进入体验版，
+ *   其他从口令页进演示班的，在我的-更多中不显示切换测试账号 / 切换正式版」）：
+ *   ① 后端 `auth.login` 新增下发 `realIsSuper` = `ctx.realMember && guard.isSuper(ctx.realMember)` ——
+ *      与 switchDemo / switchAccount 的校验同口径，**不受 impersonation 影响**；
+ *      口令页 / 一键体验进演示班时生效身份也是演示班超管（is_super=1），只看 profile.isSuper 会白给入口。
+ *   ② 前端 app.js 持有 realIsSuper（globalData + 身份缓存 + 进身份指纹 + 解绑清零），
+ *      导出 `isRealSuper()`；「我的」页 4 个身份刷新点全部同步。
+ *   ③ 「我的 → 更多」两行条件改 `isSuper && realIsSuper`；「返回登录页」扩到
+ *      `demo && (!realIsSuper || isTrial)` —— 普通体验者拿不到「切换正式版」，必须留一个退出口，
+ *      否则正式版里会卡在演示班（原条件只认 isTrial）。
+ *   ④ 新增门禁 `scripts/check-demo-entry-visibility.js`（15 项断言 + 8 组变异自证）。
+ *   云函数需重部署：**auth**（其余不动）。
  */
-const APP_VERSION = '1.0.8.30';
+const APP_VERSION = '1.0.8.31';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

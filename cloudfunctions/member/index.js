@@ -1764,6 +1764,7 @@ exports.main = async (event) => {
     const ctx = await guard.getContext();
     /* 演示态（生效班级为演示班，含免绑定 reviewDemo / 超管 switchDemo）：拦截破坏性动作
        （v1.0.6.4，2026-10-29 扩展判定为「演示班」） */
+    await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);   // 演示班级只读硬闸（写名单一律拒）
     if (await guard.isDemoMember(getPool(), ctx) && reviewDemo.isDeniedAction(action)) {
       throw new BizError(40010, '演示模式：该操作不会真实执行');
     }

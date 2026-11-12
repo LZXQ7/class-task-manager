@@ -105,9 +105,18 @@ Page({
      */
     demo: false,
     /**
-     * 是否体验版（trial）（2026-10-29）：仅体验版演示态才在「我的」渲染「返回登录页」。
-     * 静态求值一次（wx.getAccountInfoSync 同步可用）；任何异常一律按「非体验版」兜底，
-     * 保证超管正式版的演示态不会误显「返回登录页」（那条走「更多 → 切换正式版」）。
+     * 真实绑定身份是超管（2026-11-13）：来源 app.globalData.realIsSuper（login 权威下发）。
+     * 「更多」里「切换测试账号」「切换体验版 / 切换正式版」两行的可见性 = isSuper && realIsSuper ——
+     * 口令页 / 一键体验进演示班的普通体验者，生效身份也是演示班超管（isSuper 为真），
+     * 但本人不是超管（realIsSuper 为假），这两行对他们没有意义（点了只会报「仅超级管理员可切换」）。
+     */
+    realIsSuper: false,
+    /**
+     * 是否体验版（trial）（2026-10-29）：静态求值一次（wx.getAccountInfoSync 同步可用）。
+     * 「返回登录页」的显示条件 = `demo && (!realIsSuper || isTrial)`（2026-11-13 扩展）：
+     *   · 本人非超管（口令页 / 一键体验进来的体验者）→ 任何时候都显示，保证有退出口；
+     *   · 本人是超管 → 仅体验版显示（正式版走「更多 → 切换正式版」，原行为不变）。
+     * 异常一律按「非体验版」兜底。
      */
     isTrial: (function () {
       try { return wx.getAccountInfoSync().miniProgram.envVersion === 'trial'; } catch (e) { return false; }
@@ -248,6 +257,7 @@ Page({
       isCounselor: !!(p && p.groupTag === 'X'),
       switched: !!(app.globalData.switched),
       demo: !!(app.globalData.demo),
+      realIsSuper: !!(app.globalData.realIsSuper),
       impersonateBanner: impersonate.bannerText(),
       bindOpen: !!(app.globalData.config && app.globalData.config.bindOpen !== false),
       selfTag: this._selfRoleTag().text,
@@ -276,6 +286,7 @@ Page({
           isCounselor: !!(p2 && p2.groupTag === 'X'),
           switched: !!(app.globalData.switched),
           demo: !!(app.globalData.demo),
+          realIsSuper: !!(app.globalData.realIsSuper),
           impersonateBanner: impersonate.bannerText()
         }, this._feeFlags()));
         if (cs) this._loadPending();
@@ -302,6 +313,7 @@ Page({
           isCounselor: !!(p3 && p3.groupTag === 'X'),
           switched: !!(app.globalData.switched),
           demo: !!(app.globalData.demo),
+          realIsSuper: !!(app.globalData.realIsSuper),
           impersonateBanner: impersonate.bannerText(),
           selfTag: this._selfRoleTag().text,
           selfTier: this._selfRoleTag().tier
@@ -514,6 +526,7 @@ Page({
         canSchedule: !!(app.canSchedule && app.canSchedule()),
         switched: !!(app.globalData.switched),
         demo: !!(app.globalData.demo),
+        realIsSuper: !!(app.globalData.realIsSuper),
         impersonateBanner: impersonate.bannerText()
       }, this._feeFlags()));
       util.toast(tip);
