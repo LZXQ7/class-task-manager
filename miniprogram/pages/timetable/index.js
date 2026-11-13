@@ -14,6 +14,7 @@ const tt = require('../../data/timetable');
 const config = require('../../utils/config');
 const pageAnim = require('../../utils/page-anim');
 const impersonate = require('../../utils/impersonate');
+const classScope = require('../../utils/class-scope');
 const theme = require('../../utils/theme');
 /*
  * v0.7.20 需求③「课程表左右切换添加动画」：复用值日页 / 手动排班页那套方向性过渡
@@ -304,14 +305,12 @@ Page({
         //    只能显示目标账号所在班级，杜绝点进真实班级 —— 演示/审核隔离铁律。
         //    后端 class.list 对演示身份已按 is_demo=1 过滤，这里再兜一层：即便后端身份映射
         //    偶发失同步（残留缓存 / 误删映射），前端也绝不把真实班级塞进切班条。
+        // ⚠️ 2026-11-14：口径抽到 utils/class-scope.js —— 原实现按 profile.classId 收窄，
+        //    而辅导员是全局账号（class_id=0，后端下发「首个绑定班」），
+        //    于是超级管理员切到辅导员身份后 5 个班被砍成 1 个（用户报障）。
+        //    现在只有「单班身份」才收窄，辅导员保留全部绑定班。
         const gApp = (typeof getApp === 'function') ? getApp() : null;
-        const gData = (gApp && gApp.globalData) || {};
-        if (gData.switched) {
-          const effId = Number(gData.profile && gData.profile.classId) || 0;
-          if (effId && chips.some(c => c.id === effId)) {
-            chips = chips.filter(c => c.id === effId);
-          }
-        }
+        chips = classScope.narrowByImpersonation(chips, (gApp && gApp.globalData) || {});
         if (!chips.length) {
           // 清掉 tt 模块可能残留的上一身份/上一班状态，避免课表残影
           const own0 = Number(getApp().globalData.profile && getApp().globalData.profile.classId) || config.TIMETABLE_CLASS_ID;

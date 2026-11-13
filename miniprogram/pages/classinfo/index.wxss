@@ -16,6 +16,10 @@
      而后者是 DOM 后面的兄弟 —— 不抬层叠会被它压住（值日页同款问题）。 */
   position: relative;
   z-index: 2;
+  /* 🔴 必须显式 visible：全局 .card 是 overflow:hidden（玻璃圆角要裁切层），
+     会把下拉浮层裁在卡片里 —— 5 个班只露出 3 个、底边齐整切断（2026-11-14 用户截图）。
+     本卡内部没有需要裁切的溢出元素，放开安全。 */
+  overflow: visible;
   background: var(--glass-bg);
   border: 1rpx solid var(--glass-edge);
   border-radius: 40rpx;
