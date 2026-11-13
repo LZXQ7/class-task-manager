@@ -38,22 +38,17 @@
     bind:pick="onWeekPick"
   />
 
-  <!-- 切班查看（2026-10 需求⑧升级 + 2026-10-09 收窄）：复用 duty 页班级筛选标签，
-       选中态 padding/font-size 变大（chip-motion），邻项被平滑推开；flex-wrap 支持小屏换行。
-       可见范围（showClassSwitch）：仅「辅导员」与「超管且处于切换测试账号态」展示——
-       真实超管（本人、未切换）与学生都不显示，锁定本班。
+  <!-- 切班查看（2026-11-14 用户需求③：横排 chips 改为下拉字段，只负责 1 个班也显示）
+       可见范围仍是 showClassSwitch：仅「辅导员」与「超管且处于切换测试账号态」。
        ⚠️ 不要改回 canSwitchClass：canSwitchClass 还管周次条 / fab 菜单 / 分组「全部」默认 / 空态，
        真实超管看本班时仍需这些功能；切班条必须单独用 showClassSwitch 收口。 -->
-  <view wx:if="{{showClassSwitch && classList.length}}" class="tt-fchips st-item st-2">
-    <view
-      wx:for="{{classList}}"
-      wx:key="id"
-      class="tt-fchip chip-motion {{viewClassId === item.id ? 'on' : ''}}"
-      data-id="{{item.id}}"
-      bindtap="onTimetableClass"
-      hover-class="press-dim"
-      hover-stay-time="60"
-    >{{item.name}}</view>
+  <view wx:if="{{showClassSwitch && classList.length}}" class="tt-clsw st-item st-2">
+    <class-picker
+      label="查看班级"
+      list="{{classList}}"
+      value="{{viewClassId}}"
+      bind:change="onTimetableClass"
+    />
   </view>
 
   <!-- 分组视图（A 组 / B 组）与「临时调课」合并进左下角悬浮入口（v0.7.21 需求③）：

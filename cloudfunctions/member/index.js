@@ -888,9 +888,16 @@ const routes = {
       if (ctx.impersonated) throw new BizError(40003, '模拟身份下不可查看测试账号');
       if (!guard.isSuper(ctx.realMember)) throw new BizError(40003, '仅真实超级管理员可查看测试账号');
       const pool = getPool();
+      /* 🔴 2026-11-14 修「换了辅导员后，切换测试账号里没有辅导员了」：
+       *   旧口径只认 `student_no LIKE '0000000000%'`。老辅导员 72 的占位学号
+       *   恰好是 000000000090（当年特意放进 99 段供超管进辅导员视角），所以一直被列出来；
+       *   addStaff 改用 STAFF 前缀后，新辅导员 294 天生不匹配 ⇒ 列表里的辅导员凭空消失。
+       *   ⇒ 可切身份的口径改为「99 段合成测试账号 **或** X 组教职工」。
+       *   与 auth.switchAccount 的白名单必须同源，改一处必须改另一处（否则能看见点不动）。
+       *   X 组权限是超管的子集，切过去只降权不提权。 */
       const [rows] = await pool.query(
-        'SELECT id, name, student_no, group_tag, role, is_super FROM member WHERE ' + IS_TEST() +
-        " AND status != 'DISABLED' ORDER BY id"
+        'SELECT id, name, student_no, group_tag, role, is_super FROM member WHERE (' + IS_TEST() +
+        " OR group_tag = 'X') AND status != 'DISABLED' ORDER BY id"
       );
       return rows.map(r => ({
         id: r.id,

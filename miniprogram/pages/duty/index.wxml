@@ -44,18 +44,15 @@
     bind:change="onWeekChange"
   />
 
-  <!-- 教职工班级筛选（v0.7.16 需求⑧）：辅导员不值日，但可逐班查看值日分配；
-       chip-motion 的 padding/font-size 过渡让邻项平滑让位；flex-wrap 支持小屏换行 -->
-  <view wx:if="{{isCounselor && dutyChips.length}}" class="dt-fchips st-item st-2">
-    <view
-      wx:for="{{dutyChips}}"
-      wx:key="id"
-      class="dt-fchip chip-motion {{viewClassId === item.id ? 'on' : ''}}"
-      data-id="{{item.id}}"
-      bindtap="onDutyClass"
-      hover-class="press-dim"
-      hover-stay-time="60"
-    >{{item.name}}</view>
+  <!-- 教职工班级筛选（v0.7.16 需求⑧；2026-11-14 用户需求④：横排 chips 改为下拉字段）——
+       辅导员不值日，但可逐班查看值日分配。 -->
+  <view wx:if="{{isCounselor && dutyChips.length}}" class="dt-clsw st-item st-2">
+    <class-picker
+      label="查看班级"
+      list="{{dutyChips}}"
+      value="{{viewClassId}}"
+      bind:change="onDutyClass"
+    />
   </view>
 
   <!-- 排班域操作区（超管 / 本班生活委员，需求 D）：放在最上面，不随列表滚动 —— 本周已有 24 条值日时排到页面底部会看不见。

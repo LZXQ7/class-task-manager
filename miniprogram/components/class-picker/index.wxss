@@ -1,0 +1,140 @@
+/* 班级下拉选择器（2026-11-14）
+   ⚠️ 组件 wxss 只允许类选择器：标签选择器（view/text）在组件里会**静默失效**。
+   ⚠️ 不写 backdrop-filter：浮层压在页面内容之上，模糊背后没有可用背景（页面已是玻璃卡），
+      再上一层玻璃只会糊成灰板；这里用 --sheet-solid 实色 + 亮边 + 投影表达「浮起来」。
+   ⚠️ 颜色一律走令牌（check-dark-mode 第 ⑪ 段禁止组件写裸 rgba(255,255,255,…)）。 */
+
+.cp {
+  position: relative;
+  z-index: 40;           /* 浮层要盖住相邻卡片；低于 nav-bar / 底栏 */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+}
+
+/* 前缀说明（「查看班级」） */
+.cp-label {
+  flex-shrink: 0;
+  margin-right: 14rpx;
+  font-size: 22rpx;
+  color: var(--text-3);
+}
+
+/* 字段：一行 = 当前班名 + 下拉箭头（浮层的定位爹，必须 relative） */
+.cp-field {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  padding: 12rpx 22rpx;
+  border-radius: 18rpx;
+  background: var(--bg-fill);
+  border: 1rpx solid transparent;
+  transition: background-color .16s ease, border-color .16s ease;
+}
+.cp-field-hov { background: var(--fill-soft); }
+.cp-open .cp-field {
+  background: var(--fill-soft);
+  border-color: rgba(51, 112, 255, 0.4);
+}
+
+.cp-cur {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  line-height: 34rpx;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cp-ph { font-weight: 400; color: var(--text-3); }
+
+/* 箭头用纯 CSS 画（不依赖云图标，避免首帧空图）：展开时翻转 180° */
+.cp-arrow {
+  flex-shrink: 0;
+  width: 0;
+  height: 0;
+  margin-left: 12rpx;
+  border-left: 9rpx solid transparent;
+  border-right: 9rpx solid transparent;
+  border-top: 10rpx solid var(--text-3);
+  transition: transform .18s ease;
+}
+.cp-open .cp-arrow { transform: rotate(180deg); border-top-color: var(--brand); }
+
+/* 浮层：绝对定位于**字段**正下方（父级 .cp-field 是 relative）。
+   ⚠️ 宽度 = max(字段宽, 560rpx)，而不是被字段宽度框死：班级名最长 11 个汉字
+      （「示例专业A1班」），等宽会把「示例班级A」截成省略号 ——
+      下拉的全部意义就是让人看清有哪几个班（截图核对时实测被截）。
+   ⚠️ 不改 right:0 而用 width：right 定位会把宽度锁死在字段上。 */
+.cp-pop {
+  position: absolute;
+  left: 0;
+  right: auto;
+  top: 100%;
+  margin-top: 10rpx;
+  z-index: 2;
+  min-width: 100%;
+  width: 560rpx;
+  max-width: 92vw;
+  max-height: 520rpx;
+  overflow-y: auto;
+  padding: 8rpx;
+  border-radius: 20rpx;
+  background: var(--sheet-solid, rgba(255,255,255,0.94));
+  border: 1rpx solid var(--sheet-edge, rgba(255,255,255,0.95));
+  box-shadow: var(--shadow-2);
+  box-sizing: border-box;
+  animation: cp-in .16s ease-out;
+}
+@keyframes cp-in {
+  from { opacity: 0; transform: translateY(-8rpx); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 选项：按住高一亮（用户明确要求「手指按住时高亮」） */
+.cp-opt {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 18rpx 18rpx;
+  border-radius: 14rpx;
+  transition: background-color .12s ease;
+}
+.cp-opt + .cp-opt { margin-top: 2rpx; }
+.cp-opt-hov { background: var(--bg-fill); }
+.cp-on { background: rgba(51, 112, 255, 0.10); }
+
+.cp-opt-t {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  line-height: 34rpx;
+  color: var(--text-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cp-on .cp-opt-t { color: var(--brand); font-weight: 600; }
+
+/* 对勾：CSS 画（旋转 45° 的两条边） */
+.cp-tick {
+  flex-shrink: 0;
+  width: 12rpx;
+  height: 22rpx;
+  margin-left: 14rpx;
+  margin-top: -6rpx;
+  border-right: 4rpx solid var(--brand);
+  border-bottom: 4rpx solid var(--brand);
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-pop { animation-duration: .01ms; }
+  .cp-field, .cp-arrow { transition-duration: .01ms; }
+}

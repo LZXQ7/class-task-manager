@@ -5,6 +5,7 @@
     "app-icon": "/components/app-icon/index",
     "empty-state": "/components/empty-state/index",
     "skeleton": "/components/skeleton/index",
-    "segmented": "/components/segmented/index"
+    "segmented": "/components/segmented/index",
+    "class-picker": "/components/class-picker/index"
   }
 }

@@ -257,51 +257,50 @@ async function runAll(src, quiet) {
     ok(page.data.isOtherClass === false, 'isOtherClass = false');
   }
 
-  /* 2026-10-28 二次调整：横滑 chips 条 → 点班名弹层选班。
-   * 弹层这套逻辑全是普通赋值，写错了不会报错，只会「点了没反应」或「弹层关不掉」，
-   * 所以同样要真跑一遍。 */
-  head('⑩ 班级选择弹层（5 个班 / 超管）');
+  /* 2026-11-14：点班名弹 bottom-sheet → 统一改成 class-picker 下拉字段。
+   * 页面不再持弹层状态（开合在组件里），所以这里改判「组件事件契约」：
+   * 组件抛的是 { detail: { id } }，页面必须认这份 detail，同时保留旧的 dataset 形态
+   * （② / ⑧ 两段与子页面深链都还是 dataset 调用）。 */
+  head('⑩ 切班下拉（class-picker 事件契约）');
   {
     const { page, calls } = makeHarness(counselor, { isSuper: true }, src);
     page.load(); await settle();
-    ok(page.data.classSheetShow === false, '进页面时弹层是关的');
-    ok(page.data.clsSheetH === 130 + 5 * 96 + 40, '弹层高度按 5 行算 = 650rpx（不写死）');
+    ok(page.data.classChips.length === 5, '下拉候选 = 5 个班（= staffClassIds 范围）');
     const before = calls.memberStats.length;
-    page.onClassSheetOpen();
-    ok(page.data.classSheetShow === true, '点班名 → 弹层打开');
-    page.onClassPick({ currentTarget: { dataset: { id: 3 } } });
-    ok(page.data.classSheetShow === false, '点当前班也关弹层（用户点它是「确认」，不是「点了没反应」）');
-    ok(calls.memberStats.length === before, '点当前班不重复拉数据（省一次请求）');
-    page.onClassSheetOpen();
-    page.onClassSheetClose();
-    ok(page.data.classSheetShow === false, '点遮罩 / 下拉关闭能关上');
+    page.onClassPick({ detail: { id: 3 } });
+    ok(calls.memberStats.length === before, 'detail 形态点当前班不重复拉数据（省一次请求）');
+    page.onClassPick({ detail: { id: 1 } }); await settle();
+    ok(page.data.viewClassId === 1, 'detail.id 能切班（组件事件 → 页面口径打通）');
+    ok(page.data.stats.total === 57, '切完数据跟着换（57 人）');
+    page.onClassPick({ currentTarget: { dataset: { id: 2 } } }); await settle();
+    ok(page.data.viewClassId === 2, '旧 dataset 形态仍可用（深链 / 其它调用点不回归）');
   }
 
-  head('⑪ 弹层边界：只绑了 1 个班');
+  head('⑪ 边界：只绑了 1 个班（下拉仍要渲染，充当「当前查看哪个班」的标识）');
   {
     const { page } = makeHarness({ id: 88, classId: 3, className: OWN_示例班级A, groupTag: 'X' }, { oneClass: true }, src);
     page.load(); await settle();
     ok(page.data.classChips.length === 1, '只绑 1 个班');
-    ok(page.data.clsSheetH === 130 + 1 * 96 + 40, '高度按 1 行算 = 266rpx');
-    page.onClassSheetOpen();
-    ok(page.data.classSheetShow === false, '1 个班时点不开弹层（入口本就不渲染，这里再兜一次底）');
+    ok(page.data.viewClassId === 3, '默认落在该班');
+    ok(page.data.className === OWN_示例班级A, '班名正确');
   }
 
-  head('⑫ 静态：弹层装配（wxml / json / wxss）');
+  head('⑫ 静态：下拉组件装配（wxml / json / wxss）');
   {
     const wxml = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/classinfo/index.wxml'), 'utf8');
     const json = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/classinfo/index.json'), 'utf8');
     const wxss = fs.readFileSync(path.join(ROOT, 'miniprogram/pages/classinfo/index.wxss'), 'utf8');
-    ok(/<bottom-sheet/.test(wxml) && /show="\{\{classSheetShow\}\}"/.test(wxml),
-      'wxml 挂上 bottom-sheet 且 show 绑 classSheetShow');
-    ok(!/scroll-x/.test(wxml), '横滑 chips 条已移除（用户反馈「左右滑动不太好」）');
-    ok(/height="\{\{clsSheetH\}\}"/.test(wxml), '弹层高度接 clsSheetH（不是写死一个数）');
-    ok(/page-style="\{\{.*classSheetShow/.test(wxml), 'page-meta 把 classSheetShow 列进滚动锁');
-    ok(/page-style="\{\{.*cdSheetShow/.test(wxml), 'page-meta 把 cdSheetShow 也列进滚动锁（倒数日弹层穿透防护）');
-    ok(/"bottom-sheet"\s*:/.test(json), 'json 注册了 bottom-sheet 组件');
-    ok(/wx:key="id"/.test(wxml), '弹层列表 wx:key 用属性名 id（不能写表达式）');
-    ok(/\.cs-row/.test(wxss) && /\.ci-name-switch/.test(wxss), 'wxss 有弹层行与「切换」入口样式');
-    ok(!/\.ci-chips?\s*\{/.test(wxss), '旧 chips 样式已清干净（留死代码会误导下一个人）');
+    ok(/<class-picker/.test(wxml), 'wxml 挂了 class-picker');
+    ok(/list="\{\{classChips\}\}"/.test(wxml), 'list 绑 classChips');
+    ok(/value="\{\{viewClassId\}\}"/.test(wxml), 'value 绑 viewClassId（下拉回填当前班）');
+    ok(/bind:change="onClassPick"/.test(wxml), 'bind:change 接 onClassPick');
+    ok(!/classSheetShow/.test(wxml), '旧 bottom-sheet 切班入口已清干净（留死引用会误导下一个改的人）');
+    ok(/"class-picker"\s*:/.test(json), 'json 注册了 class-picker 组件');
+    ok(/\.ci-clsw/.test(wxss), 'wxss 有下拉容器样式');
+    /* ⚠️ 判据必须锚「选择器 + 左花括号」，不能只搜类名 —— 说明性注释里会提到
+     *    「旧 .ci-name-switch 已删除」，只搜名字会把注释当成残留样式（本轮实踩）。 */
+    ok(!/\.ci-name-switch\s*\{/.test(wxss) && !/\.cs-row\s*\{/.test(wxss),
+      '旧弹层 / 「切换 ⌄」样式已清干净');
   }
 
   return { pass, fail };
@@ -334,19 +333,14 @@ async function runAll(src, quiet) {
       to: 'if (this.data.viewClassId) {'
     },
     {
-      name: '点班后不关弹层（选了没反应，弹层还杵在那）',
-      from: '    this.setData({ classSheetShow: false });\n    if (!id || id === Number(this.data.viewClassId)) return;',
-      to: '    if (!id || id === Number(this.data.viewClassId)) return;'
+      name: '点班后不切（只埋点不调用 _applyClass，选了没反应）',
+      from: '    if (getApp().track) getApp().track.action(\'class_switch\', id);\n    this._applyClass(id);',
+      to: '    if (getApp().track) getApp().track.action(\'class_switch\', id);'
     },
     {
-      name: '打开弹层不判「至少两个班」',
-      from: 'if (this.data.classChips.length < 2) return;',
-      to: 'if (false) return;'
-    },
-    {
-      name: '弹层高度写死（2 个班和 5 个班一样高）',
-      from: 'return Math.min(900, 130 + rows * 96 + 40);',
-      to: 'return 900;'
+      name: '只认 dataset 不认组件 detail（class-picker 抛的事件全被丢掉）',
+      from: 'const id = Number((e && e.detail && e.detail.id) ||',
+      to: 'const id = Number((e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) ||'
     }
   ];
   let mPass = 0, mFail = 0;

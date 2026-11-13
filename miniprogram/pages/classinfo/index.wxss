@@ -51,41 +51,16 @@
   font-weight: 500;
   color: var(--brand);
 }
-/* 教职工切班（2026-10-28；当日二次调整为弹层）
- * 曾经是横向滚动的胶囊条 —— 超管 5 个班要滑着找、只有 2 个班时又白占一整行，
- * 用户反馈「左右滑动不太好」。现在班名自己就是入口：右侧挂一个「切换 ⌄」小胶囊，
- * 点开 bottom-sheet 选班（.cs-row 那套）。
- * 颜色全走令牌（--text-2 / --bg-fill / --brand），DARK_MODE_ENABLED 打开后
- * 不用再补一份深色块 —— 这正是当初 hero 里硬编码 #1D2129 埋下的隐患。 */
-.ci-name-row {
+/* 教职工切班（2026-11-14 用户需求④：统一为 class-picker 下拉字段）
+ * 演进：横滑胶囊条 → 班名右侧「切换 ⌄」开 bottom-sheet → 现在 hero 卡里一行
+ * 「查看班级 + 当前班名 + 下拉」。字段/浮层样式在 components/class-picker/index.wxss，
+ * 这里只负责它在 hero 卡里的位置。
+ * ⚠️ 旧 .ci-name-row / .ci-name-switch / .cs-* 已随弹层删除。 */
+.ci-clsw {
   display: flex;
-  /* ⚠️ 必须是 flex-start 而不是 center：班名长达 11 个字（「示例专业A1班」），
-   * 375px 屏上会折成两行。居中会让「切换」胶囊悬在两行中间靠右的空隙里，看着像掉出来的元素；
-   * 顶部对齐后它跟在**第一行末尾**，读起来就是「这个班名可以切换」。 */
-  align-items: flex-start;
-  margin-top: 20rpx;
-}
-/* 班名可伸缩并允许降宽换行，胶囊 flex:none 保证不被挤扁 */
-.ci-name-row .ci-hero-name {
-  flex: 1;
-  min-width: 0;
-  margin-top: 0;
-}
-.ci-name-switch {
-  display: flex;
+  flex-direction: row;
   align-items: center;
-  flex: none;
-  /* 7rpx = (60rpx 行高 − 46rpx 胶囊高) / 2，把胶囊垂直居中到班名的**第一行** */
-  margin: 7rpx 0 0 16rpx;
-  padding: 6rpx 14rpx 6rpx 18rpx;
-  background: var(--bg-fill, #F2F3F5);
-  border-radius: 999rpx;
-}
-.ci-name-switch-t {
-  margin-right: 4rpx;
-  font-size: 24rpx;
-  line-height: 34rpx;
-  color: var(--text-2, #4E5969);
+  margin-top: 20rpx;
 }
 /* 2026-10-28：`.ci-item-off`（切到别班时把「通知」子卡置灰）已删除 ——
  * 通知支持按班查看后，四张子卡在哪个班都可用，没有不可用态了。 */
@@ -213,32 +188,9 @@
   height: 180rpx;
 }
 
-/* ---------------- 班级选择弹层（2026-10-28） ----------------
- * 弹层 body 自己不带左右留白（与 duty 页的 .sl-* 同一口径），这里补 32rpx。
- * 行高 96rpx 是触控下限的稳妥值（视觉 48px），与成员页名单行同一刻度。 */
-.cs-list {
-  padding: 0 32rpx;
-}
-.cs-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 96rpx;
-  padding: 0 8rpx;
-}
-/* 相邻行加分隔线：用 `+`（小程序支持），不用 `~`（真机 fatal） */
-.cs-row + .cs-row {
-  border-top: 1rpx solid var(--bg-fill, var(--bg-fill));
-}
-.cs-name {
-  font-size: 30rpx;
-  line-height: 44rpx;
-  color: var(--text-1, #1D2129);
-}
-.cs-row.on .cs-name {
-  font-weight: 600;
-  color: var(--brand, #3370FF);
-}
+/* ---------------- 班级选择弹层（2026-10-28）已删除（2026-11-14） ----------------
+ * 切班统一走 hero 卡内的 class-picker 下拉，.cs-list / .cs-row / .cs-name 随之删除。
+ * 留空段说明「这里曾经有什么」，避免下一个人按旧门禁去找不存在的类。 */
 
 /* ---------------- 倒数日（2026-11-02 新增）：个人本地自定义事件卡 ---------------- */
 .ci-cd {

@@ -267,7 +267,9 @@ Page({
 
   /** 教职工筛选标签点击：换一个班级查看 = 换一份数据（强制刷新，换班不走静默缓存） */
   onDutyClass(e) {
-    const id = Number(e.currentTarget.dataset.id) || 0;
+    // 2026-11-14：来源由 chips 的 dataset 改为 class-picker 的 detail.id（两种都认）
+    const id = Number((e && e.detail && e.detail.id) ||
+      (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id)) || 0;
     if (!id || id === Number(this.data.viewClassId)) return;
     this.setData({ viewClassId: id });
     // 同步全局「当前查看班级」，与班级信息页切班互通（其余 Tab 跟随）

@@ -13,19 +13,9 @@
 .fee-seg { margin-bottom: 20rpx; }
 
 /* 班费/团费跨班查看切换条（v0.7.43）：辅导员切班看其他班的钱 */
+/* 跨班查看（2026-11-14 用户需求②）：chips → class-picker 下拉字段。
+   组件自带 label / 字段 / 浮层样式，这里只管外容器的位置。 */
 .fee-cls-switch { display: flex; flex-direction: row; align-items: center; margin-bottom: 16rpx; }
-.fee-cls-label { font-size: 22rpx; color: var(--text-3); margin-right: 16rpx; flex-shrink: 0; }
-.fee-cls-chips { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
-.fee-cls-chip {
-  font-size: 24rpx;
-  line-height: 36rpx;
-  padding: 6rpx 20rpx;
-  border-radius: 18rpx;
-  color: var(--text-2);
-  background: var(--bg-fill);
-  border: 1rpx solid transparent;
-}
-.fee-cls-chip.on { color: var(--brand); background: rgba(51,112,255,0.12); border-color: rgba(51,112,255,0.4); font-weight: 600; }
 
 /* 余额卡（居中展示，与首页弹层同口径）
    2026-10-27：原来是一条无底的裸区块 + 底部细线分割，内容贴边。

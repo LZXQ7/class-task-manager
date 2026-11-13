@@ -654,8 +654,17 @@ const routes = {
       const [rows] = await pool.query('SELECT * FROM member WHERE id = ? LIMIT 1', [memberId]);
       const t = rows[0];
       if (!t) throw new BizError(41001, '目标账号不存在');
-      // 只允许切到测试段账号（学号 0000000000xx：测试超管/测试管理员/测试成员/辅导员）
-      if (!isTestNo(t.student_no)) throw new BizError(41001, '仅允许切换到测试账号');
+      /* 只允许切到两类身份：
+       *   ① 99 段合成测试账号（测试超管 / 测试管理员 / 测试成员）；
+       *   ② X 组教职工（辅导员）—— 超管需要「辅导员视角」验证功能。
+       * 🔴 2026-11-14 修：旧判据只有 isTestNo，等于把「能不能切」绑在「占位学号是不是 99 段」上。
+       *   老辅导员 72 = 000000000090（特意放 99 段），所以一直能切；addStaff 改成 STAFF 前缀后，
+       *   新辅导员一律匹配不上 ⇒ 既不在列表里、点 id 直接调也会被这句拒掉。
+       *   X 组权限是超管的子集（切过去只是降权），故放行不构成提权。
+       * ⚠️ 与 member.testAccountList 的列名单口径必须同源，改一处必须改另一处。 */
+      if (!isTestNo(t.student_no) && t.group_tag !== 'X') {
+        throw new BizError(41001, '仅允许切换到测试账号或教职工账号');
+      }
       await pool.query(
         'INSERT INTO impersonation (openid, member_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE member_id = VALUES(member_id)',
         [ctx.openid, memberId]

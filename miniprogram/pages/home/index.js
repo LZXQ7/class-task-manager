@@ -79,6 +79,10 @@ Page({
     canViewClass: false,
     /** 教职工（辅导员）视角：隐藏学生功能块（v0.7.16 需求⑥⑨） */
     isCounselor: false,
+    /* 关注的学生（2026-11-14 用户要求放回首页顶部；仅辅导员可见，与 member.pinList 同口径） */
+    showPins: false,
+    pins: [],
+    pinLimit: 8,
     currentWeek: 1,
     /** Tab 入场动画序号：0 = 还没进过（播完整版），之后在 1 / 2 之间轮换（轻量版），见 utils/page-anim.js */
     animSeq: 0,
@@ -431,8 +435,9 @@ Page({
     const canViewClass = !!(app && app.isSuper && app.isSuper()) || !!(p && p.groupTag === 'X');
     // v0.7.16：教职工（辅导员）视角 —— 首页隐藏学生功能（值日 Hero / 今日明日课次 / 提醒胶囊）
     const isCounselor = !!(p && p.groupTag === 'X');
-    // 「关注的学生」卡片已于 2026-10-27 迁到**成员页**（首页只留值日 / 课次 / 请假），
-    // 判定式与数据加载都随卡片一起走（见 pages/roster/index.js 的 showPins / _loadPins）。
+    // 「关注的学生」（2026-11-14 用户要求）：放回首页**最上面**，仅辅导员可见。
+    // 2026-10-27 曾整体迁到成员页，现按用户口径迁回；数据源仍是 member.pinList / pinToggle。
+    const showPins = isCounselor;
     // 首页请假卡（1.0.5 追加）：班委/超管看本班请假人数、辅导员看各班总数 —— 一律可见，
     // 普通同学不可见（决策④）。辅导员只读（leaveHomeMode='counselor'），班委/超管可撤销。
     const canLeave = !!(app && app.canLeave && app.canLeave());
@@ -446,6 +451,7 @@ Page({
     const canCourseInfo = canLeave && !isCounselor;
     const patch = {
       canViewClass, isCounselor,
+      showPins,
       canLeave,
       showLeaveHome,
       canCourseInfo,
@@ -454,6 +460,7 @@ Page({
     if (rt) { patch.adminTag = rt.text; patch.adminTier = rt.tier; }
     this.setData(patch);
     if (showLeaveHome) this._loadLeaveHome();
+    if (showPins) this._loadPins();
     // 模拟态护栏（v1.0.5）：每次套用身份都同步一次顶部横幅，登录晚到时也能补上
     impersonate.sync(this);
     return p;
@@ -465,9 +472,41 @@ Page({
   },
 
   /**
-   * 关注的学生列表：2026-10-27 已随卡片迁入**成员页**（pages/roster），
-   * 见 roster/index.js 的 _loadPins —— 首页不再持有这份数据与查询。
+   * 关注的学生列表（2026-11-14 随卡片迁回首页；仅辅导员）。
+   * 上限由后端 PIN_MAX 下发（pinList.limit），这里不写死数字。
+   * ⚠️ 每次 _applyIdentity / onShow 都会走到：加 _pinsBusy 去重，
+   *    否则 app.ready() 补套身份那次会与首屏并发同一个查询。
    */
+  _loadPins() {
+    if (this._pinsBusy) return;
+    this._pinsBusy = true;
+    api.pinList({}, { toast: false })
+      .then((r) => this.setData({
+        pins: (r && r.list) || [],
+        pinLimit: Number((r && r.limit) || 8)
+      }))
+      .catch(() => {})
+      .then(() => { this._pinsBusy = false; });
+  },
+
+  /**
+   * 点关注的学生 → 进成员页并直接展开他的详情。
+   * ⚠️ 只有**跨班**才带 classId：roster 用 `classId > 0` 判「正在看别班」（otherClass），
+   *    本班也带会把本班误判成别班、把管理权限一并收窄（check-classinfo-switch ⑤ 同口径）。
+   */
+  onPinTap(e) {
+    const d = e.currentTarget.dataset || {};
+    const memberId = Number(d.id) || 0;
+    if (!memberId) return;
+    const classId = Number(d.classId) || 0;
+    const name = String(d.name || '');
+    const myClassId = Number((((getApp() || {}).globalData || {}).profile || {}).classId) || 0;
+    const q = [];
+    if (classId && classId !== myClassId) q.push('classId=' + classId);
+    q.push('openMemberId=' + memberId);
+    q.push('name=' + encodeURIComponent(name));
+    wx.navigateTo({ url: '/pages/roster/index?' + q.join('&') });
+  },
 
   /* ---------------- 首页请假卡（1.0.5 追加，需求①②） ----------------
    * 班委/超管：**走已部署的 leaveBoard**（与「成员与分组」同源，返回 { date, list, stat }）——
@@ -998,7 +1037,7 @@ Page({
     wx.navigateTo({ url: '/pages/roster/index?openLeave=1' });
   },
 
-  /** 点关注的学生 → 2026-10-27 随卡片迁入成员页，见 pages/roster/index.js 的 onPinTap */
+  /** 点关注的学生 → 见上方 onPinTap（2026-11-14 随卡片迁回首页） */
 
   onUnload() {
     theme.unmount(this);   // 深色模式（C-4）：摘掉主题订阅，否则 setData 到已销毁实例

@@ -13,6 +13,7 @@
     "avatar-tag": "../../components/avatar-tag/index",
     "status-pill": "../../components/status-pill/index",
     "segmented": "../../components/segmented/index",
-    "stepper": "../../components/stepper/index"
+    "stepper": "../../components/stepper/index",
+    "class-picker": "../../components/class-picker/index"
   }
 }

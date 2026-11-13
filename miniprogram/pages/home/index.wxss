@@ -620,3 +620,70 @@
 /* 人名加粗、「提交了《…》」常规 —— 一眼分得清「谁」和「交了什么」 */
 .home-feed-name { font-weight: 600; }
 .home-feed-text { font-weight: 400; }
+
+/* ===== 关注的学生（2026-11-14 从成员页迁回首页顶部，仅辅导员）=====
+ * ⚠️ 这些类是**首页私有**：WXSS 页面级作用域，成员页的同名样式不会跨页生效，
+ *    所以整块从 roster 抄过来后不要再删（删了 = 卡片掉回无样式裸列表）。
+ * 一行一位学生：头像 +（姓名 + 班级）+ 最新备注摘要 + 备注条数。 */
+.pin-card { padding: 8rpx 0; }
+.pin-head {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 12rpx 28rpx 12rpx;
+}
+.pin-title { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
+.pin-sub { font-size: 24rpx; color: var(--text-3); }
+.pin-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 20rpx 28rpx;
+}
+.pin-row + .pin-row { border-top: 2rpx solid var(--line-2); }
+.pin-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.pin-line1 { display: flex; flex-direction: row; align-items: center; }
+.pin-name { font-size: 30rpx; font-weight: 500; color: var(--text-1); }
+.pin-class {
+  margin-left: 12rpx;
+  padding: 2rpx 12rpx;
+  font-size: 22rpx;
+  color: var(--brand);
+  background: var(--brand-light);
+  border-radius: 16rpx;
+}
+.pin-note {
+  font-size: 25rpx;
+  color: var(--text-3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pin-cnt {
+  flex: 0 0 auto;
+  min-width: 34rpx;
+  height: 34rpx;
+  line-height: 34rpx;
+  padding: 0 8rpx;
+  margin-right: 12rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: var(--text-2);
+  background: var(--bg-fill);
+  border-radius: 17rpx;
+}
+.pin-empty {
+  padding: 32rpx 32rpx 40rpx;
+  text-align: center;
+  font-size: 25rpx;
+  line-height: 1.7;
+  color: var(--text-3);
+}

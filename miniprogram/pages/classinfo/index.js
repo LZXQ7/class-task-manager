@@ -69,13 +69,8 @@ Page({
     pendingCount: 0,
     /** 当前看的是不是「非本人主班」—— 通知卡据此置灰（它跟不过去，见 onOpen 注释） */
     isOtherClass: false,
-    /**
-     * 班级选择弹层（2026-10-28 二次调整）。
-     * 原来是横滑 chips 条，用户反馈「左右滑动不太好」⇒ 改成点班名弹层选。
-     * clsSheetH = 弹层高度（rpx），按班级数量算，见 _sheetHeight()。
-     */
-    classSheetShow: false,
-    clsSheetH: 440,
+    /* 班级选择弹层的 classSheetShow / clsSheetH 已于 2026-11-14 随 bottom-sheet 删除 ——
+     * 切班统一走 class-picker 下拉（组件内部管开合，页面不再持状态）。 */
     /** 倒数日列表（2026-11-03 改云端）：**仅本人**的事件，后端按 member_id 隔离，按日期升序 */
     countdowns: [],
     /** 倒数日添加弹层 */
@@ -179,7 +174,7 @@ Page({
           : (chips.some(c => c.id === own) ? own : chips[0].id);
         mem.write(listKey, raw);
         this._lastListLoad = Date.now();
-        this.setData({ classChips: chips, clsSheetH: this._sheetHeight(chips.length) });
+        this.setData({ classChips: chips });
         this._applyClass(sel, chips);
       };
 
@@ -319,27 +314,6 @@ Page({
       .catch((e) => {
         console.error('[classinfo] feeSummary failed', e && e.stack ? e.stack : e);
       });
-  },
-
-  /**
-   * 弹层高度（rpx）：标题栏（grabber + 标题，约 130）+ 每行 96 + 上下留白 40。
-   * 不写死 —— 2 个班弹一个 650rpx 的面板，下半截全是空白，比列表太短更难看。
-   * 上限 900：再多也让它内部滚动，别把整屏吃掉。
-   */
-  _sheetHeight(n) {
-    const rows = Math.max(1, Number(n) || 1);
-    return Math.min(900, 130 + rows * 96 + 40);
-  },
-
-  /** 打开班级选择弹层。只有一个班时入口根本不渲染，这里再兜一次底 */
-  onClassSheetOpen() {
-    if (this.data.classChips.length < 2) return;
-    this.setData({ classSheetShow: true });
-  },
-
-  onClassSheetClose() {
-    if (!this.data.classSheetShow) return;
-    this.setData({ classSheetShow: false });
   },
 
   /* ---------------- 倒数日（2026-11-03 改云端）：个人自定义事件，按人隔离 ---------------- */
@@ -495,13 +469,14 @@ Page({
   },
 
   /**
-   * 弹层里点一个班：切换口径 + 关弹层。
+   * 下拉里点一个班：切换口径。
    * `id = 0`（教职工一个班都没绑）→ 退到后端默认本班，行为与改造前一致。
-   * 点当前班也关弹层 —— 用户点它是「我确认了」，不是「什么都没发生」。
+   * ⚠️ 2026-11-14：来源由 bottom-sheet 行的 dataset 改为 class-picker 的 detail.id，
+   *    两种都认（门禁与旧调用点都是 dataset 形态）。弹层状态已迁进组件，这里不再管开合。
    */
   onClassPick(e) {
-    const id = Number(e.currentTarget.dataset.id) || 0;
-    this.setData({ classSheetShow: false });
+    const id = Number((e && e.detail && e.detail.id) ||
+      (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id)) || 0;
     if (!id || id === Number(this.data.viewClassId)) return;
     if (getApp().track) getApp().track.action('class_switch', id);
     this._applyClass(id);

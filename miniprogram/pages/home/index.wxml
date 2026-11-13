@@ -97,8 +97,46 @@
   <block wx:else>
     <view class="wrap">
 
+      <!-- 关注的学生（2026-11-14 用户要求：放首页最上面）
+           数据仍走后端 v0.7.17 需求⑥ 的 member.pinList / pinToggle（**仅辅导员**可见）。
+           2026-10-27 曾整体迁到成员页，现按用户口径回到首页顶部 —— 辅导员首页的 Hero 与
+           今日/明日课次都是 `wx:if{{!isCounselor}}`，这张卡才是他的第一屏内容。
+           一行一位学生：头像 +（姓名 + 班级）+ 最新备注摘要 + 备注条数，点开进成员详情。 -->
+      <view wx:if="{{showPins}}" class="card pin-card st-item st-1">
+        <view class="pin-head">
+          <text class="pin-title">关注的学生</text>
+          <text class="pin-sub">{{pins.length}}/{{pinLimit}}</text>
+        </view>
+        <block wx:if="{{pins.length}}">
+          <view
+            wx:for="{{pins}}"
+            wx:key="memberId"
+            class="pin-row"
+            data-id="{{item.memberId}}"
+            data-class-id="{{item.classId}}"
+            data-name="{{item.name}}"
+            hover-class="press-dim"
+            hover-start-time="0"
+            hover-stay-time="60"
+            bindtap="onPinTap"
+          >
+            <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{72}}" />
+            <view class="pin-info">
+              <view class="pin-line1">
+                <text class="pin-name">{{item.name}}</text>
+                <text wx:if="{{item.className}}" class="pin-class">{{item.className}}</text>
+              </view>
+              <text class="pin-note">{{item.latestNote ? item.latestNote : '还没有备注，点开可以记录'}}</text>
+            </view>
+            <text wx:if="{{item.noteCount}}" class="pin-cnt">{{item.noteCount}}</text>
+            <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+          </view>
+        </block>
+        <view wx:else class="pin-empty">在成员详情里点「固定到主页」，需要长期关注的学生就会出现在这里</view>
+      </view>
+
       <!-- Hero 卡（v0.7.16 需求⑨：教职工不值日 → 辅导员不渲染；wx:if 不影响 st-item 兄弟关系） -->
-      <view wx:if="{{!isCounselor}}" class="hero {{hero ? hero.cls : 'plain small'}} st-item st-1" bindtap="onHero">
+      <view wx:if="{{!isCounselor}}" class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
         <block wx:if="{{myDuty}}">
           <view class="hero-top">
             <view class="hero-chip">{{periodText}}</view>
@@ -127,7 +165,7 @@
       <!-- 今日课次（教职工隐藏，需求⑨）
            ⚠️ 头部右侧的「查看课表 ›」已于 2026-10-28 下线：它只是 switchTab 到底部
            导航第二个 tab，点了画面不变，等于一个什么都不发生的按钮。课表入口保留在 tabBar。 -->
-      <view wx:if="{{!isCounselor}}" class="card mt16 st-item st-2">
+      <view wx:if="{{!isCounselor}}" class="card mt16 st-item st-3">
         <view class="card-head">
           <text class="card-title">今日课次</text>
         </view>
@@ -200,7 +238,7 @@
       </view>
 
       <!-- 明日课次（放假 / 调课 / 跨周都由后端按「实际上课日期」算好；教职工隐藏，需求⑨） -->
-      <view wx:if="{{!isCounselor}}" class="card mt16 st-item st-3">
+      <view wx:if="{{!isCounselor}}" class="card mt16 st-item st-4">
         <view class="card-head">
           <text class="card-title">明日课次</text>
           <text class="card-sub">{{tomorrowText}}</text>
@@ -227,7 +265,7 @@
 
       <!-- 首页请假卡（1.0.5 追加，需求①②）：班委/超管看本班请假人数、辅导员看各班总数；
            普通同学不可见（决策④）。点击 → 按 A/B 组列出请假的人（班委可撤销）。 -->
-      <view wx:if="{{showLeaveHome}}" class="card mt16 leave-home st-item st-4">
+      <view wx:if="{{showLeaveHome}}" class="card mt16 leave-home st-item st-5">
         <block wx:if="{{leaveHomeMode === 'class'}}">
           <view class="lh-head">
             <text class="lh-title">{{leaveHomeClassName ? leaveHomeClassName + ' · 请假' : '本班请假'}}</text>

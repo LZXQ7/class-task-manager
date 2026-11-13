@@ -54,17 +54,16 @@
         <segmented items="{{feeTabs}}" value="{{feeType}}" width="{{686}}" bind:change="onTypeSwitch" />
       </view>
 
-      <!-- 跨班查看（仅辅导员且负责多于 1 个班） -->
-      <view wx:if="{{isCounselor && feeClassList.length > 1}}" class="fee-cls-switch">
-        <text class="fee-cls-label">查看班级</text>
-        <view class="fee-cls-chips">
-          <view wx:for="{{feeClassList}}" wx:key="id"
-                class="fee-cls-chip {{feeViewClassId === item.id ? 'on' : ''}}"
-                data-id="{{item.id}}" bindtap="onFeeClassPick"
-                hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
-            {{item.name}}
-          </view>
-        </view>
+      <!-- 跨班查看（仅辅导员）：2026-11-14 用户需求② —— 横排 chips 改为下拉字段，
+           点字段展开全部班级、按住高亮、点中收起并回填后重新拉数。
+           即使只负责 1 个班也显示（它同时充当「当前查看的是哪个班」的标识）。 -->
+      <view wx:if="{{isCounselor && feeClassList.length}}" class="fee-cls-switch">
+        <class-picker
+          label="查看班级"
+          list="{{feeClassList}}"
+          value="{{feeViewClassId}}"
+          bind:change="onFeeClassPick"
+        />
       </view>
 
       <!-- 余额卡（两个视图都显示：填金额时要看得见还剩多少） -->

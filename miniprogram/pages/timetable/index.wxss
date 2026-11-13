@@ -771,34 +771,12 @@
   text-align: center;
 }
 
-/* 辅导员/超管切班筛选（2026-10 需求⑧升级）：几何与 duty 页 .dt-fchip 同规格，
-   chip-motion 基类管过渡，选中态 padding/font-size 变大邻项平滑让位，flex-wrap 支持小屏换行 */
-.tt-fchips {
+/* 辅导员/超管切班（2026-11-14 用户需求③）：chips 条 → class-picker 下拉字段。
+   这里只留外容器的位置与间距，字段与浮层样式全在 components/class-picker/index.wxss。
+   ⚠️ 旧 .tt-fchip / .tt-fchips 已随 chips 一起删除（留死代码会误导下一个人）。 */
+.tt-clsw {
   display: flex;
-  flex-wrap: wrap;
-  gap: 14rpx;
+  flex-direction: row;
+  align-items: center;
   padding: 0 28rpx 16rpx;
-}
-.tt-fchip {
-  flex: 0 0 auto;
-  padding: 8rpx 24rpx;
-  font-size: 24rpx;
-  line-height: 1.2;
-  color: var(--text-2);
-  background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid var(--line-1);
-  border-radius: 999rpx;
-}
-/* 深色：半透明白底在深色页上是一块灰白（白岛）→ 换深色玻璃 tint。
-   ⚠️ 排在 .tt-fchip.on 之前，选中态的品牌实心蓝不能被盖掉。 */
-.t-dark .tt-fchip { background: var(--glass-bg-strong); }
-.tt-fchip.on {
-  padding: 12rpx 32rpx;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #FFFFFF;
-  background: var(--brand);
-  border-color: var(--brand);
-}@media (prefers-reduced-motion: reduce) {
-  .tt-fchip { transition-duration: .01ms; }
 }

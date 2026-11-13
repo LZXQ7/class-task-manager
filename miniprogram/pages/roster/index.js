@@ -193,14 +193,8 @@ Page({
     pinBusy: false,
     pinCount: 0,
     pinLimit: 8,
-    /**
-     * 关注的学生常驻名单（v0.7.17 需求⑥）。
-     * 2026-10-27 从首页迁入：首页按用户要求只留「值日 / 课次 / 请假」，
-     * 这张卡是**成员的子集**，归位到成员页顶部最顺（钉人的按钮本来就在成员详情里）。
-     * 权限仍是**仅辅导员**（showPins = isCounselor，与后端 pinList / pinToggle 同口径）。
-     */
-    showPins: false,
-    pins: [],
+    /* 关注的学生名单（showPins / pins）2026-11-14 随卡片迁回**首页** ——
+     * 本页只需要 pinLimit / pinned / pinCount 支撑详情里的「固定到主页」按钮。 */
 
     memberStats: null,
     members: [],
@@ -375,8 +369,7 @@ Page({
       canGrantPosition,
       isSuper,
       isCounselor: !!(p && p.groupTag === 'X'),
-      // 关注的学生：**仅辅导员**（与后端 pinList / pinToggle 同口径，见 check-staff-pin）
-      showPins: !!(p && p.groupTag === 'X'),
+      // 关注的学生**卡片**已于 2026-11-14 迁回首页；本页只在详情里保留「固定到主页」按钮
       isAdmin: !!(app && app.isAdmin && app.isAdmin()),
       canLeave: !!(app && app.canLeave && app.canLeave()),
       navTitle: name ? (name + ' · 成员') : '成员与分组'
@@ -389,7 +382,6 @@ Page({
         this.setData({
           isSuper: s2,
           isCounselor: !!(p2 && p2.groupTag === 'X'),
-          showPins: !!(p2 && p2.groupTag === 'X'),
           isAdmin: !!(app.isAdmin && app.isAdmin()),
           canManage: s2 || !!(p2 && p2.groupTag === 'X'),
           canRosterEdit: !!(app.canRosterEdit && app.canRosterEdit()),
@@ -416,8 +408,8 @@ Page({
     // 从详情回来时实时刷新统计
     this._loadStats();
     this._loadLeaveBoard();
-    // 关注的学生：在成员详情里刚钉的人，切回来就能看到（≤8 行的小查询，每次进页面重拉）
-    if (this.data.showPins) this._loadPins();
+    // ⚠️ 2026-11-14：关注的学生卡片已迁回首页，本页不再拉 pinList 列表
+    //    （详情按钮的状态由 _loadPinState 按需拉，见 onMemberRow）。
   },
 
   /** 全班 ⇄ 仅班委的过渡链在页面销毁后不该继续（guard 见 _applyFilter） */
@@ -1491,36 +1483,9 @@ _clockNow() {
 
   onMDetailClose() { this.setData({ mDetailShow: false }); },
 
-  /* ---------------- 主页关注（v0.7.17 需求⑥） ---------------- */
-
-  /**
-   * 关注的学生列表（2026-10-27 从首页迁入成员页）。
-   * 每次进页面都重拉（≤8 行的小查询），保证在详情里刚钉的人**切回来就能看到**。
-   */
-  _loadPins() {
-    api.pinList({}, { toast: false })
-      .then((r) => this.setData({
-        pins: (r && r.list) || [],
-        pinLimit: Number((r && r.limit) || 8)
-      }))
-      .catch(() => {});
-  },
-
-  /** 点关注的学生 → 直接展开他的成员详情（带 classId，辅导员跨班也能定位） */
-  onPinTap(e) {
-    const d = e.currentTarget.dataset || {};
-    const memberId = Number(d.id) || 0;
-    if (!memberId) return;
-    const classId = Number(d.classId) || 0;
-    const name = String(d.name || '');
-    // 已在本页（同班）就本地展开，不必再 navigate 一层
-    if (classId === Number(this.data.classId)) {
-      const m = this.data.members.find((x) => x.id === memberId);
-      // 已在本页（同班）就本地展开，不必再 navigate 一层（与深链 _openPendingMember 同一条路）
-      if (m) { this.onMemberRow({ currentTarget: { dataset: { id: memberId } } }); return; }
-    }
-    wx.navigateTo({ url: '/pages/roster/index?classId=' + classId + '&openMemberId=' + memberId + '&name=' + encodeURIComponent(name) });
-  },
+  /* ---------------- 主页关注（v0.7.17 需求⑥；卡片 2026-11-14 迁回首页） ----------------
+   * 本页只剩「固定到主页」按钮这一侧：状态查询 _loadPinState / 切换 onTogglePin。
+   * 曾经在这里的 _loadPins（列表）与 onPinTap（卡片点击）随卡片一起迁到 pages/home。 */
 
   /**
    * 关注状态：`pinList` 最多 8 条，一次拉全量后本地判定，不为「这一条是否已关注」再开一个接口。

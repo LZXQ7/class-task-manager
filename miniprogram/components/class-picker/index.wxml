@@ -1,0 +1,38 @@
+<!-- 班级下拉选择器（2026-11-14）。结构：字段行 + 展开浮层。
+     ⚠️ 浮层用 absolute 而不是 fixed：多数使用页在 <spring-scroll> 内，.ss-content 的
+        transform 会把 fixed 的包含块改成滚动容器，浮层会跟着滚出屏幕。
+     ⚠️ 浮层挂在 .cp-field **内部**（不是 .cp 里）：这样 left/right:0 就是字段的宽度，
+        浮层与字段左右对齐；挂在 .cp 上会把左侧「查看班级」label 也算进去，看起来偏左。
+     ⚠️ 浮层必须 catchtap：它现在是字段的子节点，不拦冒泡会先选中、再被字段的
+        onToggle 把浮层重新打开（表现为「点了收起又弹开」）。
+     ⚠️ 选项走 data.opts（id 已转数字），wxml 里用 === 比对不会因类型不一致而丢勾。 -->
+<view class="cp {{open ? 'cp-open' : ''}}">
+  <text wx:if="{{label}}" class="cp-label">{{label}}</text>
+
+  <view
+    class="cp-field"
+    hover-class="cp-field-hov"
+    hover-start-time="0"
+    hover-stay-time="60"
+    bindtap="onToggle"
+  >
+    <text class="cp-cur {{curName ? '' : 'cp-ph'}}">{{curName || placeholder}}</text>
+    <view class="cp-arrow"></view>
+
+    <view wx:if="{{open}}" class="cp-pop" catchtap="noop" catchtouchmove="noop">
+      <view
+        wx:for="{{opts}}"
+        wx:key="id"
+        class="cp-opt {{item.id === curId ? 'cp-on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="onPick"
+        hover-class="cp-opt-hov"
+        hover-start-time="0"
+        hover-stay-time="60"
+      >
+        <text class="cp-opt-t">{{item.name}}</text>
+        <view wx:if="{{showCheck && item.id === curId}}" class="cp-tick"></view>
+      </view>
+    </view>
+  </view>
+</view>

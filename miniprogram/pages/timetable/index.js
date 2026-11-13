@@ -429,7 +429,9 @@ Page({
 
   /** 辅导员/超管切班：换一份课表真源（强制重新同步，不走静默缓存） */
   onTimetableClass(e) {
-    const id = Number(e.currentTarget.dataset.id) || 0;
+    // 2026-11-14：来源由 chips 的 dataset 改为 class-picker 的 detail.id（两种都认）
+    const id = Number((e && e.detail && e.detail.id) ||
+      (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id)) || 0;
     if (!id || id === Number(this.data.viewClassId)) return;
     const sel = (this.data.classList || []).find(c => c.id === id);
     if (!sel) return;

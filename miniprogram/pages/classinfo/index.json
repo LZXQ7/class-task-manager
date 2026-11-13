@@ -6,6 +6,7 @@
     "app-icon": "../../components/app-icon/index",
     "nav-bar": "../../components/nav-bar/index",
     "spring-scroll": "../../components/spring-scroll/index",
-    "bottom-sheet": "../../components/bottom-sheet/index"
+    "bottom-sheet": "../../components/bottom-sheet/index",
+    "class-picker": "../../components/class-picker/index"
   }
 }

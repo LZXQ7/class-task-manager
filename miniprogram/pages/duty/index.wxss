@@ -444,32 +444,14 @@
    几何与 classes 页 .cl-fchip 同规格：chip-motion 基类管过渡，
    选中态 padding/font-size 变大 = 布局真变大，邻项被平滑推开；
    flex-wrap 支持小屏换行；保持顺序、不重叠。 */
-.dt-fchips {
+/* 教职工切班（2026-11-14 用户需求④）：chips 条 → class-picker 下拉字段。
+   字段与浮层样式在 components/class-picker/index.wxss，这里只管外容器位置。
+   ⚠️ 旧 .dt-fchip / .dt-fchips 已随 chips 删除。 */
+.dt-clsw {
   display: flex;
-  flex-wrap: wrap;
-  gap: 14rpx;
+  flex-direction: row;
+  align-items: center;
   padding: 0 28rpx 16rpx;
-}
-.dt-fchip {
-  flex: 0 0 auto;
-  padding: 8rpx 24rpx;
-  font-size: 24rpx;
-  line-height: 1.2;
-  color: var(--text-2);
-  background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid var(--line-1);
-  border-radius: 999rpx;
-}
-.dt-fchip.on {
-  padding: 12rpx 32rpx;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #FFFFFF;
-  background: var(--brand);
-  border-color: var(--brand);
-}
-@media (prefers-reduced-motion: reduce) {
-  .dt-fchip { transition-duration: .01ms; }
 }
 
 /* ============ 加值日生弹层（v0.7.16 需求③） ============

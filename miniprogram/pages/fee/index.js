@@ -217,7 +217,10 @@ Page({
   },
   /** 班费/团费切班：选中某个可查看班级后立即重拉该班的钱 */
   onFeeClassPick(e) {
-    const id = Number(e.currentTarget.dataset.id) || 0;
+    // 2026-11-14：来源从 chips 的 dataset 改为 class-picker 的 detail.id；
+    // 两种都认（组件契约变更时不必回头找所有调用点）。
+    const id = Number((e && e.detail && e.detail.id) ||
+      (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id)) || 0;
     if (!id || id === Number(this.data.feeViewClassId)) return;
     this.setData({ feeViewClassId: id });
     this._loadFee(true);

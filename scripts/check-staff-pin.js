@@ -66,13 +66,19 @@ console.log('── ① 静态审计：路由 / 权限 / 上限 / 接线');
     '前端 api.js 已登记 pinList / pinToggle');
   chk(/固定到主页/.test(ROSTER_WXML) && /onTogglePin/.test(ROSTER_WXML),
     '成员详情有「固定到主页」按钮');
-  // ⚠️ 2026-10-27 归位：首页按用户要求只留「值日 / 课次 / 请假」，这张卡搬到**成员页**
-  //    （它是成员的子集，钉人的按钮本来就在成员详情里，归位后读写两端同页）。
-  //    门禁跟着卡片走 —— 断言首页会永远假红，同时也失去了「卡片还在」的保护。
-  chk(/关注的学生/.test(ROSTER_WXML) && /onPinTap/.test(ROSTER_WXML),
-    '成员页有「关注的学生」卡片且可点开（2026-10-27 从首页迁入）');
+  // ⚠️ 卡片位置变过三次，门禁必须跟着走，否则要么永远假红、要么失去「卡片还在」的保护：
+  //    首页 →（2026-10-27）成员页 →（2026-11-14 用户要求）**首页最上面**。
+  //    当前口径：首页渲染，成员页只留详情里的「固定到主页」按钮。
+  const HOME_WXML = readM('pages/home/index.wxml');
+  const HOME_JS = readM('pages/home/index.js');
+  chk(/关注的学生/.test(HOME_WXML) && /onPinTap/.test(HOME_WXML),
+    '首页有「关注的学生」卡片且可点开（2026-11-14 从成员页迁回顶部）');
+  /* ⚠️ 判据锚「class 属性里真的用了 pin-card」，不能只搜 /pin-card/ ——
+   *    成员页注释里写着「已迁到首页的 .pin-card」，只搜类名会把注释当成残留（本轮实踩）。 */
+  chk(!/class="[^"]*\bpin-card\b/.test(ROSTER_WXML),
+    '成员页不再渲染关注卡（两处并存 = 同一份数据两个入口，用户会以为重复）');
   // 可见范围（v0.7.18 需求①）：**仅辅导员**。两端同源，不会出现「能钉却看不到」
-  chk(/showPins:\s*!!\(p && p\.groupTag === 'X'\)/.test(ROSTER_JS),
+  chk(/const showPins = isCounselor/.test(HOME_JS),
     '关注卡只对辅导员渲染（showPins = isCounselor，不再跟着超管走）');
   chk(/pinVisible: isCounselor/.test(readM('pages/roster/index.js')) &&
       /wx:if="\{\{pinVisible && !mDetailIsSelf\}\}"/.test(ROSTER_WXML),
