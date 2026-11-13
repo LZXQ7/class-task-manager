@@ -230,7 +230,7 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   ④ 新增门禁 `scripts/check-demo-entry-visibility.js`（15 项断言 + 8 组变异自证）。
  *   云函数需重部署：**auth**（其余不动）。
  */
-const APP_VERSION = '1.0.8.35';
+const APP_VERSION = '1.0.8.36';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

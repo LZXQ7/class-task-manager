@@ -51,12 +51,22 @@ set_remote() {   # $1=dir $2=repo $3=token
 
 echo "==> [1/6] 私有仓库：提交 + 打 tag $VERSION + 推送"
 cd "$PRIVATE_DIR"
-git add -A
-if [ -n "$(git status --porcelain)" ]; then
+# ⚠️ 2026-11-14：同一工作区常有并行会话留下的未提交文件，`git add -A` 会把它们
+#    混进发版 commit（曾误带 nav-bar 胶囊适配的 6 个文件）。若调用方已自行精确
+#    add/commit/push 本轮文件，用 PRIVATE_ADD_MODE=none 跳过 add -A，只打 tag + push；
+#    公开仓导出走 `git archive HEAD`，同样不会带上工作区里那些文件。
+if [ "${PRIVATE_ADD_MODE:-all}" = "none" ]; then
+  echo "    (PRIVATE_ADD_MODE=none：跳过 git add -A，调用方已精确提交)"
+else
+  git add -A
+fi
+# 判断「有没有要提交的东西」看**暂存区**，不能看工作区状态：
+# none 模式下工作区仍可能有别人的改动，但它们不该进发版 commit。
+if [ -n "$(git diff --cached --name-only)" ]; then
   git commit -q -m "$NOTE"
   echo "    已提交"
 else
-  echo "    (私有仓库无改动，跳过 commit)"
+  echo "    (私有仓库暂存区无改动，跳过 commit)"
 fi
 if git rev-parse "$VERSION" >/dev/null 2>&1; then
   echo "    (tag $VERSION 已存在，跳过)"

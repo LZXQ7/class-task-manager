@@ -93,14 +93,41 @@
 /* ⚠️ 高度必须与底栏等高（top:0 + bottom:0 自动铺满），**不许写死 height**：
  * 写死会在胶囊高度调整时留下「上方空白」——用户 2026-09-26 反馈的就是这个现象。
  * 圆角 46rpx = 胶囊半径，四角与胶囊同心，落在第一 / 最后一格时不会顶出圆角。 */
+/* ============ 【试验态 v1.0.8.36】内缩小胶囊 ============
+ * 用户想先看「背景块收成格内小胶囊」的效果，不好看可一键回滚。
+ * 口径：本节点仍由 JS 按等分格位下发 left/width —— check-tabbar-liquid 的
+ *   全部几何断言（零留白、预冲、跨页交接）保持有效。内缩只发生在视觉层，
+ *   由 ::after 画出来，滑动 / 两拍回弹 / 首末格贴边裁剪一律不动。
+ * 回滚：删掉下面 .tab-ind::after 与深色令牌规则，把本节点 background 改回
+ *   rgba(51,112,255,.18) 并恢复 box-shadow 即可（其余文件一行未动）。
+ */
 .tab-ind {
   position: absolute;
   top: 0;
   bottom: 0;
   border-radius: 46rpx;
-  background: rgba(51,112,255,.18);
-  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, .55);
+  background: transparent;
   z-index: 0;
+}
+/* 内缩：左右各 8rpx、上下各 8rpx → 100×76rpx，圆角 38rpx = 半高（正圆头）。
+   选中项内容 38rpx 图标 + 6rpx 间隙 + ≤60rpx 文字 ≈104rpx，比胶囊宽 4rpx
+   （左右各溢出 2rpx）；背景是半透明蓝、文字是品牌蓝，越出 2rpx 不影响可读性。 */
+.tab-ind::after {
+  content: '';
+  position: absolute;
+  left: 8rpx;
+  right: 8rpx;
+  top: 8rpx;
+  bottom: 8rpx;
+  border-radius: 38rpx;
+  background: var(--tab-ind, rgba(51, 112, 255, .22));
+  box-shadow: inset 0 1rpx 0 var(--tab-ind-edge, rgba(255, 255, 255, .6));
+}
+/* 深色：选中块要比玻璃轨道「更亮」才读得出浮起（与 segmented 同一口径）。
+   tClass 挂在 .tabbar-wrap 自己身上，故组件内后代选择器能命中。 */
+.tabbar-wrap.t-dark {
+  --tab-ind: rgba(96, 150, 255, .34);
+  --tab-ind-edge: rgba(200, 215, 245, .14);
 }
 .tab-ind.stretch {
   transition: left .14s cubic-bezier(.2, 0, .2, 1), width .12s cubic-bezier(.55, 0, .85, .4);
@@ -113,15 +140,21 @@
   .tab-ind.settle {
     transition-duration: .01ms;
   }
+  /* 文字只保留颜色/显隐，去掉「展开」这类位置变化 */
+  .tab-text {
+    transition: color .2s ease;
+  }
 }
 .tab-item {
   position: relative;
   z-index: 1;
   flex: 1;
   display: flex;
-  flex-direction: column;
+  /* 【试验态】column → row：选中项「图标＋文字」并排成胶囊，其余项文字收起后
+     只剩图标、仍由 justify-content 精确居中。图标随文字展开连续左移，不跳变。 */
+  flex-direction: row;
   align-items: center;
-  /* 垂直居中：内容 75rpx 在 92rpx 胶囊里上下各 8.5rpx，两侧留白均等。
+  /* 垂直居中：内容在 92rpx 胶囊里上下留白均等。
      旧写法用 padding-top 16rpx 把内容整体下压 → 图标上方空 16rpx、文字几乎贴底，
      用户 2026-09-26 反馈的「上方有空白」就是这个不对称留白。 */
   justify-content: center;
@@ -132,14 +165,17 @@
    有按下态 → 这点延迟主观上「不存在」；没有 → 用户只看到「点了没反应」。 */
 .tab-item-hover {
   background: rgba(51,112,255,.05);
+  border-radius: 38rpx;
 }
 .tab-item-hover .tab-icon-box {
   opacity: .5;
 }
 .tab-icon-box {
   position: relative;
-  width: 42rpx;
-  height: 42rpx;
+  /* 【试验态】42 → 38rpx：横排后选中项还要塞下文字，图标略收一号 */
+  flex-shrink: 0;
+  width: 38rpx;
+  height: 38rpx;
 }
 /* 双图层叠放（2026-09-25）：off/on 两张内联 base64 同位叠放，只切 opacity。
    变色与文字 transition 同为 .2s、同帧生效 —— 根治「文字先灰、图标后灰」；
@@ -148,8 +184,8 @@
   position: absolute;
   left: 0;
   top: 0;
-  width: 42rpx;
-  height: 42rpx;
+  width: 38rpx;
+  height: 38rpx;
   transition: opacity .2s ease;
 }
 .tab-icon-off { opacity: 1; }
@@ -178,14 +214,34 @@
   background: var(--danger);
   border: 2rpx solid var(--bg-card);
 }
+/* ============ 【试验态】选中项展开文字标签 ============
+ * 收起：max-width/margin-left 皆 0 + opacity 0 ⇒ 元素完全不占位，图标精确居中；
+ * 展开：max-width 放到 60rpx（3 字「课程表」刚好，2 字标签按内容自适应，不撑出空框）。
+ * 这是横向 accordion —— 文字「展开」没有纯 transform 等价物（scaleX 会把字压扁），
+ * 故 max-width / margin-left 走 layout 过渡；opacity 与 color 走合成/绘制。
+ * 曲线用强 ease-out（cubic-bezier(.23,1,.32,1)），200ms，与背景块 140ms 预冲
+ * +240ms 回弹形成层次：文字先到位、色块后落定。reduced-motion 见上方媒体查询。
+ */
 .tab-text {
-  margin-top: 7rpx;
+  display: inline-block;
+  max-width: 0;
+  margin-left: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
   font-size: 20rpx;
   line-height: 26rpx;
   color: var(--text-4);
-  transition: color .2s ease;
+  transition:
+    max-width .2s cubic-bezier(.23, 1, .32, 1),
+    margin-left .2s cubic-bezier(.23, 1, .32, 1),
+    opacity .16s ease,
+    color .2s ease;
 }
 .tab-text.on {
+  max-width: 60rpx;
+  margin-left: 6rpx;
+  opacity: 1;
   color: var(--brand);
   font-weight: 500;
 }

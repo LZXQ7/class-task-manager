@@ -80,7 +80,12 @@
       写死 560rpx 会让 3 个班的列表空出半屏（截图反馈）；等宽于字段又会把
       「示例专业A1班」截成省略号（更早一版实测）。
       现在：不窄于字段、不宽于最长选项，左右 padding 天然相同。
-      `left:0; right:auto` 是 shrink-to-fit 的前提（写 right:0 会把宽度锁死）。 */
+      `left:0; right:auto` 是 shrink-to-fit 的前提（写 right:0 会把宽度锁死）。
+   ⚠️ top / height / margin-top 会被 wxml 的内联 popStyle **覆盖**（2026-11-14）：
+      展开位置由 utils/class-picker-layout.js 按「当前选中项对齐字段中心」算出，
+      所以这里的 `top:100% + margin-top:10rpx` 只是**未测量时的普通下拉兜底**；
+      内联样式里必须带 `margin-top:0rpx`，否则 10rpx 会把选中项整体推离字段中心。
+      浮层因此可能向上展开（top 为负），这是预期行为 —— 不遮挡下方正文。 */
 .cp-pop {
   position: absolute;
   left: 0;
