@@ -80,13 +80,18 @@
     </view>
   </block>
 
-  <!-- 加载 / 失败（骨架行数跟随本班节次数，2026-10-14 不再写死 5） -->
+  <!-- 加载 / 失败（骨架行数跟随本班节次数，2026-10-14 不再写死 5）
+       🔴 2026-11-14 换法：骨架改成**与真实网格同构**（左节次条 + 5 个等分课格）。
+       旧写法是在 `.tt-cells` 里塞通用 `<skeleton type="grid">`，而那个组件的格子固定
+       220rpx 且 flex-wrap ⇒ 一屏里挤成「两竖列大白块」，与真实课表毫无相似之处，
+       数据回来时整块版式还会跳一下（用户截图反馈）。 -->
   <block wx:elif="{{loading}}">
     <view class="tt-grid">
-      <view class="tt-row" wx:for="{{periods}}" wx:key="p">
-        <view class="tt-time"></view>
+      <!-- 行高绑 rowH（与真实行同一个值）：骨架→数据不跳高度 -->
+      <view class="tt-row" wx:for="{{periods.length ? periods : skPeriods}}" wx:key="p" style="height:{{rowH}}rpx">
+        <view class="tt-time"><view class="tt-sk-time"></view></view>
         <view class="tt-cells">
-          <skeleton type="grid" rows="{{5}}" height="{{136}}" />
+          <view class="tt-sk-cell" wx:for="{{skCells}}" wx:for-item="c" wx:key="*this"></view>
         </view>
       </view>
     </view>

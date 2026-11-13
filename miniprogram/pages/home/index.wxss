@@ -623,72 +623,75 @@
 
 /* ===== 关注的学生（2026-11-14 从成员页迁回首页顶部，仅辅导员）=====
  * ⚠️ 这些类是**首页私有**：WXSS 页面级作用域，成员页的同名样式不会跨页生效。
- * 2026-11-14 二次调整：由「头像 + 两行文字（姓名/班级 + 备注摘要）」收成**单行**。
- *   起因：8 个关注每行 ~104rpx，一屏被这张卡吃掉（用户截图）。
- *   备注摘要被去掉 —— 首页只需要「一眼找到人」，备注点进详情看得到。
- * ⚠️ 旧 .pin-info / .pin-line1 / .pin-note 一并删除，别留死样式误导下一个人。 */
+ * 2026-11-14 二次调整：由「头像 + 两行文字」收成单行；
+ * 同日三次调整（用户要求）：**横排一格一人、一排四个**（头像 + 姓名 + 班级）。
+ *   · 8 人正好两排，比纵排列表省一半高度；
+ *   · 班级名在半宽（≈150rpx）里必然省略 —— 横排的代价，完整信息点进详情看；
+ *   · 备注条数从「右侧一列」改成头像右上角小角标。
+ * ⚠️ 旧 .pin-row / .pin-name / .pin-class / .pin-tail 已删除，别留死样式。 */
 .pin-card { padding: 8rpx 0; }
 .pin-head {
   display: flex;
   flex-direction: row;
   align-items: baseline;
   justify-content: space-between;
-  padding: 10rpx 28rpx 6rpx;
+  padding: 10rpx 28rpx 2rpx;
 }
 .pin-title { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
 .pin-sub { font-size: 24rpx; color: var(--text-3); }
-.pin-row {
+
+/* 网格：一排四个（25%），换行由 flex-wrap 管 —— 人数不是 4 的倍数时最后一排左对齐 */
+.pin-grid {
   display: flex;
   flex-direction: row;
-  align-items: center;
-  padding: 14rpx 28rpx;
+  flex-wrap: wrap;
+  padding: 6rpx 16rpx 16rpx;
 }
-.pin-row + .pin-row { border-top: 2rpx solid var(--line-2); }
-.pin-name {
-  flex-shrink: 0;
-  margin-left: 18rpx;
-  font-size: 28rpx;
-  line-height: 40rpx;
+.pin-cell {
+  width: 25%;
+  box-sizing: border-box;
+  padding: 12rpx 6rpx 8rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+  border-radius: 20rpx;
+}
+/* 头像容器：为右上角的条数角标提供定位爹 */
+.pin-av { position: relative; display: flex; }
+.pin-cnt {
+  position: absolute;
+  top: -8rpx;
+  right: -12rpx;
+  min-width: 30rpx;
+  height: 30rpx;
+  line-height: 30rpx;
+  padding: 0 7rpx;
+  text-align: center;
+  font-size: 18rpx;
+  color: #FFFFFF;
+  background: var(--brand);
+  border-radius: 15rpx;
+  box-sizing: border-box;
+}
+.pin-cell-name {
+  max-width: 100%;
+  font-size: 26rpx;
+  line-height: 34rpx;
   font-weight: 500;
   color: var(--text-1);
-}
-/* 班级角标：单行排布下它是「哪班的学生」的唯一线索，字号收到 20rpx 但仍放在姓名右侧 */
-.pin-class {
-  flex-shrink: 1;
-  min-width: 0;
-  margin-left: 12rpx;
-  padding: 1rpx 10rpx;
-  font-size: 20rpx;
-  line-height: 30rpx;
-  color: var(--brand);
-  background: var(--brand-light);
-  border-radius: 14rpx;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* 右侧尾组（备注条数 + 箭头）：margin-left:auto 把整组推到最右，
-   角标因此紧贴箭头；没有角标时箭头自己靠右（不用再写两个 auto 抢空间）。 */
-.pin-tail {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10rpx;
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-/* 备注条数：作为「有没有记录」的轻提示，不再单独吃一行 */
-.pin-cnt {
-  flex: 0 0 auto;
-  min-width: 32rpx;
-  height: 32rpx;
-  line-height: 32rpx;
-  padding: 0 8rpx;
-  text-align: center;
-  font-size: 20rpx;
-  color: var(--text-2);
-  background: var(--bg-fill);
-  border-radius: 16rpx;
+.pin-cell-cls {
+  max-width: 100%;
+  font-size: 19rpx;
+  line-height: 26rpx;
+  color: var(--text-3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .pin-empty {
   padding: 26rpx 32rpx 32rpx;

@@ -684,7 +684,7 @@ Page({
     if (!url) return;
     if (/^https:\/\/docs\.qq\.com\//i.test(url)) {
       wx.navigateToMiniProgram({
-        appId: 'wxd45c635d754dbf59', // 腾讯文档小程序
+        appId: '<TENCENT_DOCS_APPID>', // 腾讯文档小程序
         path: 'pages/detail/detail?url=' + encodeURIComponent(url),
         fail: (r) => {
           if (/cancel/i.test(String((r && r.errMsg) || ''))) return; // 用户点了取消

@@ -98,6 +98,11 @@ Page({
 
     dates: [],          // [{dow, short, day, isToday, isHoliday, holidayName, isMakeup, isWeekend}]（只含实际显示的天）
     periods: [],        // [{p, label, start}]
+    /* 加载骨架的占位行/列（2026-11-14）：periods 还没回来时用 5 行兜底；
+       列固定 5（周一~周五），与真实网格同构 —— 见 index.wxml 的 loading 分支注释。
+       `skPeriods` 故意做成 [{p}] 形态，好让外层 wx:for 的 wx:key="p" 与真实数据共用。 */
+    skPeriods: [{ p: 1 }, { p: 2 }, { p: 3 }, { p: 4 }, { p: 5 }],
+    skCells: [1, 2, 3, 4, 5],
     grid: [],           // 5 行 × N 列（N = 实际显示天数，默认周一~周五，周末有课才含周六日）
     dateWidth: 0,       // 日期区总宽（rpx）：供横向滚动容器定宽
     colW: 120,          // 单列宽（rpx）：按显示天数自适应

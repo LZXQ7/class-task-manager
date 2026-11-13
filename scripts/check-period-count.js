@@ -96,7 +96,15 @@ pin('C3 wxml：节次选择器读 periodChips、骨架屏读 periods，无 [1,2,
   const chips = wxmlSrc.slice(wxmlSrc.indexOf('f-chips'));
   assert.ok(/wx:for="\{\{periodChips\}\}"/.test(chips), '节次选择器未用 periodChips');
   const skel = wxmlSrc.slice(wxmlSrc.indexOf('wx:elif="{{loading}}"'));
-  assert.ok(/wx:for="\{\{periods\}\}"/.test(skel.slice(0, 400)), '骨架屏未用 periods');
+  const head = skel.slice(0, 400);
+  /* 骨架屏必须读 periods（班级配置），2026-11-14 起允许带「未就绪兜底」：
+   *   wx:for="{{periods.length ? periods : skPeriods}}"
+   * —— 加载瞬间 class.list 还没回来，periods 为空，没有兜底就一行都不画（白屏）。
+   * 但兜底数组只能来自 data（skPeriods），**禁止**在 wxml 里写字面量 [1,2,3,4,5]，
+   * 否则就回到「脱离班级配置写死 5 节」的老问题。 */
+  assert.ok(/wx:for="\{\{periods\}\}"/.test(head) ||
+    /wx:for="\{\{periods\.length \? periods : [A-Za-z_$][\w$]*\}\}"/.test(head),
+    '骨架屏未用 periods（允许 periods 或 periods.length ? periods : 兜底变量）');
   assert.ok(!/wx:for="\{\{\[1,2,3,4,5\]\}\}"/.test(wxmlSrc), '仍有 [1,2,3,4,5] 硬编码');
   assert.ok(!/1-2 上午 · 3-4 下午 · 5 晚上/.test(wxmlSrc), '节次提示仍写死 5 节口径');
 });

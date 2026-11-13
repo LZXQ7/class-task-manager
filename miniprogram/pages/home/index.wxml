@@ -110,24 +110,28 @@
           <text class="pin-sub">{{pins.length}}/{{pinLimit}}</text>
         </view>
         <block wx:if="{{pins.length}}">
-          <view
-            wx:for="{{pins}}"
-            wx:key="memberId"
-            class="pin-row"
-            data-id="{{item.memberId}}"
-            data-class-id="{{item.classId}}"
-            data-name="{{item.name}}"
-            hover-class="press-dim"
-            hover-start-time="0"
-            hover-stay-time="60"
-            bindtap="onPinTap"
-          >
-            <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{48}}" />
-            <text class="pin-name">{{item.name}}</text>
-            <text wx:if="{{item.className}}" class="pin-class">{{item.className}}</text>
-            <view class="pin-tail">
-              <text wx:if="{{item.noteCount}}" class="pin-cnt">{{item.noteCount}}</text>
-              <app-icon name="arrow-right" variant="gray" size="{{26}}" />
+          <!-- 2026-11-14 用户要求：不要列表行，改成**横排一格一人、一排四个**（头像 + 姓名 + 班级）。
+               班级名在半宽内会被省略号截断，这是横排的必然代价 —— 完整班级点进详情看。
+               备注条数改成头像右上角的小角标，不再单占一列。 -->
+          <view class="pin-grid">
+            <view
+              wx:for="{{pins}}"
+              wx:key="memberId"
+              class="pin-cell"
+              data-id="{{item.memberId}}"
+              data-class-id="{{item.classId}}"
+              data-name="{{item.name}}"
+              hover-class="press-dim"
+              hover-start-time="0"
+              hover-stay-time="60"
+              bindtap="onPinTap"
+            >
+              <view class="pin-av">
+                <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{88}}" />
+                <text wx:if="{{item.noteCount}}" class="pin-cnt">{{item.noteCount}}</text>
+              </view>
+              <text class="pin-cell-name">{{item.name}}</text>
+              <text wx:if="{{item.className}}" class="pin-cell-cls">{{item.className}}</text>
             </view>
           </view>
         </block>

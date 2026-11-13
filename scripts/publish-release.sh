@@ -95,11 +95,18 @@ if git -C "$PUBLIC_DIR" ls-files | grep -iqE '\.(xlsx|xls)$'; then
   echo "❌ 公开树仍含 .xlsx/.xls（PII 风险），已中止" >&2
   exit 1
 fi
-# 4b 原始令牌 / 姓名 / 学号 / 班级名 / 教师名 / ICP / 品牌
+# 4b 原始令牌 / AppID / 姓名 / 学号 / 班级名 / 教师名 / ICP / 品牌
 if grep -rI -n -E \
-  "<YOUR_ENV_ID>|<YOUR_APPID>|0000000000|0000000003|0000000002|0000000001|00000000|209903030101|209903020101|示例成员57|示例成员01|<INVITE_CODE>|<INVITE_CODE>|<INVITE_CODE>|admin|班级任务管理|<ICP_NO>|示例老师01|示例老师02|示例老师04|示例老师05|示例老师07|示例老师08|示例老师09|示例老师10|示例老师11|示例老师12|示例老师06|示例老师03|示例专业|示例专业简称|示例班级A|示例班级B|示例班级C" \
+  "<YOUR_ENV_ID>|<YOUR_APPID>|<TENCENT_DOCS_APPID>|0000000000|0000000003|0000000002|0000000001|00000000|209903030101|209903020101|示例成员57|示例成员01|<INVITE_CODE>|<INVITE_CODE>|<INVITE_CODE>|admin|班级任务管理|<ICP_NO>|示例老师01|示例老师02|示例老师04|示例老师05|示例老师07|示例老师08|示例老师09|示例老师10|示例老师11|示例老师12|示例老师06|示例老师03|示例专业|示例专业简称|示例班级A|示例班级B|示例班级C" \
   "$PUBLIC_DIR" --exclude-dir=.git >/dev/null 2>&1; then
   echo "❌ 公开树命中原始 PII 词，已中止（请检查 scrub.js 规则是否覆盖新增 PII）" >&2
+  exit 1
+fi
+# 4b-2 形状兜底：任何残留的微信 AppID 一律拦截（防止以后新增 AppID 漏进脱敏词表）。
+#       ⚠️ 本行必须留在 .sh 文件里执行：把 {16} 直接塞进交互式命令行会被转义层吃掉，
+#          正则静默退化成假阴性（2026-11-14 实测）。占位符 <YOUR_APPID> 不含 wx+16 位，不误报。
+if grep -rI -n -E 'wx[0-9a-f]{16}' "$PUBLIC_DIR" --exclude-dir=.git >/dev/null 2>&1; then
+  echo "❌ 公开树仍含微信 AppID 形状的原始值，已中止（检查 scrub.js 的 SIMPLE 规则）" >&2
   exit 1
 fi
 # 4c 疑似真实学号（12 位、260 开头；示例/伪化均为 10 位或 8 位，不会命中）

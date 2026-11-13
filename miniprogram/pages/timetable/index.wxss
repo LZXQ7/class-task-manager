@@ -108,6 +108,39 @@
   border: 1rpx dashed var(--line-1);
 }
 
+/* ---------- 加载骨架（2026-11-14）----------
+ * 与真实网格同构：左节次条 + 5 个等分课格，行高绑 rowH。
+ * 不用通用 <skeleton type="grid">：那个格子固定 220rpx 且 flex-wrap，
+ * 一屏里会挤成「两竖列大白块」，与课表毫无相似处（用户截图）。
+ * 动画用呼吸（opacity）而不是扫光（background-position）：
+ * 扫光要把白色渐变写死，深色模式下会露出灰白块；呼吸只动 opacity，两套主题都成立。 */
+.tt-sk-time {
+  width: 40rpx;
+  height: 24rpx;
+  border-radius: 8rpx;
+  background: var(--fill-soft);
+  animation: tt-sk-breathe 1.6s ease-in-out infinite;
+}
+.tt-sk-cell {
+  flex: 1;
+  min-width: 0;
+  /* ⚠️ 必须显式 height:100%：父级 .tt-cells 虽是 flex（默认 stretch），
+     但行高来自 .tt-row 的内联 height，不写这条时占位块在部分机型上高度为 0。 */
+  height: 100%;
+  margin: 2rpx;
+  border-radius: 24rpx;
+  /* 用 --fill-soft 而不是 --bg-fill：后者在玻璃卡/浅蓝底上几乎看不出形状（实测截图一片白） */
+  background: var(--fill-soft);
+  animation: tt-sk-breathe 1.6s ease-in-out infinite;
+}
+@keyframes tt-sk-breathe {
+  0%, 100% { opacity: .5; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tt-sk-time, .tt-sk-cell { animation: none; opacity: .7; }
+}
+
 /* ---------- 深色下的课格（2026-11-04）----------
  * 浅色是「马卡龙底 + 深字」，直接搬到深色背景上就是**一整片发亮的大色块**
  * （用户报「色块比较亮」）。深色改成「同色相低透明度底 + 左侧 6rpx 色条」：
