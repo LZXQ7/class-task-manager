@@ -60,7 +60,13 @@
 .nav-side {
   position: relative;
   z-index: 2;
-  min-width: 120rpx;
+  /* 2026-11-14：120rpx → 96rpx。
+   * 右侧插槽要额外吃下胶囊避让（padRight 在 320~768 宽机型上约 99px = 190~232rpx），
+   * 再叠加 120rpx 侧栏最小宽，标题（绝对居中）的右沿就会撞进插槽里 ——
+   * 实测 iPhone SE1 上「课表」标题被「校历」压住 5px、4 字标题最多压 20px。
+   * 收窄到 96rpx（= 64rpx 按钮 + 两侧各 16rpx 呼吸），实测各机型余量转正，
+   * 且左侧返回键仍被完整包住（按钮 64rpx，居中后两侧各 16rpx）。 */
+  min-width: 96rpx;
   display: flex;
   flex-direction: row;
   align-items: center;

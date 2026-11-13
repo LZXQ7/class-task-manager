@@ -69,6 +69,12 @@ Page({
     pendingCount: 0,
     /** 当前看的是不是「非本人主班」—— 通知卡据此置灰（它跟不过去，见 onOpen 注释） */
     isOtherClass: false,
+    /**
+     * 班级大标题的字号（rpx，2026-11-14 用户要求「居中、自适应、保证一行显示完」）。
+     * 由 _nameFont() 按班名字数算，wxml 用内联 style 绑到 .ci-hero-name。
+     * WXSS 里不能表达「字多就缩」，所以必须算在 JS 里。
+     */
+    nameFont: 44,
     /* 班级选择弹层的 classSheetShow / clsSheetH 已于 2026-11-14 随 bottom-sheet 删除 ——
      * 切班统一走 class-picker 下拉（组件内部管开合，页面不再持状态）。 */
     /** 倒数日列表（2026-11-03 改云端）：**仅本人**的事件，后端按 member_id 隔离，按日期升序 */
@@ -201,9 +207,9 @@ Page({
     const memberId = (p && p.id) || 0;
     this._loadClassData(0);   // 先出 overview 数字，不等班名
     const cachedName = mem.read(mem.keys.myClass(memberId));
-    if (cachedName) { this.setData({ className: cachedName, isOtherClass: false }); return; }
+    if (cachedName) { this._setClassName({ className: cachedName, isOtherClass: false }); return; }
     const className = (p && p.className) || '';
-    if (className) { mem.write(mem.keys.myClass(memberId), className); this.setData({ className, isOtherClass: false }); return; }
+    if (className) { mem.write(mem.keys.myClass(memberId), className); this._setClassName({ className, isOtherClass: false }); return; }
     api.classList({ all: true }, { toast: false })
       .then((list) => {
         const rows = (list || []);
@@ -215,11 +221,29 @@ Page({
         if (!mine && rows.length === 1) mine = rows[0];
         const name = mine ? util.classNameOf(mine) : '';
         if (name) mem.write(mem.keys.myClass(memberId), name);
-        this.setData({ className: name, isOtherClass: false });
+        this._setClassName({ className: name, isOtherClass: false });
       })
       .catch((e) => {
         console.error('[classinfo] classList failed', e && e.stack ? e.stack : e);
       });
+  },
+
+  /**
+   * 班名字号自适应（2026-11-14 用户要求「居中、自适应大小、保证一行显示完」）。
+   * 卡片内容宽约 630rpx（750 − 两侧留白 − 卡片内边距），汉字宽度 ≈ 字号
+   * ⇒ 44rpx 能容 14 个字，超出就按字数等比缩，下限 26rpx（再小就没有主标题的分量）。
+   * ⚠️ WXSS 没有「字多自动缩」的表达，只能在 JS 侧算好再内联下发。
+   */
+  _nameFont(name) {
+    const len = String(name || '').length;
+    if (!len) return 44;
+    return Math.max(26, Math.min(44, Math.floor(630 / len)));
+  },
+
+  /** 统一出口：改班名必须同时重算字号，否则长班名会溢出成两行 */
+  _setClassName(patch) {
+    const name = patch.className !== undefined ? patch.className : this.data.className;
+    this.setData(Object.assign({ nameFont: this._nameFont(name) }, patch));
   },
 
   /**
@@ -235,13 +259,21 @@ Page({
      * → 上一帧的值」。🔴 绝不清成空串 —— 空串会让 wxml 显示「未绑定班级」，而同一屏右边
      * 明明显示着真实人数，自相矛盾（这正是用户看到的那一屏）。 */
     const fallbackName = ((list.filter(c => c.id === own)[0] || list[0]) || {}).name || '';
+    const nextName = (hit && hit.name) ? hit.name : (fallbackName || this.data.className || '');
     this.setData({
       viewClassId: Number(id) || 0,
-      className: (hit && hit.name) ? hit.name : (fallbackName || this.data.className || ''),
+      className: nextName,
+      /* 班名改了就重算字号 —— 长班名（12 字以上）否则会折成两行，用户要的是「一行显示完」 */
+      nameFont: this._nameFont(nextName),
       /* 「看的是别班」只用来标记其它三张子卡（roster / fee / homework）的参数口径：
        * 它们的 classId 语义是「查看指定班级」，本班传进去会被当成跨班态。
-       * 通知不走这条（2026-10-28）：它现在支持按班查看，本班也带 classId，见 onOpen。 */
-      isOtherClass: !!id && !!own && Number(id) !== own,
+       * 通知不走这条（2026-10-28）：它现在支持按班查看，本班也带 classId，见 onOpen。
+       * 🔴 2026-11-14 修「辅导员点班级成员进去 0 人」：原来写 `!!id && !!own && id !== own`，
+       *    而教职工是**全局账号**（member.class_id 恒 0）⇒ `!!own` 永远为假 ⇒ 恒 false
+       *    ⇒ 子页面 URL 不带 classId ⇒ roster 按「本班」请求 ⇒ 后端拿 class_id=0 查出 0 条。
+       *    超管主班是真班级，所以一直没有暴露。判据只能是「两个数字不相等」。
+       *    门禁 check-classinfo-switch ⑬ 守着这条（只在主班为 0 的账号上翻车）。 */
+      isOtherClass: !!id && Number(id) !== own,
       /* 先清空再拉：不清的话切班瞬间 hero 里还挂着上一个班的人数，
        * 用户会以为「两个班人数一样」，比空白更容易误导。 */
       stats: null,

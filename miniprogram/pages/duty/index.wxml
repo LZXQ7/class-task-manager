@@ -44,15 +44,29 @@
     bind:change="onWeekChange"
   />
 
-  <!-- 教职工班级筛选（v0.7.16 需求⑧；2026-11-14 用户需求④：横排 chips 改为下拉字段）——
-       辅导员不值日，但可逐班查看值日分配。 -->
-  <view wx:if="{{isCounselor && dutyChips.length}}" class="dt-clsw st-item st-2">
-    <class-picker
-      label="查看班级"
-      list="{{dutyChips}}"
-      value="{{viewClassId}}"
-      bind:change="onDutyClass"
-    />
+  <!-- 顶部工具行（2026-11-14 用户要求②）：班级下拉 + 「历史」合并成一行。
+       原来「历史」挂在下方 .dt-admin 按钮行里 —— 辅导员没有排班权（canSchedule=false），
+       那一行就只剩它一个，占掉整行的同时也把排版撑开，用户反馈「不要单独一行」。
+       ⚠️ 辅导员不值日，但可逐班查看值日分配。
+       z-index 由 .dt-toolbar 抬高：否则下拉浮层会被下面的按钮行 / 提示文字盖住。 -->
+  <view wx:if="{{(isCounselor && dutyChips.length) || pastDays.length}}" class="dt-toolbar st-item st-2">
+    <view wx:if="{{isCounselor && dutyChips.length}}" class="dt-clsw">
+      <class-picker
+        label="查看班级"
+        list="{{dutyChips}}"
+        value="{{viewClassId}}"
+        bind:change="onDutyClass"
+      />
+    </view>
+    <!-- 「已结束」弹层入口：只在有已结束日子时出现（check-duty-ended B2 断言此 wx:if） -->
+    <view
+      wx:if="{{pastDays.length}}"
+      class="dt-hist"
+      bindtap="onEndedOpen"
+      hover-class="press-dim"
+      hover-start-time="0"
+      hover-stay-time="60"
+    >历史</view>
   </view>
 
   <!-- 排班域操作区（超管 / 本班生活委员，需求 D）：放在最上面，不随列表滚动 —— 本周已有 24 条值日时排到页面底部会看不见。
@@ -64,15 +78,7 @@
     <view wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onAiOpen">{{busy ? '处理中' : '一键生成'}}</view>
     <view wx:if="{{canSchedule && status === 'PUBLISHED'}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onUnpublish">撤回发布</view>
     <view wx:if="{{canSchedule && status !== 'PUBLISHED'}}" class="dt-admin-btn primary" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onPublish">发布给全班</view>
-    <!-- 「已结束」弹层入口：只在有已结束日子时出现（check-duty-ended B2 断言此 wx:if） -->
-    <view
-      wx:if="{{pastDays.length}}"
-      class="dt-admin-btn ghost"
-      bindtap="onEndedOpen"
-      hover-class="press-dim"
-      hover-start-time="0"
-      hover-stay-time="60"
-    >历史</view>
+    <!-- 「历史」2026-11-14 已移到顶部工具行（与班级下拉同一行），此处不再重复 -->
   </view>
   <!-- 手动排班的入口只在「我的」页（goManual → P5），此处不再重复 -->
   <view wx:if="{{isAdmin && !canSchedule}}" class="dt-admin-tip st-item st-4">值日表的生成、发布与调整由超级管理员或本班生活委员负责</view>

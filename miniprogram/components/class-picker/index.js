@@ -25,6 +25,12 @@ Component({
     /** 字段左侧的前缀说明，如「查看班级」；留空则不渲染 */
     label: { type: String, value: '' },
     placeholder: { type: String, value: '选择班级' },
+    /**
+     * 固定触发器文案（2026-11-14）：非空时字段只显示这段文字、不显示当前班名。
+     * 用在「班名已经在页面大标题里」的场景（信息页）—— 那里字段挤在「班级概况」右边，
+     * 再放一遍全名会被省略号截成「示例专业26…」，等于没显示。
+     */
+    triggerText: { type: String, value: '' },
     /** 展开时「已选中」那一项是否打勾（班级信息页面上要更明确，其余页保持轻量） */
     showCheck: { type: Boolean, value: true }
   },

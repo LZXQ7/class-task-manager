@@ -622,16 +622,18 @@
 .home-feed-text { font-weight: 400; }
 
 /* ===== 关注的学生（2026-11-14 从成员页迁回首页顶部，仅辅导员）=====
- * ⚠️ 这些类是**首页私有**：WXSS 页面级作用域，成员页的同名样式不会跨页生效，
- *    所以整块从 roster 抄过来后不要再删（删了 = 卡片掉回无样式裸列表）。
- * 一行一位学生：头像 +（姓名 + 班级）+ 最新备注摘要 + 备注条数。 */
+ * ⚠️ 这些类是**首页私有**：WXSS 页面级作用域，成员页的同名样式不会跨页生效。
+ * 2026-11-14 二次调整：由「头像 + 两行文字（姓名/班级 + 备注摘要）」收成**单行**。
+ *   起因：8 个关注每行 ~104rpx，一屏被这张卡吃掉（用户截图）。
+ *   备注摘要被去掉 —— 首页只需要「一眼找到人」，备注点进详情看得到。
+ * ⚠️ 旧 .pin-info / .pin-line1 / .pin-note 一并删除，别留死样式误导下一个人。 */
 .pin-card { padding: 8rpx 0; }
 .pin-head {
   display: flex;
   flex-direction: row;
   align-items: baseline;
   justify-content: space-between;
-  padding: 12rpx 28rpx 12rpx;
+  padding: 10rpx 28rpx 6rpx;
 }
 .pin-title { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
 .pin-sub { font-size: 24rpx; color: var(--text-3); }
@@ -639,49 +641,57 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 20rpx 28rpx;
+  padding: 14rpx 28rpx;
 }
 .pin-row + .pin-row { border-top: 2rpx solid var(--line-2); }
-.pin-info {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin-left: 20rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 6rpx;
+.pin-name {
+  flex-shrink: 0;
+  margin-left: 18rpx;
+  font-size: 28rpx;
+  line-height: 40rpx;
+  font-weight: 500;
+  color: var(--text-1);
 }
-.pin-line1 { display: flex; flex-direction: row; align-items: center; }
-.pin-name { font-size: 30rpx; font-weight: 500; color: var(--text-1); }
+/* 班级角标：单行排布下它是「哪班的学生」的唯一线索，字号收到 20rpx 但仍放在姓名右侧 */
 .pin-class {
+  flex-shrink: 1;
+  min-width: 0;
   margin-left: 12rpx;
-  padding: 2rpx 12rpx;
-  font-size: 22rpx;
+  padding: 1rpx 10rpx;
+  font-size: 20rpx;
+  line-height: 30rpx;
   color: var(--brand);
   background: var(--brand-light);
-  border-radius: 16rpx;
-}
-.pin-note {
-  font-size: 25rpx;
-  color: var(--text-3);
+  border-radius: 14rpx;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* 右侧尾组（备注条数 + 箭头）：margin-left:auto 把整组推到最右，
+   角标因此紧贴箭头；没有角标时箭头自己靠右（不用再写两个 auto 抢空间）。 */
+.pin-tail {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10rpx;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+/* 备注条数：作为「有没有记录」的轻提示，不再单独吃一行 */
 .pin-cnt {
   flex: 0 0 auto;
-  min-width: 34rpx;
-  height: 34rpx;
-  line-height: 34rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  line-height: 32rpx;
   padding: 0 8rpx;
-  margin-right: 12rpx;
   text-align: center;
-  font-size: 22rpx;
+  font-size: 20rpx;
   color: var(--text-2);
   background: var(--bg-fill);
-  border-radius: 17rpx;
+  border-radius: 16rpx;
 }
 .pin-empty {
-  padding: 32rpx 32rpx 40rpx;
+  padding: 26rpx 32rpx 32rpx;
   text-align: center;
   font-size: 25rpx;
   line-height: 1.7;

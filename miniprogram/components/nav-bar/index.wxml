@@ -1,6 +1,6 @@
 <view class="nav {{fixed ? 'nav-fixed' : ''}} {{border ? 'nav-border' : ''}}" style="background:{{bg}}">
   <view class="nav-status" style="height:{{statusBarHeight}}px"></view>
-  <view class="nav-body" style="height:88rpx">
+  <view class="nav-body" style="height:{{bodyHpx ? bodyHpx + 'px' : '88rpx'}}">
     <view class="nav-side nav-left">
       <!-- ⚠️ sheetOpen（弹层打开时）不渲染返回键：否则它会从弹层左上角透出来 ——
            遮罩 rgba(0,0,0,.45) 盖不暗亮色图标，面板又是半透明玻璃，物理上遮不住。
@@ -27,7 +27,7 @@
      （notice 通知 / bind 身份绑定）会同时得到「文档流里的 nav」+「占位块」，
      正文被顶两倍导航高度 —— 用户报的「通知页这个提示太靠下」就是它。
      fixed 时用 px 状态栏 + rpx 标题行，避免大屏上 88rpx≠44px 造成偏移 -->
-<view wx:if="{{placeholder && fixed}}" class="nav-placeholder" style="padding-top:{{statusBarHeight}}px"></view>
+<view wx:if="{{placeholder && fixed}}" class="nav-placeholder" style="padding-top:{{statusBarHeight}}px;height:{{bodyHpx ? bodyHpx + 'px' : '88rpx'}}"></view>
 
 <!-- 顶部左侧不再放主题切换按钮（用户要求只保留「我的 → 外观」一处入口）。
      圆形揭示 overlay 见文件末尾，仍由「我的」页的切换触发（复用 applyTheme）。 -->

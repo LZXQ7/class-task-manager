@@ -46,6 +46,9 @@ Component({
   data: {
     statusBarHeight: 20,
     padRight: 0,            // 右侧插槽避让微信胶囊按钮的像素宽度
+    /** 导航行高覆盖值（px）。0 = 沿用 wxss 里的 88rpx —— 只有窄屏机型算出
+     *  「88rpx 装不下胶囊」时才下发数值，见 attached 里的推导。 */
+    bodyHpx: 0,
     /**
      * 主题切换按钮是否渲染 —— **总开关**（config.DARK_MODE_ENABLED）。
      * 直接从常量取默认值：这样首帧就是对的，不用等 attached 再 setData 纠正
@@ -86,14 +89,27 @@ Component({
         : { statusBarHeight: 20, padRight: 0, windowWidth: 375, windowHeight: 812 };
       // 主题按钮的居中偏移：24rpx（导航行 88 − 按钮 64）的一半，按屏宽折成 px
       const topPx = Math.round((m.windowWidth || 375) * 24 / 750 / 2);
+      /**
+       * 导航行高（px）：默认 88rpx，但**窄屏机型上 88rpx 会矮于胶囊**。
+       * 例：320 宽时 88rpx = 37.5px，而胶囊高 32px + 上下各 6px 需要 44px ——
+       * 胶囊会几乎顶满导航行，上下各只剩 2~3px，视觉上「胶囊挤爆了导航栏」。
+       * 所以取两者的较大值；只有真的算出来更高时才下发（bodyHpx=0 表示沿用 88rpx），
+       * 免得把 rpx 常量无谓固化成 px、在大屏上引入偏差。
+       */
+      const basePx = Math.round((m.windowWidth || 375) * 88 / 750);
+      const capH = m.capsuleH || 0;
+      const needPx = capH ? capH + 12 : 0;
+      const bodyHpx = needPx > basePx ? needPx : 0;
       // 值没变就不 setData，省掉一次无意义的二次渲染
       if (m.statusBarHeight === this.data.statusBarHeight &&
           m.padRight === this.data.padRight &&
-          topPx === this.data.themeTopPx) return;
+          topPx === this.data.themeTopPx &&
+          bodyHpx === this.data.bodyHpx) return;
       this.setData({
         statusBarHeight: m.statusBarHeight,
         padRight: m.padRight,
-        themeTopPx: topPx
+        themeTopPx: topPx,
+        bodyHpx
       });
     },
     detached() {

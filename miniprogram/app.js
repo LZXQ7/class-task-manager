@@ -398,6 +398,12 @@ App({
     const windowWidth = g.windowWidth || 375;
     const windowHeight = g.windowHeight || 812;
     let padRight = 0;
+    /* 胶囊在本机的实际占位（px，屏幕坐标）：
+     *   capsuleH      —— 胶囊高度，用来算导航行该多高（见 nav-bar 的 bodyHpx）
+     *   capsuleBottom —— 胶囊底沿，弹层顶沿的硬上限（sheetMetrics 用同一份数据）
+     * 取不到时都为 0，调用方据此回退到 88rpx 等常量。 */
+    let capsuleH = 0;
+    let capsuleBottom = 0;
     let valid = false;
     try {
       const mb = (typeof wx.getMenuButtonBoundingClientRect === 'function')
@@ -405,12 +411,19 @@ App({
       if (mb && mb.left > 0 && g.windowWidth) {
         // 胶囊按钮避让：右侧插槽内容左移出胶囊区域（+2px 视觉间隙）
         padRight = Math.round(g.windowWidth - mb.left) + 2;
+        capsuleH = Math.round(mb.height || 0);
+        capsuleBottom = Math.round(mb.bottom || 0);
         valid = true;
       }
     } catch (e) {
       padRight = 0;
     }
-    const m = { statusBarHeight, padRight, windowWidth, windowHeight };
+    /* 🔴 拿不到胶囊位置时**绝不能回落成 0**：0 的语义是「右侧不需要避让」，
+     *   于是右插槽按钮会直接被画到胶囊底下（旧基础库 / 布局未就绪的时机都会走到这里）。
+     *   按「胶囊宽 87px + 右间隙 10px」推一个保守值 99，宁可多让出几像素也不压住胶囊。
+     *   ⚠️ 这个估算值**不进缓存**（valid 仍为 false）—— 下次调用还会重新问一次真值。 */
+    if (!valid) padRight = 99;
+    const m = { statusBarHeight, padRight, windowWidth, windowHeight, capsuleH, capsuleBottom, capsuleKnown: valid };
     if (valid) g._navMetrics = m;
     return m;
   },

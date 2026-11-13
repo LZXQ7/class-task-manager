@@ -444,14 +444,40 @@
    几何与 classes 页 .cl-fchip 同规格：chip-motion 基类管过渡，
    选中态 padding/font-size 变大 = 布局真变大，邻项被平滑推开；
    flex-wrap 支持小屏换行；保持顺序、不重叠。 */
-/* 教职工切班（2026-11-14 用户需求④）：chips 条 → class-picker 下拉字段。
-   字段与浮层样式在 components/class-picker/index.wxss，这里只管外容器位置。
-   ⚠️ 旧 .dt-fchip / .dt-fchips 已随 chips 删除。 */
+/* 顶部工具行（2026-11-14）：班级下拉 + 「历史」同一行。
+   ⚠️ z-index 必须抬高：下拉浮层是 absolute，若本行停在 auto，后面的 .dt-admin 按钮行与
+      .dt-admin-tip（都在 DOM 后面）会盖在浮层之上 —— 用户截图里「历史」和橙色提示文字
+      压在班级列表上就是这个原因。 */
+.dt-toolbar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 0 32rpx 16rpx;
+}
+
+/* 班级下拉容器（组件自带字段/浮层样式，这里只管它在行内的伸缩） */
 .dt-clsw {
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 0 28rpx 16rpx;
+  min-width: 0;
+}
+
+/* 「历史」：右侧轻量胶囊，与左上角的班级字段同一行。
+   原来它是 .dt-admin 里的一个按钮（flex:1 + max-width:220rpx）——
+   辅导员没有排班权时那一行只剩它，视觉上就是「历史独占一行」。 */
+.dt-hist {
+  flex: 0 0 auto;
+  padding: 8rpx 22rpx;
+  border-radius: 24rpx;
+  font-size: 24rpx;
+  line-height: 32rpx;
+  color: var(--text-2);
+  background: var(--bg-fill);
 }
 
 /* ============ 加值日生弹层（v0.7.16 需求③） ============

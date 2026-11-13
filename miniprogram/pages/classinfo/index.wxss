@@ -12,6 +12,10 @@
 .ci-hero {
   margin: 24rpx 32rpx 0;
   padding: 32rpx;
+  /* ⚠️ 必须定位：卡顶部的班级下拉浮层要盖住下面的「倒数日」卡，
+     而后者是 DOM 后面的兄弟 —— 不抬层叠会被它压住（值日页同款问题）。 */
+  position: relative;
+  z-index: 2;
   background: var(--glass-bg);
   border: 1rpx solid var(--glass-edge);
   border-radius: 40rpx;
@@ -51,20 +55,37 @@
   font-weight: 500;
   color: var(--brand);
 }
-/* 教职工切班（2026-11-14 用户需求④：统一为 class-picker 下拉字段）
- * 演进：横滑胶囊条 → 班名右侧「切换 ⌄」开 bottom-sheet → 现在 hero 卡里一行
- * 「查看班级 + 当前班名 + 下拉」。字段/浮层样式在 components/class-picker/index.wxss，
- * 这里只负责它在 hero 卡里的位置。
+/* 教职工切班（2026-11-14 用户要求②：挪到「班级概况」右边）
+ * 演进：横滑胶囊条 → 班名右侧「切换 ⌄」开 bottom-sheet → 一行「查看班级 + 当前班名 + 下拉」
+ *      → 现在收进卡片顶行。字段/浮层样式在 components/class-picker/index.wxss。
  * ⚠️ 旧 .ci-name-row / .ci-name-switch / .cs-* 已随弹层删除。 */
+
+/* 顶行左侧组：品类标签 + 班级下拉紧挨着（用户口径「放到班级概况文字的右边」） */
+.ci-hero-top-l {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 下拉容器：允许被挤压（班名过长时由组件内部 ellipsis），不能把「班级管理」顶出卡片 */
 .ci-clsw {
   display: flex;
   flex-direction: row;
   align-items: center;
-  margin-top: 20rpx;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 /* 2026-10-28：`.ci-item-off`（切到别班时把「通知」子卡置灰）已删除 ——
  * 通知支持按班查看后，四张子卡在哪个班都可用，没有不可用态了。 */
 
+/* 班级大标题（2026-11-14 用户要求②：居中 + 一行显示完）
+   · text-align:center —— 用户口径「班级名称居中显示」；
+   · white-space:nowrap —— 副标题式的班名折行会把卡片撑高，用户明确要求「保证一行显示完」；
+   · 字号不写死在这里：由 JS 的 _nameFont() 按字数算好，用内联 style 下发
+     （WXSS 没有「字多自动缩」的表达，写死 44rpx 时 16 字以上就会溢出）。
+   · text-align-last:center 让「未绑定班级」这种短文本也居中（部分机型 nowrap 下仍按左对齐）。 */
 .ci-hero-name {
   display: block;
   margin-top: 20rpx;
@@ -72,6 +93,9 @@
   line-height: 60rpx;
   font-weight: 700;
   color: var(--text-1);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .ci-hero-stats {
   display: flex;

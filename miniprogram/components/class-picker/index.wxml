@@ -16,10 +16,13 @@
     hover-stay-time="60"
     bindtap="onToggle"
   >
-    <text class="cp-cur {{curName ? '' : 'cp-ph'}}">{{curName || placeholder}}</text>
+    <text class="cp-cur {{(triggerText || curName) ? '' : 'cp-ph'}}">{{triggerText || curName || placeholder}}</text>
     <view class="cp-arrow"></view>
 
-    <view wx:if="{{open}}" class="cp-pop" catchtap="noop" catchtouchmove="noop">
+    <!-- ⚠️ 浮层常驻，靠 .cp-pop-in 切换显隐（2026-11-14 用户要求③：展开有缓出、收起也要有）。
+         wx:if 会在收起瞬间**直接摘掉节点**，没有过渡 → 表现就是「选中后凭空消失」。
+         visibility + pointer-events 保证隐藏时不接收点击、也不挡住下面的内容。 -->
+    <view class="cp-pop {{open ? 'cp-pop-in' : ''}}" catchtap="noop" catchtouchmove="noop">
       <view
         wx:for="{{opts}}"
         wx:key="id"

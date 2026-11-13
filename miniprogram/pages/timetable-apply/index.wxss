@@ -1,6 +1,21 @@
 .ta { min-height: 100vh; background: var(--bg-page); }
-.ta-nav-right { display: flex; align-items: center; }
-.ta-nav-btn { font-size: 30rpx; color: var(--brand); padding: 0 16rpx; }
+/* 导航右插槽样式（.ta-nav-right / .ta-nav-btn）随「刷新」按钮一起下移到页内，见 .ta-bar */
+.ta-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 32rpx 4rpx;
+}
+.ta-bar-t { font-size: 24rpx; color: var(--text-3); }
+.ta-refresh {
+  font-size: 26rpx;
+  color: var(--brand);
+  padding: 8rpx 24rpx;
+  border-radius: 999rpx;
+  background: var(--brand-light);
+}
+.ta-refresh:active { background: var(--brand-light-hover); }
 .ta-loading { text-align: center; font-size: 28rpx; color: var(--text-3); padding: 120rpx 0; }
 .ta-list { padding: 24rpx 32rpx 60rpx; }
 .ta-card { background: var(--bg-card); border-radius: 32rpx; padding: 28rpx 28rpx 20rpx; margin-bottom: 24rpx; box-shadow: 0 8rpx 30rpx rgba(29,33,41,0.06); }

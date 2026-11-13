@@ -1,6 +1,7 @@
 /* P5 · 手动排班 */
 .ms { min-height: 100vh; padding-bottom: 0; }
-.ms-nav-hint { font-size: 26rpx; color: var(--text-3); padding: 0 16rpx; }
+/* .ms-nav-hint 已随导航右插槽一起删除（2026-11-14）：状态文字改由 week-switcher 的
+   statusText 承担，导航栏右侧不再放任何自定义元素 —— 该区域归系统胶囊独占。 */
 .f-ph { color: var(--text-4); font-size: 28rpx; }
 
 /* 卡片统一用全局玻璃材质（app.wxss .card）；本页不再覆写成纯白，

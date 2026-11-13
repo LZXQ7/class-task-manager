@@ -246,6 +246,27 @@ async function runAll(src, quiet) {
     ok(page.data.stats.total === 10, '人数换成 10');
   }
 
+  /* 🔴 2026-11-14 真实报障：辅导员（教职工是全局账号，member.class_id 恒为 **0**）
+   *    在信息页选一个班 → 点「班级成员」→ 进去 0 人。
+   *    根因：isOtherClass 写成 `!!id && !!own && id !== own`，own=0 时 `!!own` 为假
+   *    ⇒ 永远 false ⇒ 子页面 URL 不带 classId ⇒ roster 按「本班」请求
+   *    ⇒ 后端拿 class_id=0 查出 0 条。超管主班是真班级，所以 ⑧ 段一直绿、测不出来。
+   *    这一条必须长期守着：它只在「主班为 0」的账号上翻车。 */
+  head('⑬ 🔴 辅导员（主班 class_id=0）切班 → 子页面必须带 classId');
+  {
+    const { page, calls } = makeHarness({ id: 294, classId: 0, className: '', groupTag: 'X' }, {}, src);
+    page.load(); await settle();
+    ok(page.data.isStaff === true, '辅导员 isStaff = true');
+    page.onClassPick({ detail: { id: 1 } }); await settle();
+    ok(page.data.isOtherClass === true, '主班为 0 时切到 1 班算「看别班」（旧实现被 !!own 判成 false）');
+    calls.nav.length = 0;
+    page.onOpen({ currentTarget: { dataset: { key: 'roster' } } });
+    ok(calls.nav[0] === '/pages/roster/index?classId=1',
+      '成员页 URL 必须带 classId=1，否则进去查的是 class_id=0 → 0 人 → ' + calls.nav[0]);
+    page.onOpen({ currentTarget: { dataset: { key: 'fee' } } });
+    ok(calls.nav[1] === '/pages/fee/index?classId=1', '班费页同样带 classId=1 → ' + calls.nav[1]);
+  }
+
   head('⑨ 边界：class.list 返回空');
   {
     const { page, calls } = makeHarness({ id: 999, classId: 0, className: '', groupTag: 'X' }, { emptyClasses: true }, src);
@@ -318,9 +339,9 @@ async function runAll(src, quiet) {
       to: 'const keep = false;'
     },
     {
-      name: 'isOtherClass 恒 false',
-      from: 'isOtherClass: !!id && !!own && Number(id) !== own,',
-      to: 'isOtherClass: false,'
+      name: 'isOtherClass 退回旧实现（多一个 !!own ⇒ 主班为 0 的辅导员恒判本班）',
+      from: 'isOtherClass: !!id && Number(id) !== own,',
+      to: 'isOtherClass: !!id && !!own && Number(id) !== own,'
     },
     {
       name: '请求永远带 classId（普通成员也带）',

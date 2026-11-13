@@ -97,11 +97,13 @@
   <block wx:else>
     <view class="wrap">
 
-      <!-- 关注的学生（2026-11-14 用户要求：放首页最上面）
+      <!-- 关注的学生（2026-11-14 用户要求：放首页最上面；同日改紧凑排布）
            数据仍走后端 v0.7.17 需求⑥ 的 member.pinList / pinToggle（**仅辅导员**可见）。
            2026-10-27 曾整体迁到成员页，现按用户口径回到首页顶部 —— 辅导员首页的 Hero 与
            今日/明日课次都是 `wx:if{{!isCounselor}}`，这张卡才是他的第一屏内容。
-           一行一位学生：头像 +（姓名 + 班级）+ 最新备注摘要 + 备注条数，点开进成员详情。 -->
+           🔴 2026-11-14 二次调整：原来每行「头像 + 姓名/班级 + 备注摘要」占约 104rpx，
+              8 个关注就吃掉一屏（用户截图）。现在收成单行 —— 去掉备注摘要
+              （点进详情能看，首页只需要「一眼找到人」），头像也缩到 48rpx。 -->
       <view wx:if="{{showPins}}" class="card pin-card st-item st-1">
         <view class="pin-head">
           <text class="pin-title">关注的学生</text>
@@ -120,16 +122,13 @@
             hover-stay-time="60"
             bindtap="onPinTap"
           >
-            <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{72}}" />
-            <view class="pin-info">
-              <view class="pin-line1">
-                <text class="pin-name">{{item.name}}</text>
-                <text wx:if="{{item.className}}" class="pin-class">{{item.className}}</text>
-              </view>
-              <text class="pin-note">{{item.latestNote ? item.latestNote : '还没有备注，点开可以记录'}}</text>
+            <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{48}}" />
+            <text class="pin-name">{{item.name}}</text>
+            <text wx:if="{{item.className}}" class="pin-class">{{item.className}}</text>
+            <view class="pin-tail">
+              <text wx:if="{{item.noteCount}}" class="pin-cnt">{{item.noteCount}}</text>
+              <app-icon name="arrow-right" variant="gray" size="{{26}}" />
             </view>
-            <text wx:if="{{item.noteCount}}" class="pin-cnt">{{item.noteCount}}</text>
-            <app-icon name="arrow-right" variant="gray" size="{{32}}" />
           </view>
         </block>
         <view wx:else class="pin-empty">在成员详情里点「固定到主页」，需要长期关注的学生就会出现在这里</view>

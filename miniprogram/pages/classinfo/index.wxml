@@ -15,7 +15,21 @@
     <!-- 根节点：班级概况（展示班级名 + 成员统计） -->
     <view class="ci-hero card st-item st-1">
       <view class="ci-hero-top">
-        <text class="ci-hero-label">班级概况</text>
+        <view class="ci-hero-top-l">
+          <text class="ci-hero-label">班级概况</text>
+          <!-- 切班下拉（2026-11-14 用户要求②：挪到「班级概况」文字右边，不再单独占一行）
+               trigger-text="切换" —— 班名已经在本卡的大标题里居中显示，这里再放一遍全名
+               会被省略号截成「示例专业26…」，等于没显示（截图核对时实测）。
+               只绑 1 个班也渲染：它是「换一个班看」的唯一入口。 -->
+          <view wx:if="{{isStaff && classChips.length}}" class="ci-clsw">
+            <class-picker
+              trigger-text="切换"
+              list="{{classChips}}"
+              value="{{viewClassId}}"
+              bind:change="onClassPick"
+            />
+          </view>
+        </view>
         <!-- 右上角的 grid 图标：对本班有管理权的人（超管 / 辅导员）是「班级管理」入口，
              其余身份维持原来的纯装饰图标（首页精简后该入口曾一度全站消失）。 -->
         <view wx:if="{{canManageClass}}" class="ci-manage" bindtap="goClasses"
@@ -25,20 +39,10 @@
         </view>
         <app-icon wx:else name="grid" variant="brand" size="{{36}}" />
       </view>
-      <!-- 教职工切班（2026-10-28；当日二次调整为弹层）
-           曾经是横向滚动的 chips 条，用户反馈「左右滑动不太好」——
-           超管 5 个班要滑着找、只有 2 个班时又白占一整行高度。
-           现在收成「点班名 → 弹层选班」：
-             · 只有 1 个班 → 纯文本，不可点（切班对它毫无意义）；
-             · ≥2 个班   → 班名右侧挂「切换 ⌄」，点开 bottom-sheet 列出全部班级。
-           切完本卡里的班名 / 总人数 / A、B 组 / 下方班费金额一起刷新，
-           点进「班级成员」「班费」「作业」也会带着当前班 —— 不需要在子页面各挂一个切换器。 -->
-      <!-- 教职工切班（2026-11-14 用户需求④：统一改为下拉字段）
-           演进：横向滚动 chips 条 → （2026-10-28）点班名弹 bottom-sheet → 现在与班费 /
-           课表 / 值日一致，收成一行「查看班级 + 下拉」。班级名本身仍是本卡的大标题，
-           下拉里只做「换一个班看」，切完本卡人数 / A、B 组 / 下方班费一起刷新。
-           只绑 1 个班也渲染 —— 它同时充当「当前查看的是哪个班」的标识。 -->
-      <text class="ci-hero-name">{{className ? className : '未绑定班级'}}</text>
+      <!-- 班级大标题：居中 + 字号自适应（用户要求「居中显示，自适应大小，保证一行显示完」）。
+           字号由 JS 按字数算（_nameFont），WXSS 没有「字多自动缩」这种表达。
+           切班下拉已挪到上方「班级概况」右边，这里不再重复渲染第二份。 -->
+      <text class="ci-hero-name" style="font-size:{{nameFont}}rpx">{{className ? className : '未绑定班级'}}</text>
       <view class="ci-hero-stats">
         <view class="ci-stat">
           <text class="ci-stat-num">{{stats ? stats.total : '—'}}</text>
@@ -54,15 +58,6 @@
           <text class="ci-stat-num">{{stats ? stats.groupB : '—'}}</text>
           <text class="ci-stat-label">B 组</text>
         </view>
-      </view>
-      <!-- 切班下拉（2026-11-14）：与班费 / 课表 / 值日同一组件，点字段展开全部班级 -->
-      <view wx:if="{{isStaff && classChips.length}}" class="ci-clsw">
-        <class-picker
-          label="查看班级"
-          list="{{classChips}}"
-          value="{{viewClassId}}"
-          bind:change="onClassPick"
-        />
       </view>
     </view>
 

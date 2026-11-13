@@ -773,8 +773,11 @@
 
 /* 辅导员/超管切班（2026-11-14 用户需求③）：chips 条 → class-picker 下拉字段。
    这里只留外容器的位置与间距，字段与浮层样式全在 components/class-picker/index.wxss。
+   ⚠️ z-index 必须抬高：浮层是 absolute，本行停在 auto 时会被课表本体（DOM 更靠后）盖住。
    ⚠️ 旧 .tt-fchip / .tt-fchips 已随 chips 一起删除（留死代码会误导下一个人）。 */
 .tt-clsw {
+  position: relative;
+  z-index: 20;
   display: flex;
   flex-direction: row;
   align-items: center;
