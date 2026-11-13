@@ -15,6 +15,12 @@
   --err: #f53f3f;
   --radius: 8px;
   --shadow: 0 1px 3px rgba(31, 35, 41, .06), 0 1px 2px rgba(31, 35, 41, .04);
+  /* 浮动侧栏（2026-11-14）：四边 16px 外边距 / 20px 圆角 / 低透明度柔和投影。
+     单独成组，方便日后统一调档；--side-w 必须与 .side 的 width 保持一致。 */
+  --side-gap: 16px;
+  --side-w: 216px;
+  --side-radius: 20px;
+  --shadow-float: 0 10px 30px rgba(31, 35, 41, .10), 0 2px 8px rgba(31, 35, 41, .05);
   /* 强 ease-out：UI 入场/状态切换统一用这一条，禁止临时手写曲线 */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -191,7 +197,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .main-wrap { display: flex; min-height: 100vh; }
 
 .side {
-  width: 216px;
+  width: var(--side-w);
   flex: none;
   background: #1f2329;
   color: #fff;
@@ -222,6 +228,34 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .who { font-size: 12px; color: rgba(255,255,255,.55); padding: 0 8px 10px; }
 
 .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* ---------------- 桌面：浮动侧栏（2026-11-14） ----------------
+   侧栏脱离文档流，作为一张浮在页面底色上的圆角卡片：
+     · 上 / 下 / 左 各 16px 由 fixed 的 top / bottom / left 给出；
+     · 右侧 16px 由 .main-wrap 的 padding-left = 16 + 216 + 16 = 248px 让出来
+       （侧栏右缘到内容区左缘正好 16px）；padding-top 让顶栏与卡片上缘齐平。
+   ⚠️ 只挂 .ua-desktop：手机 UA 的 .side 是离屏抽屉（fixed + translateX(-100%)），
+      不能被这里的 inset / 圆角 / 阴影污染 —— 否则抽屉会带着圆角和外边距滑入，
+      收起时还会在屏幕左缘露出一条 16px 的卡片边。
+   ⚠️ 不用 @media (max-width) 判版式：设备形态真源是 UA（见下方「手机 UA 版式」段），
+      桌面把窗口缩窄也不该退化成手机版。 */
+.ua-desktop .main-wrap {
+  padding-top: var(--side-gap);
+  padding-left: calc(var(--side-gap) * 2 + var(--side-w));
+}
+
+.ua-desktop .side {
+  position: fixed;
+  top: var(--side-gap);
+  left: var(--side-gap);
+  bottom: var(--side-gap);
+  width: var(--side-w);
+  z-index: 20;                       /* 低于弹层(1000) / toast(2000)，只浮在内容之上 */
+  border-radius: var(--side-radius);
+  box-shadow: var(--shadow-float);
+  overflow-y: auto;                  /* 短屏在面板内滚动，不撑破圆角（同时负责裁切圆角） */
+  overscroll-behavior: contain;
+}
 
 .topbar {
   display: flex;

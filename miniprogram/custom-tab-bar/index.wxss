@@ -93,13 +93,15 @@
 /* ⚠️ 高度必须与底栏等高（top:0 + bottom:0 自动铺满），**不许写死 height**：
  * 写死会在胶囊高度调整时留下「上方空白」——用户 2026-09-26 反馈的就是这个现象。
  * 圆角 46rpx = 胶囊半径，四角与胶囊同心，落在第一 / 最后一格时不会顶出圆角。 */
-/* ============ 【试验态 v1.0.8.36】内缩小胶囊 ============
- * 用户想先看「背景块收成格内小胶囊」的效果，不好看可一键回滚。
- * 口径：本节点仍由 JS 按等分格位下发 left/width —— check-tabbar-liquid 的
- *   全部几何断言（零留白、预冲、跨页交接）保持有效。内缩只发生在视觉层，
- *   由 ::after 画出来，滑动 / 两拍回弹 / 首末格贴边裁剪一律不动。
- * 回滚：删掉下面 .tab-ind::after 与深色令牌规则，把本节点 background 改回
- *   rgba(51,112,255,.18) 并恢复 box-shadow 即可（其余文件一行未动）。
+/* ============ v1.0.8.36 第 2 轮：竖排上浮 + 内缩胶囊 ============
+ * 用户第 2 轮反馈：① 切页闪一下 ② 文字直接出来没动画 ③ 要「图标上浮、下方显示文字」。
+ * 诊断回路 scripts/diag-tabbar-motion.cjs 判红后确认两处根因：
+ *   · 真机每个 Tab 页是**独立 tabBar 实例**，切换 = 换实例 —— 新实例首帧 .on 就挂着，
+ *     CSS transition 没有「0→1」的状态跃迁，根本不会播（预览里同实例切 class 才播）；
+ *   · 上一版横排展开时，选中项文字撑宽会把整排图标左右挤动 —— 这就是「闪一下」。
+ * 本节点仍由 JS 按等分格位下发 left/width —— check-tabbar-liquid 的全部几何断言
+ * （零留白、预冲、跨页交接）保持有效；视觉层由 ::after 画内缩块，滑动/两拍不动。
+ * 上下内缩 8→4rpx：竖排要塞「上浮图标 + 下方文字」两段，8rpx 会把文字挤到贴边。
  */
 .tab-ind {
   position: absolute;
@@ -109,17 +111,17 @@
   background: transparent;
   z-index: 0;
 }
-/* 内缩：左右各 8rpx、上下各 8rpx → 100×76rpx，圆角 38rpx = 半高（正圆头）。
-   选中项内容 38rpx 图标 + 6rpx 间隙 + ≤60rpx 文字 ≈104rpx，比胶囊宽 4rpx
-   （左右各溢出 2rpx）；背景是半透明蓝、文字是品牌蓝，越出 2rpx 不影响可读性。 */
 .tab-ind::after {
   content: '';
   position: absolute;
   left: 8rpx;
   right: 8rpx;
-  top: 8rpx;
-  bottom: 8rpx;
-  border-radius: 38rpx;
+  top: 4rpx;
+  bottom: 4rpx;
+  /* 30rpx 而非 42rpx（=半高正圆）：正圆在底部 6rpx 处可用宽只剩约 42rpx，
+     装不下「课程表」3 字 60rpx —— 文字会压在圆弧外（上一轮「贴边紧」的竖排版）。
+     30rpx 仍有明显圆头，但底部平直段够宽，文字完整落在高亮块内。 */
+  border-radius: 30rpx;
   background: var(--tab-ind, rgba(51, 112, 255, .22));
   box-shadow: inset 0 1rpx 0 var(--tab-ind-edge, rgba(255, 255, 255, .6));
 }
@@ -140,19 +142,33 @@
   .tab-ind.settle {
     transition-duration: .01ms;
   }
-  /* 文字只保留颜色/显隐，去掉「展开」这类位置变化 */
-  .tab-text {
-    transition: color .2s ease;
+  /* 去位移：图标不上浮、文字不上滑，只留淡入（助理解状态，不制造运动） */
+  .tab-item.on .tab-icon-box {
+    transform: none;
   }
+  .tab-item.poping .tab-icon-box {
+    animation: none;
+  }
+  .tab-item.poping .tab-text.on {
+    animation: tabTextFade .2s ease both;
+  }
+  .tab-icon-box,
+  .tab-text {
+    transition: opacity .2s ease, color .2s ease;
+  }
+}
+@keyframes tabTextFade {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
 }
 .tab-item {
   position: relative;
   z-index: 1;
   flex: 1;
   display: flex;
-  /* 【试验态】column → row：选中项「图标＋文字」并排成胶囊，其余项文字收起后
-     只剩图标、仍由 justify-content 精确居中。图标随文字展开连续左移，不跳变。 */
-  flex-direction: row;
+  /* 竖排：文字改绝对定位（不占位）→ 图标永远精确居中、x 坐标恒定。
+     上一版横排展开时，选中项文字撑宽把整排图标左右挤动 —— 正是「切页闪一下」。 */
+  flex-direction: column;
   align-items: center;
   /* 垂直居中：内容在 92rpx 胶囊里上下留白均等。
      旧写法用 padding-top 16rpx 把内容整体下压 → 图标上方空 16rpx、文字几乎贴底，
@@ -172,10 +188,15 @@
 }
 .tab-icon-box {
   position: relative;
-  /* 【试验态】42 → 38rpx：横排后选中项还要塞下文字，图标略收一号 */
   flex-shrink: 0;
   width: 38rpx;
   height: 38rpx;
+  /* 只动 transform：上浮 / 回落走合成层，不触发布局重排 */
+  transition: transform .22s cubic-bezier(.23, 1, .32, 1);
+}
+/* 选中项图标上浮，给下方文字腾出位置 */
+.tab-item.on .tab-icon-box {
+  transform: translateY(-12rpx);
 }
 /* 双图层叠放（2026-09-25）：off/on 两张内联 base64 同位叠放，只切 opacity。
    变色与文字 transition 同为 .2s、同帧生效 —— 根治「文字先灰、图标后灰」；
@@ -192,17 +213,42 @@
 .tab-icon-off.off { opacity: 0; }
 .tab-icon-on { opacity: 0; }
 .tab-icon-on.on { opacity: 1; }
-/* 切到某一项时图标弹一下，与页面入场动画（app.wxss 的 pageInA/B）呼应。
-   2026-09-25：动画从 .on 挪到 .poping（由 popIndex 驱动）——挂在 .on 上时，
-   每个页面自己的 tabBar 实例首次渲染就带 .on，动画会再弹一次，
-   叠加点击实例的弹跳形成「随机闪烁」。现在只有用户点击的那一帧弹一次。 */
+/* 切到某一项时：图标从原位上浮到位（不再用 78%↔112% 缩放弹跳 —— 那一下是「闪」
+   的直接来源）；文字随后从下方淡入。两者由 popIndex 驱动的 .poping 起播，
+   **不依赖 CSS transition 的状态跃迁**：真机切换 = 换实例、新实例首帧 .on 就挂着，
+   transition 无跃迁不会播；@keyframes 是「挂 class 即播」，跨页也一定能播。
+   判据：node scripts/diag-tabbar-motion.cjs（S2 跨页换实例模型必须出现中间帧）。 */
 .tab-item.poping .tab-icon-box {
-  animation: tabPop .26s cubic-bezier(.22, .61, .36, 1);
+  animation: tabIconLift .24s cubic-bezier(.23, 1, .32, 1) both;
 }
-@keyframes tabPop {
-  0%   { transform: scale(.78); }
-  55%  { transform: scale(1.12); }
-  100% { transform: scale(1); }
+.tab-item.poping .tab-text.on {
+  animation: tabTextReveal .2s cubic-bezier(.23, 1, .32, 1) .06s both;
+}
+/* off→on 交叉淡入：与蓝色块两拍滑动同步起播，缓解诊断回路 H2 的「首帧错位」——
+   否则新页实例一出生图标已是蓝色 on 态，而蓝块还在起点格，颜色像「啪」地切了一下。
+   两张图全程互补（1→0 / 0→1），中间不会露出空白图标。 */
+.tab-item.poping .tab-icon-off {
+  animation: tabIconOffFade .2s ease .04s both;
+}
+.tab-item.poping .tab-icon-on {
+  animation: tabIconOnFade .2s ease .04s both;
+}
+@keyframes tabIconOffFade {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes tabIconOnFade {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes tabIconLift {
+  0%   { transform: translateY(0); }
+  72%  { transform: translateY(-14rpx); }
+  100% { transform: translateY(-12rpx); }
+}
+@keyframes tabTextReveal {
+  0%   { opacity: 0; transform: translateY(8rpx); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 .tab-dot {
   position: absolute;
@@ -214,34 +260,35 @@
   background: var(--danger);
   border: 2rpx solid var(--bg-card);
 }
-/* ============ 【试验态】选中项展开文字标签 ============
- * 收起：max-width/margin-left 皆 0 + opacity 0 ⇒ 元素完全不占位，图标精确居中；
- * 展开：max-width 放到 60rpx（3 字「课程表」刚好，2 字标签按内容自适应，不撑出空框）。
- * 这是横向 accordion —— 文字「展开」没有纯 transform 等价物（scaleX 会把字压扁），
- * 故 max-width / margin-left 走 layout 过渡；opacity 与 color 走合成/绘制。
- * 曲线用强 ease-out（cubic-bezier(.23,1,.32,1)），200ms，与背景块 140ms 预冲
- * +240ms 回弹形成层次：文字先到位、色块后落定。reduced-motion 见上方媒体查询。
+/* ============ 选中项「图标上浮 + 下方显示文字」 ============
+ * 绝对定位 = 完全不占布局：未选中项图标始终精确居中，不会因为别的格展开文字
+ * 而被挤动（上一版横排的整排图标左右重排 = 「闪一下」）。3 字「课程表」居中在
+ * 116rpx 格里宽松，不再像横排那样贴胶囊右缘。
+ * 出现：@keyframes tabTextReveal（.poping 驱动，跨页换实例也能播）；
+ * 消失：transition 淡出，避免旧项文字「啪」地不见。
  */
 .tab-text {
-  display: inline-block;
-  max-width: 0;
-  margin-left: 0;
+  position: absolute;
+  display: block;
+  left: 0;
+  right: 0;
+  bottom: 10rpx;
+  text-align: center;
   opacity: 0;
-  overflow: hidden;
+  transform: translateY(8rpx);
   white-space: nowrap;
   font-size: 20rpx;
   line-height: 26rpx;
   color: var(--text-4);
+  pointer-events: none;
   transition:
-    max-width .2s cubic-bezier(.23, 1, .32, 1),
-    margin-left .2s cubic-bezier(.23, 1, .32, 1),
-    opacity .16s ease,
+    opacity .18s ease,
+    transform .18s ease,
     color .2s ease;
 }
 .tab-text.on {
-  max-width: 60rpx;
-  margin-left: 6rpx;
   opacity: 1;
+  transform: translateY(0);
   color: var(--brand);
   font-weight: 500;
 }

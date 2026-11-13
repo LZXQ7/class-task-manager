@@ -1,0 +1,59 @@
+/* components/tilt-card/index.wxss（2026-11-14 试点）
+ * ============================================================
+ * 组件只负责「深度 + 光」，不负责材质：slot 里的 .card 仍是全站统一的玻璃卡，
+ * 圆角 / 底色 / 边框 / 投影一个都不改，这样试点随时可以整层摘掉、零回归。
+ *
+ * ⚠️ will-change 常驻是有代价的，但试点只挂 1~2 张卡；推广到全站时必须改成
+ *    按下时才加 class（项目 app.wxss 的 .pa-* 就是这么处理的）。
+ * ⚠️ transform 的内联值由 WXS 每次 setStyle 覆盖；这里这行只是首帧/无 JS 时的静止态。
+ */
+.tg-surface {
+  position: relative;
+  border-radius: var(--r-md, 24rpx);
+  overflow: hidden;
+  transform: perspective(600px) rotateX(0deg) rotateY(0deg);
+  transform-origin: center center;
+  will-change: transform;
+}
+.tg-off { will-change: auto; }
+
+/* 径向反射流光：中心亮、向外衰减到全透明。
+   先写一条均匀淡光兜底，再叠 radial-gradient —— 不支持渐变的 WebView 仍有一块柔光，
+   不会变成生硬的白圆盘。圆心跟随手指由 WXS 用 translate3d 平移（只动 transform）。 */
+.tg-glare {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 420rpx;
+  height: 420rpx;
+  margin-left: -210rpx;
+  margin-top: -210rpx;
+  border-radius: 50%;
+  z-index: 9;
+  pointer-events: none;
+  opacity: 0;
+  background: rgba(255, 255, 255, 0.18);
+  /* 🔴 浅色玻璃卡上「纯白光」会被底色吃掉 —— 靠色差而不是靠亮度把光晕托出来：
+     中心近白 → 中段偏蓝 → 外圈冷色压暗 → 全透明。尺寸放到 420rpx 让衰减更柔，
+     不出现硬边圆盘。外层 opacity 由 WXS 控制（按下 0.62，回正逐帧衰减）。 */
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(214,232,255,0.55) 22%, rgba(120,160,230,0.22) 48%, rgba(50,90,170,0) 74%);
+}
+
+/* 深色下纯白光容易过曝，换成偏冷的蓝白反射 */
+@media (prefers-color-scheme: dark) {
+  .tg-glare {
+    background: rgba(190, 215, 255, 0.14);
+    background: radial-gradient(circle, rgba(210,230,255,0.85) 0%, rgba(150,190,255,0.42) 24%, rgba(90,130,210,0.16) 52%, rgba(60,90,160,0) 76%);
+  }
+}
+
+/* 🔴 无障碍：reduced-motion 用 !important 压过 WXS 写的内联 transform
+ *    （内联非 important 的优先级低于作者 !important），视觉上完全静止、保留材质。
+ *    WXS 循环仍会跑几百毫秒，但不产生任何位移，符合「更少更温和」而非一刀切归零。 */
+@media (prefers-reduced-motion: reduce) {
+  .tg-surface { transform: none !important; will-change: auto; }
+  .tg-glare { opacity: 0 !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .tg-glare { display: none; }
+}

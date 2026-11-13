@@ -1,0 +1,18 @@
+<!-- components/tilt-card/index.wxml（2026-11-14 试点）
+     ⚠️ WXS 响应事件必须写成 {{tilt.onXxx}}（带花括号）。写成 bindtouchmove="onMove"
+        就退化成逻辑层 setData，一帧一次跨线程通信，跟随手指会明显掉帧 —— 门禁锁死。
+     ⚠️ 事件用 bind 不用 catch：让 touch 继续冒泡给 spring-scroll，否则这张卡会吃掉页面滚动。
+     ⚠️ .tg-surface 是唯一被 3D 变换的节点。卡片材质仍由 slot 里的 .card 承担，
+        这里**刻意不加 backdrop-filter**：旋转时模糊采样区会跟着变，低端安卓直接掉帧。
+     ⚠️ glare 放在 slot 之前、靠 z-index 盖在内容上；pointer-events:none 保证不吃点击。 -->
+<wxs module="tilt" src="./index.wxs"></wxs>
+<view class="tg-surface {{enabled ? '' : 'tg-off'}}"
+      data-max="{{maxTilt}}"
+      data-enabled="{{enabled ? 1 : 0}}"
+      bindtouchstart="{{tilt.onStart}}"
+      bindtouchmove="{{tilt.onMove}}"
+      bindtouchend="{{tilt.onEnd}}"
+      bindtouchcancel="{{tilt.onEnd}}">
+  <view class="tg-glare"></view>
+  <slot></slot>
+</view>

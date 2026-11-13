@@ -18,12 +18,22 @@
  *        → 表现就是「别的卡都出来了，它才冒出来」。
  *        现在未就绪时根节点挂 `pa-hold`（`.st-item` 透明），**等「身份 + 首屏数据」都就绪
  *        （或 READY_MS 兜底超时）再切成 pa-* 统一开播** —— 晚到的卡也在序列里。
+ *   ⑧ v1.0.8.37（2026-11-14 用户「切换页面会闪一下，很难受」）：**回访去掉透明淡入**。
+ *      诊断（scripts/diag-tabbar-motion.cjs 的 H3）：`play()` 在每次 onShow 轮换
+ *      pa-lite-a/b 重播入场，而 lite keyframes 带 `opacity: 0→1` ⇒ 每切一次 Tab，
+ *      整页内容就从透明重新淡入一次 —— 正是历史 ① 的老问题以「分块淡入」形式回归。
+ *      现在两套 lite 只留 5px 上浮、不碰 opacity：回访时内容始终可见，只有极轻位移。
+ *      ⚠️ **首次 paInFull 的淡入必须保留**：它只在 pa-hold（数据门控透明）→ pa-first
+ *         时播一次，是「页面首次出现」的柔和过渡；删掉会让内容「啪」地全显。
+ *      ⚠️ reduced-motion 的 paReduce 仍保留 80ms 淡入（系统偏好是去位移，不是去一切变化）。
+ *      本轮只改 app.wxss 两套 lite keyframes 的形态，**强度常量一律不动**。
  *
  * 口径（与 app.wxss 的 .pa-hold / .pa-first / .pa-lite-* 一一对应；改一处必须改另一处，
  *       由 scripts/check-tab-enter.js 逐项比对，不同步就报错）：
  *   未就绪： pa-hold               —— `.st-item` 透明（等就绪，最多 READY_MS）
- *   首次进入：pa-first              —— 单块 180ms / 上浮 8px / 块间 36ms（总 396ms）
- *   之后回访：pa-lite-a ↔ pa-lite-b —— 单块 140ms / 上浮 5px / 块间 26ms（总 296ms）
+ *   首次进入：pa-first              —— 单块 180ms / 上浮 8px / 块间 36ms（总 396ms），带淡入
+ *   之后回访：pa-lite-a ↔ pa-lite-b —— 单块 140ms / 上浮 5px / 块间 26ms（总 296ms），
+ *      **无透明淡入**（⑧：回访重播淡入 = 切页「闪一下」，由 check-tab-enter 反向断言锁住）
  *   两个 lite 名字轮换：class 名变了 CSS animation 才会重播（同名不会）。
  *   延迟封顶 ST_CAP 块：第 8 块及以后与第 7 块同拍，尾巴不再无限拉长。
  *   reduced-motion：CSS 去位移 + 去错峰，只留 80ms 淡入（paReduce，@media 内只引用不定义）。

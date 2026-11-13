@@ -13,6 +13,7 @@
     "bottom-sheet": "../../components/bottom-sheet/index",
     "segmented": "../../components/segmented/index",
     "duty-sheet": "../../components/duty-sheet/index",
-    "spring-scroll": "../../components/spring-scroll/index"
+    "spring-scroll": "../../components/spring-scroll/index",
+    "tilt-card": "../../components/tilt-card/index"
   }
 }

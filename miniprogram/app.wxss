@@ -527,14 +527,21 @@ button::after { border: none; }
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-/* 两套内容相同、只是名字不同的 lite keyframes —— 换名字 = 重播 */
+/* ⑧ v1.0.8.37（2026-11-14 用户「切换页面会闪一下，很难受」）：回访**去掉透明淡入**，
+   只留 5px 上浮。`play()` 每次 onShow 轮换 lite 类名重播，带 opacity: 0→1 就等于
+   每切一次 Tab 让整页内容从透明重新淡入一次 —— 历史 ① 的老问题以「分块淡入」形式回归。
+   现在回访时内容始终可见，只有极轻位移；`pa-hold` 的数据门控也不受影响（回访不走它）。
+   ⚠️ 首次 paInFull 的淡入必须保留：它只在 pa-hold（透明）→ pa-first 播一次，
+      是「页面首次出现」的柔和过渡；删掉会变成内容「啪」地全显。
+   ⚠️ reduced-motion 的 paReduce 仍保留 80ms 淡入（系统偏好是去位移，不是去一切变化）。
+   两套内容相同、只是名字不同 —— 换名字 = 重播。由 check-tab-enter 反向断言锁住。 */
 @keyframes paInLiteA {
-  from { opacity: 0; transform: translateY(5px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { transform: translateY(5px); }
+  to   { transform: translateY(0); }
 }
 @keyframes paInLiteB {
-  from { opacity: 0; transform: translateY(5px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { transform: translateY(5px); }
+  to   { transform: translateY(0); }
 }
 /* reduced-motion 的降级形态：只做极短淡入、零位移（定义在顶层，@media 里只引用） */
 @keyframes paReduce {

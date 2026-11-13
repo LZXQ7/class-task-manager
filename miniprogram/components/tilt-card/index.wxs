@@ -1,0 +1,191 @@
+/**
+ * components/tilt-card/index.wxs —— 视图层手势驱动（2026-11-14）
+ * =============================================================
+ * 为什么必须写在 WXS：一次 touchmove 若走逻辑层（bindtouchmove="onMove" + setData），
+ * 要经历「视图层 → 逻辑层 → 视图层」两次跨线程通信 + 一次渲染，跟随手指必然拖一帧。
+ * WXS 响应事件跑在 Webview 内，setStyle / requestAnimationFrame 全在视图层闭环，
+ * 这是小程序里唯一能做到 1:1 跟随的通道（官方《WXS 响应事件》）。
+ *
+ * 三段行为：
+ *   ① pointer-down 立刻按落点倾斜 + 点亮流光（反馈不等 move）
+ *   ② move 期间按「手指在卡片内的相对位置」映射倾角，只动 transform / opacity
+ *   ③ 松手用**欠阻尼弹簧**逐帧积分回 0，起跳值取当前角度、初速度取手指角速度
+ *
+ * 弹簧参数（对齐 Apple《Designing Fluid Interfaces》Rotation: response 0.4）：
+ *   k = 220, c = 18 → ω0 = √k ≈ 14.83 rad/s, ζ = c/(2√k) ≈ 0.61
+ *   半隐式欧拉自带数值阻尼（约 +ω0·dt/2 ≈ +0.12）⇒ 有效 ζ ≈ 0.73，
+ *   从 7° 起跳过冲约 6.5%（回摆到 -0.45°）、约 25 帧 / 0.4s 归位。
+ *   dt = 0.016（ω0·dt ≈ 0.24 « 2，数值稳定）。
+ *   ⚠️ 别把 c 调回 24：实测 c=24 过冲只剩 0.1%，肉眼等于「啪一下贴回去」，
+ *      弹簧手感全丢（check-tilt-card.js 的过冲探针就是守这条）。
+ *   这**不是** cubic-bezier 假弹簧：每帧从当前值积分，可被新手势从任意中间态打断并接管。
+ *
+ * ⚠️ 只用 ES5 语法（var / function / 字符串拼接）：WXS 是 JS 子集，不保证支持 let/箭头/模板串。
+ * ⚠️ 所有事件函数返回 undefined，不 return false —— 用 bind 前缀让事件继续冒泡给
+ *    spring-scroll，否则页面滚动会被这张卡吃掉。
+ */
+
+var STIFFNESS = 220;
+var DAMPING = 18;
+var DT = 0.016;
+var MAX_FRAMES = 90;      /* 1.5s 硬兜底，防数值不收敛时 rAF 死循环 */
+var EPS_X = 0.02;         /* 收敛：角度 deg */
+var EPS_V = 0.06;         /* 收敛：角速度 deg/s */
+var PERSP = 600;          /* perspective(px)：800 太远，7~9° 的旋转在 340px 卡上几乎看不出来 */
+var GLARE_FADE = 0.86;    /* 流光每帧衰减 */
+var GLARE_ON = 0.62;      /* 按下时的流光亮度 */
+var VEL_HANDOFF = 0.35;   /* 手指角速度交接给弹簧的比例（避免甩太狠） */
+
+function f2(v) { return Math.round(v * 100) / 100; }
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+function num(v, d) { var n = Number(v); return n !== n ? d : n; }
+
+function datasetOf(inst) {
+  if (typeof inst.getDataset !== 'function') return {};
+  return inst.getDataset() || {};
+}
+
+/** webview 同步返回；skyline 走回调、返回空 → 交由调用方降级并上报 */
+function rectOf(inst) {
+  if (typeof inst.getBoundingClientRect !== 'function') return null;
+  var r = inst.getBoundingClientRect();
+  if (!r || !num(r.width, 0) || !num(r.height, 0)) return null;
+  return r;
+}
+
+function glareOf(inst) {
+  if (typeof inst.selectComponent !== 'function') return null;
+  return inst.selectComponent('.tg-glare');
+}
+
+/** 🔴 空 catch 是事故放大器：降级必须让逻辑层 console.error 落一条日志 */
+function warnOnce(inst, state, key, reason) {
+  if (state[key]) return;
+  state[key] = true;
+  if (typeof inst.callMethod === 'function') {
+    inst.callMethod('onTiltWarn', { reason: reason });
+  }
+}
+
+/** 把当前状态一次性写进视图层：只碰 transform / opacity，不触发布局与重绘 */
+function paint(inst, state) {
+  inst.setStyle({
+    transform: 'perspective(' + PERSP + 'px) rotateX(' + f2(state.rx) + 'deg) rotateY(' + f2(state.ry) + 'deg)',
+    transition: 'none'
+  });
+  var glare = glareOf(inst);
+  if (glare) {
+    glare.setStyle({
+      transform: 'translate3d(' + f2(state.gx) + 'px,' + f2(state.gy) + 'px,0)',
+      opacity: f2(state.light)
+    });
+  } else {
+    warnOnce(inst, state, 'warnedGlare', 'glare descriptor unavailable');
+  }
+}
+
+/** 触摸点 → 倾角 + 流光圆心；pointer-down 也走这里 */
+function applyPoint(event, inst, state) {
+  if (!event.touches || !event.touches.length) return;
+  var t = event.touches[0];
+  var r = state.rect;
+  var px = clamp((num(t.clientX, 0) - num(r.left, 0)) / r.width, 0, 1);
+  var py = clamp((num(t.clientY, 0) - num(r.top, 0)) / r.height, 0, 1);
+  var nx = (px - 0.5) * 2;
+  var ny = (py - 0.5) * 2;
+  var tx = -ny * state.max;   /* 手指偏下 → 上沿朝里倾 */
+  var ty = nx * state.max;    /* 手指偏右 → 右沿朝里倾 */
+  /* 速度交接：按 60Hz 事件间隔估算角速度(deg/s)，衰减后留给弹簧当初速度 */
+  if (state.hasLast) {
+    state.vx = clamp((tx - state.lastRx) * 60 * VEL_HANDOFF, -120, 120);
+    state.vy = clamp((ty - state.lastRy) * 60 * VEL_HANDOFF, -120, 120);
+  }
+  state.lastRx = tx;
+  state.lastRy = ty;
+  state.hasLast = true;
+  state.rx = tx;
+  state.ry = ty;
+  state.gx = (px - 0.5) * r.width * 0.78;
+  state.gy = (py - 0.5) * r.height * 0.78;
+  state.light = GLARE_ON;
+  paint(inst, state);
+}
+
+/** 递增 token → 让正在跑的弹簧循环下一帧自行退出（WXS 没有 cancelAnimationFrame） */
+function stopSpring(state) {
+  state.token = (state.token || 0) + 1;
+}
+
+/** 松手：从当前角度 + 手指速度起跳，逐帧积分到 0 */
+function springBack(inst, state) {
+  stopSpring(state);
+  var token = state.token;
+  var frames = 0;
+  var x = state.rx;
+  var y = state.ry;
+  var vx = clamp(num(state.vx, 0), -120, 120);
+  var vy = clamp(num(state.vy, 0), -120, 120);
+  var tick = function () {
+    if (state.token !== token || state.active) return;
+    frames++;
+    /* a = -k·x - c·v（目标恒为 0）；半隐式欧拉：先更速度、再更位置，数值更稳 */
+    vx = vx + (-STIFFNESS * x - DAMPING * vx) * DT;
+    vy = vy + (-STIFFNESS * y - DAMPING * vy) * DT;
+    x = x + vx * DT;
+    y = y + vy * DT;
+    state.rx = x;
+    state.ry = y;
+    state.light = state.light * GLARE_FADE;
+    state.gx = state.gx * 0.9;
+    state.gy = state.gy * 0.9;
+    paint(inst, state);
+    var settled = Math.abs(x) < EPS_X && Math.abs(y) < EPS_X &&
+                  Math.abs(vx) < EPS_V && Math.abs(vy) < EPS_V;
+    if (settled || frames >= MAX_FRAMES) {
+      state.rx = 0; state.ry = 0; state.light = 0; state.gx = 0; state.gy = 0;
+      paint(inst, state);
+      return;
+    }
+    inst.requestAnimationFrame(tick);
+  };
+  inst.requestAnimationFrame(tick);
+}
+
+module.exports = {
+  onStart: function (event, ownerInstance) {
+    var inst = event.instance;
+    var d = datasetOf(inst);
+    if (String(d.enabled) === '0') return;
+    var state = inst.getState();
+    stopSpring(state);
+    var r = rectOf(inst);
+    if (!r) {
+      warnOnce(inst, state, 'warnedRect', 'getBoundingClientRect unavailable');
+      return;
+    }
+    /* 🔴 只在按下时量一次：surface 带上 3D transform 后 getBoundingClientRect 返回的是
+     *    变换后的 AABB，每帧重量会让 px/py 自激震荡。整段手势复用同一个 rect。 */
+    state.rect = r;
+    state.max = clamp(num(d.max, 9), 1, 14);
+    state.active = true;
+    state.hasLast = false;
+    state.vx = 0;
+    state.vy = 0;
+    applyPoint(event, inst, state);
+  },
+
+  onMove: function (event, ownerInstance) {
+    var inst = event.instance;
+    var state = inst.getState();
+    if (!state.active || !state.rect) return;
+    applyPoint(event, inst, state);
+  },
+
+  onEnd: function (event, ownerInstance) {
+    var inst = event.instance;
+    var state = inst.getState();
+    if (!state.active) return;
+    state.active = false;
+    springBack(inst, state);
+  }
+};

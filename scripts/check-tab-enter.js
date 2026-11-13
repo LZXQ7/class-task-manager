@@ -14,6 +14,13 @@
  *      新增 **pa-hold 就绪门控**：未就绪时根节点挂 pa-hold（`.st-item` 透明），
  *      等「身份 + 首屏数据」就绪（或 READY_MS 兜底）再统一开播，
  *      治「异步门控的卡（本班请假 / 本学期统计）首屏不在 DOM、独自晚出现」。
+ *   ⑧ v1.0.8.37（2026-11-14 用户「切换页面会闪一下，很难受」）：**回访去掉透明淡入**。
+ *      `play()` 每次 onShow 轮换 pa-lite-a/b 重播，lite keyframes 带 opacity: 0→1 ⇒
+ *      每切一次 Tab 整页内容重新淡入一次（历史 ① 的老问题以「分块淡入」形式回归）。
+ *      现在两套 lite 只留 5px 上浮；**首次 paInFull 的淡入必须保留**（pa-hold 数据门控
+ *      → 首次出现的柔和过渡，只播一次，删掉会「啪」地全显）。
+ *      ⚠️ 因此本门禁新增**反向断言**：lite 里出现 opacity 即判死，首次没淡入也判死。
+ *      只改 keyframes 形态，FULL_Y / LITE_Y 等强度常量一律不动。
  *
  * 为什么值得上门禁（这一版比以往都危险）：
  *   · ⑤ 把位移删掉后，本门禁当时断言的是「零位移」；⑥ 又把位移加回来了，
@@ -161,8 +168,15 @@ const wantTier = (i, cap) => Math.min(i + 1, cap);
 
 /** 取 keyframes 里的 translateY 值（px） */
 function kfYs(css, name) {
-  const body = (new RegExp('@keyframes\\s+' + name + '\\s*\\{([\\s\\S]*?)\\n\\}').exec(css) || [])[1] || '';
-  return Array.from(body.matchAll(/translateY\(([\d.]+)px\)/g)).map(x => Number(x[1]));
+  return Array.from(kfBody(css, name).matchAll(/translateY\(([\d.]+)px\)/g)).map(x => Number(x[1]));
+}
+/** 取单个 @keyframes 的函数体（注释已在调用前剥掉） */
+function kfBody(css, name) {
+  return (new RegExp('@keyframes\\s+' + name + '\\s*\\{([\\s\\S]*?)\\n\\}').exec(css) || [])[1] || '';
+}
+/** ⑧ keyframes 是否含 opacity 声明（回访淡入 = 切页「白一下」） */
+function kfHasOpacity(css, name) {
+  return /\bopacity\s*:/.test(kfBody(css, name));
 }
 
 const TABS = ['home', 'timetable', 'duty', 'mine', 'classinfo'];
@@ -363,6 +377,15 @@ const liteB = (/@keyframes\s+paInLiteB\s*\{([\s\S]*?)\n\}/.exec(css) || [])[1] |
 if (liteA && liteB && liteA.replace(/\s+/g, '') === liteB.replace(/\s+/g, '')) ok('两套 lite keyframes 内容一致（只差名字，用来重播）');
 else bad('两套 lite keyframes 内容不一致（回访观感会一重一轻）');
 
+/* ⑧ 反向断言：回访**不得**有透明淡入（切页「白一下」的根因），首次**必须**保留淡入。
+   光校验「有 translateY / 时长一致 / 两套内容相同」抓不住 opacity 回归 ——
+   两套 lite 一起加回 opacity 时前面那些断言照样全绿，所以必须单列一条。 */
+const liteOpacity = ['paInLiteA', 'paInLiteB'].filter(k => kfHasOpacity(css, k));
+if (!liteOpacity.length) ok('⑧ 两套 lite keyframes 无 opacity（回访不淡入，切 Tab 不会整页重新淡入）');
+else bad('⑧ 回访 lite keyframes 仍带 opacity：' + liteOpacity.join(' / ') + ' —— 每次切页整页会「白一下」');
+if (kfHasOpacity(css, 'paInFull')) ok('⑧ 首次 paInFull 保留淡入（pa-hold 门控 → 首次出现的柔和过渡，只播一次）');
+else bad('⑧ 首次 paInFull 丢了淡入 —— 内容会从 pa-hold 的透明「啪」地全显');
+
 if (anim) {
   // 时长 JS ↔ CSS
   const durOf = (sel) => {
@@ -474,7 +497,13 @@ const slashInAttr = '<view class="card st-item"><image src="/img/a.png" /><view 
 const saAud = auditStructure(slashInAttr, new Set());
 if (saAud.total === 1 && !saAud.nested.length) ok('自证：属性值内的 `/` 不影响标签解析（src / 表达式）');
 else bad('自证失败：属性值内的 `/` 让解析跑偏（total=' + saAud.total + '）');
+// ⑧ 变异自证：把 opacity 塞回 lite →「回访无淡入」必须判红；纯位移样本不得误报
+const liteWithOp = '@keyframes paInLiteA {\n  from { opacity: 0; transform: translateY(5px); }\n  to { opacity: 1; transform: translateY(0); }\n}';
+const litePure = '@keyframes paInLiteB {\n  from { transform: translateY(5px); }\n  to { transform: translateY(0); }\n}';
+if (kfHasOpacity(liteWithOp, 'paInLiteA') && !kfHasOpacity(litePure, 'paInLiteB')) {
+  ok('自证：⑧ 塞回 opacity 会被判红、纯位移样本不误报（反向断言真能区分新旧形态）');
+} else bad('自证失败：⑧ 的「回访无淡入」判据区分不出新旧形态');
 
 console.log('');
 if (failed) { console.log('❌ 失败 ' + failed + ' 项'); process.exit(1); }
-console.log('OK · Tab 页入场动画（分块淡入 + 轻微上浮）校验通过');
+console.log('OK · Tab 页入场动画（首次分块淡入 + 回访无淡入上浮）校验通过');

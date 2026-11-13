@@ -104,7 +104,11 @@
            🔴 2026-11-14 二次调整：原来每行「头像 + 姓名/班级 + 备注摘要」占约 104rpx，
               8 个关注就吃掉一屏（用户截图）。现在收成单行 —— 去掉备注摘要
               （点进详情能看，首页只需要「一眼找到人」），头像也缩到 48rpx。 -->
-      <view wx:if="{{showPins}}" class="card pin-card st-item st-1">
+      <!-- 3D 触摸倾斜试点（2026-11-14）：组件只叠「深度 + 流光」，
+           卡片本体仍是 slot 里的 .card，档位留在原位、不新增入场动画块；
+           整层摘掉即回到原状，零回归。 -->
+      <tilt-card wx:if="{{showPins}}">
+        <view class="card pin-card st-item st-1">
         <view class="pin-head">
           <text class="pin-title">关注的学生</text>
           <text class="pin-sub">{{pins.length}}/{{pinLimit}}</text>
@@ -136,7 +140,8 @@
           </view>
         </block>
         <view wx:else class="pin-empty">在成员详情里点「固定到主页」，需要长期关注的学生就会出现在这里</view>
-      </view>
+        </view>
+      </tilt-card>
 
       <!-- Hero 卡（v0.7.16 需求⑨：教职工不值日 → 辅导员不渲染；wx:if 不影响 st-item 兄弟关系） -->
       <view wx:if="{{!isCounselor}}" class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
@@ -168,7 +173,8 @@
       <!-- 今日课次（教职工隐藏，需求⑨）
            ⚠️ 头部右侧的「查看课表 ›」已于 2026-10-28 下线：它只是 switchTab 到底部
            导航第二个 tab，点了画面不变，等于一个什么都不发生的按钮。课表入口保留在 tabBar。 -->
-      <view wx:if="{{!isCounselor}}" class="card mt16 st-item st-3">
+      <tilt-card wx:if="{{!isCounselor}}">
+        <view class="card mt16 st-item st-3">
         <view class="card-head">
           <text class="card-title">今日课次</text>
         </view>
@@ -238,7 +244,8 @@
           </block>
         </block>
         <view wx:else class="no-course">今天无课🎉</view>
-      </view>
+        </view>
+      </tilt-card>
 
       <!-- 明日课次（放假 / 调课 / 跨周都由后端按「实际上课日期」算好；教职工隐藏，需求⑨） -->
       <view wx:if="{{!isCounselor}}" class="card mt16 st-item st-4">
