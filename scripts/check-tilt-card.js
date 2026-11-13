@@ -197,7 +197,9 @@ function staticProbes(wxml, wxss, wxs) {
                 !/bindtouchmove="onMove"/.test(wxml),
     reducedMotion: /@media \(prefers-reduced-motion: reduce\)/.test(wxss) &&
                    /transform: none !important/.test(wxss),
-    rafSpring: /requestAnimationFrame\(tick\)/.test(wxs) && /var DAMPING = 18;/.test(wxs)
+    rafSpring: /requestAnimationFrame\(tick\)/.test(wxs) && /var DAMPING = 18;/.test(wxs),
+    wxsSyntax: !/\b(Number|String|Boolean)\s*\(/.test(wxs) &&
+               !/\b(let|const)\s|=>|`/.test(wxs)
   };
 }
 
@@ -226,6 +228,12 @@ check(/radial-gradient/.test(WXSS), '流光是径向渐变');
 check(/pointer-events:\s*none/.test(WXSS), '流光层不吃点击');
 check(!/transition:\s*all/.test(WXSS), '没有 transition: all');
 check(/@media \(prefers-reduced-transparency: reduce\)/.test(WXSS), '降低透明度系统设置下隐藏流光');
+/* 🔴 2026-11-14 真编译事故：门禁用 Node vm 全绿，miniprogram-ci 上传却报
+ *    `index.wxs:41:37 Unexpected token '('`（-80054）—— WXS 是受限 JS 子集，
+ *    不认 Number()/String() 这些全局构造器。离线门禁补一条语法黑名单。 */
+check(!/\b(Number|String|Boolean)\s*\(/.test(WXS),
+      'WXS 不写 Number()/String() 构造器（真编译会报 Unexpected token）');
+check(!/\b(let|const)\s|=>|`/.test(WXS), 'WXS 只用 ES5 语法（无 let/const/箭头/模板串）');
 
 console.log('── ② 首页试点接入');
 check(/"tilt-card"\s*:\s*"\.\.\/\.\.\/components\/tilt-card\/index"/.test(HOME_JSON),
@@ -296,6 +304,12 @@ const MUTATIONS = [
     scope: 'wxss', expect: 'reducedMotion',
     from: '  .tg-surface { transform: none !important; will-change: auto; }',
     to: '  .tg-surface { will-change: auto; }'
+  },
+  {
+    name: 'WXS 写回 Number() 构造器（真编译 -80054，Node vm 却全绿）',
+    scope: 'wxs', expect: 'wxsSyntax',
+    from: 'function num(v, d) { var n = +v; return n !== n ? d : n; }',
+    to: 'function num(v, d) { var n = Number(v); return n !== n ? d : n; }'
   }
 ];
 

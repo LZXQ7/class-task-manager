@@ -14,13 +14,17 @@
  * 弹簧参数（对齐 Apple《Designing Fluid Interfaces》Rotation: response 0.4）：
  *   k = 220, c = 18 → ω0 = √k ≈ 14.83 rad/s, ζ = c/(2√k) ≈ 0.61
  *   半隐式欧拉自带数值阻尼（约 +ω0·dt/2 ≈ +0.12）⇒ 有效 ζ ≈ 0.73，
- *   从 7° 起跳过冲约 6.5%（回摆到 -0.45°）、约 25 帧 / 0.4s 归位。
- *   dt = 0.016（ω0·dt ≈ 0.24 « 2，数值稳定）。
- *   ⚠️ 别把 c 调回 24：实测 c=24 过冲只剩 0.1%，肉眼等于「啪一下贴回去」，
- *      弹簧手感全丢（check-tilt-card.js 的过冲探针就是守这条）。
- *   这**不是** cubic-bezier 假弹簧：每帧从当前值积分，可被新手势从任意中间态打断并接管。
+ *   从 9° 起跳过冲约 6.5%、约 25 帧 / 0.4s 归位。
+ *   ⚠️ 别把 c 调回 24：实测过冲只剩 0.1%，弹簧手感全丢（门禁的过冲探针守这条）。
  *
- * ⚠️ 只用 ES5 语法（var / function / 字符串拼接）：WXS 是 JS 子集，不保证支持 let/箭头/模板串。
+ * 🔴🔴 WXS 语法限制（2026-11-14 真编译事故，别再踩）：
+ *   首版写了 Number(v) / String(d.enabled)，miniprogram-ci 上传直接报
+ *   `index.wxs:41:37 Unexpected token '('`（-80054），而离线门禁用 Node vm 跑得全绿——
+ *   「门禁绿」≠「能编译」。WXS 是受限 JS 子集，不保证支持这些全局构造器。
+ *   现在一律：数值转换用一元 +v、开关判断用 == 0、能力探测直接判属性是否存在，
+ *   只保留 Math.* 与 ES5 基础运算符。check-tilt-card.js 里有黑名单静态断言。
+ *
+ * ⚠️ 只用 var / function / 字符串拼接；不用 let、const、箭头函数、模板串、try/catch。
  * ⚠️ 所有事件函数返回 undefined，不 return false —— 用 bind 前缀让事件继续冒泡给
  *    spring-scroll，否则页面滚动会被这张卡吃掉。
  */
@@ -31,30 +35,31 @@ var DT = 0.016;
 var MAX_FRAMES = 90;      /* 1.5s 硬兜底，防数值不收敛时 rAF 死循环 */
 var EPS_X = 0.02;         /* 收敛：角度 deg */
 var EPS_V = 0.06;         /* 收敛：角速度 deg/s */
-var PERSP = 600;          /* perspective(px)：800 太远，7~9° 的旋转在 340px 卡上几乎看不出来 */
+var PERSP = 600;          /* perspective(px)：800 太远，9° 的旋转在 340px 卡上几乎看不出来 */
 var GLARE_FADE = 0.86;    /* 流光每帧衰减 */
 var GLARE_ON = 0.62;      /* 按下时的流光亮度 */
 var VEL_HANDOFF = 0.35;   /* 手指角速度交接给弹簧的比例（避免甩太狠） */
 
 function f2(v) { return Math.round(v * 100) / 100; }
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
-function num(v, d) { var n = Number(v); return n !== n ? d : n; }
+/* 一元 + 做数值转换：+undefined → NaN，+'7' → 7；不碰 WXS 不保证支持的 Number() */
+function num(v, d) { var n = +v; return n !== n ? d : n; }
 
 function datasetOf(inst) {
-  if (typeof inst.getDataset !== 'function') return {};
+  if (!inst.getDataset) return {};
   return inst.getDataset() || {};
 }
 
 /** webview 同步返回；skyline 走回调、返回空 → 交由调用方降级并上报 */
 function rectOf(inst) {
-  if (typeof inst.getBoundingClientRect !== 'function') return null;
+  if (!inst.getBoundingClientRect) return null;
   var r = inst.getBoundingClientRect();
   if (!r || !num(r.width, 0) || !num(r.height, 0)) return null;
   return r;
 }
 
 function glareOf(inst) {
-  if (typeof inst.selectComponent !== 'function') return null;
+  if (!inst.selectComponent) return null;
   return inst.selectComponent('.tg-glare');
 }
 
@@ -62,7 +67,7 @@ function glareOf(inst) {
 function warnOnce(inst, state, key, reason) {
   if (state[key]) return;
   state[key] = true;
-  if (typeof inst.callMethod === 'function') {
+  if (inst.callMethod) {
     inst.callMethod('onTiltWarn', { reason: reason });
   }
 }
@@ -155,7 +160,8 @@ module.exports = {
   onStart: function (event, ownerInstance) {
     var inst = event.instance;
     var d = datasetOf(inst);
-    if (String(d.enabled) === '0') return;
+    /* dataset 里的 enabled 是 1 / 0（或字符串 '0'），用宽松相等兼容两种，不写 String() */
+    if (d.enabled == 0) return;
     var state = inst.getState();
     stopSpring(state);
     var r = rectOf(inst);
