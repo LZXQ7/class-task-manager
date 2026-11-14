@@ -235,14 +235,21 @@ check(!/\b(Number|String|Boolean)\s*\(/.test(WXS),
       'WXS 不写 Number()/String() 构造器（真编译会报 Unexpected token）');
 check(!/\b(let|const)\s|=>|`/.test(WXS), 'WXS 只用 ES5 语法（无 let/const/箭头/模板串）');
 
-console.log('── ② 首页试点接入');
+console.log('── ② 首页试点接入（扩到全部 5 张 st-item 卡）');
 check(/"tilt-card"\s*:\s*"\.\.\/\.\.\/components\/tilt-card\/index"/.test(HOME_JSON),
       'home/index.json 注册组件');
 const opens = (HOME_WXML.match(/<tilt-card\b/g) || []).length;
 const closes = (HOME_WXML.match(/<\/tilt-card>/g) || []).length;
-check(opens === 2 && closes === 2, '首页恰好包裹 2 张主卡且标签闭合（' + opens + '/' + closes + '）');
+check(opens === 5 && closes === 5, '首页恰好包裹 5 张卡且标签闭合（' + opens + '/' + closes + '）');
+/* 非贪婪配对取出每个 tilt-card 内部块，逐张核对 st-N 真在里面（顺序与文档一致：1~5） */
+const inners = Array.from(HOME_WXML.matchAll(/<tilt-card[^>]*>([\s\S]*?)<\/tilt-card>/g)).map(m => m[1]);
+let innerOk = inners.length === 5;
+for (let i = 0; i < 5; i++) {
+  if (!inners[i] || !new RegExp('\\bst-' + (i + 1) + '\\b').test(inners[i])) innerOk = false;
+}
+check(innerOk, '五张卡（关注/今日值日/今日课次/明日课次/请假）各自包进 tilt-card');
 check(/<tilt-card wx:if="\{\{showPins\}\}">/.test(HOME_WXML), '关注的学生卡已接入');
-check(/<tilt-card wx:if="\{\{!isCounselor\}\}">/.test(HOME_WXML), '今日课次卡已接入');
+check(/<tilt-card wx:if="\{\{showLeaveHome\}\}">/.test(HOME_WXML), '首页请假卡已接入');
 /* 档位连续：剥注释后只读 class 属性里的 st-N，避免注释里 st-1~st-7 的说明文字干扰 */
 const strip = t => t.replace(/<!--[\s\S]*?-->/g, '');
 const seq = Array.from(strip(HOME_WXML).matchAll(/class="[^"]*\bst-(\d)\b/g)).map(m => Number(m[1]));

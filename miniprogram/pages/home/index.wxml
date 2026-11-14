@@ -143,8 +143,11 @@
         </view>
       </tilt-card>
 
-      <!-- Hero 卡（v0.7.16 需求⑨：教职工不值日 → 辅导员不渲染；wx:if 不影响 st-item 兄弟关系） -->
-      <view wx:if="{{!isCounselor}}" class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
+      <!-- Hero 卡（v0.7.16 需求⑨：教职工不值日 → 辅导员不渲染；wx:if 不影响 st-item 兄弟关系）
+           🔴 2026-11-14 3D 触摸倾斜试点扩到首页全部 5 张 st-item 卡：包一层 tilt-card，仅叠深度+流光，
+           本体不变、可整层摘掉归零。 -->
+      <tilt-card wx:if="{{!isCounselor}}">
+      <view class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
         <block wx:if="{{myDuty}}">
           <view class="hero-top">
             <view class="hero-chip">{{periodText}}</view>
@@ -169,6 +172,7 @@
           <view class="hero-sub noduty-sub">可在「值日」页查看本周安排</view>
         </block>
       </view>
+      </tilt-card>
 
       <!-- 今日课次（教职工隐藏，需求⑨）
            ⚠️ 头部右侧的「查看课表 ›」已于 2026-10-28 下线：它只是 switchTab 到底部
@@ -247,8 +251,10 @@
         </view>
       </tilt-card>
 
-      <!-- 明日课次（放假 / 调课 / 跨周都由后端按「实际上课日期」算好；教职工隐藏，需求⑨） -->
-      <view wx:if="{{!isCounselor}}" class="card mt16 st-item st-4">
+      <!-- 明日课次（放假 / 调课 / 跨周都由后端按「实际上课日期」算好；教职工隐藏，需求⑨）
+           🔴 2026-11-14 同款 tilt-card 试点包裹。 -->
+      <tilt-card wx:if="{{!isCounselor}}">
+      <view class="card mt16 st-item st-4">
         <view class="card-head">
           <text class="card-title">明日课次</text>
           <text class="card-sub">{{tomorrowText}}</text>
@@ -272,10 +278,13 @@
         </block>
         <view wx:else class="no-course">明日无课🎉</view>
       </view>
+      </tilt-card>
 
       <!-- 首页请假卡（1.0.5 追加，需求①②）：班委/超管看本班请假人数、辅导员看各班总数；
-           普通同学不可见（决策④）。点击 → 按 A/B 组列出请假的人（班委可撤销）。 -->
-      <view wx:if="{{showLeaveHome}}" class="card mt16 leave-home st-item st-5">
+           普通同学不可见（决策④）。点击 → 按 A/B 组列出请假的人（班委可撤销）。
+           🔴 2026-11-14 同款 tilt-card 试点包裹。 -->
+      <tilt-card wx:if="{{showLeaveHome}}">
+      <view class="card mt16 leave-home st-item st-5">
         <block wx:if="{{leaveHomeMode === 'class'}}">
           <view class="lh-head">
             <text class="lh-title">{{leaveHomeClassName ? leaveHomeClassName + ' · 请假' : '本班请假'}}</text>
@@ -326,6 +335,7 @@
           <view wx:if="{{!leaveHomeClasses.length}}" class="lh-empty">暂无可查看的班级</view>
         </block>
       </view>
+      </tilt-card>
 
       <view class="foot-space"></view>
     </view>
