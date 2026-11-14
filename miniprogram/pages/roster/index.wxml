@@ -157,8 +157,11 @@
     <view wx:if="{{mDetail}}" class="mb-detail">
       <flip-detail flipped="{{mDetailFlipped}}" bind:flip="onMDetailFlip">
         <view slot="front">
-          <view id="md-av" class="md-av {{seShow && !seClosing ? 'md-av-fly' : ''}}">
-            <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" label="{{true}}" label-size="{{34}}" />
+          <view class="md-head">
+            <view id="md-av" class="md-av {{mdHideAvatar ? 'md-av-fly' : ''}}">
+              <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" />
+            </view>
+            <text class="md-name">{{mDetail.name}}</text>
           </view>
           <view class="mb-detail-grid">
             <text>{{mDetail.groupTag === 'X' ? '教职工（不参与分组与值日轮转）' : (mDetail.readOnly ? '班级成员' : '学号 ' + mDetail.seq + ' 号')}}</text>

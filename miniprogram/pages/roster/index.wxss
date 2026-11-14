@@ -128,10 +128,24 @@
   height: 64rpx;
   flex-shrink: 0;
 }
-/* 详情卡里的头像外壳：共享元素飞行期间隐藏（由 ghost 顶着），落地后显示 */
+/* 详情卡头像区：圆形头像 + 姓名（姓名作为独立兄弟节点，不被 80rpx 外壳压掉） */
+.md-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+/* 详情卡里的头像外壳（固定 80rpx，供 ghost 精确量落点）：飞行期间隐藏，落地后显示 */
 .md-av {
   width: 80rpx;
   height: 80rpx;
+  flex-shrink: 0;
+}
+.md-name {
+  margin-top: 16rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 44rpx;
+  color: var(--text-1);
 }
 .md-av-fly { opacity: 0; }
 /* 操作按钮行：整行平分，与搜索框同一留白节奏（不再挤在搜索框右侧）

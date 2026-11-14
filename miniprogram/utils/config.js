@@ -229,7 +229,20 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      否则正式版里会卡在演示班（原条件只认 isTrial）。
  *   ④ 新增门禁 `scripts/check-demo-entry-visibility.js`（15 项断言 + 8 组变异自证）。
  *   云函数需重部署：**auth**（其余不动）。
- * **`1.0.10.3`** = 导航栏去掉「流光」（2026-11-14，用户要求「不要上面的流光」）：
+ * **`1.0.10.4`** = 成员详情头像转场 + 请假审批图标配色修复（2026-11-14，用户两处反馈）：
+ *   ① **成员详情头像转场修三处**：a) 详情卡**姓名不再消失** —— 原 `.md-av` 固定 80rpx 外壳把
+ *      `avatar-tag` 的姓名文本压成 0 宽；改为姓名作为独立兄弟节点 `.md-av` + `.md-name`，
+ *      头像外壳只量圆形落点、姓名正常显示在头像下方；b) **消除「先显示→消失→再飞入」闪现** ——
+ *      打开瞬间即隐藏详情真实头像（`mdHideAvatar`），由 ghost 顶着从列表行飞入，落地再显形；
+ *      c) **关闭收缩回原位正确** —— 关闭时重测当前列表行矩形作落点（不再用打开时缓存、防滚动失效），
+ *      飞行期间隐藏真实头像避免与 ghost 重影；落点改在入场动画（面板 scale 240ms + 卡片 3D 翻转 420ms）
+ *      彻底静止后测量，避免 `boundingClientRect` 量到 scale/rotate 途中的视觉矩形导致偏移。
+ *   ② **请假审批图标配色修复** —— `get(name, variant)` 变体缺失时静默回落 `Object.keys(item)[0]`，
+ *      `check` 缺 `brand` 变体 ⇒ 请假审批前的勾选图标渲染成白色；补齐 `check`/`arrow-left`/
+ *      `photo-plus` 的 `brand` 变体与 `trash`/`empty-box`/`cloud-off` 的 `gray` 变体（共 6 个），
+ *      新增门禁 `scripts/check-icon-variants.js` 守住「变体缺失静默回落」类问题。
+ *   纯前端改动，无需重部署云函数。
+ */
  *   ① 顶部导航栏的**镜面扫光带**（斜向光带横扫）整段删除 —— 删掉 wxml 的 `.nav-sheen`
  *      真实节点、wxss 的 `.nav-sheen` / `.t-dark .nav-sheen` / `@keyframes glassSheen` /
  *      `.nav.m-glass .nav-sheen`，以及 `@supports not` 与 `prefers-reduced-motion` 里的两处引用。
@@ -240,7 +253,7 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      「把流光带塞回来」必红。渐变百分比色标变异的锚点从 `.nav-sheen` 迁到 `.nav-edge`。
  *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.10.3';
+const APP_VERSION = '1.0.10.4';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

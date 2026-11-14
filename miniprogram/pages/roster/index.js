@@ -22,6 +22,7 @@ const theme = require('../../utils/theme');
 /** 直传云存储 / 取临时链接（请假条图片：前端直传绕开 VPC 慢下载，与通知配图同链路） */
 const request = require('../../utils/request');
 const shared = require('../../utils/shared-element');
+const motion = require('../../utils/motion');
 
 /**
  * 筛选作用域 → 空态文案（2026-10-24：新增 A/B 组后占位提示要跟着作用域走，
@@ -223,6 +224,8 @@ Page({
     mDetailFlipped: false,
     /** #2 共享元素：成员行头像的源矩形（打开飞入 / 关闭飞回的起点） */
     mDetailFrom: null,
+    /** #2 共享元素：飞行期间隐藏详情里真实头像（由 ghost 顶着），落地/取消再显形 */
+    mdHideAvatar: false,
     /** #11 搜索栏随滚动收起 */
     searchCollapsed: false,
     /* #11 折叠成图标后点一下要能展开并聚焦输入框 */
@@ -1567,11 +1570,18 @@ _clockNow() {
    * 「同一个头像直接到位」，而不是先闪一块白色矩形（用户实锤）。 */
   _flyMemberAvatar(from) {
     if (!from) return;
+    // 共享元素 / 动效关：不播飞行，头像直接原位显示（不做隐藏，避免空白停留）
+    if (!motion.on('shared')) return;
     const self = this;
-    // 等弹层内容渲染出来再量详情里的头像位置
+    // 🔴 立即隐藏详情里的真实头像：消除「先在详情里显示一下 → 再消失 → 才飞入」的闪现。
+    //    由 ghost 顶着从列表飞入，落地（onSeArrive）后再把真实头像显形。
+    this.setData({ mdHideAvatar: true });
+    // 等入场动画彻底静止再量落点：面板 scale 240ms + 卡片 3D 翻转 420ms。
+    // 若中途量，boundingClientRect 会量到 scale/rotate 途中的视觉矩形 ⇒ 落点偏。
     setTimeout(function () {
+      if (!self.data.mDetailShow) { self.setData({ mdHideAvatar: false }); return; }
       wx.createSelectorQuery().select('#md-av').boundingClientRect(function (to) {
-        if (!to || !to.width) return;
+        if (!to || !to.width) { self.setData({ mdHideAvatar: false }); return; }
         self.setData({
           seShow: true,
           seClosing: false,
@@ -1581,26 +1591,39 @@ _clockNow() {
           seTo: { left: to.left, top: to.top, width: to.width, height: to.height }
         });
       }).exec();
-    }, 300);
+    }, 500);
   },
 
   /* 关闭：头像先**飞回**列表里的那一行，卡片再收起
    * （用户实锤「关闭后还是跟以前一样从底部收回，而不是和共享转场一样收缩回」）。 */
   onMDetailClose() {
-    const from = this.data.mDetailFrom;
     const self = this;
-    if (!from) { this.setData({ mDetailShow: false, mDetailFlipped: false }); return; }
-    wx.createSelectorQuery().select('#md-av').boundingClientRect(function (to) {
-      if (!to || !to.width) { self.setData({ mDetailShow: false, mDetailFlipped: false }); return; }
+    const m = this.data.mDetail;
+    // 立即隐藏真实头像（飞行期间由 ghost 顶着，避免与 ghost 重影）
+    this.setData({ mdHideAvatar: true });
+    // 🔴 关闭：重测当前列表行矩形作落点（不用打开时缓存的 mDetailFrom，
+    //    防列表滚动/布局变化导致飞回坐标失效）。详情头像此时已静止（卡片早开完）。
+    const id = m && m.id;
+    const q = wx.createSelectorQuery();
+    q.select('#md-av').boundingClientRect();
+    if (id) q.select('#mb-av-' + id).boundingClientRect();
+    q.exec(function (res) {
+      const from = res && res[0];
+      const to = (id && res[1]) || self.data.mDetailFrom;
+      if (!from || !from.width || !to || !to.width) {
+        // 量不到（如卡片翻到背面，正面 display:none）：直接关，不飞，头像恢复正常
+        self.setData({ mDetailShow: false, mDetailFlipped: false, mdHideAvatar: false });
+        return;
+      }
       self.setData({
         seShow: true,
         seClosing: true,
         seMode: 'avatar',
-        seAvatar: (self.data.mDetail && self.data.mDetail.avatarUrl) || '',
-        seFrom: { left: to.left, top: to.top, width: to.width, height: to.height },
-        seTo: from
+        seAvatar: (m && m.avatarUrl) || '',
+        seFrom: { left: from.left, top: from.top, width: from.width, height: from.height },
+        seTo: { left: to.left, top: to.top, width: to.width, height: to.height }
       });
-    }).exec();
+    });
   },
 
   /* #8 详情头部 3D 翻转：同步受控状态 */
@@ -1642,10 +1665,11 @@ _clockNow() {
   /* ghost 落地：打开方向 = 隐藏 ghost 让真实头像显示；关闭方向 = 把卡片收掉 */
   onSeArrive() {
     if (this.data.seClosing) {
-      this.setData({ seShow: false, seClosing: false, mDetailShow: false, mDetailFlipped: false });
+      this.setData({ seShow: false, seClosing: false, mDetailShow: false, mDetailFlipped: false, mdHideAvatar: false });
       return;
     }
-    this.setData({ seShow: false });
+    // 打开落地：ghost 让位，真实头像显形
+    this.setData({ seShow: false, mdHideAvatar: false });
   },
 
   /* ---------------- 主页关注（v0.7.17 需求⑥；卡片 2026-11-14 迁回首页） ----------------

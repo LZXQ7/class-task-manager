@@ -1,3 +1,4 @@
+icons/arrow-left-brand.svg
 icons/arrow-left-gray.svg
 icons/arrow-left-white.svg
 icons/arrow-right-gray.svg
@@ -9,6 +10,7 @@ icons/calendar-brand.svg
 icons/calendar-check-brand.svg
 icons/calendar-check-gray.svg
 icons/calendar-gray.svg
+icons/check-brand.svg
 icons/check-circle-green.svg
 icons/check-green.svg
 icons/check-white.svg
@@ -17,6 +19,7 @@ icons/chevron-down-gray.svg
 icons/chevron-up-gray.svg
 icons/clock-orange.svg
 icons/close-gray.svg
+icons/cloud-off-gray.svg
 icons/cloud-off-line.svg
 icons/copy-brand.svg
 icons/copy-gray.svg
@@ -26,6 +29,7 @@ icons/download-gray.svg
 icons/download-white.svg
 icons/edit-brand.svg
 icons/edit-gray.svg
+icons/empty-box-gray.svg
 icons/empty-box-line.svg
 icons/grid-brand.svg
 icons/grid-gray.svg
@@ -45,6 +49,7 @@ icons/pause-white.svg
 icons/people-brand.svg
 icons/people-gray.svg
 icons/photo-gray.svg
+icons/photo-plus-brand.svg
 icons/photo-plus-gray.svg
 icons/play-brand.svg
 icons/play-white.svg
@@ -62,6 +67,8 @@ icons/share-brand.svg
 icons/share-gray.svg
 icons/share-white.svg
 icons/swap-brand.svg
+icons/tab-classinfo-off.svg
+icons/tab-classinfo-on.svg
 icons/tab-duty-off.svg
 icons/tab-duty-on.svg
 icons/tab-home-off.svg
@@ -72,6 +79,7 @@ icons/tab-timetable-off.svg
 icons/tab-timetable-on.svg
 icons/tag-brand.svg
 icons/tag-gray.svg
+icons/trash-gray.svg
 icons/trash-red.svg
 icons/undo-gray.svg
 icons/warn-orange.svg

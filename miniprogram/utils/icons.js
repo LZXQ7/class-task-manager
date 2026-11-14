@@ -82,6 +82,10 @@ const ICONS = {
     "green": {
       "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/check-green.svg",
       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMwMEI0MkEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNC41IDEyLjVsNSA1TDE5LjUgNyIvPjwvc3ZnPg=="
+    },
+    "brand": {
+      "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/check-brand.svg",
+      "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMzMzcwRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNC41IDEyLjVsNSA1TDE5LjUgNyIvPjwvc3ZnPg=="
     }
   },
   "undo": {
@@ -148,6 +152,10 @@ const ICONS = {
     "white": {
       "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/arrow-left-white.svg",
       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNGRkZGRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTUgNS41IDguNSAxMiAxNSAxOC41Ii8+PC9zdmc+"
+    },
+    "brand": {
+      "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/arrow-left-brand.svg",
+      "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMzMzcwRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTUgNS41IDguNSAxMiAxNSAxOC41Ii8+PC9zdmc+"
     }
   },
   "chevron-down": {
@@ -328,6 +336,10 @@ const ICONS = {
     "gray": {
       "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/photo-plus-gray.svg",
       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNDOUNERDQiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzLjUiIHk9IjciIHdpZHRoPSIxNCIgaGVpZ2h0PSIxMy41IiByeD0iMiIvPjxjaXJjbGUgY3g9IjcuOCIgY3k9IjExLjIiIHI9IjEuNCIvPjxwYXRoIGQ9Ik0zLjUgMTcuNSA4IDEzLjVsMy40IDMgMi42LTIgMy41IDMiLz48cGF0aCBkPSJNMTggMi44djYiLz48cGF0aCBkPSJNMTUgNS44aDYiLz48L3N2Zz4="
+    },
+    "brand": {
+      "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/photo-plus-brand.svg",
+      "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMzMzcwRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIzLjUiIHk9IjciIHdpZHRoPSIxNCIgaGVpZ2h0PSIxMy41IiByeD0iMiIvPjxjaXJjbGUgY3g9IjcuOCIgY3k9IjExLjIiIHI9IjEuNCIvPjxwYXRoIGQ9Ik0zLjUgMTcuNSA4IDEzLjVsMy40IDMgMi42LTIgMy41IDMiLz48cGF0aCBkPSJNMTggMi44djYiLz48cGF0aCBkPSJNMTUgNS44aDYiLz48L3N2Zz4="
     }
   },
   "scan": {
@@ -344,6 +356,10 @@ const ICONS = {
     "red": {
       "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/trash-red.svg",
       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNGNTNGM0YiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNCA3aDE2Ii8+PHBhdGggZD0iTTkgN1Y0aDZ2MyIvPjxwYXRoIGQ9Ik02LjUgNyA3LjQgMTlhMS41IDEuNSAwIDAgMCAxLjUgMS40aDYuMmExLjUgMS41IDAgMCAwIDEuNS0xLjRMMTcuNSA3Ii8+PC9zdmc+"
+    },
+    "gray": {
+      "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/trash-gray.svg",
+      "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM4NjkwOUMiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNCA3aDE2Ii8+PHBhdGggZD0iTTkgN1Y0aDZ2MyIvPjxwYXRoIGQ9Ik02LjUgNyA3LjQgMTlhMS41IDEuNSAwIDAgMCAxLjUgMS40aDYuMmExLjUgMS41IDAgMCAwIDEuNS0xLjRMMTcuNSA3Ii8+PC9zdmc+"
     }
   },
   "edit": {
@@ -382,12 +398,20 @@ const ICONS = {
     "line": {
       "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/empty-box-line.svg",
       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNEREUxRTgiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNCAxMCAxMiA2bDggNC04IDR6Ii8+PHBhdGggZD0iTTQgMTB2N2w4IDQgOC00di03Ii8+PHBhdGggZD0iTTEyIDE0djciLz48L3N2Zz4="
+    },
+    "gray": {
+      "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/empty-box-gray.svg",
+      "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM4NjkwOUMiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNCAxMCAxMiA2bDggNC04IDR6Ii8+PHBhdGggZD0iTTQgMTB2N2w4IDQgOC00di03Ii8+PHBhdGggZD0iTTEyIDE0djciLz48L3N2Zz4="
     }
   },
   "cloud-off": {
     "line": {
       "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/cloud-off-line.svg",
       "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNEREUxRTgiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNy41IDE4aDkuM2EzLjcgMy43IDAgMCAwIC42LTcuMzVBNS41IDUuNSAwIDAgMCA2LjcgOC45Ii8+PHBhdGggZD0iTTQgNGwxNiAxNiIvPjwvc3ZnPg=="
+    },
+    "gray": {
+      "cloud": "cloud://<YOUR_ENV_ID>.636c-<YOUR_ENV_ID>-1306168169/icons/cloud-off-gray.svg",
+      "data": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM4NjkwOUMiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNy41IDE4aDkuM2EzLjcgMy43IDAgMCAwIC42LTcuMzVBNS41IDUuNSAwIDAgMCA2LjcgOC45Ii8+PHBhdGggZD0iTTQgNGwxNiAxNiIvPjwvc3ZnPg=="
     }
   },
   "search-empty": {
