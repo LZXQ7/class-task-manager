@@ -606,8 +606,27 @@ Page({
    */
   onFabRadial(e) {
     const t = (e && e.changedTouches && e.changedTouches[0]) || (e && e.touches && e.touches[0]) || null;
-    const x = t ? t.clientX : 90;
-    const y = t ? t.clientY : 600;
+    const x = t && typeof t.clientX === 'number' ? t.clientX : 0;
+    const y = t && typeof t.clientY === 'number' ? t.clientY : 0;
+    /* 🔴 2026-11-14 真机实测：长按事件的 changedTouches **可能为空**（自动化派发、
+     *   部分机型也不带触点）⇒ 坐标取到 (0,0) ⇒ 弧形菜单被放到屏幕左上角、
+     *   藏在导航栏后面，**用户完全看不到菜单**。
+     *   兜底：坐标无效时量按钮自己的矩形，取中心点。 */
+    if (!x && !y) {
+      const self = this;
+      wx.createSelectorQuery()
+        .select('.fab-menu-btn')
+        .boundingClientRect(function (r) {
+          if (!r || !r.width) { console.error('[timetable] 量 FAB 矩形失败，弧形菜单不展开'); return; }
+          self._openFabRadial(r.left + r.width / 2, r.top + r.height / 2);
+        })
+        .exec();
+      return;
+    }
+    this._openFabRadial(x, y);
+  },
+
+  _openFabRadial(x, y) {
     const items = [{ key: 'ALL', label: '全部' }, { key: 'A', label: 'A 组' }, { key: 'B', label: 'B 组' }];
     if (this.data.isSuper) items.push({ key: 'SHIFT', label: '临时调课' });
     this.setData({ fmShow: true, fmX: x, fmY: y, fmItems: items });

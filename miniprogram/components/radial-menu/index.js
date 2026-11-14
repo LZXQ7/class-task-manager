@@ -52,11 +52,30 @@ Component({
       const n = items.length;
       const start = typeof this.properties.spanStart === 'number' ? this.properties.spanStart : -SPAN / 2;
       const end = typeof this.properties.spanEnd === 'number' ? this.properties.spanEnd : SPAN / 2;
+      /* 🔴 2026-11-14 真机实测：触发点贴着屏幕边（左下角那个按钮）时，
+       *   弧上的菜单项会被推到屏幕外（用户实锤「全部」被裁掉一半）。
+       *   ⇒ 算完 dx/dy 后把**菜单项中心**夹进视口（留出菜单项自身的一半宽高）。
+       *   视口尺寸取 wx.getSystemInfoSync（拿不到就用 375x667 兜底）。 */
+      let vw = 375, vh = 667;
+      try {
+        const s = wx.getSystemInfoSync ? wx.getSystemInfoSync() : null;
+        if (s && s.windowWidth) { vw = s.windowWidth; vh = s.windowHeight; }
+      } catch (e) {
+        console.error('[radial-menu] 取不到视口尺寸，菜单项可能被裁', e);
+      }
+      const HALF = 40;    // 菜单项半宽/半高（120rpx ≈ 64px，留余量）
+      const MARGIN = 6;   // 距屏幕边至少留一点
+      const cx = Number(this.properties.x) || 0;
+      const cy = Number(this.properties.y) || 0;
+      const minX = MARGIN + HALF - cx, maxX = vw - MARGIN - HALF - cx;
+      const minY = MARGIN + HALF - cy, maxY = vh - MARGIN - HALF - cy;
       const arranged = items.map((it, i) => {
         const t = n <= 1 ? 0.5 : i / (n - 1);
         const ang = (start + (end - start) * t) * Math.PI / 180;
-        const dx = Math.cos(ang) * r;
-        const dy = Math.sin(ang) * r;
+        let dx = Math.cos(ang) * r;
+        let dy = Math.sin(ang) * r;
+        if (maxX >= minX) dx = Math.min(Math.max(dx, minX), maxX);
+        if (maxY >= minY) dy = Math.min(Math.max(dy, minY), maxY);
         const o = Object.assign({}, it);
         o.dx = Math.round(dx);
         o.dy = Math.round(dy);

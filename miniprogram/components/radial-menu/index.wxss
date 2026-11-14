@@ -41,6 +41,8 @@
   min-width: 120rpx;
   height: 120rpx;
   padding: 0 20rpx;
+  /* 「临时调课」这类四字项不许折成两行（折行会把圆角方块撑高、弧线参差） */
+  white-space: nowrap;
   border-radius: 24rpx;
   background: var(--sheet-solid, rgba(255,255,255,0.94));
   border: 1rpx solid var(--sheet-edge, rgba(255,255,255,0.95));
