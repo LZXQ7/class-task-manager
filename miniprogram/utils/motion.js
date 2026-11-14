@@ -250,6 +250,26 @@ function enabledClasses() {
   return enabledClassList().join(' ');
 }
 
+/**
+ * 组件自挂的 flag 类名（v1.0.9.0 补）
+ * ------------------------------------------------------------
+ * 🔴 为什么需要它：`theme.rootClass()` 把 `m-<key>` 挂到**页面根节点**，
+ *    而 `app.wxss` 是全局样式，`.m-press .btn` 这类后代选择器能穿透到页面里的任意元素 ——
+ *    但**自定义组件的 wxss 是组件作用域**：组件内部的节点看不到页面根节点上的类
+ *    （祖先选择器跨组件边界不命中，这是小程序样式的硬边界）。
+ *    所以 nav-bar / aura-card / bottom-sheet 这些组件想用「按 flag 开关」的样式，
+ *    必须**自己算一次**并把类挂到**自己的根节点**上。
+ *
+ * 用法：组件 attached 里 `this.setData({ glassClass: motion.flagClass('glass') })`，
+ *       wxml 根节点写 `class="nav {{glassClass}}"`。
+ *
+ * @param {string} key FLAGS 的键
+ * @returns {string} 'm-<key>' 或 ''（关掉时返回空串，不留空 class）
+ */
+function flagClass(key) {
+  return on(key) ? 'm-' + key : '';
+}
+
 module.exports = {
   DUR,
   EASE,
@@ -264,5 +284,6 @@ module.exports = {
   staggerDelay,
   enabledClassList,
   enabledClasses,
+  flagClass,
   clamp
 };

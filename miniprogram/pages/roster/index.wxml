@@ -144,7 +144,10 @@
   <view style="height:40rpx"></view>
 
   <!-- 成员详情 -->
-  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}" detents="{{[0.45]}}">
+  <!-- #3 三档吸附 + 自动初始档：detents = [0.45, 0.72]（面板下移比例，两档中间档）；
+       auto-detent 让它打开时自动停在「能显示最后按钮的最低档」（见 bottom-sheet 的 _autoDetent）。
+       ⚠️ 2026-11-14 之前这里只有 detents=[0.45] 且没给 initialDetent ⇒ 每次都全开。 -->
+  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}" detents="{{[0.45, 0.72]}}" auto-detent="{{true}}">
     <view wx:if="{{mDetail}}" class="mb-detail">
       <flip-detail flipped="{{mDetailFlipped}}" bind:flip="onMDetailFlip">
         <view slot="front">
@@ -419,7 +422,13 @@
               data-has="0"
               catchtap="onLeaveImageTap"
             >传假条</view>
-            <view class="lv-cancel {{leaveBusy ? 'busy' : ''}}" data-id="{{item.leaveId}}" catchtap="onLeaveCancelTap">撤销</view>
+            <!-- #9 长按确认（2026-11-14）：撤销改为**按住 700ms** 才真的执行，
+                 不再「点一下就弹确认卡片」（用户实锤原话）。
+                 hold-confirm 用 bare 模式：不套圆壳，保留原来的「撤销」文字按钮外观，
+                 按住时按钮下方走一条进度条；松手未满则平滑回退。 -->
+            <hold-confirm bare id="{{item.leaveId}}" duration="{{700}}" bind:confirm="onLeaveCancelHold">
+              <view class="lv-cancel {{leaveBusy ? 'busy' : ''}}">撤销</view>
+            </hold-confirm>
           </view>
         </view>
         <view wx:if="{{leaveListB.length}}" class="lv-grp">
@@ -450,7 +459,13 @@
               data-has="0"
               catchtap="onLeaveImageTap"
             >传假条</view>
-            <view class="lv-cancel {{leaveBusy ? 'busy' : ''}}" data-id="{{item.leaveId}}" catchtap="onLeaveCancelTap">撤销</view>
+            <!-- #9 长按确认（2026-11-14）：撤销改为**按住 700ms** 才真的执行，
+                 不再「点一下就弹确认卡片」（用户实锤原话）。
+                 hold-confirm 用 bare 模式：不套圆壳，保留原来的「撤销」文字按钮外观，
+                 按住时按钮下方走一条进度条；松手未满则平滑回退。 -->
+            <hold-confirm bare id="{{item.leaveId}}" duration="{{700}}" bind:confirm="onLeaveCancelHold">
+              <view class="lv-cancel {{leaveBusy ? 'busy' : ''}}">撤销</view>
+            </hold-confirm>
           </view>
         </view>
         <view wx:if="{{!leaveList.length}}" class="lv-empty">今天没有人请假</view>

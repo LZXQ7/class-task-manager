@@ -1144,6 +1144,30 @@ _clockNow() {
   },
 
   /** 撤销某条请假（并恢复区间内的值日） */
+  /**
+   * #9 长按确认入口（2026-11-14）：请假「撤销」改为**按住 700ms** 才执行。
+   * ⚠️ 与 onLeaveCancelTap 的区别：**不再弹二次确认框** —— 长按本身就是确认动作，
+   *    再弹一次「确定吗？」等于把确认做了两遍（用户原话：「还是点击弹出确认卡片」）。
+   *    弹层里的那条确认框仍保留给其它入口（历史列表等）。
+   */
+  onLeaveCancelHold(e) {
+    if (this.data.leaveBusy) return;
+    const leaveId = Number((e && e.detail && e.detail.id) || 0);
+    if (!leaveId) return;
+    this.setData({ leaveBusy: true });
+    api.leaveCancel({ leaveId }, { toast: false })
+      .then((r) => {
+        this.setData({ leaveBusy: false });
+        util.toast((r && r.restored) ? ('已撤销，恢复 ' + r.restored + ' 条值日') : '已撤销');
+        this._loadLeaveBoard();
+        this._loadLeaveHistory();
+      })
+      .catch((err) => {
+        this.setData({ leaveBusy: false });
+        util.toast((err && err.message) ? err.message : '撤销失败');
+      });
+  },
+
   onLeaveCancelTap(e) {
     if (this.data.leaveBusy) return;
     const leaveId = Number(e.currentTarget.dataset.id);

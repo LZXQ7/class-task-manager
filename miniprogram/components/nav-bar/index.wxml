@@ -1,7 +1,8 @@
-<view class="nav {{fixed ? 'nav-fixed' : ''}} {{border ? 'nav-border' : ''}} {{scrolled ? 'is-scrolled' : ''}}" style="background:{{bg}}">
-  <!-- #7 液态玻璃：亮度自适应叠层（仅 m-glass 生效）。滚动时由 .is-scrolled 把这块半透明白/冷色
-       叠层淡入，模拟「玻璃变厚、内容被磨砂」；不滚动时透明，只剩常驻的折射高光。
-       pointer-events:none 不挡交互；z-index:0 压在文字（z-index:2）之下。 -->
+<view class="nav {{fixed ? 'nav-fixed' : ''}} {{border ? 'nav-border' : ''}} {{scrolled ? 'is-scrolled' : ''}} {{glassClass}}" style="background:{{bg}}">
+  <!-- #7 液态玻璃（v1.0.9.0 重做）：{{glassClass}} 由组件自己算（m-glass），挂在**本组件根节点**上
+       —— 自定义组件的 wxss 是组件作用域，页面根节点的同名类传不进来（见 index.js 的 glassClass 注释）。
+       玻璃 = 背衬模糊 + 边缘折射高光 + 缓慢横扫的镜面反射带（不是固定高光）。
+       遮罩层 pointer-events:none 不挡交互；z-index:0 压在文字（z-index:2）之下。 -->
   <view class="nav-tint"></view>
   <view class="nav-status" style="height:{{statusBarHeight}}px"></view>
   <view class="nav-body" style="height:{{bodyHpx ? bodyHpx + 'px' : '88rpx'}}">

@@ -1039,18 +1039,113 @@ button::after { border: none; }
  * ⚠️ 纯 CSS 动效只动 transform / opacity（合成层），不碰布局；减弱动效下全部退化为无动画。
  * ============================================================ */
 
-/* ---------- #6 按钮按压：scale(0.96) 物理压缩 + 深度内阴影；释放时弹簧超调回弹 ----------
- * 参数来自 utils/motion.js：press 弹簧 = 283ms / ζ=0.62 / 过冲 8.4% → cubic-bezier(.34,1.4,.64,1)。
- * 按下用快压（90ms ease-out），释放用弹簧曲线回弹，手感是「按下去实、松手弹一下」。
- * 覆盖既有 .btn 的 transition（.m-press .btn 权重 0-2-0 > .btn 0-1-0），不影响其它属性。 */
+/* ---------- #6 按钮按压：scale(0.96) 物理压缩 + 释放超调回弹 ----------
+ * 🔴 2026-11-14 重写（用户实锤「按钮回弹无效果」）：
+ *   原实现只覆盖 `.btn / .np-btn / .dlg-btn / .btn-ghost / .tap / .icon-btn` 六个类，
+ *   且触发靠 `:active` —— 小程序 `<view>` 上 `:active` 不可靠（只有原生控件稳定生效），
+ *   而信息页「班级成员 / 班费 / 请假审批」这些真实行按钮用的是 `.ci-item`，
+ *   **既不在名单里、也不靠 :active** ⇒ 用户点下去什么反应都没有。
+ *
+ * 改用小程序**原生 hover-class 机制**（全站已在用：hover-class="tap-hover" / "press-dim"）：
+ *   · 按下  → hover 类生效，元素带 scale(0.96) + 深度内阴影；hover 类里把过渡压到 90ms
+ *            （按下去必须「立刻实」，慢半拍会像卡）。
+ *   · 释放  → hover 类在 60ms 后被摘掉，元素回到基态；**基态挂着 283ms 超调曲线**
+ *            （press 弹簧 = 283ms / ζ=0.62 / 过冲 8.4% → cubic-bezier(.34,1.4,.64,1)），
+ *            于是「松手弹一下」再停稳。
+ *   ⚠️ 基态过渡必须挂在**宿主元素自己的类**上（hover 类被摘掉后过渡属性就取基态的），
+ *      所以下面要列出全站所有带 hover-class 的宿主类名 —— 由 scripts/_collect-press-hosts.js
+ *      从各页 wxml 精确抽取（不是猜的）。新增带 hover-class 的元素时记得回来补这一串。
+ *   ⚠️ 这些宿主类分散在多个页面 wxss 里，但 transition 是**基态属性**，
+ *      写在 app.wxss 里对全站生效（app.wxss 是全局样式）。 */
+
+/* 按下态：压缩 + 深度内阴影；过渡压到 90ms 让「按下去」干脆利落 */
+.m-press .tap-hover,
+.m-press .press-dim {
+  transform: scale(0.96);
+  box-shadow: inset 0 3rpx 8rpx rgba(29, 33, 41, 0.14);
+  transition-duration: 90ms;
+  transition-timing-function: ease-out;
+}
+
+/* 基态过渡：释放时按超调曲线弹回（283ms / 过冲 8.4%）
+ * ⚠️ 这里刻意用**属性选择器** `[class~="xxx"]` 而不是 `.xxx`：
+ *    check-wxss 的「跨页借类」保护靠「app.wxss 里出现的类名 = 全局类」来判定，
+ *    而这些宿主类大多只存在于**页面级 wxss**（WXSS 是页面作用域）。
+ *    若在 app.wxss 里写 `.mb-row { … }`，等于把页面级类**提升成全局**，
+ *    破坏「A 页用 B 页定义的类」这条事故防线（作业详情页就栽过：名单竖排堆叠）。
+ *    `[class~="mb-row"]` 匹配语义与 `.mb-row` 完全一致（class 列表含该词即命中），
+ *    但它**不是类定义**，不会污染全局作用域。
+ *    ⚠️ WXSS 支持属性选择器（项目规范第 5 条：`+` 与 `[attr~=value]` 可用，
+ *       只有 `~` 兄弟选择器会让真机 fatal）。 */
+.m-press [class~="ab-icp"],
+.m-press [class~="ab-row"],
+.m-press [class~="bind-primary"],
+.m-press [class~="bind-scan"],
+.m-press [class~="bind-switch"],
+.m-press [class~="chip-motion"],
+.m-press [class~="ci-cd-add"],
+.m-press [class~="ci-cd-row"],
+.m-press [class~="ci-copy"],
+.m-press [class~="ci-item"],
+.m-press [class~="ci-manage"],
+.m-press [class~="cl-code-copy"],
+.m-press [class~="cl-copy"],
+.m-press [class~="cl-fchip"],
+.m-press [class~="cl-random"],
+.m-press [class~="cl-toggle"],
+.m-press [class~="dt-add-back"],
+.m-press [class~="dt-add-sess"],
+.m-press [class~="dt-addrow"],
+.m-press [class~="dt-admin-btn"],
+.m-press [class~="dt-group-row"],
+.m-press [class~="dt-hist"],
+.m-press [class~="dt-row"],
+.m-press [class~="fab"],
+.m-press [class~="fab-menu-btn"],
+.m-press [class~="fab-menu-item"],
+.m-press [class~="fee-rec-append"],
+.m-press [class~="fee-rec-del"],
+.m-press [class~="fee-rec-img"],
+.m-press [class~="hw-card"],
+.m-press [class~="im-cancel"],
+.m-press [class~="lh-body"],
+.m-press [class~="lh-cls"],
+.m-press [class~="lh-more"],
+.m-press [class~="lv-chip"],
+.m-press [class~="lv-del"],
+.m-press [class~="lv-goto"],
+.m-press [class~="lv-link"],
+.m-press [class~="lv-thumb-wrap"],
+.m-press [class~="lv-upload"],
+.m-press [class~="mb-row"],
+.m-press [class~="mn-row"],
+.m-press [class~="mn-stat-cell"],
+.m-press [class~="np-btn"],
+.m-press [class~="np-img-x"],
+.m-press [class~="nt-clear"],
+.m-press [class~="nt-fold"],
+.m-press [class~="nt-img"],
+.m-press [class~="nt-trash"],
+.m-press [class~="pick-btn"],
+.m-press [class~="picked-change"],
+.m-press [class~="pin-cell"],
+.m-press [class~="rb-cell"],
+.m-press [class~="rb-cell-lv"],
+.m-press [class~="rc-clear"],
+.m-press [class~="rc-restore"],
+.m-press [class~="ta-btn"],
+.m-press [class~="ta-refresh"],
+.m-press [class~="tappable"],
 .m-press .btn,
 .m-press .np-btn,
 .m-press .dlg-btn,
 .m-press .btn-ghost,
 .m-press .tap,
 .m-press .icon-btn {
-  transition: transform 200ms cubic-bezier(.34, 1.4, .64, 1), box-shadow .15s ease, opacity .12s ease;
+  transition: transform 283ms cubic-bezier(.34, 1.4, .64, 1), box-shadow .18s ease, background .18s ease, opacity .18s ease;
 }
+
+/* 兜底：原生控件上 :active 仍然有效（button / input 等），保留快压 */
 .m-press .btn:active,
 .m-press .np-btn:active,
 .m-press .dlg-btn:active,
@@ -1062,14 +1157,9 @@ button::after { border: none; }
   transition: transform 90ms ease-out, box-shadow 90ms ease-out, opacity .1s ease;
 }
 @media (prefers-reduced-motion: reduce) {
-  .m-press .btn,
-  .m-press .np-btn,
-  .m-press .dlg-btn,
-  .m-press .btn-ghost,
-  .m-press .tap,
-  .m-press .icon-btn {
-    transition: opacity .1s ease;
-  }
+  .m-press .tap-hover,
+  .m-press .press-dim { transform: none; box-shadow: none; }
+  .m-press .btn, .m-press .np-btn, .m-press .dlg-btn, .m-press .btn-ghost, .m-press .tap, .m-press .icon-btn { transition: opacity .1s ease; }
   .m-press .btn:active, .m-press .np-btn:active, .m-press .dlg-btn:active, .m-press .btn-ghost:active, .m-press .tap:active, .m-press .icon-btn:active { transform: none; box-shadow: none; }
 }
 

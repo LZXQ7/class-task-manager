@@ -63,12 +63,17 @@ function glareOf(inst) {
   return inst.selectComponent('.tg-glare');
 }
 
-/** 🔴 空 catch 是事故放大器：降级必须让逻辑层 console.error 落一条日志 */
+/** 🔴 2026-11-14 修正：告警一律走 **ownerInstance.callMethod**。
+ *  原实现用 event.instance.callMethod —— event.instance 在 WXS 里可能不是自定义组件实例，
+ *  真机上直接抛「Call method on a non-custom component node is invalid.
+ *    ... try not to call method on 'event.instance', but on 'ownerInstance' instead」。
+ *  ownerInstance = 本 WXS 所在的组件实例，才是合法的调用对象。 */
 function warnOnce(inst, state, key, reason) {
   if (state[key]) return;
   state[key] = true;
-  if (inst.callMethod) {
-    inst.callMethod('onTiltWarn', { reason: reason });
+  var owner = state.owner || inst;
+  if (owner && owner.callMethod) {
+    owner.callMethod('onTiltWarn', { reason: reason });
   }
 }
 
@@ -85,6 +90,9 @@ function paint(inst, state) {
       opacity: f2(state.light)
     });
   } else {
+    /* 拿不到 glare 节点（selectComponent 只能选中自定义组件，而 .tg-glare 是普通 view）
+       ⇒ 流光的逐帧跟随失效。**光效本身由 index.wxss 的 CSS 动画兜底**（呼吸柔光），
+       所以这里只是降级告警，不再是「效果完全消失」。 */
     warnOnce(inst, state, 'warnedGlare', 'glare descriptor unavailable');
   }
 }
@@ -163,6 +171,10 @@ module.exports = {
     /* dataset 里的 enabled 是 1 / 0（或字符串 '0'），用宽松相等兼容两种，不写 String() */
     if (d.enabled == 0) return;
     var state = inst.getState();
+    /* ownerInstance = 本组件实例（只有它能安全调 callMethod；
+       event.instance 在 WXS 里可能不是自定义组件实例，调用会抛
+       「Call method on a non-custom component node is invalid」）。 */
+    state.owner = ownerInstance;
     stopSpring(state);
     var r = rectOf(inst);
     if (!r) {

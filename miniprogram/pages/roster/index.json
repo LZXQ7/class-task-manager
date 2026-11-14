@@ -10,6 +10,7 @@
     "skeleton": "/components/skeleton/index",
     "empty-state": "/components/empty-state/index",
     "flip-detail": "/components/flip-detail/index",
+    "hold-confirm": "/components/hold-confirm/index",
     "shared-element": "/components/shared-element/index"
   }
 }

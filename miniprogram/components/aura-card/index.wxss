@@ -1,20 +1,33 @@
-/* #4 旋转渐变描边 + 中性纯色呼吸背光 */
+/* #4 旋转描边 + 中性纯色呼吸背光（v1.0.9.0 重做）
+ * ============================================================
+ * 用户两次实锤：「光不要彩色，要简单平淡的。纯色」+「Card 背光描边看不出来」。
+ * 上一版的毛病：
+ *   ① 描边是**蓝紫双色 conic**（#4C8DFF → #7C5CFF）—— 正是用户不要的「彩色」。
+ *      现在改成**单一中性冷灰**（#9AA3B2）的明暗渐变：同一色相、只改透明度，
+ *      看着是一圈「玻璃边缘反光」，不是彩色光晕。
+ *   ② 描边只有 1.5rpx 宽，在浅色卡上等于隐形 ⇒ 现在加粗到 2.5rpx。
+ *   ③ 背光只在卡片**底部** 90rpx 高的一条 ⇒ 看着像「卡片下面有块脏东西」。
+ *      现在改成**居中、覆盖整卡、比卡略大**的一团柔光，从四边均匀透出。
+ * ⚠️ 描边壳 overflow:hidden：把放大的 conic 环裁成细边（不裁会整圈露出来）。
+ * ⚠️ 背光在壳**外面**（.aura-card-wrap 里、.aura-border 之前）—— 放进裁切壳会被一起裁掉。
+ */
 .aura-card-wrap { position: relative; }
 
-/* 描边壳：overflow:hidden 把放大的 conic 环裁成 1.5rpx 细边（不裁会整圈露出来变成彩色光晕） */
+/* 描边壳：overflow:hidden 把放大的 conic 环裁成 2.5rpx 细边 */
 .aura-border {
   position: relative;
   z-index: 1;
   border-radius: var(--r-lg);
-  padding: 1.5rpx;
+  padding: 2.5rpx;
   overflow: hidden;
   isolation: isolate;
 }
+/* 纯色描边环：单一中性冷灰，明暗起伏 = 玻璃边缘反光，不混彩 */
 .aura-ring {
   position: absolute;
   inset: -60%;
   z-index: 0;
-  background: conic-gradient(from 0deg, transparent 0deg, #4C8DFF 55deg, #7C5CFF 110deg, transparent 175deg, transparent 240deg, #4C8DFF 300deg, transparent 360deg);
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(154,163,178,0.95) 45deg, rgba(154,163,178,0.35) 95deg, transparent 155deg, transparent 245deg, rgba(154,163,178,0.95) 295deg, transparent 360deg);
 }
 .aura-border.is-spin .aura-ring { animation: auraSpin 5.5s linear infinite; }
 @keyframes auraSpin { to { transform: rotate(360deg); } }
@@ -22,29 +35,35 @@
 .aura-inner {
   position: relative;
   z-index: 1;
-  border-radius: calc(var(--r-lg) - 1.5rpx);
+  border-radius: calc(var(--r-lg) - 2.5rpx);
   background: var(--bg-card, #FFFFFF);
   padding: 20rpx;
 }
 
-/* 中性纯色背光：只动 opacity + scale 做呼吸，不混彩（用户要求纯色平淡）。
-   放在壳外、与卡片重叠居中且更大，从四边（尤其底部）透出柔光。 */
+/* 中性纯色背光：居中、比卡略大的一团柔光，从四边均匀透出（只动 opacity + scale 呼吸）。
+   放在壳外、与卡片重叠居中 —— 放壳内会被 overflow:hidden 裁掉。 */
 .aura-glow {
   position: absolute;
-  left: 4%;
-  right: 4%;
-  bottom: -28rpx;
-  height: 90rpx;
+  left: 50%;
+  top: 50%;
+  width: 116%;
+  height: 116%;
   z-index: 0;
+  margin-left: -58%;
+  margin-top: -58%;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, var(--aura-glow, rgba(140,146,160,.5)), transparent 72%);
-  filter: blur(22px);
+  background: radial-gradient(ellipse at center, var(--aura-glow, rgba(150,156,170,0.55)) 0%, rgba(150,156,170,0.22) 42%, transparent 70%);
+  filter: blur(26px);
   opacity: 0.55;
 }
 .aura-glow.is-breath { animation: auraBreath 3.4s ease-in-out infinite; }
 @keyframes auraBreath {
   0%, 100% { opacity: 0.42; transform: scale(0.94); }
   50%      { opacity: 0.95; transform: scale(1.06); }
+}
+/* 深色下背光换成更亮的冷白，压深底才有「玻璃内透光」的观感 */
+.t-dark .aura-glow {
+  background: radial-gradient(ellipse at center, var(--aura-glow-dark, rgba(178,190,214,0.42)) 0%, rgba(150,166,200,0.16) 42%, transparent 70%);
 }
 
 /* 减弱动效：静止描边 + 静止光 */

@@ -1143,3 +1143,22 @@
 /* ===== 关注的学生卡片的样式（.pin-*）2026-11-14 随卡片迁到 pages/home/index.wxss =====
  * ⚠️ 别在这里留「以防万一」的副本：WXSS 页面级作用域，本页已不再渲染 .pin-card，
  *    留着只会让下一个人以为卡片还在这儿、改错文件。 */
+
+/* ===== #8 3D 翻转弹层（2026-11-14）=====
+ * 用户实锤：「点击后还是跳转到成员分组界面，而不是直接 3D 翻转弹层出来」。
+ * 改法：成员详情卡入场时**绕 Y 轴翻出来**（perspective + rotateY + scale），
+ *   而不是「面板从底部升起来、内容原地不动」。
+ * ⚠️ 触发时机：.mb-detail 由 wx:if="{{mDetail}}" 控制，每次打开都是新节点 ⇒ 动画自动重播，
+ *    不用手动加 class（加了反而容易和 mDetailShow 的时序打架）。
+ * ⚠️ 只动 transform / opacity（合成层），不触发布局与重绘。 */
+.mb-detail {
+  transform-style: preserve-3d;
+  animation: mbFlipIn 420ms cubic-bezier(.2, 1.12, .32, 1) backwards;
+}
+@keyframes mbFlipIn {
+  from { opacity: 0; transform: perspective(900px) rotateY(-72deg) translateX(36rpx) scale(.86); }
+  to   { opacity: 1; transform: perspective(900px) rotateY(0) translateX(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mb-detail { animation: none; }
+}

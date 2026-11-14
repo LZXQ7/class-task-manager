@@ -1,7 +1,7 @@
 <!-- #9 长按确认（Hold to Confirm）：按住沿边缘画进度环，未满松手平滑回退，满则触发危险操作。
      用法：<hold-confirm label="删除" disabled="{{...}}" bind:confirm="onDanger" /> -->
 <view
-  class="hc-btn {{holding ? 'is-holding' : ''}} {{confirmed ? 'is-done' : ''}}"
+  class="hc-btn {{holding ? 'is-holding' : ''}} {{confirmed ? 'is-done' : ''}} {{bare ? 'hc-bare' : ''}}"
   style="--p:{{p}}"
   bindtouchstart="onStart"
   bindtouchend="onEnd"

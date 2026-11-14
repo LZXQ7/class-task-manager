@@ -1,4 +1,5 @@
 const { DARK_MODE_ENABLED } = require('../../utils/config');
+const motion = require('../../utils/motion');
 
 Component({
   options: { addGlobalClass: true, multipleSlots: true },
@@ -54,6 +55,15 @@ Component({
   data: {
     statusBarHeight: 20,
     padRight: 0,            // 右侧插槽避让微信胶囊按钮的像素宽度
+    /**
+     * #7 液态玻璃：**组件自挂**的 flag 类。
+     * 🔴 为什么不能靠页面根节点的 `m-glass`（2026-11-14 修）：
+     *    小程序自定义组件的 wxss 是**组件作用域**，祖先选择器跨组件边界不命中 ——
+     *    页面根节点上的 `m-glass` 永远传不进本组件，导致整套玻璃高光样式形同虚设
+     *    （用户实锤「导航栏玻璃无效果，背景只是单纯模糊了」）。
+     *    所以组件必须自己算一次并挂到**自己的根节点**上（见 utils/motion.js flagClass）。
+     */
+    glassClass: '',
     /** 导航行高覆盖值（px）。0 = 沿用 wxss 里的 88rpx —— 只有窄屏机型算出
      *  「88rpx 装不下胶囊」时才下发数值，见 attached 里的推导。 */
     bodyHpx: 0,
@@ -95,6 +105,9 @@ Component({
       const m = (app && app.navMetrics)
         ? app.navMetrics()
         : { statusBarHeight: 20, padRight: 0, windowWidth: 375, windowHeight: 812 };
+      // #7 液态玻璃：自己算 flag 类（组件作用域拿不到页面根节点的类）
+      const glassClass = motion.flagClass('glass');
+      if (glassClass !== this.data.glassClass) this.setData({ glassClass });
       // 主题按钮的居中偏移：24rpx（导航行 88 − 按钮 64）的一半，按屏宽折成 px
       const topPx = Math.round((m.windowWidth || 375) * 24 / 750 / 2);
       /**

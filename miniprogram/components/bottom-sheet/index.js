@@ -117,12 +117,20 @@ Component({
      * 传 `[]`（默认）= 维持原两态行为，关闭阈值仍是面板一半（不动旧弹层手感）。
      * 松手时按「当前位移 + 速度投影」吸附到最近的档（橡皮筋已在拖动期处理）。
      */
-    detents: { type: Array, value: () => [] },
-    /**
+    detents: { type: Array, value: () => [] },    /**
      * 打开时直接停在某个档（而非全开）。值为 detents 里的一个比例，如 0.45。
      * 仅当 detents 非空时有效：面板先滑入到全开，再平滑落到该档（peek 半开）。
      */
-    initialDetent: { type: Number, value: 0 }
+    initialDetent: { type: Number, value: 0 },
+    /**
+     * #3 自动初始档（2026-11-14）：打开时自动停在「**能显示最后一个按钮的最低档**」。
+     * 需求原话：「抽屉打开默认按能显示最后按钮的最低位置」——
+     *   也就是：别一上来就全开（下面的按钮全露着、费滚动），
+     *   也别关到把最后一个按钮藏进屏幕外（点不到）。
+     * 做法：量出正文内容高度 → 在 detents 里挑**下移最多、但正文仍露得全**的那一档。
+     * ⚠️ 量不到内容高度时**保持全开**（宁可多露，绝不能把操作按钮藏没）。
+     */
+    autoDetent: { type: Boolean, value: false }
   },
   data: {
     safeBottom: 0, tabbarPx: 49, capStyle: '', bodyMaxH: '',
@@ -167,20 +175,24 @@ Component({
       if (v) {
         this._openedAt = Date.now();
         this._scheduleResize();
-        // #3 三档吸附：打开时直接停在某个档（peek 半开）。面板先滑入到全开，再平滑落到该档。
-        // 仅当 detents 非空 + initialDetent 在 (0,1) 内才生效（默认 0 = 全开，维持旧行为）。
-        if (this.properties.initialDetent && this.properties.detents && this.properties.detents.length) {
-          const ip = Number(this.properties.initialDetent);
-          if (ip > 0 && ip < 1) {
-            const self = this;
-            this._initDetentTimer = setTimeout(function () {
-              self._initDetentTimer = null;
-              self._measure();
-              const h = self._panelH || 480;
+        // #3 三档吸附（2026-11-14 重做）：打开时落到某个档（peek 半开）。
+        //   面板先滑入到全开，再平滑落到该档（等入场 transform 走完，避免两段动画打架）。
+        //   选档优先级：① 显式 initialDetent ② autoDetent 自动挑「能显示最后一个按钮的最低档」
+        //   ③ 都没有 → 全开（维持旧行为）。
+        if (this.properties.detents && this.properties.detents.length) {
+          const self = this;
+          this._initDetentTimer = setTimeout(function () {
+            self._initDetentTimer = null;
+            self._measure();
+            const h = self._panelH || 480;
+            const ip = Number(self.properties.initialDetent) || 0;
+            if (ip > 0 && ip < 1) {
               const py = ip * h;
               if (py > 0 && py < h) self._springTo(py, self._applied || 0, 0);
-            }, 280);   // 等入场 transform（240ms）走完再落档，避免两段动画打架
-          }
+              return;
+            }
+            if (self.properties.autoDetent) self._autoDetent(h);
+          }, 280);   // 等入场 transform（240ms）走完再落档，避免两段动画打架
         }
         // v1.0.7：入场结束后量一次真实高度，作为**夹紧值**的初值。
         // 不夹的话，第一次筛选时没有可插值的起点 ⇒ 首筛不播动画；
@@ -591,6 +603,56 @@ Component({
       //    阈值放宽到 0.92h，否则拖到半开 peek（0.45h）会被误判关闭。快速下滑轻扫（v > FLICK_V）无论哪种都关。
       if ((!hasDetents && y > h / 2) || y > h * closeRatio || v > FLICK_V) { this._closeOut(y, h, v); return; }
       this._snapTo(y, h, v, hasDetents);
+    },
+
+    /**
+     * #3 自动初始档：挑「**下移最多、但正文最后一个按钮仍露得出**」的那一档。
+     * ------------------------------------------------------------
+     * 档位语义（别搞反）：detents 里存的是**面板下移比例** d ——
+     *   d = 0   → 全开（露出 100%）
+     *   d = 0.45 → 面板下移 45% → 只露出 55%
+     *   d 越大 = 关得越低 = 露得越少。
+     * 所以「最低位置」= **d 最大**的那一档，只要正文还露得全。
+     *
+     * ⚠️ 量不到正文高度（老基础库不支持 fields.scrollHeight / 节点还没渲染完）时
+     *    **直接返回、保持全开** —— 宁可多露，也绝不能把「保存/删除」这类
+     *    操作按钮藏到屏幕外点不到（那比"开得太高"严重得多）。
+     *
+     * @param {number} h 面板总高（px）
+     */
+    _autoDetent(h) {
+      const self = this;
+      const ds = (this.properties.detents || []).filter(function (d) {
+        return typeof d === 'number' && d > 0 && d < 1;
+      });
+      if (!ds.length) return;
+      const q = wx.createSelectorQuery().in(this);
+      q.select('.sheet-body-inner').fields({ scrollHeight: true, rect: true }, function () {});
+      q.select('.sheet-drag').boundingClientRect(function () {});
+      q.select('.sheet-footer').boundingClientRect(function () {});
+      q.exec(function (res) {
+        const body = res && res[0];
+        const head = res && res[1];
+        const foot = res && res[2];
+        if (!body || !body.scrollHeight || !body.height) return;   // 量不到 → 保持全开
+        const contentH = body.scrollHeight;
+        const headH = head && head.height ? head.height : 0;
+        const footH = foot && foot.height ? foot.height : 0;
+        // 从最关到最开地试：第一个「正文露得全」的档就是答案
+        const sorted = ds.slice().sort(function (a, b) { return b - a; });
+        for (let i = 0; i < sorted.length; i++) {
+          const d = sorted[i];
+          const visible = (1 - d) * h - headH - footH;
+          if (visible >= contentH) {
+            self._springTo(d * h, self._applied || 0, 0);
+            return;
+          }
+        }
+        // 最低的档也露不全 → 用 detents 里最小的那一档（比全开省，但仍尽量多露）
+        let minD = ds[0];
+        for (let i = 1; i < ds.length; i++) { if (ds[i] < minD) minD = ds[i]; }
+        self._springTo(minD * h, self._applied || 0, 0);
+      });
     },
 
     /** 计算吸附档的像素位置：全开(0) + 各中间档(detents × 面板高)。detents 空则只有 [0]。 */

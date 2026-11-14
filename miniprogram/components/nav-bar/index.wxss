@@ -151,21 +151,21 @@
 }
 
 /* ============================================================
- * #7 液态玻璃导航栏（v1.0.9.0）
+ * #7 液态玻璃导航栏（v1.0.9.0 重做）
  * ------------------------------------------------------------
- * 「液态玻璃」= 常驻的**边缘折射高光** + 随滚动增强的**镜面反射 + 磨砂叠层**（亮度自适应）。
- * 仅当根节点带 `m-glass`（motion.on('glass') 为 true）时生效 —— 关 FLAG / 远程覆盖 /
- * 低端机降级时这套样式整段不命中，导航退回改动前的普通玻璃，无需改代码。
- *
- * ⚠️ 分层（z-index，避免高光盖住标题文字）：
- *   .nav-tint(0) → ::after 折射高光(1) → .nav-status/.nav-body(2)
- * ⚠️ 底座背景是 inline style 的 `var(--glass-bg-strong)`（见 index.js 的 bg 属性），
- *   类选择器改不了 inline 底色，所以「加厚」改用 .nav-tint 叠层淡入来表达，
- *   而不是直接改 .nav 的 background（那会被 inline 覆盖、且破坏深色模式令牌）。
- * ⚠️ 不支持 backdrop-filter 的机型：折射高光与 tint 都没意义（背后没东西可折射），
- *   @supports not 里直接 display:none；这与项目「玻璃双降级」纪律一致（check-glass 管）。
+ * 用户实锤：「导航栏玻璃无效果，背景只是单纯模糊了，没有折射，边缘高光也是固定的。」
+ * 三个病根，逐个修：
+ *   ① **类挂错作用域**：原写 `.m-glass .nav::after`，而 `m-glass` 挂在**页面根节点**上。
+ *      小程序自定义组件的 wxss 是组件作用域，页面根节点的类穿不透组件边界 ⇒ 整段永不命中。
+ *      现在由组件自己算 `m-glass` 挂到**自己的根节点**（见 index.js 的 glassClass），
+ *      选择器同步改成 `.nav.m-glass`。
+ *   ② **只是模糊、没有折射**：真液态玻璃 = 背衬模糊 **+ 边缘折射高光**（玻璃把边缘的背景
+ *      「折」进来）+ **镜面反射带**。现在 ::before 画四边内嵌折射高光，
+ *      ::after 画一条缓慢横扫的镜面带 —— 这才是「折射」。
+ *   ③ **高光是固定的**：镜面带用 keyframes 周期横扫（7.5s），滚动时再整体加亮，
+ *      不再是一块钉死在那里的白条。
  * ============================================================ */
-.nav { position: relative; }
+.nav { position: relative; overflow: hidden; }
 .nav-tint {
   position: absolute;
   left: 0; right: 0; top: 0; bottom: 0;
@@ -178,30 +178,52 @@
 .nav-status,
 .nav-body { position: relative; z-index: 2; }
 
-.m-glass .nav::after {
+/* ① 边缘折射：玻璃四周把背景「折」进来的内嵌高光（不是一条固定白线，是四边各一条） */
+.nav.m-glass::before {
   content: '';
   position: absolute;
-  left: 0; right: 0; top: 0;
-  height: 96rpx;
+  left: 0; right: 0; top: 0; bottom: 0;
   z-index: 1;
   pointer-events: none;
-  /* 顶部镜面反射：从亮到透明，模拟玻璃把环境光「折」进边缘 */
-  background: linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0) 70%);
-  opacity: .42;
+  box-shadow: inset 12rpx 0 16rpx -12rpx rgba(255, 255, 255, 0.62), inset -12rpx 0 16rpx -12rpx rgba(255, 255, 255, 0.52), inset 0 12rpx 18rpx -14rpx rgba(255, 255, 255, 0.55), inset 0 -12rpx 18rpx -14rpx rgba(255, 255, 255, 0.42);
+  opacity: .85;
   transition: opacity .3s ease;
 }
-.t-dark .m-glass .nav::after {
-  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0) 70%);
+.t-dark .nav.m-glass::before {
+  box-shadow: inset 12rpx 0 16rpx -12rpx rgba(190, 210, 245, 0.24), inset -12rpx 0 16rpx -12rpx rgba(190, 210, 245, 0.18), inset 0 12rpx 18rpx -14rpx rgba(190, 210, 245, 0.22), inset 0 -12rpx 18rpx -14rpx rgba(190, 210, 245, 0.14);
 }
-/* 滚动后：折射高光更亮 + 磨砂叠层淡入（亮度自适应） */
-.m-glass .nav.is-scrolled::after { opacity: .95; }
-.m-glass .nav.is-scrolled .nav-tint { opacity: .55; }
+
+/* ② 镜面反射带：一条斜向高光缓慢横扫全幅 —— 动态，不是固定的 */
+.nav.m-glass::after {
+  content: '';
+  position: absolute;
+  left: -45%; right: -45%; top: -20%; bottom: -20%;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(104deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.06) 40%, rgba(255, 255, 255, 0.34) 50%, rgba(255, 255, 255, 0.06) 60%, rgba(255, 255, 255, 0) 70%);
+  transform: translateX(-52%);
+  opacity: .5;
+  animation: glassSheen 7.5s cubic-bezier(.45, 0, .25, 1) infinite;
+}
+.t-dark .nav.m-glass::after {
+  background: linear-gradient(104deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.04) 40%, rgba(210, 225, 255, 0.18) 50%, rgba(255, 255, 255, 0.04) 60%, rgba(255, 255, 255, 0) 70%);
+}
+@keyframes glassSheen {
+  0%, 10%   { transform: translateX(-52%); opacity: .30; }
+  45%, 60%  { transform: translateX(52%);  opacity: .85; }
+  100%      { transform: translateX(52%);  opacity: .30; }
+}
+
+/* 滚动后：折射更实、磨砂叠层淡入（亮度自适应） */
+.nav.m-glass.is-scrolled::before { opacity: 1; }
+.nav.m-glass.is-scrolled::after { opacity: .95; }
+.nav.m-glass.is-scrolled .nav-tint { opacity: .55; }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .nav-tint { display: none; }
-  .m-glass .nav::after { display: none; }
+  .nav.m-glass::before, .nav.m-glass::after { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .nav-tint,
-  .m-glass .nav::after { transition: none; }
+  .nav-tint { transition: none; }
+  .nav.m-glass::after { animation: none; opacity: .45; }
 }

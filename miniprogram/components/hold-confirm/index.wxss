@@ -46,3 +46,36 @@
 @media (prefers-reduced-motion: reduce) {
   .hc-btn { transition: none; }
 }
+
+/* ---------- 裸模式（bare）：借用长按计时，不套圆壳 ----------
+ * 用途：把页面里已有的小文字按钮（撤销/删除）升级成「长按确认」，
+ *      但**保持它原本的视觉** —— 外面那层 .hc-btn 必须完全透明、不占位。
+ * 进度提示改成按钮下方一条 4rpx 的进度条（宽度 = 按住进度）。 */
+.hc-btn.hc-bare {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  display: inline-block;
+  vertical-align: middle;
+}
+.hc-btn.hc-bare .hc-track,
+.hc-btn.hc-bare .hc-ring { display: none; }
+.hc-btn.hc-bare .hc-label {
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  display: block;
+}
+.hc-btn.hc-bare::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -6rpx;
+  height: 4rpx;
+  width: calc(var(--p, 0) * 1%);
+  border-radius: 999rpx;
+  background: var(--danger, #F53F3F);
+  opacity: .95;
+}
+.hc-btn.hc-bare.is-done::after { background: var(--success, #00B42A); }

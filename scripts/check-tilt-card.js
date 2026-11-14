@@ -76,6 +76,11 @@ function harness(opts) {
     callMethod(name, args) { h.calls.push({ name, args }); },
     requestAnimationFrame(fn) { h.frames.push(fn); }
   };
+  /* ownerInstance = WXS 所在组件的实例（2026-11-14 起告警一律走它）。
+     ⚠️ 真机上对 event.instance 调 callMethod 会抛
+        「Call method on a non-custom component node is invalid」，
+        所以探针也必须把 owner 传进去，否则测不到真实的告警路径。 */
+  h.owner = { callMethod(name, args) { h.calls.push({ name, args }); } };
   return h;
 }
 
@@ -178,10 +183,11 @@ function behaviorProbes(wxsSrc) {
   /* 降级必须留日志（铁律：空 catch / 静默降级是事故放大器） */
   {
     const h1 = harness({ noRect: true });
-    api.onStart(ev(h1, 20, 100), null);
+    api.onStart(ev(h1, 20, 100), h1.owner);
     out.rectWarn = h1.calls.some(c => c.name === 'onTiltWarn');
+    /* 拿不到 glare 节点时必须**降级告警**（流光的逐帧跟随会失效，光效由 CSS 兜底） */
     const h2 = harness({ noGlare: true });
-    api.onStart(ev(h2, 20, 100), null);
+    api.onStart(ev(h2, 20, 100), h2.owner);
     out.glareWarn = h2.calls.some(c => c.name === 'onTiltWarn') && h2.styles.length > 0;
   }
 
