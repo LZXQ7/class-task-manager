@@ -157,6 +157,12 @@ Page({
     rmY: 0,
     rmSid: 0,
     rmItems: [],
+    /* #10 弧形菜单（左下角按钮）的独立状态：与「长按格子」的 rm* 完全分开，
+       两处菜单各开各的，不会互相抢 show。 */
+    fmShow: false,
+    fmX: 0,
+    fmY: 0,
+    fmItems: [],
     shiftSessionIndex: 0,
     shiftKind: 'OFF',          // OFF=本周不上；MOVE=改到别的格子
     shiftToDay: 1,
@@ -591,6 +597,33 @@ Page({
    * 不锁点击、不等动画 —— 半途再点一下能立刻反向收起。
    */
   onMenuToggle() { this.setData({ fabMenuOpen: !this.data.fabMenuOpen }); },
+
+  /**
+   * #10 弧形菜单（2026-11-14）：点左下角按钮 → 从按钮位置**径向展开**。
+   * ⚠️ 与「长按格子」那条弧形菜单是**两套独立状态**（fm* / rm*），
+   *    两处菜单各开各的，不会互相抢 show。
+   * ⚠️ 坐标取触点（视口坐标）；radial-menu 内部是 fixed 定位，同一坐标系 ✓。
+   */
+  onFabRadial(e) {
+    const t = (e && e.changedTouches && e.changedTouches[0]) || (e && e.touches && e.touches[0]) || null;
+    const x = t ? t.clientX : 90;
+    const y = t ? t.clientY : 600;
+    const items = [{ key: 'ALL', label: '全部' }, { key: 'A', label: 'A 组' }, { key: 'B', label: 'B 组' }];
+    if (this.data.isSuper) items.push({ key: 'SHIFT', label: '临时调课' });
+    this.setData({ fmShow: true, fmX: x, fmY: y, fmItems: items });
+  },
+
+  onFabRadialClose() { this.setData({ fmShow: false }); },
+
+  /** 弧形菜单选中：换组复用 onMenuGroup，进调课复用 onMenuShift */
+  onFabSelect(e) {
+    const key = String((e && e.detail && e.detail.key) || '');
+    this.setData({ fmShow: false });
+    if (!key) return;
+    if (key === 'SHIFT') { this.onMenuShift(); return; }
+    // onMenuGroup 读 e.currentTarget.dataset.key ⇒ 这里造一个同形状的伪事件
+    this.onMenuGroup({ currentTarget: { dataset: { key: key } } });
+  },
 
   /** 选 A 组 / B 组：切换视图（不重新请求，直接重建网格）+ 收起菜单 */
   onMenuGroup(e) {

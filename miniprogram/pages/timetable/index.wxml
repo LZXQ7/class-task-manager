@@ -216,35 +216,26 @@
        ⚠️ fixed 元素：必须留在 .wk-swipe 动画容器**外面**（transform 建包含块）。
        ⚠️ 「临时调课」只给超管；普通同学看到的菜单里就是 A 组 / B 组两行。 -->
   <view wx:if="{{!loading && ((canSwitchClass && classList.length) || (!isCounselor && hasTimetable))}}" class="fab-menu {{fabMenuOpen ? 'open' : ''}}">
-    <view class="fab-menu-list">
-      <view data-pressable
-        wx:if="{{canSwitchClass}}"
-        class="fab-menu-item {{viewGroup === 'ALL' ? 'on' : ''}}"
-        hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
-        data-key="ALL" bindtap="onMenuGroup"
-      >全部</view>
-      <view data-pressable
-        class="fab-menu-item {{viewGroup === 'A' ? 'on' : ''}}"
-        hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
-        data-key="A" bindtap="onMenuGroup"
-      >A 组</view>
-      <view data-pressable
-        class="fab-menu-item {{viewGroup === 'B' ? 'on' : ''}}"
-        hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
-        data-key="B" bindtap="onMenuGroup"
-      >B 组</view>
-      <view data-pressable
-        wx:if="{{isSuper}}"
-        class="fab-menu-item"
-        hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
-        bindtap="onMenuShift"
-      >临时调课</view>
-    </view>
-    <view data-pressable class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onMenuToggle">
+    <!-- #10 弧形菜单（2026-11-14）：点左下角按钮 → 从按钮位置**径向展开**，
+         不再是「向上展开的纵向列表」（旧 .fab-menu-list 已删，视觉与手感都换掉）。
+         ⚠️ 外层 .fab-menu 的 wx:if 守卫是 check-timetable-local 逐入口点名的
+            （辅导员不得进调课/编辑入口），改结构时**别动这个守卫**。
+         ⚠️ fab-menu 是 fixed 且无 transform ⇒ 里面 fixed 定位的 radial-menu 相对视口 ✓。
+         ⚠️ fm* 是「按钮菜单」的独立状态，与「长按格子」那条弧形菜单（rm*）完全分开，
+            两处菜单不会互相抢 show。 -->
+    <view data-pressable class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFabRadial">
       <app-icon name="grid" variant="brand" size="{{34}}" />
       <text class="fab-menu-t">{{viewGroup === 'ALL' ? '全部' : (viewGroup === 'B' ? 'B 组' : 'A 组')}}</text>
       <app-icon name="{{fabMenuOpen ? 'chevron-down' : 'chevron-up'}}" variant="gray" size="{{26}}" />
     </view>
+    <radial-menu
+      show="{{fmShow}}"
+      x="{{fmX}}"
+      y="{{fmY}}"
+      items="{{fmItems}}"
+      bind:close="onFabRadialClose"
+      bind:select="onFabSelect"
+    />
   </view>
 
   <!-- 新增课次 FAB：人人可见，**一律是添加个人选修课**（仅自己可见，含超管 —— 2026-10-16 用户定口径）；
