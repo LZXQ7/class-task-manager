@@ -389,6 +389,12 @@
 }
 
 /* ---------- 首页请假卡（1.0.5 追加，需求①②） ---------- */
+/* v1.0.10.7 容器共享转场的源容器：转场期隐藏整张卡（含 tilt-card 描边），
+   ⚠️ 用 visibility 而不是 opacity：.st-item 的入场 @keyframes 会写 opacity，
+      opacity 样式会被 animation 覆盖 ⇒ 源卡会「藏不住」，放大时看到两张卡。
+   ⚠️ visibility:hidden 保留布局占位 ⇒ 页面不跳、缩回时落点仍在原处。 */
+.lh-src-box { width: 100%; }
+.lh-src-hidden { visibility: hidden; }
 .leave-home { display: flex; flex-direction: column; padding: 24rpx 32rpx; }
 .lh-head { display: flex; align-items: baseline; justify-content: space-between; }
 .lh-title { font-size: 30rpx; font-weight: 600; color: var(--text-1); }

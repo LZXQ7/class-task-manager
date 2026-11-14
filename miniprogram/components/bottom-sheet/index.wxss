@@ -101,6 +101,12 @@
 @media (prefers-reduced-motion: reduce) {
   .sheet-root.float .sheet-panel,
   .sheet-root.float .sheet-panel.up { transform: none; }
+  /* v1.0.10.7：JS 侧已经在「减弱动效」时整段不播容器转场，这里是双保险 ——
+     万一远程配置/旧基础库让 morph 类漏进来，也不许再跑 240ms 的淡入淡出。 */
+  .sheet-root.morph .sheet-mask,
+  .sheet-root.morph .sheet-drag,
+  .sheet-root.morph .sheet-spring,
+  .sheet-root.morph .sheet-footer { transition: none; }
 }
 /* v0.7.25：更高面板 —— 内容确实装不进 78vh 的弹层用（如成员详情） */
 .sheet-panel.tall { max-height: 92vh; }
@@ -205,4 +211,42 @@
   flex-shrink: 0;
   padding: 20rpx 32rpx 0;
   border-top: 2rpx solid var(--sheet-line, rgba(229, 230, 235, 0.7));
+}
+
+/* ===== v1.0.10.7 容器共享元素转场（originRect） ======================
+   真实 .sheet-panel 从源卡片矩形非等比 FLIP 放大成详情面板，transform 由 JS
+   内联下发（见 index.js 的 morphStyle）；这里只负责**与它同步**的两件事：
+
+   ① 背景遮罩：改由 morphCls 接管淡入，不再只靠 .sheet-mask.in ——否则遮罩跟着
+      popup-anim 的 active 在 20ms 起跑，而容器要等 selector query 回来才起跑，
+      两者会错开一拍，看着就是「背景先暗、卡片后长」。现在两者同起点、同终点、
+      同 240ms、同 cubic-bezier(.22,.61,.36,1)，才是一个连续的整体。
+      ⚠️ 选择器要压过 `.sheet-mask.in`（0,2,0）：`.sheet-root.morph .sheet-mask` 是 0,3,0。
+   ② 内容：非等比 scale(sx,sy) 会把文字横向/纵向拉变形 ⇒ 变换期间整体淡出，
+      落定后淡入（container transform 的标准做法，不是可选项）。
+      ⚠️ 两个方向**各写一条** transition（MEMORY 铁律）：加类时浏览器用目标态的
+         过渡，去类时用默认态的；只写一条会让「缩回」变成瞬间消失。
+
+   ⚠️ 全文件 transition 时长必须都是 .24s：scripts/check-popup-anim.js 会扫
+      `transition: …s` 并逐条与 popup-anim.js 的 DURATION=240 比对。
+   ==================================================================== */
+.sheet-root.morph .sheet-mask {
+  opacity: 0;
+  transition: opacity .24s cubic-bezier(.22, .61, .36, 1);
+}
+.sheet-root.morph.morph-show .sheet-mask {
+  opacity: 1;
+  transition: opacity .24s cubic-bezier(.22, .61, .36, 1);
+}
+.sheet-root.morph .sheet-drag,
+.sheet-root.morph .sheet-spring,
+.sheet-root.morph .sheet-footer {
+  opacity: 0;
+  transition: opacity .24s cubic-bezier(.22, .61, .36, 1);
+}
+.sheet-root.morph.morph-show .sheet-drag,
+.sheet-root.morph.morph-show .sheet-spring,
+.sheet-root.morph.morph-show .sheet-footer {
+  opacity: 1;
+  transition: opacity .24s cubic-bezier(.22, .61, .36, 1);
 }

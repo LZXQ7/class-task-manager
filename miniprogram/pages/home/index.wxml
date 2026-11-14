@@ -282,9 +282,15 @@
 
       <!-- 首页请假卡（1.0.5 追加，需求①②）：班委/超管看本班请假人数、辅导员看各班总数；
            普通同学不可见（决策④）。点击 → 按 A/B 组列出请假的人（班委可撤销）。
-           🔴 2026-11-14 同款 tilt-card 试点包裹。 -->
+           🔴 2026-11-14 同款 tilt-card 试点包裹。
+           🔴 2026-11-15 v1.0.10.7 容器共享转场：外包一层 .lh-src-box 只为了在
+              转场期把**整张源卡**（含 tilt-card 的描边）藏起来，避免放大时看到两张卡；
+              visibility:hidden 保留占位 ⇒ 页面不跳、缩回时落点还在原处。 -->
+      <view wx:if="{{showLeaveHome}}" class="lh-src-box {{leaveHomeCardHidden ? 'lh-src-hidden' : ''}}">
+      <!-- ⚠️ tilt-card 自己也要带 wx:if：check-tilt-card.js 的「首页请假卡已接入」
+           判据钉在 `<tilt-card wx:if="{{showLeaveHome}}">` 这行上，别把条件挪走。 -->
       <tilt-card wx:if="{{showLeaveHome}}">
-      <view class="card mt16 leave-home st-item st-5">
+      <view id="leave-home-card" class="card mt16 leave-home st-item st-5">
         <block wx:if="{{leaveHomeMode === 'class'}}">
           <view class="lh-head">
             <text class="lh-title">{{leaveHomeClassName ? leaveHomeClassName + ' · 请假' : '本班请假'}}</text>
@@ -336,6 +342,7 @@
         </block>
       </view>
       </tilt-card>
+      </view>
 
       <view class="foot-space"></view>
     </view>
@@ -376,7 +383,7 @@
   <!-- 首页请假名单（1.0.5 追加）：按 A/B 组列出请假的人。
        1.0.6：行尾的「撤销」换成「假条 / 传假条」（撤销**只在请假登记里保留**，
        首页离登记入口太远、误触成本高），弹层底部补一行去登记的入口把撤销接回来。 -->
-  <bottom-sheet show="{{leaveHomeShow}}" title="{{leaveHomeViewTitle}}" bind:close="onLeaveHomeClose">
+  <bottom-sheet show="{{leaveHomeShow}}" title="{{leaveHomeViewTitle}}" origin-rect="{{leaveHomeOriginRect}}" bind:close="onLeaveHomeClose">
     <view class="lv">
       <view wx:if="{{demo}}" class="lv-pin">体验版常驻 · 展示演示班全部请假（含过期/未来）</view>
       <view wx:if="{{leaveHomeListA.length}}" class="lv-grp">

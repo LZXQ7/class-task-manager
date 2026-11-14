@@ -281,8 +281,39 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   ⑤ 新增门禁 `scripts/check-timetable-own-group.js`：vm 真加载两个方法体做 14 项断言 + 6 条变异自证
  *      （无组回落 ALL / 旧过滤写法 / 写回 `|| 'ALL'` / 不调 `_defaultViewGroup` / 删「全部」按钮 / 标签回退，均须翻红）。
  *   纯前端改动，无需重部署云函数。
+ * **`1.0.10.7`** = 首页「本班请假」卡 → 详情的**容器共享元素转场**（2026-11-15，用户口径）：
+ *   用户要求「点击直接从原本的框展开放大，也就是从卡片到详情页的共享元素转场，
+ *   背景与卡片容器做连续平滑缩放」。项目里原有两类转场都不合用：
+ *   `dialog.morphRect` 是胶囊 → 对话框的**等比近似**缩放（只按宽度比），
+ *   `shared-element` 是 ghost 色块/头像**飞过去**（真实容器不动）。
+ *   修法（真实面板容器做非等比 FLIP）：
+ *   ① `utils/morph.js` 抽纯几何真源：`sheetTargetRect(win,size)` 用「窗口尺寸 + 面板**布局**尺寸」
+ *      推终态矩形；`flipFromTo(from,to)` 算 dx/dy/sx/sy；`morphInline()` 生成内联
+ *      `transform-origin:0 0` + `translate() scale(sx,sy)` + 圆角 + 过渡。
+ *      ⚠️ 终态尺寸必须走 `fields({size:true})`：面板此刻带 transform，
+ *         `boundingClientRect` 给的是视觉矩形 ⇒ 1.0.10.4 头像转场「落点偏移」同款坑。
+ *      ⚠️ 曲线用 `EASE.out` 而不是 `fluid`：容器缩放不允许超调（会越出终态露边），
+ *         且必须与 `.sheet-mask` / `.sheet-panel` 的 .24s 同步。
+ *   ② `bottom-sheet` 增加**可选** `originRect` 属性（默认 null ⇒ 全站其它弹层零影响）：
+ *      `mounted` observer 三拍驱动「起点无过渡 → 下一帧终点带 240ms 过渡 →
+ *      转场结束清内联样式交还 class」（不清会一直压住拖拽/高度过渡）。
+ *      关闭时 `active` observer 反向缩回源矩形；拖拽关闭不叠加 morph。
+ *      窗口尺寸只取 app 缓存（`app.navMetrics()` / `globalData`），组件里不调同步度量 API。
+ *      守卫：`motion.on('shared')` 远程开关 + `theme.prefersReducedMotion()`。
+ *      转场期间禁用拖拽（内联 transform 会与 dragStyle 互相覆盖）。
+ *   ③ WXSS：遮罩改由 `morphCls` 接管淡入（不再只跟 popup-anim 的 active，
+ *      否则背景会比容器早一拍），与内容一起用同一条 .24s 曲线双向过渡；
+ *      非等比缩放期间内容整体淡出，落定后淡入，避免文字被拉伸。
+ *   ④ 首页：`_openLeaveSheet()` 量 `#leave-home-card` 的矩形，与 `show` **同批**下发
+ *      （不同批 ⇒ 组件 mounted 时读到 null ⇒ 静默降级成默认升起，最难查的那种）；
+ *      转场期用 `visibility:hidden` 藏起整张源卡（不用 opacity：`.st-item` 入场动画会写 opacity）；
+ *      关闭时恢复显示，缩回才有落点。班委与辅导员两个入口共用同一套。
+ *   ⑤ 新增门禁 `scripts/check-leave-morph.js`：vm 真跑几何闭环（非等比 / 还原源矩形 /
+ *      起点无过渡 / 终点 240ms 无超调）+ 静态契约 + 12 条变异自证。
+ *   全量门禁 **124 过 / 14 历史存量红**（基线 123/14 + 新门禁 1 绿），零回归。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.10.6';
+const APP_VERSION = '1.0.10.7';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

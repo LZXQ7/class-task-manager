@@ -1,5 +1,7 @@
 const popupAnim = require('../popup-anim');
 const motion = require('../../utils/motion');
+const theme = require('../../utils/theme');
+const morph = require('../../utils/morph');
 
 /**
  * 通用底部弹层（全站唯一实现）
@@ -135,7 +137,18 @@ Component({
      * 做法：量出正文内容高度 → 在 detents 里挑**下移最多、但正文仍露得全**的那一档。
      * ⚠️ 量不到内容高度时**保持全开**（宁可多露，绝不能把操作按钮藏没）。
      */
-    autoDetent: { type: Boolean, value: false }
+    autoDetent: { type: Boolean, value: false },
+    /**
+     * v1.0.10.7 容器共享元素转场（Shared Element Transition）的**源矩形**（px，视口坐标）。
+     * 只有传了它本组件才播「从那张卡片连续放大成详情」；不传 ⇒ 走原来的底部升起，
+     * 全站其它弹层**零影响**。rect = { left, top, width, height }。
+     *
+     * ⚠️ 为什么放在 bottom-sheet 而不是另造组件：详情本来就是弹层，复用同一份
+     *    滚动/拖拽/遮罩/高度过渡能力；新造组件会把这些能力复制一遍并产生两套真源。
+     * ⚠️ 与 dialog 的 morphRect 区别：那次是「胶囊 → 对话框」的等比近似缩放；
+     *    这次是**容器级非等比 FLIP**，宽/高/位置三维都要精确对齐源卡片。
+     */
+    originRect: { type: Object, value: null }
   },
   data: {
     safeBottom: 0, tabbarPx: 49, capStyle: '', bodyMaxH: '',
@@ -160,11 +173,37 @@ Component({
     // ⚠️ 单位是 px：这里由 JS 下发，与 wxss 里 rpx 无关。
     resizeStyle: '',
     resizeCls: '',        // '' = 无过渡；'animating' = 正在过渡（wxss 里给 .sheet-panel 挂高度过渡）
+    /* ---- v1.0.10.7 容器共享元素转场（originRect） ----
+     * morphStyle：面板内联 transform（几何随源矩形变化，只能由 JS 下发，不能写死在 wxss）。
+     * morphCls  ：'morph' = 转场中（内容交叉淡出 + 遮罩与容器同曲线缩放）；'' = 常态。
+     * ⚠️ 两者都只在传了 originRect 的弹层上才会被置位 ⇒ 其它弹层完全走原逻辑。 */
+    morphStyle: '',
+    morphCls: ''
   },
   observers: {
+    /* v1.0.10.7 容器共享元素转场：节点刚挂载（mounted true）时先算几何、把面板
+       「钉」到源卡片矩形，再由 _morphPrepare 的下一拍切到终态。
+       ⚠️ 不传 originRect 的弹层整段不执行 ⇒ 全站其它弹层零影响。
+       ⚠️ 不能挂在 show 的 observer 上：那时节点还没创建，量不到面板布局尺寸；
+          且 check-popup-anim.js 钉死了 show observer 必须只调 animSync()。 */
+    mounted(v) {
+      if (v) this._morphPrepare();
+      else this._morphReset();
+    },
     /* 关闭（active 落回 false）后清掉拖拽内联样式 —— 否则残留的 inline opacity/transform
        会盖住 class 规则（下一次打开时面板停在半途）。 */
     active(v) {
+      /* v1.0.10.7 关闭：详情面板**连续缩回**源卡片矩形（遮罩同拍淡出，见 wxss）。
+         ⚠️ 拖拽关闭已有自己的滑出动画（dragStyle 非空），不能再叠一段 morph。
+         ⚠️ active=false 时节点仍在 DOM（popup-anim 留 240ms 才卸载）⇒ 缩回看得见。 */
+      if (!v && this._morphGeo && !this.data.dragStyle) {
+        const r = this._morphRadius || [];
+        this.setData({
+          morphStyle: morph.morphInline(this._morphGeo, true, true,
+            morph.MORPH_MS, morph.MORPH_EASE, r[0], r[1]),
+          morphCls: 'morph'
+        });
+      }
       if (!v && (this.data.dragStyle || this.data.maskStyle || this.data.dragging
         || this.data.resizeCls || this.data.resizeStyle)) {
         this.setData({
@@ -277,9 +316,99 @@ Component({
       if (this._resizeFloorTimer) { clearTimeout(this._resizeFloorTimer); this._resizeFloorTimer = null; }
       // #3：打开即停在 peek 档的落档定时器
       if (this._initDetentTimer) { clearTimeout(this._initDetentTimer); this._initDetentTimer = null; }
+      // v1.0.10.7：容器转场的三拍定时器（起点 → 终点 → 交还 class）
+      if (this._morphTimer) { clearTimeout(this._morphTimer); this._morphTimer = null; }
     }
   },
   methods: {
+
+    /* ================= 容器共享元素转场（v1.0.10.7） =================
+     * 首页「本班请假」卡 → 详情弹层：真实面板容器从源卡片矩形**连续非等比放大**。
+     *
+     * 三拍（缺一不可，与 popup-anim 的 mounted/active 两帧是同一个原理）：
+     *   ① 起点帧：morphInline(g, true, false) —— 瞬间钉到源卡片，**不能带过渡**；
+     *   ② 终点帧：下一拍 morphInline(g, false, true) —— 带 .24s 过渡长到面板终态；
+     *   ③ 收尾：转场结束清掉内联样式，交还 class 规则（内联与 .up 视觉等价），
+     *      否则内联 transform 会一直压住拖拽/高度过渡，弹层就再也拖不动了。
+     *
+     * ⚠️ 终态尺寸只能用 fields({size:true}) 量**布局尺寸**：此刻面板带
+     *    transform: translateY(100%)，boundingClientRect 给的是视觉矩形 ⇒ 几何全错
+     *    （1.0.10.4 头像转场「落点偏移」就是同一类坑）。
+     * ⚠️ 任何一步拿不到数据都直接 return（不 setData），安全降级为原底部升起。
+     * ================================================================= */
+
+    /** 是否播容器转场：源矩形合法 + shared 开关 + 系统未开「减弱动效」。 */
+    _morphEnabled() {
+      const r = this.properties.originRect;
+      if (!r || !(Number(r.width) > 0) || !(Number(r.height) > 0)) return false;
+      if (typeof motion.on === 'function' && !motion.on('shared')) return false;
+      if (theme.prefersReducedMotion && theme.prefersReducedMotion()) return false;
+      return true;
+    },
+
+    /** 窗口尺寸（px）。只取 app 启动时算好并缓存的值，组件里绝不自己同步取 ——
+     *  每次实例化都跨线程问一次窗口信息，正是「进新页面先卡一下」的一部分
+     *  （check-perf R2 全文扫这个）。取不到就返回 null ⇒ 容器转场安全降级。 */
+    _winSize() {
+      const app = getApp && getApp();
+      if (!app) return null;
+      const m = (app.navMetrics && app.navMetrics()) || {};
+      const g = app.globalData || {};
+      const W = Number(m.windowWidth || g.windowWidth);
+      const H = Number(m.windowHeight || g.windowHeight);
+      if (!(W > 0) || !(H > 0)) return null;
+      return { windowWidth: W, windowHeight: H };
+    },
+
+    _morphPrepare() {
+      if (!this._morphEnabled()) return;
+      const q = this.createSelectorQuery && this.createSelectorQuery();
+      if (!q || !q.select || !q.exec) return;
+      const win = this._winSize();
+      if (!win) return;
+      const from = this.properties.originRect;
+      const radius = Number(this.properties.radius) || 24;
+      const rStart = radius + 'rpx';
+      const rEnd = radius + 'rpx ' + radius + 'rpx 0 0';
+      const self = this;
+      q.select('.sheet-panel').fields({ size: true }, function () {}).exec(function (res) {
+        const size = res && res[0];
+        const to = morph.sheetTargetRect(win, size);
+        const g = morph.flipFromTo(from, to);
+        if (!g) return;                       // 尺寸为 0 / NaN ⇒ 不播，走默认升起
+        self._morphGeo = g;
+        self._morphRadius = [rStart, rEnd];
+        self.setData({
+          morphStyle: morph.morphInline(g, true, false, morph.MORPH_MS, morph.MORPH_EASE, rStart, rEnd),
+          morphCls: 'morph'
+        });
+        if (self._morphTimer) { clearTimeout(self._morphTimer); self._morphTimer = null; }
+        self._morphTimer = setTimeout(function () {
+          self._morphTimer = null;
+          // 期间已被关掉 ⇒ 不能把「缩回」覆盖回终点
+          if (!self.data.mounted || !self.data.active || !self._morphGeo) return;
+          self.setData({
+            morphStyle: morph.morphInline(g, false, true, morph.MORPH_MS, morph.MORPH_EASE, rStart, rEnd),
+            morphCls: 'morph morph-show'
+          });
+          self._morphTimer = setTimeout(function () {
+            self._morphTimer = null;
+            if (!self.data.mounted || !self.data.active) return;
+            self.setData({ morphStyle: '', morphCls: '' });
+          }, morph.MORPH_MS + 40);
+        }, 20);
+      });
+    },
+
+    /** 卸载后把转场态清干净：内联样式残留会让下次打开直接停在源卡片矩形上。 */
+    _morphReset() {
+      if (this._morphTimer) { clearTimeout(this._morphTimer); this._morphTimer = null; }
+      this._morphGeo = null;
+      this._morphRadius = null;
+      if (this.data.morphStyle || this.data.morphCls) {
+        this.setData({ morphStyle: '', morphCls: '' });
+      }
+    },
 
 
     onMask() {
@@ -573,6 +702,9 @@ Component({
 
     onHeadStart(e) {
       if (!this.data.draggable || !this.data.active) return;
+      // v1.0.10.7：容器转场期间禁用拖拽 —— 内联 morphStyle 的 transform 排在
+      // dragStyle 之后，两者会互相覆盖（面板会瞬间跳到源卡片或跳回终态）。
+      if (this.data.morphStyle) return;
       const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
       if (!t) return;
       // 关闭按钮等「点按型」子元素不参与拖动（避免一碰标题栏就进入 dragging 态）
