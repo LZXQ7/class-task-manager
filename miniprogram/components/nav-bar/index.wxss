@@ -216,51 +216,23 @@
   border-bottom-color: rgba(0, 0, 0, 0.55);
 }
 
-/* ② 镜面反射带：**纯色斜条**横穿导航栏（skewX 斜切 + translateX 扫过）
-   ⚠️ 数学：光带宽 = 导航栏宽的 38%。
-      translateX(-120%) ⇒ 亮带中心在 -45.6%（左外）；translateX(280%) ⇒ 中心在 106.4%（右外）
-      ⇒ 必定横穿全幅。（之前写成「元素宽 190% + 位移 ±52%」：亮带中心 = 95% ± 98.8%
-      ⇒ 两端都在视口外 ⇒ 永远看不见 —— 这是上一版的真 bug。）
-   ⚠️ 不用 linear-gradient（组件 wxss 里不渲染），改用纯色 + skewX 做斜切。 */
-.nav-sheen {
-  position: absolute;
-  left: 0;
-  top: -20%;
-  bottom: -20%;
-  width: 26%;
-  z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0rpx, rgba(40, 54, 86, 0.26) 92rpx, rgba(255, 255, 255, 0.8) 136rpx, rgba(40, 54, 86, 0.26) 180rpx, rgba(255, 255, 255, 0) 272rpx);
-  transform: translateX(-120%) skewX(-14deg);
-  opacity: 0;
-  animation: none;
-}
-.t-dark .nav-sheen {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0rpx, rgba(0, 0, 0, 0.2) 92rpx, rgba(214, 228, 255, 0.4) 136rpx, rgba(0, 0, 0, 0.2) 180rpx, rgba(255, 255, 255, 0) 272rpx);
-}
-@keyframes glassSheen {
-  0%    { transform: translateX(-120%) skewX(-14deg); opacity: 0; }
-  10%   { opacity: .9; }
-  30%   { transform: translateX(150%) skewX(-14deg);  opacity: 1; }
-  50%   { transform: translateX(420%) skewX(-14deg);  opacity: .9; }
-  62%   { opacity: 0; }
-  100%  { transform: translateX(420%) skewX(-14deg);  opacity: 0; }
-}
+/* ② 镜面反射带（.nav-sheen）已整段删除
+   ⚠️ 2026-11-14 19:52 用户要求「不要上面的流光」⇒ 导航栏不再有斜向光带横扫。
+      连带删掉：`.nav-sheen` 规则 / `.t-dark .nav-sheen` / `@keyframes glassSheen` /
+      `.nav.m-glass .nav-sheen` / `@supports not` 与 `prefers-reduced-motion` 里的两处引用。
+      保留的是 .nav-edge 的**静态**上下亮暗折射边（顶部聚亮 + 底部折射暗）——
+      那不是流光，是玻璃的「厚度感」。
+      门禁 `check-nav-glass` 相应改成反向断言（wxml 无 .nav-sheen 节点 / wxss 无 .nav-sheen 与 glassSheen）。 */
 
 /* 滚动后：折射更实、磨砂叠层淡入（亮度自适应） */
 .nav.m-glass .nav-edge { opacity: .9; }
 .nav.m-glass.is-scrolled .nav-edge { opacity: 1; }
 .nav.m-glass.is-scrolled .nav-tint { opacity: .55; }
-/* 只有 m-glass 才让镜面带走起来（关 FLAG / 远程覆盖 / 低端机降级时整段不动）
-   ⚠️ opacity 给 .25 作基线：万一动画被系统节流/降级，至少还留一条静态斜光带，
-      不至于「玻璃看着完全没效果」。animation 期间由关键帧接管。 */
-.nav.m-glass .nav-sheen { opacity: .3; animation: glassSheen 5.5s cubic-bezier(.45, 0, .25, 1) infinite; }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .nav-tint { display: none; }
-  .nav-edge, .nav-sheen { display: none; }
+  .nav-edge { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .nav-tint { transition: none; }
-  .nav-sheen { animation: none; opacity: .45; transform: translateX(30%); }
 }

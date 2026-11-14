@@ -229,8 +229,18 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      否则正式版里会卡在演示班（原条件只认 isTrial）。
  *   ④ 新增门禁 `scripts/check-demo-entry-visibility.js`（15 项断言 + 8 组变异自证）。
  *   云函数需重部署：**auth**（其余不动）。
+ * **`1.0.10.3`** = 导航栏去掉「流光」（2026-11-14，用户要求「不要上面的流光」）：
+ *   ① 顶部导航栏的**镜面扫光带**（斜向光带横扫）整段删除 —— 删掉 wxml 的 `.nav-sheen`
+ *      真实节点、wxss 的 `.nav-sheen` / `.t-dark .nav-sheen` / `@keyframes glassSheen` /
+ *      `.nav.m-glass .nav-sheen`，以及 `@supports not` 与 `prefers-reduced-motion` 里的两处引用。
+ *   ② **保留** `.nav-edge` 的静态上下亮暗折射边（顶部聚亮 + 底部折射暗）—— 那是玻璃的
+ *      「厚度感」，不属于流光；导航栏的背衬模糊、磨砂叠层、滚动加亮一并保留。
+ *   ③ 门禁 `check-nav-glass.js` 改为**反向断言**：wxml 不得再有 `.nav-sheen` 节点、
+ *      wxss 不得再有 `.nav-sheen` / `glassSheen` ⇒ 流光不许悄悄回来；变异自证相应改成
+ *      「把流光带塞回来」必红。渐变百分比色标变异的锚点从 `.nav-sheen` 迁到 `.nav-edge`。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.10.2';
+const APP_VERSION = '1.0.10.3';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

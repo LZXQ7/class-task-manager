@@ -1,17 +1,17 @@
 <view class="nav {{fixed ? 'nav-fixed' : ''}} {{border ? 'nav-border' : ''}} {{scrolled ? 'is-scrolled' : ''}} {{glassClass}}" style="background:{{bg}}">
   <!-- #7 液态玻璃（v1.0.9.0 重做）：{{glassClass}} 由组件自己算（m-glass），挂在**本组件根节点**上
        —— 自定义组件的 wxss 是组件作用域，页面根节点的同名类传不进来（见 index.js 的 glassClass 注释）。
-       玻璃 = 背衬模糊 + 边缘折射高光 + 缓慢横扫的镜面反射带（不是固定高光）。
+       玻璃 = 背衬模糊 + 边缘折射高光（**静态**的上下亮暗边，不是流动的高光）。
        遮罩层 pointer-events:none 不挡交互；z-index:0 压在文字（z-index:2）之下。
-       ⚠️ 2026-11-14 真机实测：折射高光与镜面带改用**真实节点**（.nav-edge / .nav-sheen），
-          不用 ::before/::after —— ① 伪元素在小程序 webview 里整段不命中（实测看不见）；
-          ② 原来的镜面带是纯数学错误：亮带在元素 50% 处、keyframes 只给 ±52% 位移，
-             亮带全程落在视口外 ⇒ 永远不出现。
-          现在 .nav-sheen 是**固定宽度**的斜光带（width 60%），从 translateX(-120%) 扫到
-          translateX(200%) ⇒ 亮带中心从 -72% 扫到 120%（相对导航栏宽），必定横穿全幅。 -->
+       ⚠️ 2026-11-14 真机实测：折射高光改用**真实节点**（.nav-edge），不用 ::before/::after ——
+          伪元素在小程序 webview 里整段不命中（实测看不见）。
+       🔴 2026-11-14 19:52 用户要求「不要上面的流光」⇒ **镜面扫光带（.nav-sheen）整段删除**：
+          导航栏只保留背衬模糊 + 上下亮暗折射边，不再有斜向光带横扫。
+          （同批删掉的还有 wxss 里的 `.nav-sheen` 规则与 `@keyframes glassSheen`；
+            门禁 `check-nav-glass` 已改成反向断言：wxml 不得再有 .nav-sheen 节点、
+            wxss 不得再有 .nav-sheen / glassSheen ⇒ 防止它悄悄回来。） -->
   <view class="nav-tint"></view>
   <view class="nav-edge"></view>
-  <view class="nav-sheen" data-glass="1"></view>
   <view class="nav-status" style="height:{{statusBarHeight}}px"></view>
   <view class="nav-body" style="height:{{bodyHpx ? bodyHpx + 'px' : '88rpx'}}">
     <view class="nav-side nav-left">
