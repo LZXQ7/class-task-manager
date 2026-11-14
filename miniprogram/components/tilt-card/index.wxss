@@ -1,21 +1,18 @@
 /* components/tilt-card/index.wxss（2026-11-14 试点 + #4 描边背光）
  * ============================================================
- * 四层结构（修「光不对：现在就一个框的线条转圈」+「描边看不出来」）：
- *   .tg-wrap    定位上下文 + **3D 变换目标**（无圆角、无 overflow ⇒ 变换不会吃掉圆角）
- *     .tg-glow  背光（纯色中性柔光，从四边透出）
- *     .tg-edge  描边壳：padding 2.5rpx + overflow:hidden + border-radius + 柔和投影
- *       .tg-cone  壳内的纯色片（被壳裁成**只沿边框一圈**）
- *       .tg-surface 卡片本体（裁切圆角；不做 transform）
- * ⚠️ 上一版把 conic 直接铺在卡片面上、靠 mask 掏空 —— WebView 不支持
- *    `mask-composite: exclude` ⇒ conic 实心铺满卡片内部 ⇒ 看着就是「斜线 / 半圈」，
- *    正是用户截图里圈出来的东西。
- * ⚠️ 描边改成**静态纯色**（用户口径：「光不要彩色，要简单平淡的。纯色」），
- *    不再转圈 —— 静态一圈中性灰反而更像「卡片有一层边」。
+ * 结构（两次真机翻车后收敛到极简）：
+ *   .tg-wrap     3D 变换目标（无圆角、无 overflow ⇒ 变换不会把子节点圆角裁成方角）
+ *     .tg-surface 卡片容器：只负责「圆角 + 描边 outline」，**不加 overflow:hidden**
+ *       .tg-glare 常驻呼吸柔光（absolute inset:0，pointer-events:none）
+ *
+ * ⚠️ 为什么不用「放大纯色片 + overflow 裁剪」做描边：
+ *    真机上裁不干净 —— 那层 50% 灰从卡片下方漏出一条灰色横板（用户实锤「阴影全部出错」），
+ *    而且 overflow:hidden 顺手把卡片自带的 --glass-shadow 投影也裁掉了（卡片发平）。
+ *    outline 跟随 border-radius、不占布局、不裁投影 ⇒ 三样都不出问题。
+ * ⚠️ 描边是**静态纯色**（用户口径：「光不要彩色，要简单平淡的。纯色」），不转圈。
  * ⚠️ 所有多行值一律写成**单行**：WXSS 里以 `,` 续行会被 check-wxss 的
  *    「漏分号」启发式误判（app.wxss / aura-card / nav-bar 都栽过）。
  */
-
-/* ---------- #4 中性纯色背光（用户口径：不要彩色、简单平淡）---------- */
 .tg-wrap {
   position: relative;
   /* 3D 变换放在这一层：这一层**没有圆角也没有 overflow**，
@@ -25,56 +22,17 @@
   will-change: transform;
 }
 .tg-wrap.tg-off { will-change: auto; }
-.tg-glow {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 124%;
-  height: 150%;
-  z-index: 0;
-  margin-left: -62%;
-  margin-top: -75%;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(126, 134, 150, 0.78) 0%, rgba(126, 134, 150, 0.36) 38%, rgba(126, 134, 150, 0.12) 56%, transparent 74%);
-  filter: blur(26px);
-  opacity: .7;
-  animation: tgBreath 3.6s ease-in-out infinite;
-  pointer-events: none;
-}
-.t-dark .tg-glow {
-  background: radial-gradient(ellipse at center, rgba(170, 186, 214, 0.6) 0%, rgba(150, 166, 200, 0.26) 38%, rgba(150, 166, 200, 0.09) 56%, transparent 74%);
-}
-@keyframes tgBreath {
-  0%, 100% { opacity: .48; transform: scale(.96); }
-  50%      { opacity: .92; transform: scale(1.06); }
-}
-
-/* 描边壳：padding 2.5rpx = 描边宽度；overflow:hidden 把纯色片裁成只沿边框一圈 */
-.tg-edge {
-  position: relative;
-  z-index: 1;
-  padding: 2.5rpx;
-  border-radius: var(--r-md, 24rpx);
-  overflow: hidden;
-  /* 柔和投影 = 第二层「背光」，保证在浅色背景上也看得见卡片浮起来 */
-  box-shadow: 0 10rpx 34rpx rgba(96, 104, 120, 0.28);
-}
-.t-dark .tg-edge {
-  box-shadow: 0 10rpx 34rpx rgba(0, 0, 0, 0.5);
-}
-/* 壳内的纯色片：被壳裁出一圈描边，卡片内部不会沾到 */
-.tg-cone {
-  position: absolute;
-  inset: -60%;
-  z-index: 0;
-  background: rgba(154, 163, 178, 0.62);
-}
 
 .tg-surface {
   position: relative;
-  z-index: 1;
-  border-radius: calc(var(--r-md, 24rpx) - 2.5rpx);
-  overflow: hidden;
+  border-radius: var(--r-md, 24rpx);
+  /* #4 纯色描边：中性灰细圈（用户口径：不要彩色、简单平淡）。
+     outline 跟着 border-radius 走，且**不占布局**（不把卡片挤大）。 */
+  outline: 2.5rpx solid rgba(154, 163, 178, 0.5);
+  outline-offset: 0;
+}
+.t-dark .tg-surface {
+  outline-color: rgba(170, 186, 214, 0.34);
 }
 
 /* ---------- 径向反射流光（CSS 兜底，必定可见）----------
@@ -101,9 +59,7 @@
 @media (prefers-reduced-motion: reduce) {
   .tg-wrap { transform: none !important; will-change: auto; }
   .tg-glare { opacity: 0 !important; }
-  .tg-glow { animation: none; opacity: .5; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .tg-glare { display: none; }
-  .tg-glow { display: none; }
 }

@@ -216,21 +216,27 @@
        ⚠️ fixed 元素：必须留在 .wk-swipe 动画容器**外面**（transform 建包含块）。
        ⚠️ 「临时调课」只给超管；普通同学看到的菜单里就是 A 组 / B 组两行。 -->
   <view wx:if="{{!loading && ((canSwitchClass && classList.length) || (!isCounselor && hasTimetable))}}" class="fab-menu {{fabMenuOpen ? 'open' : ''}}">
-    <!-- #10 弧形菜单（2026-11-14）：**长按**左下角按钮 → 从按钮位置径向展开。
-         ⚠️ 用户实锤「按住不是点击」⇒ 触发方式必须是长按（bindlongpress），
-            点击也保留（bindtap），两处都能开菜单，长按优先。
+    <!-- #10 弧形菜单（2026-11-14 按用户口径重做）：
+         **长按才展开**，按住期间菜单一直显示；手指拖到某个按钮上会高亮，
+         **松手 = 点了那个按钮**；没拖到按钮就松手 ⇒ 四个按钮收回。
+         ⚠️ 为什么触摸跟踪在页面而不在组件：bindlongpress 触发时组件才刚渲染，
+            后续 touchmove/touchend 的事件目标仍是按钮本身，不会冒泡到组件 ⇒
+            组件收不到「松手」。所以页面监听 touch* 并用 selectComponent 转发给组件。
          ⚠️ span-start/span-end 把弧收进**右上象限**（屏幕坐标：0=正右，-90=正上），
             否则靠下的菜单项会掉到 tabBar 底下被遮住。
          ⚠️ 外层 .fab-menu 的 wx:if 守卫是 check-timetable-local 逐入口点名的
             （辅导员不得进调课/编辑入口），改结构时**别动这个守卫**。
          ⚠️ fm* 是「按钮菜单」的独立状态，与「长按格子」那条弧形菜单（rm*）完全分开。 -->
     <view data-pressable class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
-      bindlongpress="onFabRadial" bindtap="onFabRadial">
+      bindtouchstart="onFabTouchStart" bindtouchmove="onFabTouchMove"
+      bindtouchend="onFabTouchEnd" bindtouchcancel="onFabTouchEnd"
+      bindlongpress="onFabRadial">
       <app-icon name="grid" variant="brand" size="{{34}}" />
       <text class="fab-menu-t">{{viewGroup === 'ALL' ? '全部' : (viewGroup === 'B' ? 'B 组' : 'A 组')}}</text>
       <app-icon name="{{fabMenuOpen ? 'chevron-down' : 'chevron-up'}}" variant="gray" size="{{26}}" />
     </view>
     <radial-menu
+      id="rm-fab"
       show="{{fmShow}}"
       x="{{fmX}}"
       y="{{fmY}}"

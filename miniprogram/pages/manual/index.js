@@ -41,6 +41,8 @@ Page({
     pickerSession: null,
     pickerDutyId: 0,
     pickerCount: 0,
+    /** 姓名自动补全的候选（name + 可搜索的 sub + 不可选态） */
+    pickerItems: [],
     kw: '',
     list: [],
     submitting: false
@@ -221,12 +223,25 @@ Page({
     });
 
     this.pickerAll = all;
+    /* 2026-11-14 姓名自动补全：把候选 + 可选状态 + 副信息（学号/分组/已排次数）
+       一起交给 <name-autocomplete>，由它做实时过滤与高亮。
+       ⚠️ sub 拼成一句可搜索的文本：姓名搜不到时还能按学号/分组搜。 */
+    const acItems = all.map(r => ({
+      id: r.id,
+      name: r.name,
+      sub: (r.seq ? String(r.seq) + ' 号 · ' : '') +
+        (r.test ? '测试账号 · ' : '') +
+        (r.groupTag || '') + ' 组 · 本轮已排 ' + (r.dutyCount || 0) + ' 次' +
+        (r.badge ? ' · ' + r.badge : ''),
+      disabled: r.disabled
+    }));
     this.setData({
       pickerShow: true,
       pickerMode: mode,
       pickerSession: session,
       pickerDutyId: dutyId,
       pickerCount: all.length,
+      pickerItems: acItems,
       pickerTitle: (mode === 'REASSIGN' ? '换人' : '添加值日') + ' · ' + day.weekdayText + ' ' + util.whenText(session.kind, session.period),
       kw: '',
       submitting: false
@@ -234,9 +249,17 @@ Page({
     this._filter();
   },
 
+  /** 自动补全：关键词变化（组件内部已实时过滤，这里只同步状态） */
   onPickerKw(e) {
     this.setData({ kw: String(e.detail.value || '') });
     this._filter();
+  },
+
+  /** 自动补全：选中一项（组件抛 { id }） */
+  onPickAcMember(e) {
+    const id = Number(e.detail && e.detail.id);
+    if (!id) return;
+    this.onPickMember({ currentTarget: { dataset: { id: id } } });
   },
 
   _filter() {

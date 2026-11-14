@@ -1,4 +1,6 @@
-/* #10 弧形菜单（v1.0.9.0） */
+/* #10 弧形菜单（v1.0.9.0 → 2026-11-14 按用户口径重做）
+ * 用户口径：按钮改**圆形**、配色跟随整体（不要白色方块）；弧上间距一致；
+ *   手指悬停的按钮要**高亮**（能看出该松在哪）。 */
 .rm-root {
   position: fixed;
   left: 0; right: 0; top: 0; bottom: 0;
@@ -33,41 +35,45 @@
   transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(1);
   opacity: 1;
 }
+/* 圆形按钮：112rpx（≈60px）直径，文字居中；四字项用小一号字塞进圆里 */
 .rm-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 120rpx;
-  height: 120rpx;
-  padding: 0 20rpx;
-  /* 「临时调课」这类四字项不许折成两行（折行会把圆角方块撑高、弧线参差） */
+  width: 112rpx;
+  height: 112rpx;
+  padding: 0 8rpx;
+  border-radius: 50%;
   white-space: nowrap;
-  border-radius: 24rpx;
-  background: var(--sheet-solid, rgba(255,255,255,0.94));
-  border: 1rpx solid var(--sheet-edge, rgba(255,255,255,0.95));
-  box-shadow: var(--glass-shadow, 0 16rpx 64rpx rgba(29,33,41,0.15)), var(--glass-highlight, inset 0 2rpx 0 rgba(255,255,255,0.6));
-  -webkit-backdrop-filter: var(--glass-blur, blur(24px) saturate(180%));
-  backdrop-filter: var(--glass-blur, blur(24px) saturate(180%));
+  /* 配色跟随整体：品牌蓝实心 + 白字（不再是白色方块 —— 用户实锤） */
+  background: linear-gradient(140deg, #5A97FF 0%, var(--brand, #3370FF) 100%);
+  box-shadow: 0 10rpx 26rpx rgba(51, 112, 255, 0.32);
   font-size: 26rpx;
-  color: var(--text-1);
+  color: #FFFFFF;
 }
+.rm-btn.long { font-size: 20rpx; }
 .rm-icon { font-size: 40rpx; line-height: 1; margin-bottom: 6rpx; }
-.rm-label { font-size: 24rpx; line-height: 32rpx; color: var(--text-2); }
+.rm-label { font-size: 24rpx; line-height: 32rpx; color: #FFFFFF; }
+.rm-btn.long .rm-label { font-size: 20rpx; line-height: 26rpx; }
+/* 手指悬停的按钮：放大 + 提亮，一眼看出「松在这里就会选中它」 */
+.rm-item.hot .rm-btn {
+  transform: scale(1.14);
+  box-shadow: 0 14rpx 34rpx rgba(51, 112, 255, 0.45);
+  filter: brightness(1.08);
+}
 
-/* 不支持模糊的机型：底色加厚到接近实心（与全站玻璃纪律一致，check-glass 管） */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .rm-btn { background: var(--sheet-solid, rgba(255,255,255,0.96)); }
-  .t-dark .rm-btn { background: var(--sheet-solid, rgba(26,30,39,0.98)); }
+/* 深色模式：品牌蓝在深底上略压暗，保证白字对比度 */
+.t-dark .rm-btn {
+  background: linear-gradient(140deg, #4C8DFF 0%, #2F62D8 100%);
+  box-shadow: 0 10rpx 26rpx rgba(0, 0, 0, 0.5);
 }
-@media (prefers-reduced-transparency: reduce) {
-  .rm-btn { background: var(--sheet-solid, #FFFFFF); -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .t-dark .rm-btn { background: var(--sheet-solid, #1C2027); }
-}
+
 /* 减弱动效：去掉位移与缩放，直接淡入 */
 @media (prefers-reduced-motion: reduce) {
   .rm-item {
     transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(1);
     transition: opacity .12s ease;
   }
+  .rm-item.hot .rm-btn { transform: none; }
 }

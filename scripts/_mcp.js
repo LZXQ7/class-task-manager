@@ -3,7 +3,27 @@
  *   node scripts/_mcp.js list
  *   node scripts/_mcp.js call <toolName> [jsonArgs]
  */
-const PORT = process.env.WXIDE_PORT || '38064';
+const path = require('path');
+const fs = require('fs');
+
+/* IDE 的 MCP 服务端口写在 <User Data>\<hash>\Default\.ide —— 每次重启都会变，
+   所以每次都重新读，别写死。 */
+function idePort() {
+  if (process.env.WXIDE_PORT) return process.env.WXIDE_PORT;
+  const base = 'C:/Users/PC/AppData/Local/微信开发者工具/User Data';
+  try {
+    for (const d of fs.readdirSync(base)) {
+      const f = path.join(base, d, 'Default', '.ide');
+      if (fs.existsSync(f)) {
+        const p = String(fs.readFileSync(f, 'utf8')).trim();
+        if (/^\d+$/.test(p)) return p;
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return '38064';
+}
+
+const PORT = idePort();
 const TOKEN = process.env.WXIDE_TOKEN || 'nmkEq4RWyOooHmCXvAP8pKACPWZRcGWt';
 const BASE = `http://127.0.0.1:${PORT}/mcp`;
 

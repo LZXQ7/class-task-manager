@@ -1,16 +1,20 @@
-<!-- #10 弧形菜单：遮罩 + 以触点为圆心放射性铺开的菜单项 -->
+<!-- #10 弧形菜单（2026-11-14 按用户口径重做）
+     · 长按才展开，按住期间保持显示（触摸跟踪由**页面**转发，理由见 index.js 注释）
+     · 手指拖到某个按钮上 ⇒ 高亮；松手 = 选中该按钮；没拖到就松手 ⇒ 收回
+     · 按钮是**圆形**、品牌蓝（不再是白色方块）
+     ⚠️ hot 下标由组件自己算（moveTo），wxml 只负责加 .hot 类 -->
 <view wx:if="{{visible}}" class="rm-root {{open ? 'in' : ''}}">
   <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="rm-mask" bindtap="onMask" catchtouchmove="noop"></view>
   <view class="rm-origin" style="left:{{x}}px; top:{{y}}px;">
     <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
       wx:for="{{arranged}}"
       wx:key="key"
-      class="rm-item"
+      class="rm-item {{index === hot ? 'hot' : ''}}"
       style="--dx:{{item.dx}}px; --dy:{{item.dy}}px; transition-delay:{{item.delay}}ms;"
       data-key="{{item.key}}"
       bindtap="onItem"
     >
-      <view class="rm-btn">
+      <view class="rm-btn {{item.long ? 'long' : ''}}">
         <text wx:if="{{item.icon}}" class="rm-icon">{{item.icon}}</text>
         <text class="rm-label">{{item.label}}</text>
       </view>

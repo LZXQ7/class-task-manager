@@ -1,0 +1,38 @@
+<!-- 姓名自动补全（2026-11-14 用户要求）：实时过滤 + 下拉匹配项 + 高亮命中文字 -->
+<view class="ac">
+  <view class="ac-box">
+    <app-icon name="search" variant="gray" size="{{30}}" />
+    <input
+      class="ac-input"
+      value="{{value}}"
+      placeholder="{{placeholder}}"
+      placeholder-class="f-ph"
+      confirm-type="search"
+      bindinput="onInput"
+      bindfocus="onFocus"
+      bindblur="onBlur"
+    />
+    <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{value}}" class="ac-clear" catchtap="onClear">×</text>
+  </view>
+  <view wx:if="{{open}}" class="ac-list">
+    <view wx:if="{{!list.length}}" class="ac-empty">{{emptyText}}</view>
+    <view
+      hover-class="press-shrink"
+      hover-start-time="0"
+      hover-stay-time="60"
+      data-pressable
+      wx:for="{{list}}"
+      wx:key="id"
+      class="ac-item {{item.disabled ? 'off' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onPick"
+    >
+      <view class="ac-name">
+        <text wx:for="{{item.parts}}" wx:key="*this" class="{{item.hl ? 'ac-hl' : ''}}">{{item.t}}</text>
+      </view>
+      <view wx:if="{{item.sub}}" class="ac-sub">
+        <text wx:for="{{item.subParts}}" wx:key="*this" class="{{item.hl ? 'ac-hl' : ''}}">{{item.t}}</text>
+      </view>
+    </view>
+  </view>
+</view>

@@ -212,9 +212,16 @@ function staticProbes(wxml, wxss, wxs) {
        所以这里同时要求 **wxss 有规则** 且 **wxml 有对应节点**。
        ⚠️ 3D 变换必须落在**没有圆角、没有 overflow** 的 .tg-wrap 上：
           变换加在带圆角+overflow 的节点上，真机按住再松手时 WebView 重新光栅化 ⇒ 圆角退化成方角。 */
-    auraRing: /class="tg-edge"/.test(wxml) && /class="tg-cone"/.test(wxml) &&
-              /\.tg-edge\s*\{[^}]*overflow:\s*hidden/.test(wxss) &&
-              /\.tg-cone\s*\{[^}]*background/.test(wxss),
+    /* 🔴 2026-11-14 二次翻车后收敛的契约：
+       描边必须是 **outline**（跟随 border-radius、不占布局、**不裁**卡片自带的 --glass-shadow）；
+       ❌ 绝不能再用「纯色片 + overflow:hidden 裁剪」—— 真机上裁不干净，
+          那层灰从卡片下方漏出一条灰色横板（用户实锤「阴影全部出错」），
+          而且 overflow:hidden 顺手把卡片自己的投影也裁掉了。
+       同时要求 wxml 里确实有 .tg-surface / .tg-glare 节点（CSS 有规则 ≠ 节点存在）。 */
+    auraRing: /class="tg-surface"/.test(wxml) && /class="tg-glare"/.test(wxml) &&
+              /\.tg-surface\s*\{[^}]*outline:\s*[^;}]+solid/.test(wxss) &&
+              !/\.tg-cone\s*\{/.test(wxss) && !/\.tg-edge\s*\{/.test(wxss) &&
+              !/\.tg-surface\s*\{[^}]*overflow:\s*hidden/.test(wxss),
     tiltOnWrapper: /class="tg-wrap(?: [^"]*)?"[\s\S]{0,320}bindtouchstart/.test(wxml) &&
                    /\.tg-wrap\s*\{[^}]*transform:/.test(wxss) &&
                    !/\.tg-surface\s*\{[^}]*transform:\s*perspective/.test(wxss)
@@ -337,10 +344,16 @@ const MUTATIONS = [
     to: '  .tg-wrap { will-change: auto; }'
   },
   {
-    name: 'wxml 删掉描边壳节点（CSS 有规则但节点不存在 ⇒ 描边从未渲染）',
+    name: 'wxml 删掉描边节点（CSS 有规则但节点不存在 ⇒ 描边从未渲染）',
     scope: 'wxml', expect: 'auraRing',
-    from: '<view class="tg-edge">',
-    to: '<view class="tg-edge-removed">'
+    from: '<view class="tg-surface">',
+    to: '<view class="tg-surface-removed">'
+  },
+  {
+    name: '描边退回「纯色片 + overflow 裁剪」（真机上漏出灰色横板）',
+    scope: 'wxss', expect: 'auraRing',
+    from: '  outline: 2.5rpx solid rgba(154, 163, 178, 0.5);',
+    to: '  outline: none;'
   },
   {
     name: '3D 变换挪回 .tg-surface（真机按住松手后圆角退化成方角）',

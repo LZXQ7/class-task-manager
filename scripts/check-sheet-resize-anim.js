@@ -786,7 +786,9 @@ console.log('── ⑥ wxss / 调用点自证');
   chk(/(^|[^-])height:\s*\d/.test(seg(badH)) || !/min-height/.test(seg(badH)),
     '自证：把 min-height 换成 height（第一版的错法）后判据能判死');
   // 拿掉 transform ⇒ 必须判死（transition 简写会整条覆盖）
-  const badT = wxss.replace(/transition:\s*transform \.24s cubic-bezier\(\.22, \.61, \.36, 1\),/, 'transition:');
+  // ⚠️ 锚点必须**唯一**：2026-11-14 bottom-sheet 新增了 variant='float' 的悬浮卡片规则，
+  //    它也含 `transition: transform .24s cubic-bezier(...)` ⇒ 用只匹配 .animating 的整串。
+  const badT = wxss.replace('transition: transform .24s cubic-bezier(.22, .61, .36, 1), min-height 220ms', 'transition: min-height 220ms');
   chk(badT !== wxss && !/transform/.test(seg(badT)),
     '自证：拿掉 .animating 里的 transform 后判据能判死');
   // min/max 时长不一致 ⇒ 必须判死

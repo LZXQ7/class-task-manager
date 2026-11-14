@@ -118,7 +118,9 @@
     hover-stay-time="60"
     bindtap="onMemberRow"
   >
-    <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{64}}" disabled="{{item.status === 'DISABLED'}}" />
+    <view id="mb-av-{{item.id}}" class="mb-av">
+      <avatar-tag name="{{item.name}}" src="{{item.avatarUrl}}" size="{{64}}" disabled="{{item.status === 'DISABLED'}}" />
+    </view>
     <view class="mb-info">
       <view class="mb-nameline">
         <text class="mb-name">{{item.name}}</text>
@@ -151,11 +153,13 @@
   <!-- #3 三档吸附 + 自动初始档：detents = [0.45, 0.72]（面板下移比例，两档中间档）；
        auto-detent 让它打开时自动停在「能显示最后按钮的最低档」（见 bottom-sheet 的 _autoDetent）。
        ⚠️ 2026-11-14 之前这里只有 detents=[0.45] 且没给 initialDetent ⇒ 每次都全开。 -->
-  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}" detents="{{[0.45, 0.72]}}" auto-detent="{{true}}" morph-rect="{{mDetailMorph}}">
+  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}" variant="float">
     <view wx:if="{{mDetail}}" class="mb-detail">
       <flip-detail flipped="{{mDetailFlipped}}" bind:flip="onMDetailFlip">
         <view slot="front">
-          <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" label="{{true}}" label-size="{{34}}" />
+          <view id="md-av" class="md-av {{seShow && !seClosing ? 'md-av-fly' : ''}}">
+            <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" label="{{true}}" label-size="{{34}}" />
+          </view>
           <view class="mb-detail-grid">
             <text>{{mDetail.groupTag === 'X' ? '教职工（不参与分组与值日轮转）' : (mDetail.readOnly ? '班级成员' : '学号 ' + mDetail.seq + ' 号')}}</text>
             <view>
@@ -800,13 +804,17 @@
     </view>
   </bottom-sheet>
 
-  <!-- #2 共享元素：从班级卡 FLIP 飞入 mb-bar（onReady 取 hero 播放） -->
+  <!-- #2 共享元素：从班级卡 FLIP 飞入 mb-bar（onReady 取 hero 播放）
+       2026-11-14：同一个组件也用来做「成员行头像 → 成员详情卡头像」的飞入/飞回
+       （mode='avatar'：飞的是头像本身，不是一块白色矩形）。 -->
   <shared-element
     show="{{seShow}}"
     from="{{seFrom}}"
     to="{{seTo}}"
     color="{{seColor}}"
     label="{{seLabel}}"
+    mode="{{seMode}}"
+    avatar="{{seAvatar}}"
     bind:arrive="onSeArrive"
   />
 

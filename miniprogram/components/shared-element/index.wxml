@@ -1,4 +1,7 @@
-<!-- #2 共享元素 ghost：从源矩形 FLIP 到目标矩形，落地后由页面显形真实 hero -->
-<view wx:if="{{visible}}" class="se-ghost" style="{{style}}">
+<!-- #2 共享元素 ghost：从源矩形 FLIP 到目标矩形，落地后由页面显形真实 hero
+     ⚠️ mode='avatar'（2026-11-14）：飞的是**头像本身**（圆形图片），
+        不是一整块白色矩形 —— 用户实锤「点击成员后先出现白色色块，而不是丝滑展开」。 -->
+<view wx:if="{{visible}}" class="se-ghost {{mode === 'avatar' ? 'se-avatar' : ''}}" style="{{style}}">
+  <image wx:if="{{mode === 'avatar' && avatar}}" class="se-img" src="{{avatar}}" mode="aspectFill" />
   <text wx:if="{{label}}" class="se-label">{{label}}</text>
 </view>

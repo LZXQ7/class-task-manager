@@ -52,6 +52,44 @@
   text-align: center;
   letter-spacing: 4rpx;
 }
+/* ===== 浮动标签（2026-11-14 用户要求）=====
+   未输入：标签躺在输入框**里面**（替代占位符）；
+   聚焦 / 有内容：缩小上浮到框**上方**，并一直显示。
+   ⚠️ 标签是 absolute 定位在 .bind-field 上（不是 input 内部），
+      所以 input 的 placeholder 必须留空，否则两者重影。 */
+.bind-field {
+  position: relative;
+  margin-top: 16rpx;
+  padding-top: 30rpx;
+}
+.bind-field .bind-input {
+  margin-top: 0;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.bind-field.filled .bind-input {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 4rpx rgba(51, 112, 255, 0.08);
+}
+.bind-field.err .bind-input {
+  border-color: var(--danger);
+}
+.bind-float {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30rpx;
+  transform: translateY(34rpx);
+  text-align: center;
+  font-size: 28rpx;
+  line-height: 40rpx;
+  color: var(--text-4);
+  pointer-events: none;
+  transition: transform .2s cubic-bezier(.22, .61, .36, 1), color .2s ease, font-size .2s ease;
+}
+.bind-field.filled .bind-float {
+  transform: translateY(0) scale(0.82);
+  color: var(--brand);
+}
 .bind-input.err {
   border-color: var(--danger);
 }

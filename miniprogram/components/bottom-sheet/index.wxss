@@ -62,22 +62,48 @@
   transform: translateY(0);
   pointer-events: auto;
 }
+
+/* ===== variant="float"：**居中悬浮卡片**（不是贴底抽屉）=====
+   用户口径（2026-11-14）：成员详情这种「看一个成员的完整信息」不该是
+   从底部升起的抽屉，而该是**浮在页面中间的一张卡片**（截图5 的红框就是不要的样子）。
+   ⚠️ 居中不用 `transform: translateY(-50%)` —— 那样会和拖拽用的内联 transform 打架
+      （拖拽写的是 translate3d(0, Ypx, 0)）。改成让 **root 变成 flex 居中容器**、
+      面板回到文档流里居中 ⇒ 拖拽的 transform 保持原样，互不干扰。
+   ⚠️ 入场动画也从「从底部升起」改成「轻微放大 + 淡入」，符合"浮起来"的观感。 */
+.sheet-root.float {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx 32rpx;
+}
+.sheet-root.float .sheet-panel {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  /* 悬浮卡片必须比可用高度小，否则内容一长就撑满屏幕、看着还是"贴底的抽屉" */
+  max-height: 72vh;
+  border-radius: 32rpx;
+  transform: scale(0.94);
+  opacity: 0;
+  transition: transform .24s cubic-bezier(.22, .61, .36, 1), opacity .24s ease;
+  box-shadow: 0 24rpx 70rpx rgba(29, 33, 41, 0.28), inset 0 1rpx 0 var(--sheet-edge, rgba(255, 255, 255, 0.95));
+}
+.sheet-root.float .sheet-panel.up {
+  transform: scale(1);
+  opacity: 1;
+}
+.sheet-root.float .sheet-panel.tall { max-height: 72vh; }
+.t-dark .sheet-root.float .sheet-panel {
+  box-shadow: 0 24rpx 70rpx rgba(0, 0, 0, 0.6), inset 0 1rpx 0 var(--sheet-edge, rgba(255, 255, 255, 0.95));
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-root.float .sheet-panel,
+  .sheet-root.float .sheet-panel.up { transform: none; }
+}
 /* v0.7.25：更高面板 —— 内容确实装不进 78vh 的弹层用（如成员详情） */
 .sheet-panel.tall { max-height: 92vh; }
-/* ===== #1 流体形态 =====
-   morphing 期间面板透明（由 .sheet-morph 幽灵层代表它，从触发元素长过来）；
-   幽灵到位后撤掉 morphing ⇒ 面板**直接显现**（幽灵的矩形就是量自面板本身 ⇒ 无缝，无需淡入）。
-   ⚠️ 故意**不给 opacity 加过渡**：popup-anim 的门禁要求所有过渡时长 == DURATION(240ms)，
-      而幽灵层落地是硬切（几何完全重合），加淡入反而会闪。 */
-.sheet-panel.morphing { opacity: 0; }
-.sheet-morph {
-  position: fixed;
-  z-index: 1002;
-  pointer-events: none;
-  background: var(--bg-card);
-  box-shadow: 0 10rpx 36rpx rgba(29, 33, 41, 0.22);
-}
-.t-dark .sheet-morph { background: var(--bg-card); box-shadow: 0 10rpx 36rpx rgba(0, 0, 0, 0.55); }
 /* ===== 拖动感应区（v0.7.32）：grabber + 标题栏，合计约 124rpx ≈ 62px =====
    ⚠️ 只有这一块接 touchmove（见 index.wxml），内容区 scroll-view 不受影响。
    改这里的高度要同步 components/bottom-sheet/index.js 的 bodyMaxH 里扣掉的 124rpx。 */

@@ -20,7 +20,7 @@ async function main() {
     await mp.screenshot({ path: shot + 'radial_before.png' });
 
     const p = fab.longpress();
-    await new Promise(r => setTimeout(r, 700));
+    await new Promise(r => setTimeout(r, 380));
     console.log('fmShow =', await page.data('fmShow'));
     console.log('fmX/fmY =', await page.data('fmX'), await page.data('fmY'));
     console.log('fmItems =', JSON.stringify(await page.data('fmItems')));

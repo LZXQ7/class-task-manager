@@ -93,8 +93,20 @@ if (exists('miniprogram/pages/duty/index.js')) {
   else ok('值日页 onWeekPick 死代码已清除');
 }
 if (/长按周切换条可快速跳转/.test(read('miniprogram/pages/duty/index.wxml'))) { leaked = true; }
+/* ⚠️ 2026-11-14：manual 页新增 <name-autocomplete bind:pick="onPickAcMember">
+   —— 组件的 pick 事件**有**对应处理函数，不是死代码。
+   所以判据改成「绑了 bind:pick 就必须在同页 js 里真的有同名处理函数」，
+   残留死代码（绑了却没有处理函数）照样判死。 */
 ['miniprogram/pages/duty/index.wxml', 'miniprogram/pages/manual/index.wxml'].forEach((f) => {
-  if (/bind:pick=/.test(read(f))) { leaked = true; bad(f + ' 仍绑定 bind:pick（已无处理函数）'); }
+  const wxml = read(f);
+  const js = read(f.replace(/\.wxml$/, '.js'));
+  const m = /bind:pick="([A-Za-z0-9_]+)"/.exec(wxml);
+  if (!m) return;
+  if (new RegExp('\\b' + m[1] + '\\s*\\(').test(js)) {
+    ok(f + ' 的 bind:pick="' + m[1] + '" 有对应处理函数');
+  } else {
+    leaked = true; bad(f + ' 仍绑定 bind:pick（已无处理函数）');
+  }
 });
 if (!leaked) ok('两个页面都没有残留 bind:pick / 旧提示');
 

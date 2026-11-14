@@ -604,6 +604,30 @@ Page({
    *    两处菜单各开各的，不会互相抢 show。
    * ⚠️ 坐标取触点（视口坐标）；radial-menu 内部是 fixed 定位，同一坐标系 ✓。
    */
+  /* ---------------- #10 弧形菜单（长按按住展示 · 拖到按钮松开即选中） ----------------
+   * ⚠️ 触摸跟踪放在**页面**：bindlongpress 触发时菜单组件才刚渲染出来，
+   *    后续 touchmove/touchend 的事件目标仍是按钮本身，**不会冒泡到组件** ⇒
+   *    组件收不到「松手」事件。页面全程监听 touch*，用 selectComponent 转发给组件。
+   *    （组件内部做命中判定：moveTo 更新高亮、release 时命中即选中、否则收回。） */
+  onFabTouchStart(e) {
+    const t = (e && e.touches && e.touches[0]) || (e && e.changedTouches && e.changedTouches[0]) || null;
+    this._fabTouch = t ? { x: t.clientX, y: t.clientY } : null;
+  },
+
+  onFabTouchMove(e) {
+    if (!this.data.fmShow) return;
+    const t = (e && e.touches && e.touches[0]) || (e && e.changedTouches && e.changedTouches[0]) || null;
+    if (!t) return;
+    const comp = this.selectComponent('#rm-fab');
+    if (comp && comp.moveTo) comp.moveTo(t.clientX, t.clientY);
+  },
+
+  onFabTouchEnd() {
+    if (!this.data.fmShow) return;
+    const comp = this.selectComponent('#rm-fab');
+    if (comp && comp.release) comp.release();
+  },
+
   onFabRadial(e) {
     const t = (e && e.changedTouches && e.changedTouches[0]) || (e && e.touches && e.touches[0]) || null;
     const x = t && typeof t.clientX === 'number' ? t.clientX : 0;

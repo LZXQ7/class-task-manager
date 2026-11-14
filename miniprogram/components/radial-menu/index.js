@@ -1,19 +1,26 @@
 /**
- * 课程表弧形菜单（v1.0.9.0 · #10）
- * ============================================================
- * 长按课程表某格（或任意触发点）展开一个从触点放射性铺开的弧形菜单。
- * 菜单项沿一条圆弧排布（默认 -70°~+70° 的右半圆，可随需要调 span），
- * 从触点向外弹出（scale 0→1 + 位移），带轻微交错延迟。
+ * 弧形菜单（v1.0.9.0 · #10 → 2026-11-14 按用户口径重做）
+ * ================================================================
+ * 用户口径（2026-11-14）：
+ *   ① **长按按住展示** —— 只有长按才展开，按住期间菜单一直在；
+ *      轻点不展开（上一版轻点/长按都能开，轻点会开出一个"没人操作的菜单"）。
+ *   ② **手指拖到某个按钮上松开 = 点了那个按钮**（跟 iOS 的 radial menu 一样）。
+ *   ③ **按住展开后直接松手（没拖到按钮）→ 四个按钮收回**。
+ *   ④ 按钮改成**圆形**、配色跟随整体（不要白色方块）；弧上**间距一致**。
  *
- * 用法（页面里）：
- *   <radial-menu show="{{rmShow}}" x="{{rmX}}" y="{{rmY}}" items="{{rmItems}}"
- *                bind:close="onRmClose" bind:select="onRmSelect" />
- * 注意：页面应只在 motion.on('radial') 为 true 时才让它可触发（FLAG 关掉就整体退化）。
+ * ⚠️ 为什么触摸跟踪放在**页面**、组件只负责命中判定：
+ *   `bindlongpress` 触发时菜单组件才刚渲染出来，**后续的 touchmove/touchend
+ *   的事件目标仍是长按的那个元素**，不会冒泡到组件 ⇒ 组件收不到「松手」事件。
+ *   所以页面全程监听 touchstart/move/end，把坐标转发给组件（selectComponent 调方法）。
+ *
+ * ⚠️ 间距一致的做法：**整条弧平移**进屏幕（而不是逐个点夹取）——
+ *   逐点夹取会把靠边的项挤到一起，间距就不一致了（用户实锤「间距保持一致」）。
  */
 const motion = require('../../utils/motion');
 
 const RADIUS = 120;     // 菜单展开半径（px，按页面坐标）
 const SPAN = 140;       // 弧的总张角（度），从 -SPAN/2 到 +SPAN/2
+const HIT = 52;         // 命中半径（px）：手指落在这个距离内就算命中该按钮
 
 Component({
   options: { addGlobalClass: true },
@@ -30,7 +37,6 @@ Component({
      * 弧的张角范围（度）。**屏幕坐标 y 向下**：0 = 正右，-90 = 正上。
      * ⚠️ 触发点贴着屏幕边（如课表左下角那个按钮）时，必须把范围收进**右上象限**
      *   （如 -105 ~ 5），否则靠下的菜单项会落到 tabBar 底下被遮住（用户实锤）。
-     *   默认仍是旧的 -70 ~ +70（居中偏右半圆）。
      */
     spanStart: { type: Number, value: -SPAN / 2 },
     spanEnd: { type: Number, value: SPAN / 2 }
@@ -38,7 +44,8 @@ Component({
   data: {
     visible: false,   // 节点是否在 DOM（开合留出过渡时间）
     open: false,      // 是否到终态（决定 .in）
-    arranged: []      // 算好 dx/dy/delay 的菜单项
+    arranged: [],     // 算好 dx/dy/delay 的菜单项
+    hot: -1           // 当前手指悬停的项下标（-1 = 无）
   },
   lifetimes: {
     detached() {
@@ -52,38 +59,52 @@ Component({
       const n = items.length;
       const start = typeof this.properties.spanStart === 'number' ? this.properties.spanStart : -SPAN / 2;
       const end = typeof this.properties.spanEnd === 'number' ? this.properties.spanEnd : SPAN / 2;
-      /* 🔴 2026-11-14 真机实测：触发点贴着屏幕边（左下角那个按钮）时，
-       *   弧上的菜单项会被推到屏幕外（用户实锤「全部」被裁掉一半）。
-       *   ⇒ 算完 dx/dy 后把**菜单项中心**夹进视口（留出菜单项自身的一半宽高）。
-       *   视口尺寸取 wx.getSystemInfoSync（拿不到就用 375x667 兜底）。 */
+      const cx = Number(this.properties.x) || 0;
+      const cy = Number(this.properties.y) || 0;
+
+      // 先按角度均匀取点（等角 ⇒ 弧上弦长一致 ⇒ 间距一致）
+      const pts = items.map((it, i) => {
+        const t = n <= 1 ? 0.5 : i / (n - 1);
+        const ang = (start + (end - start) * t) * Math.PI / 180;
+        return { dx: Math.cos(ang) * r, dy: Math.sin(ang) * r };
+      });
+
+      /* 🔴 整条弧**平移**进屏幕（而不是逐点夹取）：逐点夹会把靠边的项挤到一起、
+         间距就不一致了（用户实锤「间距保持一致」）。 */
       let vw = 375, vh = 667;
       try {
         const s = wx.getSystemInfoSync ? wx.getSystemInfoSync() : null;
         if (s && s.windowWidth) { vw = s.windowWidth; vh = s.windowHeight; }
       } catch (e) {
-        console.error('[radial-menu] 取不到视口尺寸，菜单项可能被裁', e);
+        console.error('[radial-menu] 取不到视口尺寸，菜单可能被裁', e);
       }
-      const HALF = 40;    // 菜单项半宽/半高（120rpx ≈ 64px，留余量）
-      const MARGIN = 6;   // 距屏幕边至少留一点
-      const cx = Number(this.properties.x) || 0;
-      const cy = Number(this.properties.y) || 0;
-      const minX = MARGIN + HALF - cx, maxX = vw - MARGIN - HALF - cx;
-      const minY = MARGIN + HALF - cy, maxY = vh - MARGIN - HALF - cy;
+      const HALF = 32;    // 圆形按钮半径（112rpx ≈ 60px）
+      const MARGIN = 8;
+      if (pts.length) {
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        pts.forEach(p => {
+          minX = Math.min(minX, cx + p.dx); maxX = Math.max(maxX, cx + p.dx);
+          minY = Math.min(minY, cy + p.dy); maxY = Math.max(maxY, cy + p.dy);
+        });
+        let shiftX = 0, shiftY = 0;
+        if (minX - HALF < MARGIN) shiftX = MARGIN + HALF - minX;
+        if (maxX + HALF > vw - MARGIN) shiftX = Math.min(shiftX, vw - MARGIN - HALF - maxX);
+        if (minY - HALF < MARGIN) shiftY = MARGIN + HALF - minY;
+        if (maxY + HALF > vh - MARGIN) shiftY = Math.min(shiftY, vh - MARGIN - HALF - maxY);
+        pts.forEach(p => { p.dx += shiftX; p.dy += shiftY; });
+      }
+
+      this._pts = pts;
+
       const arranged = items.map((it, i) => {
-        const t = n <= 1 ? 0.5 : i / (n - 1);
-        const ang = (start + (end - start) * t) * Math.PI / 180;
-        let dx = Math.cos(ang) * r;
-        let dy = Math.sin(ang) * r;
-        if (maxX >= minX) dx = Math.min(Math.max(dx, minX), maxX);
-        if (maxY >= minY) dy = Math.min(Math.max(dy, minY), maxY);
         const o = Object.assign({}, it);
-        o.dx = Math.round(dx);
-        o.dy = Math.round(dy);
-        o.delay = i * 32;     // 交错弹出
+        o.dx = Math.round(pts[i].dx);
+        o.dy = Math.round(pts[i].dy);
+        o.delay = i * 32;       // 交错弹出
+        o.long = String(it.label || '').length > 2;   // 四字项用小一号字
         return o;
       });
-      // 先挂节点（起始态），下一帧再加 .in 触发过渡
-      this.setData({ visible: true, open: false, arranged }, () => {
+      this.setData({ visible: true, open: false, arranged, hot: -1 }, () => {
         if (this._openTimer) clearTimeout(this._openTimer);
         this._openTimer = setTimeout(() => {
           this._openTimer = null;
@@ -93,7 +114,7 @@ Component({
     },
     _close() {
       if (!this.data.visible) return;
-      this.setData({ open: false });
+      this.setData({ open: false, hot: -1 });
       if (this._closeTimer) clearTimeout(this._closeTimer);
       // 等退场动画走完再卸节点（与 popup-anim 同思路）
       this._closeTimer = setTimeout(() => {
@@ -101,6 +122,36 @@ Component({
         this.setData({ visible: false });
       }, 260);
     },
+
+    /* ---------------- 触摸跟随（由页面转发进来） ---------------- */
+    /** 手指移动到 (px,py)：更新高亮项 */
+    moveTo(px, py) {
+      if (!this.data.visible) return;
+      const pts = this._pts;
+      const ox = Number(this.properties.x) || 0;
+      const oy = Number(this.properties.y) || 0;
+      let best = -1, bestD = HIT;
+      for (let i = 0; i < (pts || []).length; i++) {
+        const p = pts[i];
+        const dx = (ox + p.dx) - px;
+        const dy = (oy + p.dy) - py;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      if (best !== this.data.hot) this.setData({ hot: best });
+    },
+    /** 手指松开：命中则选中该项，否则整个菜单收回 */
+    release() {
+      if (!this.data.visible) return;
+      const hot = this.data.hot;
+      if (hot >= 0 && this.data.arranged[hot]) {
+        const key = this.data.arranged[hot].key;
+        this.triggerEvent('select', { key });
+        return;
+      }
+      this.triggerEvent('close');
+    },
+
     noop() {},
     onMask() { this.triggerEvent('close'); },
     onItem(e) {

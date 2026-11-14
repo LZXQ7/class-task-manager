@@ -19,18 +19,23 @@
 
     <block wx:if="{{!staffMode}}">
       <view class="bind-form">
-        <view class="bind-label">班级口令</view>
-        <input
-          class="bind-input {{tokenError ? 'err' : ''}} {{shake ? 'shake' : ''}}"
-          type="text"
-          value="{{token}}"
-          password="{{false}}"
-          maxlength="12"
-          placeholder="班级口令或邀请码"
-          placeholder-class="bind-ph"
-          bindinput="onTokenInput"
-          confirm-type="done"
-        />
+        <!-- 浮动标签（2026-11-14 用户要求）：不用占位符 ——
+             未输入时标签**躺在框里**，聚焦或一有内容就缩小上浮到框上方并一直显示。
+             ⚠️ 所以 input 的 placeholder 必须留空（否则会和浮动标签重影）。 -->
+        <view class="bind-field {{tokenFocused || token ? 'filled' : ''}} {{tokenError ? 'err' : ''}}">
+          <input
+            class="bind-input {{shake ? 'shake' : ''}}"
+            type="text"
+            value="{{token}}"
+            password="{{false}}"
+            maxlength="12"
+            bindinput="onTokenInput"
+            bindfocus="onTokenFocus"
+            bindblur="onTokenBlur"
+            confirm-type="done"
+          />
+          <text class="bind-float">班级口令或邀请码</text>
+        </view>
         <view wx:if="{{tokenError}}" class="bind-err">{{tokenError}}</view>
         <view wx:else class="bind-help">口令或邀请码由生活委员发放，也可扫邀请码自动填入</view>
         <view class="bind-note">本小程序仅通过班级口令绑定，无需手机号、头像、昵称等授权</view>

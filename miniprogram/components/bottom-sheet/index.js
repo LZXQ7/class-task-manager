@@ -60,10 +60,11 @@ Component({
   properties: {
     // ⚠️ show 的 observer 必须写在组件里（popup-anim 只提供 mounted/active 与 animSync）：
     // 若在 behavior 里也声明 show，组件自身这份会覆盖掉它，observer 直接不生效。
-    show: { type: Boolean, value: false, observer(nv) { this.animSync(nv); if (nv) this._prepMorph(); else this._clearMorph(); } },
-    /* #1 流体形态的**源矩形**：{ left, top, width, height, radius }（px, 视口坐标）。
-     * 不传 = 不播形态变换（默认，旧行为）。 */
-    morphRect: { type: Object, value: null },
+    show: { type: Boolean, value: false, observer(nv) { this.animSync(nv); } },
+    /* 面板形态：'sheet'（默认，贴底抽屉）| 'float'（居中悬浮卡片）。
+     * ⚠️ 用户口径（2026-11-14）：成员详情这种「看一个人的完整信息」不该是
+     *   从底部升起的抽屉，而该是浮在页面中间的一张卡片。 */
+    variant: { type: String, value: 'sheet' },
     title: { type: String, value: '' },
     height: { type: Number, value: 0 },      // rpx，0=自适应
     maskClose: { type: Boolean, value: true },
@@ -138,6 +139,8 @@ Component({
   },
   data: {
     safeBottom: 0, tabbarPx: 49, capStyle: '', bodyMaxH: '',
+    /* variant='float' 时的面板高度上限（内联下发，见 attached 的说明） */
+    floatCap: '',
     /* ---- 拖拽（v0.7.32）---- */
     dragging: false,     // 手指按住拖动中（用于给面板加 .drag 关掉过渡）
     dragStyle: '',       // 面板内联样式：拖拽/回弹/滑出期间覆盖 class 的 transform
@@ -157,10 +160,6 @@ Component({
     // ⚠️ 单位是 px：这里由 JS 下发，与 wxss 里 rpx 无关。
     resizeStyle: '',
     resizeCls: '',        // '' = 无过渡；'animating' = 正在过渡（wxss 里给 .sheet-panel 挂高度过渡）
-    /* ---- #1 流体形态（morph）---- */
-    morphing: false,      // true = 面板透明（由幽灵层代表它）
-    morphGhost: false,    // true = 渲染幽灵层
-    morphStyle: ''        // 幽灵层的内联几何（left/top/width/height/border-radius + transition）
   },
   observers: {
     /* 关闭（active 落回 false）后清掉拖拽内联样式 —— 否则残留的 inline opacity/transform
@@ -248,15 +247,24 @@ Component({
       //    改头部结构必须同步这里，否则长内容会比面板高一条指示条的高度。
       const ph = this.properties.height || 0;
       const tall = this.properties.tall;
+      /* ⚠️ variant='float'（居中悬浮卡片）：高度上限要比贴底抽屉小得多，
+       *    否则内容一长就把卡片撑满屏幕、看着还是"贴底的抽屉"（用户实锤）。
+       *    ⚠️ 面板的 max-height 是**内联**下发的（内联 > 样式表）⇒ 必须在 JS 里改，
+       *    只在 wxss 里写 max-height 会被这行内联值盖掉（踩过一次）。
+       *    悬浮卡片：面板 72vh、body 再扣掉头部 124rpx。 */
+      const isFloat = this.properties.variant === 'float';
       const bodyMaxH = ph
         ? ''
-        : ';max-height: calc(' + (tall ? '92vh' : '78vh') + ' - 124rpx)';
+        : ';max-height: calc(' + (isFloat ? '72vh' : (tall ? '92vh' : '78vh')) + ' - 124rpx)';
+      const floatCap = isFloat ? ';max-height: 72vh' : '';
       if (m.safeBottom === this.data.safeBottom && m.tabbarPx === this.data.tabbarPx
-        && (m.sheetCapStyle || '') === this.data.capStyle && bodyMaxH === this.data.bodyMaxH) return;
+        && (m.sheetCapStyle || '') === this.data.capStyle && bodyMaxH === this.data.bodyMaxH
+        && floatCap === this.data.floatCap) return;
       this.setData({
         safeBottom: m.safeBottom,
         tabbarPx: m.tabbarPx,
-        capStyle: m.sheetCapStyle || '',
+        capStyle: (m.sheetCapStyle || '') + floatCap,
+        floatCap,
         bodyMaxH
       });
     },
@@ -272,65 +280,7 @@ Component({
     }
   },
   methods: {
-    /* ============================================================
-     * #1 流体形态（morph）：面板**从触发元素长出来**，而不是从屏幕底部升起。
-     * ------------------------------------------------------------
-     * 做法：面板本体在动画期间保持透明（morphing → opacity:0），
-     *   同时渲染一个「幽灵层」（.sheet-morph，fixed），先钉在触发元素的矩形上，
-     *   面板滑到位后量出它的真实矩形，再把幽灵层**长**成那个矩形；
-     *   幽灵到位 → 撤掉幽灵、面板淡入 ⇒ 观感是「卡片里长出抽屉」。
-     * ⚠️ 为什么不直接动面板的几何：面板高度是 auto（内容自适应），
-     *    transform/width 过渡都拿不到终点值；用幽灵层承载几何，面板零改动。
-     * ⚠️ 幽灵层用 left/top/width/height 过渡（不是 scale）——
-     *    非等比 scale 会把圆角拉变形。
-     * ⚠️ 不传 morphRect / motion.on('morph') 为 false ⇒ 整段跳过，旧行为一字不变。
-     * ============================================================ */
-    _prepMorph() {
-      const r = this.properties.morphRect;
-      console.log('[sheet-morph] prep', JSON.stringify(r), 'flag=', motion.on('morph'));
-      if (!r || !r.width || !motion.on('morph')) {
-        this.setData({ morphing: false, morphGhost: false, morphStyle: '' });
-        return;
-      }
-      this.setData({
-        morphing: true,
-        morphGhost: true,
-        morphStyle: 'left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;height:' + r.height + 'px;'
-          + 'border-radius:' + (r.radius || 16) + 'px;transition:none;'
-      });
-      const self = this;
-      // 等面板滑到位（入场 240ms）再量它的矩形
-      this._morphT1 = setTimeout(function () { self._playMorph(); }, 260);
-    },
-    _playMorph() {
-      const self = this;
-      const r = this.properties.morphRect;
-      if (!r) { this._endMorph(); return; }
-      wx.createSelectorQuery().in(this).select('.sheet-panel').boundingClientRect(function (pr) {
-        console.log('[sheet-morph] panel rect =', JSON.stringify(pr));
-        if (!pr || !pr.width) { self._endMorph(); return; }
-        const rad = self.properties.radius || 24;
-        self.setData({
-          morphStyle: 'left:' + pr.left + 'px;top:' + pr.top + 'px;width:' + pr.width + 'px;height:' + pr.height + 'px;'
-            + 'border-radius:' + rad + 'px ' + rad + 'px 0 0;'
-            + 'transition:left .26s cubic-bezier(.22,.61,.36,1),top .26s cubic-bezier(.22,.61,.36,1),'
-            + 'width .26s cubic-bezier(.22,.61,.36,1),height .26s cubic-bezier(.22,.61,.36,1),border-radius .26s ease;'
-        }, function () {
-          self._morphT2 = setTimeout(function () { self._endMorph(); }, 280);
-        });
-      }).exec();
-    },
-    _endMorph() {
-      this._morphT1 = null; this._morphT2 = null;
-      this.setData({ morphing: false, morphGhost: false, morphStyle: '' });
-    },
-    _clearMorph() {
-      if (this._morphT1) { clearTimeout(this._morphT1); this._morphT1 = null; }
-      if (this._morphT2) { clearTimeout(this._morphT2); this._morphT2 = null; }
-      if (this.data.morphing || this.data.morphGhost) {
-        this.setData({ morphing: false, morphGhost: false, morphStyle: '' });
-      }
-    },
+
 
     onMask() {
       if (this.data.maskClose) this.triggerEvent('close');

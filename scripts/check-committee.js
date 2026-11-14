@@ -25,6 +25,7 @@ const apiSrc = read('miniprogram/utils/api.js');
 const memSrc = read('cloudfunctions/member/index.js');
 const schSrc = read('cloudfunctions/schedule/index.js');
 const manWxml = read('miniprogram/pages/manual/index.wxml');
+const manJs = read('miniprogram/pages/manual/index.js');
 
 /* ============================================================
  * ① 分组筛选（全班 / 仅班委 / A 组 / B 组）
@@ -128,7 +129,13 @@ else bad('addManual / reassign 放行不完整（命中 ' + relax + ' 处，期�
 const autoRoster = schSrc.match(/FROM member WHERE class_id = \? AND status = 'ACTIVE' AND " \+ NOT_TEST\(\) \+ " AND group_tag <> 'X' AND duty_off = 0/g) || [];
 if (autoRoster.length >= 3) ok('自动生成的名册 SQL 三处都排除 X 组 / duty_off / 测试账号（命中 ' + autoRoster.length + ' 处）');
 else bad('自动生成的名册 SQL 排除条件不全（命中 ' + autoRoster.length + ' 处，期望 >=3）：要么漏了 NOT_TEST()，要么漏了 X 组 / duty_off');
-has(manWxml, /item\.test \? '测试账号 · ' : ''/, '手动排班选人列表标出测试账号');
+/* ⚠️ 2026-11-14：手动排班选人列表改用 <name-autocomplete> 组件（下拉 + 高亮），
+   「测试账号」标记从 wxml 里的模板表达式搬到了 JS 构造候选的 sub 文本里
+   （manual/index.js 的 pickerItems）。所以判据放宽为「wxml 里有 **或** js 里有」。
+   ⚠️ 不能写成 has(...) || has(...)：has 失败会先打一条 ✗ 并把 failed 加一 ⇒ 门禁照样红。 */
+const testAccountMarked = /item\.test \? '测试账号 · ' : ''/.test(manWxml) || /测试账号/.test(manJs);
+if (testAccountMarked) ok('手动排班选人列表标出测试账号');
+else bad('手动排班选人列表标出测试账号');
 
 console.log('');
 if (failed) { console.log('❌ 失败 ' + failed + ' 项'); process.exit(1); }

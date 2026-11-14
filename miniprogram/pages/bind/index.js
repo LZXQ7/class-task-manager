@@ -23,6 +23,8 @@ Page({
     token: '',
     tokenError: '',
     checking: false,
+    /** 浮动标签：输入框是否有焦点（决定标签在框内还是已上浮） */
+    tokenFocused: false,
     /** 隐私合规（2026-09-25 审核）：必须主动勾选同意协议才可下一步，不得默认同意 */
     agreed: false,
 
@@ -153,6 +155,11 @@ Page({
     const v = String(e.detail.value || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 12);
     this.setData({ token: v, tokenError: '' });
   },
+
+  /* 浮动标签（2026-11-14）：聚焦时标签上浮；失焦后**只要有内容就保持上浮**，
+     空着才落回框内。 */
+  onTokenFocus() { this.setData({ tokenFocused: true }); },
+  onTokenBlur() { this.setData({ tokenFocused: false }); },
 
   onToggleAgree() {
     this.setData({ agreed: !this.data.agreed });

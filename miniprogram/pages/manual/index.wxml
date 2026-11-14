@@ -131,45 +131,21 @@
     bind:close="onPickerClose"
   >
     <view class="pk">
-      <view class="pk-search">
-        <app-icon name="search" variant="gray" size="{{32}}" />
-        <input
-          class="pk-search-input"
-          value="{{kw}}"
-          placeholder="搜索姓名或序号"
-          placeholder-class="f-ph"
-          bindinput="onPickerKw"
-        />
-        <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{kw}}" class="pk-search-clear" bindtap="onPickerClear">清除</text>
-      </view>
+      <!-- 2026-11-14 姓名自动补全（用户要求）：输入即实时列出匹配项，并**高亮命中的文字**。
+           ⚠️ 组件内部做实时过滤 + 下拉；页面只负责提供候选（pickerItems）与选中后的业务。
+           ⚠️ 保留 .pk-gap 的说明文字（不可选原因/测试账号口径）。 -->
+      <name-autocomplete
+        items="{{pickerItems}}"
+        value="{{kw}}"
+        placeholder="搜索姓名或序号"
+        empty-text="没有匹配的同学"
+        bind:input="onPickerKw"
+        bind:pick="onPickAcMember"
+      />
 
       <view class="pk-gap">
         <text class="pk-gap-text">共 {{pickerCount}} 人，灰色为不可选（已在此课次 / 请假 / 分组不符）；带「测试」标记的是测试账号，可手动排入，用来验证换班通知。</text>
       </view>
-
-      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
-        wx:for="{{list}}"
-        wx:key="id"
-        class="pk-row {{item.disabled ? 'off' : ''}}"
-        data-id="{{item.id}}"
-        bindtap="onPickMember"
-      >
-        <avatar-tag name="{{item.name}}" text="{{item.seqText}}" no-fallback="{{true}}" size="{{72}}" />
-        <view class="pk-info">
-          <text class="pk-name">{{item.name}}</text>
-          <text class="pk-sub">{{item.test ? '测试账号 · ' : ''}}{{item.groupTag}} 组 · 本轮已排 {{item.dutyCount}} 次</text>
-        </view>
-        <view wx:if="{{item.badge}}" class="pk-badge {{item.badgeBad ? 'bad' : 'warn'}}">{{item.badge}}</view>
-        <app-icon wx:else name="arrow-right" variant="gray" size="{{32}}" />
-      </view>
-
-      <empty-state
-        wx:if="{{!list.length}}"
-        icon="empty-box"
-        title="没有匹配的同学"
-        desc="换个关键词试试"
-        padding="{{60}}"
-      />
     </view>
   </bottom-sheet>
 </view>

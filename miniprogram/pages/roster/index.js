@@ -221,8 +221,8 @@ Page({
     mDetail: null,
     /** #8 成员详情 3D 翻转：true=显示背面（角色 + 绑定态） */
     mDetailFlipped: false,
-    /** #1 流体形态：被点的那一行的矩形（null = 不播形态变换，走旧行为） */
-    mDetailMorph: null,
+    /** #2 共享元素：成员行头像的源矩形（打开飞入 / 关闭飞回的起点） */
+    mDetailFrom: null,
     /** #11 搜索栏随滚动收起 */
     searchCollapsed: false,
     /* #11 折叠成图标后点一下要能展开并聚焦输入框 */
@@ -235,6 +235,12 @@ Page({
     seTo: null,
     seColor: '',
     seLabel: '',
+    /** 关闭方向：true = 正在把头像飞回列表（落地后才收卡片） */
+    seClosing: false,
+    /** ghost 形态：'block' 色块 | 'avatar' 圆形头像 */
+    seMode: 'block',
+    /** mode='avatar' 时的头像地址 */
+    seAvatar: '',
     /** 详情选中是否是自己；true 时调组/启停/解绑按钮一律隐藏 */
     mDetailIsSelf: false,
 
@@ -1507,30 +1513,27 @@ _clockNow() {
     const id = Number(e.currentTarget.dataset.id);
     const m = this.data.members.find(x => x.id === id);
     if (!m) return;
-    /* #1 流体形态：先量出**被点的那一行**的矩形，抽屉从它「长开」，
-       而不是从屏幕底部升起（用户口径：「点开还是从底部弹出抽屉」）。
-       ⚠️ 选择器必须用 **#id**，不能用 `.mb-row[data-id="…"]`：
-          `wx.createSelectorQuery` 走的是小程序自己的 selector 引擎，**不支持属性选择器**
-          （automator 走 CDP 所以能命中，两者结果不一致 —— 实测踩过）。
-          所以每一行都带 id="mb-row-{{item.id}}"。
-       量不到就退回旧行为（morphRect=null ⇒ 组件跳过整段动画）。 */
+    /* #2 共享元素：先量出**这一行头像**的矩形（起点），点开后头像从列表飞进详情卡。
+     * ⚠️ 选择器必须用 **#id**：wx.createSelectorQuery 走的是小程序自己的 selector 引擎，
+     *    **不支持属性选择器**（`.mb-row[data-id="…"]` 永远量不到 ⇒ 转场从来没播过）。
+     *    所以头像外面包了一层带 id 的 view（.mb-av）。 */
     const self = this;
     try {
       wx.createSelectorQuery()
-        .select('#mb-row-' + id)
+        .select('#mb-av-' + id)
         .boundingClientRect(function (r) {
           self._openMember(m, r && r.width
-            ? { left: r.left, top: r.top, width: r.width, height: r.height, radius: 16 }
+            ? { left: r.left, top: r.top, width: r.width, height: r.height }
             : null);
         })
         .exec();
     } catch (err) {
-      console.error('[roster] 量成员行矩形失败，退回普通打开', err);
+      console.error('[roster] 量成员头像矩形失败，退回普通打开', err);
       this._openMember(m, null);
     }
   },
 
-  _openMember(m, morphRect) {
+  _openMember(m, fromRect) {
     const app = getApp();
     const me = (app && app.globalData && app.globalData.profile) || null;
     const isCounselor = !!(me && me.groupTag === 'X');
@@ -1539,7 +1542,7 @@ _clockNow() {
       mDetailShow: true,
       mDetailFlipped: false,
       mDetail: m,
-      mDetailMorph: morphRect,
+      mDetailFrom: fromRect,
       mDetailIsSelf: !!(me && me.id === m.id),
       isCounselor,
       noteVisible,
@@ -1555,9 +1558,50 @@ _clockNow() {
     if (isCounselor) {
       this._loadPinState(m.id);
     }
+    this._flyMemberAvatar(fromRect);
   },
 
-  onMDetailClose() { this.setData({ mDetailShow: false, mDetailFlipped: false }); },
+  /* #2 共享元素（打开方向）：列表行头像 → 详情卡头像。
+   * 详情卡里的真实头像在飞行期间**隐藏**（.md-av-fly，opacity:0），
+   * 由 ghost 顶着；ghost 落地（onSeArrive）后再把真实头像显示出来 ⇒ 视觉上就是
+   * 「同一个头像直接到位」，而不是先闪一块白色矩形（用户实锤）。 */
+  _flyMemberAvatar(from) {
+    if (!from) return;
+    const self = this;
+    // 等弹层内容渲染出来再量详情里的头像位置
+    setTimeout(function () {
+      wx.createSelectorQuery().select('#md-av').boundingClientRect(function (to) {
+        if (!to || !to.width) return;
+        self.setData({
+          seShow: true,
+          seClosing: false,
+          seMode: 'avatar',
+          seAvatar: (self.data.mDetail && self.data.mDetail.avatarUrl) || '',
+          seFrom: from,
+          seTo: { left: to.left, top: to.top, width: to.width, height: to.height }
+        });
+      }).exec();
+    }, 300);
+  },
+
+  /* 关闭：头像先**飞回**列表里的那一行，卡片再收起
+   * （用户实锤「关闭后还是跟以前一样从底部收回，而不是和共享转场一样收缩回」）。 */
+  onMDetailClose() {
+    const from = this.data.mDetailFrom;
+    const self = this;
+    if (!from) { this.setData({ mDetailShow: false, mDetailFlipped: false }); return; }
+    wx.createSelectorQuery().select('#md-av').boundingClientRect(function (to) {
+      if (!to || !to.width) { self.setData({ mDetailShow: false, mDetailFlipped: false }); return; }
+      self.setData({
+        seShow: true,
+        seClosing: true,
+        seMode: 'avatar',
+        seAvatar: (self.data.mDetail && self.data.mDetail.avatarUrl) || '',
+        seFrom: { left: to.left, top: to.top, width: to.width, height: to.height },
+        seTo: from
+      });
+    }).exec();
+  },
 
   /* #8 详情头部 3D 翻转：同步受控状态 */
   onMDetailFlip(e) {
@@ -1585,6 +1629,9 @@ _clockNow() {
       if (!r || !r.width) return;
       this.setData({
         seShow: true,
+        seClosing: false,
+        seMode: 'block',          // 班级卡 → 成员页：仍是色块 ghost
+        seAvatar: '',
         seFrom: hero.rect,
         seTo: { left: r.left, top: r.top, width: r.width, height: r.height },
         seColor: hero.color,
@@ -1592,7 +1639,14 @@ _clockNow() {
       });
     }).exec();
   },
-  onSeArrive() { this.setData({ seShow: false }); },
+  /* ghost 落地：打开方向 = 隐藏 ghost 让真实头像显示；关闭方向 = 把卡片收掉 */
+  onSeArrive() {
+    if (this.data.seClosing) {
+      this.setData({ seShow: false, seClosing: false, mDetailShow: false, mDetailFlipped: false });
+      return;
+    }
+    this.setData({ seShow: false });
+  },
 
   /* ---------------- 主页关注（v0.7.17 需求⑥；卡片 2026-11-14 迁回首页） ----------------
    * 本页只剩「固定到主页」按钮这一侧：状态查询 _loadPinState / 切换 onTogglePin。

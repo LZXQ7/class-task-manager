@@ -121,6 +121,19 @@
   opacity: 0;
   margin-left: 0;
 }
+/* #2 共享元素（2026-11-14）：列表行头像的外壳（带 id，供 wx.createSelectorQuery 量矩形）。
+   ⚠️ 必须包一层普通 view：自定义组件的宿主节点尺寸不可靠，量出来可能是 0。 */
+.mb-av {
+  width: 64rpx;
+  height: 64rpx;
+  flex-shrink: 0;
+}
+/* 详情卡里的头像外壳：共享元素飞行期间隐藏（由 ghost 顶着），落地后显示 */
+.md-av {
+  width: 80rpx;
+  height: 80rpx;
+}
+.md-av-fly { opacity: 0; }
 /* 操作按钮行：整行平分，与搜索框同一留白节奏（不再挤在搜索框右侧）
    下留白 12rpx + .mb-filters 上留白 16rpx = 与筛选胶囊共 28rpx 间隔（v0.7.32 问题④：
    原先只有 8rpx，两排贴在一起） */
