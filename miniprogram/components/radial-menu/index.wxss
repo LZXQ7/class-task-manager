@@ -2,7 +2,8 @@
 .rm-root {
   position: fixed;
   left: 0; right: 0; top: 0; bottom: 0;
-  z-index: 1150;          /* 高于 dialog(1100)，菜单是瞬时浮层 */
+  z-index: 2000;          /* 高于 dialog(1100) 与 custom-tab-bar（菜单是瞬时浮层，
+                            贴着屏幕边的按钮展开时不能被底部 tabBar 压住 —— 用户实锤） */
   pointer-events: none;
 }
 .rm-mask {

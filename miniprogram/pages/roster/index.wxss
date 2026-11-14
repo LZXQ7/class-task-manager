@@ -53,18 +53,9 @@
   align-items: center;
   padding: 24rpx 32rpx 0;
 }
-/* #11 搜索栏随滚动收起：折叠搜索胶囊（其高度随之塌缩，列表上移腾出空间） */
-.mb-bar .mb-search {
-  transition: height .26s ease, opacity .26s ease, margin .26s ease, padding .26s ease;
-}
-.mb-bar.collapsed { padding-top: 0; }
-.mb-bar.collapsed .mb-search {
-  height: 0;
-  opacity: 0;
-  margin: 0;
-  padding: 0 20rpx;
-  overflow: hidden;
-}
+/* #11 搜索栏随滚动收窄成图标：旧的「整条塌掉」实现已删（height:0 + opacity:0，
+   用户口径：「只是收起了，而不是逐步缩小成搜索图标缩在边上」）。
+   新实现见下方 .mb-search / .mb-bar.collapsed 那组规则。 */
 /* #8 翻转卡片背面的提示 */
 .mb-flip-hint {
   display: block;
@@ -74,14 +65,28 @@
   text-align: center;
 }
 .mb-search {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  width: 100%;
   display: flex;
   align-items: center;
   height: 72rpx;
   padding: 0 20rpx;
   background: var(--bg-fill);
   border-radius: var(--r-pill);
+  overflow: hidden;
+}
+/* #11 搜索栏随滚动**收窄成图标**（用户口径：「只是收起了，而不是逐步缩小成
+   搜索图标缩在边上」）。旧实现是 height:0 + opacity:0 —— 整条消失，用户不认。
+   现在：胶囊宽度从 100% 过渡到 72rpx（= 图标直径），输入框宽度归零、
+   图标居中 ⇒ 视觉上「缩成一个圆形图标停靠在行首」，点一下就展开并聚焦。 */
+.mb-search-ico {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40rpx;
+  height: 40rpx;
 }
 .mb-search-input {
   flex: 1;
@@ -90,6 +95,31 @@
   height: 72rpx;
   font-size: 26rpx;
   color: var(--text-1);
+  transition: width .3s cubic-bezier(.34, 1.4, .64, 1), opacity .18s ease, margin .3s ease;
+}
+.mb-bar .mb-search {
+  transition: width .3s cubic-bezier(.34, 1.4, .64, 1), padding .3s cubic-bezier(.34, 1.4, .64, 1), box-shadow .2s ease;
+}
+/* 折叠态：胶囊脱离文档流，**固定停在导航栏下方**（top 由 JS 按胶囊按钮位置算好，
+   见 roster/index.js 的 navBottom）⇒ 滚动列表时那个圆形搜索图标一直「缩在边上」，
+   点一下就展开。⚠️ .mb-bar 同时保留 72rpx 高度，避免内容整体上跳。 */
+.mb-bar.collapsed { height: 72rpx; }
+.mb-bar.collapsed .mb-search {
+  position: fixed;
+  left: 32rpx;
+  z-index: 720;
+  flex: 0 0 auto;
+  width: 72rpx;
+  padding: 0 16rpx;
+  border-radius: var(--r-pill);
+  background: var(--bg-fill);
+  box-shadow: 0 6rpx 20rpx rgba(29, 33, 41, 0.2);
+}
+.mb-bar.collapsed .mb-search-input {
+  flex: 0 0 0;
+  width: 0;
+  opacity: 0;
+  margin-left: 0;
 }
 /* 操作按钮行：整行平分，与搜索框同一留白节奏（不再挤在搜索框右侧）
    下留白 12rpx + .mb-filters 上留白 16rpx = 与筛选胶囊共 28rpx 间隔（v0.7.32 问题④：

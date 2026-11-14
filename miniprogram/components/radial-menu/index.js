@@ -25,7 +25,15 @@ Component({
     /** 菜单项：[{ key, label, icon? }] */
     items: { type: Array, value: () => [] },
     /** 展开半径（px） */
-    radius: { type: Number, value: RADIUS }
+    radius: { type: Number, value: RADIUS },
+    /**
+     * 弧的张角范围（度）。**屏幕坐标 y 向下**：0 = 正右，-90 = 正上。
+     * ⚠️ 触发点贴着屏幕边（如课表左下角那个按钮）时，必须把范围收进**右上象限**
+     *   （如 -105 ~ 5），否则靠下的菜单项会落到 tabBar 底下被遮住（用户实锤）。
+     *   默认仍是旧的 -70 ~ +70（居中偏右半圆）。
+     */
+    spanStart: { type: Number, value: -SPAN / 2 },
+    spanEnd: { type: Number, value: SPAN / 2 }
   },
   data: {
     visible: false,   // 节点是否在 DOM（开合留出过渡时间）
@@ -42,8 +50,8 @@ Component({
       const r = this.properties.radius || RADIUS;
       const items = this.properties.items || [];
       const n = items.length;
-      const start = -SPAN / 2;
-      const end = SPAN / 2;
+      const start = typeof this.properties.spanStart === 'number' ? this.properties.spanStart : -SPAN / 2;
+      const end = typeof this.properties.spanEnd === 'number' ? this.properties.spanEnd : SPAN / 2;
       const arranged = items.map((it, i) => {
         const t = n <= 1 ? 0.5 : i / (n - 1);
         const ang = (start + (end - start) * t) * Math.PI / 180;

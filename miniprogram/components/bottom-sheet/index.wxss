@@ -64,6 +64,20 @@
 }
 /* v0.7.25：更高面板 —— 内容确实装不进 78vh 的弹层用（如成员详情） */
 .sheet-panel.tall { max-height: 92vh; }
+/* ===== #1 流体形态 =====
+   morphing 期间面板透明（由 .sheet-morph 幽灵层代表它，从触发元素长过来）；
+   幽灵到位后撤掉 morphing ⇒ 面板**直接显现**（幽灵的矩形就是量自面板本身 ⇒ 无缝，无需淡入）。
+   ⚠️ 故意**不给 opacity 加过渡**：popup-anim 的门禁要求所有过渡时长 == DURATION(240ms)，
+      而幽灵层落地是硬切（几何完全重合），加淡入反而会闪。 */
+.sheet-panel.morphing { opacity: 0; }
+.sheet-morph {
+  position: fixed;
+  z-index: 1002;
+  pointer-events: none;
+  background: var(--bg-card);
+  box-shadow: 0 10rpx 36rpx rgba(29, 33, 41, 0.22);
+}
+.t-dark .sheet-morph { background: var(--bg-card); box-shadow: 0 10rpx 36rpx rgba(0, 0, 0, 0.55); }
 /* ===== 拖动感应区（v0.7.32）：grabber + 标题栏，合计约 124rpx ≈ 62px =====
    ⚠️ 只有这一块接 touchmove（见 index.wxml），内容区 scroll-view 不受影响。
    改这里的高度要同步 components/bottom-sheet/index.js 的 bodyMaxH 里扣掉的 124rpx。 */

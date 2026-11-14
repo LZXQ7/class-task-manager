@@ -1,72 +1,81 @@
 /* components/tilt-card/index.wxss（2026-11-14 试点 + #4 描边背光）
  * ============================================================
- * 三层结构（修「光不对：现在就一个框的线条转圈」）：
- *   .tg-wrap    定位上下文（背光放这里，才能透出到卡片外面）
- *     .tg-edge  描边壳：padding 2.5rpx + overflow:hidden + border-radius 继承
- *       .tg-cone    放大的 conic 圆盘（inset:-60%），被壳裁成**只沿边框一圈**
- *       .tg-surface 卡片本体（3D 倾斜 / 流光在这里）
+ * 四层结构（修「光不对：现在就一个框的线条转圈」+「描边看不出来」）：
+ *   .tg-wrap    定位上下文 + **3D 变换目标**（无圆角、无 overflow ⇒ 变换不会吃掉圆角）
+ *     .tg-glow  背光（纯色中性柔光，从四边透出）
+ *     .tg-edge  描边壳：padding 2.5rpx + overflow:hidden + border-radius + 柔和投影
+ *       .tg-cone  壳内的纯色片（被壳裁成**只沿边框一圈**）
+ *       .tg-surface 卡片本体（裁切圆角；不做 transform）
  * ⚠️ 上一版把 conic 直接铺在卡片面上、靠 mask 掏空 —— WebView 不支持
  *    `mask-composite: exclude` ⇒ conic 实心铺满卡片内部 ⇒ 看着就是「斜线 / 半圈」，
- *    正是用户截图里圈出来的东西。改成「壳 + 放大圆盘」**不需要 mask**，各机型都稳。
+ *    正是用户截图里圈出来的东西。
+ * ⚠️ 描边改成**静态纯色**（用户口径：「光不要彩色，要简单平淡的。纯色」），
+ *    不再转圈 —— 静态一圈中性灰反而更像「卡片有一层边」。
  * ⚠️ 所有多行值一律写成**单行**：WXSS 里以 `,` 续行会被 check-wxss 的
  *    「漏分号」启发式误判（app.wxss / aura-card / nav-bar 都栽过）。
  */
 
-/* ---------- #4 中性纯色背光（用户口径：不要彩色、简单平淡）----------
-   居中、比卡略大的一团柔光，从四边均匀透出；只动 opacity + scale 呼吸。
-   单一中性冷灰（不是蓝紫），强度刻意压低 —— 背光是「托」卡片的，不抢戏。 */
-.tg-wrap { position: relative; }
+/* ---------- #4 中性纯色背光（用户口径：不要彩色、简单平淡）---------- */
+.tg-wrap {
+  position: relative;
+  /* 3D 变换放在这一层：这一层**没有圆角也没有 overflow**，
+     所以按住卡片时不会把子节点的圆角裁成方角（真机实锤问题）。 */
+  transform: perspective(600px) rotateX(0deg) rotateY(0deg);
+  transform-origin: center center;
+  will-change: transform;
+}
+.tg-wrap.tg-off { will-change: auto; }
 .tg-glow {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 118%;
-  height: 118%;
+  width: 124%;
+  height: 150%;
   z-index: 0;
-  margin-left: -59%;
-  margin-top: -59%;
+  margin-left: -62%;
+  margin-top: -75%;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(138, 144, 158, 0.62) 0%, rgba(138, 144, 158, 0.26) 40%, rgba(138, 144, 158, 0.08) 58%, transparent 74%);
-  filter: blur(24px);
-  opacity: .62;
+  background: radial-gradient(ellipse at center, rgba(126, 134, 150, 0.78) 0%, rgba(126, 134, 150, 0.36) 38%, rgba(126, 134, 150, 0.12) 56%, transparent 74%);
+  filter: blur(26px);
+  opacity: .7;
   animation: tgBreath 3.6s ease-in-out infinite;
+  pointer-events: none;
 }
 .t-dark .tg-glow {
-  background: radial-gradient(ellipse at center, rgba(176, 190, 216, 0.5) 0%, rgba(150, 166, 200, 0.2) 40%, rgba(150, 166, 200, 0.07) 58%, transparent 74%);
+  background: radial-gradient(ellipse at center, rgba(170, 186, 214, 0.6) 0%, rgba(150, 166, 200, 0.26) 38%, rgba(150, 166, 200, 0.09) 56%, transparent 74%);
 }
 @keyframes tgBreath {
-  0%, 100% { opacity: .4; transform: scale(.95); }
-  50%      { opacity: .9;  transform: scale(1.05); }
+  0%, 100% { opacity: .48; transform: scale(.96); }
+  50%      { opacity: .92; transform: scale(1.06); }
 }
 
-/* 描边壳：padding 2.5rpx 让里面的 conic 圆盘只露出**一圈**；overflow:hidden 把溢出部分裁掉 */
+/* 描边壳：padding 2.5rpx = 描边宽度；overflow:hidden 把纯色片裁成只沿边框一圈 */
 .tg-edge {
   position: relative;
   z-index: 1;
   padding: 2.5rpx;
   border-radius: var(--r-md, 24rpx);
   overflow: hidden;
+  /* 柔和投影 = 第二层「背光」，保证在浅色背景上也看得见卡片浮起来 */
+  box-shadow: 0 10rpx 34rpx rgba(96, 104, 120, 0.28);
 }
-/* 放大的 conic 圆盘：只被壳裁出一圈描边，卡片内部不会沾到 */
+.t-dark .tg-edge {
+  box-shadow: 0 10rpx 34rpx rgba(0, 0, 0, 0.5);
+}
+/* 壳内的纯色片：被壳裁出一圈描边，卡片内部不会沾到 */
 .tg-cone {
   position: absolute;
   inset: -60%;
   z-index: 0;
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(154, 163, 178, 0.95) 42deg, rgba(154, 163, 178, 0.32) 92deg, transparent 150deg, transparent 240deg, rgba(154, 163, 178, 0.95) 292deg, transparent 360deg);
-  animation: tgSpin 5.5s linear infinite;
+  background: rgba(154, 163, 178, 0.62);
 }
-@keyframes tgSpin { to { transform: rotate(360deg); } }
 
 .tg-surface {
   position: relative;
   z-index: 1;
   border-radius: calc(var(--r-md, 24rpx) - 2.5rpx);
   overflow: hidden;
-  transform: perspective(600px) rotateX(0deg) rotateY(0deg);
-  transform-origin: center center;
-  will-change: transform;
 }
-.tg-off { will-change: auto; }
 
 /* ---------- 径向反射流光（CSS 兜底，必定可见）----------
    ⚠️ WXS 那条「逐帧跟随手指」的路**在真机上拿不到节点**
@@ -90,9 +99,8 @@
 /* 🔴 无障碍：reduced-motion 用 !important 压过 WXS 写的内联 transform
  *    （内联非 important 的优先级低于作者 !important），视觉上完全静止、保留材质。 */
 @media (prefers-reduced-motion: reduce) {
-  .tg-surface { transform: none !important; will-change: auto; }
+  .tg-wrap { transform: none !important; will-change: auto; }
   .tg-glare { opacity: 0 !important; }
-  .tg-cone { animation: none; }
   .tg-glow { animation: none; opacity: .5; }
 }
 @media (prefers-reduced-transparency: reduce) {

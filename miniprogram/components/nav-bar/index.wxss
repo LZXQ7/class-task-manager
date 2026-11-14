@@ -139,7 +139,10 @@
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 1200;
+/* 🔴 z-index 必须**高于全仓所有浮层**：2026-11-14 radial-menu 提到 2000
+   （要盖住底部 tabBar，否则菜单项被压住 —— 用户实锤），
+   这里同步提到 2100，主题换肤遮罩依然是全仓最高层。 */
+  z-index: 2100;
   pointer-events: none;      /* 动画期间不拦任何触摸 */
   will-change: clip-path;
 }
@@ -166,6 +169,12 @@
  *      不再是一块钉死在那里的白条。
  * ============================================================ */
 .nav { position: relative; overflow: hidden; }
+/* 🔴 2026-11-14 修：固定态必须压过上面的 `.nav`。
+ * `.nav`（0-1-0）写在 `.nav-fixed`（0-1-0）**之后** ⇒ 后者被覆盖成 `position: relative`
+ * ⇒ 导航栏不再脱离文档流，同时占位块 `.nav-placeholder` 又照常占位
+ * ⇒ 正文被顶下**两倍**导航高度（用户报的「上面空白太大」就是它：实测 104 + 104 = 202px）。
+ * 提到 0-2-0（0-2-0 > 0-1-0），与书写顺序无关地保证 fixed 生效。 */
+.nav.nav-fixed { position: fixed; }
 .nav-tint {
   position: absolute;
   left: 0; right: 0; top: 0; bottom: 0;

@@ -3,8 +3,10 @@
      v0.7.32 拖拽：只有 .sheet-drag（grabber + 标题栏）接 touchmove —— 内容区 scroll-view
      的滚动不会触发拖动；拖动只改 transform / opacity，不碰布局（不闪、不重排）。 -->
 <view wx:if="{{mounted}}" class="sheet-root">
+  <!-- #1 流体形态的幽灵层：从触发元素的矩形长成面板矩形（面板本体此时透明） -->
+  <view wx:if="{{morphGhost}}" class="sheet-morph" style="{{morphStyle}}"></view>
   <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sheet-mask {{active ? 'in' : ''}}" style="{{maskStyle}}" bindtap="onMask" catchtouchmove="noop"></view>
-  <view class="sheet-panel {{active ? 'up' : ''}} {{dragging ? 'drag' : ''}} {{tall ? 'tall' : ''}} {{resizeCls}}" style="border-radius:{{radius}}rpx {{radius}}rpx 0 0;{{height ? 'height:' + height + 'rpx' : ''}};{{capStyle}};{{resizeStyle}};{{dragStyle}}">>
+  <view class="sheet-panel {{active ? 'up' : ''}} {{dragging ? 'drag' : ''}} {{tall ? 'tall' : ''}} {{resizeCls}} {{morphing ? 'morphing' : ''}}" style="border-radius:{{radius}}rpx {{radius}}rpx 0 0;{{height ? 'height:' + height + 'rpx' : ''}};{{capStyle}};{{resizeStyle}};{{dragStyle}}">>
     <!-- ⚠️ `{{height …}}` 与 `{{capStyle}}` 之间**必须有 `;`**（2026-09-29 修复）：
          漏掉会拼成 `height:1040rpxmax-height:calc(100vh - 68px);` —— 长度值非法 ⇒
          **整条声明连同 max-height 一起被丢弃** ⇒ 面板固定高度失效、长列表无法滚动

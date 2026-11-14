@@ -221,8 +221,14 @@ Page({
     mDetail: null,
     /** #8 成员详情 3D 翻转：true=显示背面（角色 + 绑定态） */
     mDetailFlipped: false,
+    /** #1 流体形态：被点的那一行的矩形（null = 不播形态变换，走旧行为） */
+    mDetailMorph: null,
     /** #11 搜索栏随滚动收起 */
     searchCollapsed: false,
+    /* #11 折叠成图标后点一下要能展开并聚焦输入框 */
+    searchFocus: false,
+    /* #11 折叠图标的固定位置（= 胶囊按钮底部 + 6px），onLoad 里按机型算好 */
+    navBottom: 100,
     /** #2 共享元素 ghost：从班级卡飞入 mb-bar */
     seShow: false,
     seFrom: null,
@@ -354,6 +360,15 @@ Page({
   onLoad(options) {
     const app = getApp();
     theme.mount(this);   // 深色模式（C-4）：挂 t-light / t-dark 到本页根节点
+    /* #11 折叠后的搜索图标要「缩在边上」= 固定在导航栏下方。
+     * 导航栏高度用**微信胶囊按钮的底部**当基准：机型自适应（状态栏 + 标题行），
+     * 不用写死 px（写死会在 iPad / 折叠屏上错位）。 */
+    try {
+      const cap = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
+      if (cap && cap.bottom) this.setData({ navBottom: cap.bottom + 6 });
+    } catch (e) {
+      console.error('[roster] 取胶囊位置失败，折叠图标用默认 top', e);
+    }
     const o = options || {};
     const classId = Number(o.classId) || 0;
     const name = o.name ? decodeURIComponent(o.name) : '';
@@ -1492,6 +1507,30 @@ _clockNow() {
     const id = Number(e.currentTarget.dataset.id);
     const m = this.data.members.find(x => x.id === id);
     if (!m) return;
+    /* #1 流体形态：先量出**被点的那一行**的矩形，抽屉从它「长开」，
+       而不是从屏幕底部升起（用户口径：「点开还是从底部弹出抽屉」）。
+       ⚠️ 选择器必须用 **#id**，不能用 `.mb-row[data-id="…"]`：
+          `wx.createSelectorQuery` 走的是小程序自己的 selector 引擎，**不支持属性选择器**
+          （automator 走 CDP 所以能命中，两者结果不一致 —— 实测踩过）。
+          所以每一行都带 id="mb-row-{{item.id}}"。
+       量不到就退回旧行为（morphRect=null ⇒ 组件跳过整段动画）。 */
+    const self = this;
+    try {
+      wx.createSelectorQuery()
+        .select('#mb-row-' + id)
+        .boundingClientRect(function (r) {
+          self._openMember(m, r && r.width
+            ? { left: r.left, top: r.top, width: r.width, height: r.height, radius: 16 }
+            : null);
+        })
+        .exec();
+    } catch (err) {
+      console.error('[roster] 量成员行矩形失败，退回普通打开', err);
+      this._openMember(m, null);
+    }
+  },
+
+  _openMember(m, morphRect) {
     const app = getApp();
     const me = (app && app.globalData && app.globalData.profile) || null;
     const isCounselor = !!(me && me.groupTag === 'X');
@@ -1500,6 +1539,7 @@ _clockNow() {
       mDetailShow: true,
       mDetailFlipped: false,
       mDetail: m,
+      mDetailMorph: morphRect,
       mDetailIsSelf: !!(me && me.id === m.id),
       isCounselor,
       noteVisible,
@@ -1527,7 +1567,13 @@ _clockNow() {
   /* #11 搜索栏随滚动收起：滚过阈值折叠搜索胶囊，回顶展开 */
   onPageScroll(e) {
     const c = (e.scrollTop || 0) > 40;
-    if (c !== this.data.searchCollapsed) this.setData({ searchCollapsed: c });
+    if (c !== this.data.searchCollapsed) this.setData({ searchCollapsed: c, searchFocus: c ? false : this.data.searchFocus });
+  },
+
+  /* #11 折叠态：点那个圆形搜索图标 → 展开搜索条并聚焦输入框 */
+  onSearchToggle() {
+    if (!this.data.searchCollapsed) return;
+    this.setData({ searchCollapsed: false, searchFocus: true });
   },
 
   /* #2 共享元素：进入页面时若带班级卡 hero，则 FLIP 飞入 mb-bar */

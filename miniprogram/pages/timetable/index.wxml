@@ -216,14 +216,16 @@
        ⚠️ fixed 元素：必须留在 .wk-swipe 动画容器**外面**（transform 建包含块）。
        ⚠️ 「临时调课」只给超管；普通同学看到的菜单里就是 A 组 / B 组两行。 -->
   <view wx:if="{{!loading && ((canSwitchClass && classList.length) || (!isCounselor && hasTimetable))}}" class="fab-menu {{fabMenuOpen ? 'open' : ''}}">
-    <!-- #10 弧形菜单（2026-11-14）：点左下角按钮 → 从按钮位置**径向展开**，
-         不再是「向上展开的纵向列表」（旧 .fab-menu-list 已删，视觉与手感都换掉）。
+    <!-- #10 弧形菜单（2026-11-14）：**长按**左下角按钮 → 从按钮位置径向展开。
+         ⚠️ 用户实锤「按住不是点击」⇒ 触发方式必须是长按（bindlongpress），
+            点击也保留（bindtap），两处都能开菜单，长按优先。
+         ⚠️ span-start/span-end 把弧收进**右上象限**（屏幕坐标：0=正右，-90=正上），
+            否则靠下的菜单项会掉到 tabBar 底下被遮住。
          ⚠️ 外层 .fab-menu 的 wx:if 守卫是 check-timetable-local 逐入口点名的
             （辅导员不得进调课/编辑入口），改结构时**别动这个守卫**。
-         ⚠️ fab-menu 是 fixed 且无 transform ⇒ 里面 fixed 定位的 radial-menu 相对视口 ✓。
-         ⚠️ fm* 是「按钮菜单」的独立状态，与「长按格子」那条弧形菜单（rm*）完全分开，
-            两处菜单不会互相抢 show。 -->
-    <view data-pressable class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFabRadial">
+         ⚠️ fm* 是「按钮菜单」的独立状态，与「长按格子」那条弧形菜单（rm*）完全分开。 -->
+    <view data-pressable class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
+      bindlongpress="onFabRadial" bindtap="onFabRadial">
       <app-icon name="grid" variant="brand" size="{{34}}" />
       <text class="fab-menu-t">{{viewGroup === 'ALL' ? '全部' : (viewGroup === 'B' ? 'B 组' : 'A 组')}}</text>
       <app-icon name="{{fabMenuOpen ? 'chevron-down' : 'chevron-up'}}" variant="gray" size="{{26}}" />
@@ -232,6 +234,9 @@
       show="{{fmShow}}"
       x="{{fmX}}"
       y="{{fmY}}"
+      radius="{{140}}"
+      span-start="{{-105}}"
+      span-end="{{5}}"
       items="{{fmItems}}"
       bind:close="onFabRadialClose"
       bind:select="onFabSelect"

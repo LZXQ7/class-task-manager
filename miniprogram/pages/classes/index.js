@@ -223,7 +223,10 @@ Page({
     const name = String(e.currentTarget.dataset.name || '');
     if (!id) return;
     const q = wx.createSelectorQuery();
-    q.select('.cl-card[data-id="' + id + '"]').boundingClientRect((r) => {
+    /* ⚠️ 选择器必须用 **#id**：wx.createSelectorQuery 走的是小程序自己的 selector 引擎，
+     *   **不支持属性选择器**（`.cl-card[data-id="…"]` 永远量不到 ⇒ 共享元素从来没播过）。
+     *   所以卡片带 id="cl-card-{{item.id}}"（automator/CDP 查得到属性选择器，别被它误导）。 */
+    q.select('#cl-card-' + id).boundingClientRect((r) => {
       if (r && r.width) {
         shared.setHero({
           rect: { left: r.left, top: r.top, width: r.width, height: r.height },

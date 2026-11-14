@@ -205,7 +205,19 @@ function staticProbes(wxml, wxss, wxs) {
                    /transform: none !important/.test(wxss),
     rafSpring: /requestAnimationFrame\(tick\)/.test(wxs) && /var DAMPING = 18;/.test(wxs),
     wxsSyntax: !/\b(Number|String|Boolean)\s*\(/.test(wxs) &&
-               !/\b(let|const)\s|=>|`/.test(wxs)
+               !/\b(let|const)\s|=>|`/.test(wxs),
+    /* 🔴 2026-11-14 真机事故：描边壳 .tg-edge / .tg-cone **只写在 wxss 里**，
+       wxml 里压根没有这两个节点 ⇒ ④ 描边从未渲染（用户：「Card 背光描边看不出来」）。
+       门禁原来只查 CSS 里有没有那条规则，查不出「CSS 写了但节点不存在」——
+       所以这里同时要求 **wxss 有规则** 且 **wxml 有对应节点**。
+       ⚠️ 3D 变换必须落在**没有圆角、没有 overflow** 的 .tg-wrap 上：
+          变换加在带圆角+overflow 的节点上，真机按住再松手时 WebView 重新光栅化 ⇒ 圆角退化成方角。 */
+    auraRing: /class="tg-edge"/.test(wxml) && /class="tg-cone"/.test(wxml) &&
+              /\.tg-edge\s*\{[^}]*overflow:\s*hidden/.test(wxss) &&
+              /\.tg-cone\s*\{[^}]*background/.test(wxss),
+    tiltOnWrapper: /class="tg-wrap(?: [^"]*)?"[\s\S]{0,320}bindtouchstart/.test(wxml) &&
+                   /\.tg-wrap\s*\{[^}]*transform:/.test(wxss) &&
+                   !/\.tg-surface\s*\{[^}]*transform:\s*perspective/.test(wxss)
   };
 }
 
@@ -319,8 +331,22 @@ const MUTATIONS = [
   {
     name: 'wxss 删掉 reduced-motion 的 !important 压制',
     scope: 'wxss', expect: 'reducedMotion',
-    from: '  .tg-surface { transform: none !important; will-change: auto; }',
-    to: '  .tg-surface { will-change: auto; }'
+    /* ⚠️ 2026-11-14：3D 变换从 .tg-surface 上移到 .tg-wrap（真机方角 bug），
+       所以这条锚点跟着改。锚点漂移会让变异静默 no-op ⇒ 自证变成假通过。 */
+    from: '  .tg-wrap { transform: none !important; will-change: auto; }',
+    to: '  .tg-wrap { will-change: auto; }'
+  },
+  {
+    name: 'wxml 删掉描边壳节点（CSS 有规则但节点不存在 ⇒ 描边从未渲染）',
+    scope: 'wxml', expect: 'auraRing',
+    from: '<view class="tg-edge">',
+    to: '<view class="tg-edge-removed">'
+  },
+  {
+    name: '3D 变换挪回 .tg-surface（真机按住松手后圆角退化成方角）',
+    scope: 'wxml', expect: 'tiltOnWrapper',
+    from: '<view class="tg-wrap {{enabled ? \'\' : \'tg-off\'}}"',
+    to: '<view class="tg-wrap-x {{enabled ? \'\' : \'tg-off\'}}"'
   },
   {
     name: 'WXS 写回 Number() 构造器（真编译 -80054，Node vm 却全绿）',
