@@ -187,52 +187,80 @@
 .nav-status,
 .nav-body { position: relative; z-index: 2; }
 
-/* ① 边缘折射：玻璃四周把背景「折」进来的内嵌高光（不是一条固定白线，是四边各一条） */
-.nav.m-glass::before {
-  content: '';
+/* ① 边缘折射：玻璃边缘把背景「折」进来的亮暗边
+   ⚠️ 2026-11-14 真机实测（五轮踩坑，这才��它一直看不见的原因）：
+      ① `.nav.m-glass::before`（**伪元素**）—— 实测整段不命中，只剩普通模糊。
+      ② 真实节点 `.nav-edge` + **inset box-shadow** —— 同样不渲染。
+      ③ 多层 background-image + background-size/position —— 整段被丢弃。
+      ④ 单个 linear-gradient —— **也不渲染**。
+      ⑤ **根因**：**组件 wxss 里的 linear-gradient 不渲染**（同款渐变写在 app.wxss 里
+         一直是好的 —— 所以问题出在「组件样式」而不是渐变本身）。
+         纯色 background / border / transform / animation 全部实测可渲染。
+      ⇒ 最终方案：**只用纯色系**：
+         · 边缘折射 = .nav-edge 的 border-top（聚光亮）+ border-bottom（折射暗）
+         · 镜面扫光 = .nav-sheen 纯色斜条（skewX 斜切）+ translateX 动画扫过
+   亮暗结构照搬真玻璃：顶部把环境光聚亮、底部把背景折射出暗边 ⇒ 玻璃才有「厚度」。 */
+.nav-edge {
   position: absolute;
   left: 0; right: 0; top: 0; bottom: 0;
   z-index: 1;
   pointer-events: none;
-  box-shadow: inset 12rpx 0 16rpx -12rpx rgba(255, 255, 255, 0.62), inset -12rpx 0 16rpx -12rpx rgba(255, 255, 255, 0.52), inset 0 12rpx 18rpx -14rpx rgba(255, 255, 255, 0.55), inset 0 -12rpx 18rpx -14rpx rgba(255, 255, 255, 0.42);
-  opacity: .85;
+  border-top: 4rpx solid rgba(255, 255, 255, 0.9);
+  border-bottom: 8rpx solid rgba(40, 54, 86, 0.62);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0rpx, rgba(255, 255, 255, 0) 44rpx, rgba(255, 255, 255, 0) 70rpx, rgba(40, 54, 86, 0.34) 104rpx);
+  opacity: 0;
   transition: opacity .3s ease;
 }
-.t-dark .nav.m-glass::before {
-  box-shadow: inset 12rpx 0 16rpx -12rpx rgba(190, 210, 245, 0.24), inset -12rpx 0 16rpx -12rpx rgba(190, 210, 245, 0.18), inset 0 12rpx 18rpx -14rpx rgba(190, 210, 245, 0.22), inset 0 -12rpx 18rpx -14rpx rgba(190, 210, 245, 0.14);
+.t-dark .nav-edge {
+  border-top-color: rgba(206, 222, 255, 0.55);
+  border-bottom-color: rgba(0, 0, 0, 0.55);
 }
 
-/* ② 镜面反射带：一条斜向高光缓慢横扫全幅 —— 动态，不是固定的 */
-.nav.m-glass::after {
-  content: '';
+/* ② 镜面反射带：**纯色斜条**横穿导航栏（skewX 斜切 + translateX 扫过）
+   ⚠️ 数学：光带宽 = 导航栏宽的 38%。
+      translateX(-120%) ⇒ 亮带中心在 -45.6%（左外）；translateX(280%) ⇒ 中心在 106.4%（右外）
+      ⇒ 必定横穿全幅。（之前写成「元素宽 190% + 位移 ±52%」：亮带中心 = 95% ± 98.8%
+      ⇒ 两端都在视口外 ⇒ 永远看不见 —— 这是上一版的真 bug。）
+   ⚠️ 不用 linear-gradient（组件 wxss 里不渲染），改用纯色 + skewX 做斜切。 */
+.nav-sheen {
   position: absolute;
-  left: -45%; right: -45%; top: -20%; bottom: -20%;
+  left: 0;
+  top: -20%;
+  bottom: -20%;
+  width: 26%;
   z-index: 1;
   pointer-events: none;
-  background: linear-gradient(104deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.06) 40%, rgba(255, 255, 255, 0.34) 50%, rgba(255, 255, 255, 0.06) 60%, rgba(255, 255, 255, 0) 70%);
-  transform: translateX(-52%);
-  opacity: .5;
-  animation: glassSheen 7.5s cubic-bezier(.45, 0, .25, 1) infinite;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0rpx, rgba(40, 54, 86, 0.26) 92rpx, rgba(255, 255, 255, 0.8) 136rpx, rgba(40, 54, 86, 0.26) 180rpx, rgba(255, 255, 255, 0) 272rpx);
+  transform: translateX(-120%) skewX(-14deg);
+  opacity: 0;
+  animation: none;
 }
-.t-dark .nav.m-glass::after {
-  background: linear-gradient(104deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.04) 40%, rgba(210, 225, 255, 0.18) 50%, rgba(255, 255, 255, 0.04) 60%, rgba(255, 255, 255, 0) 70%);
+.t-dark .nav-sheen {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0rpx, rgba(0, 0, 0, 0.2) 92rpx, rgba(214, 228, 255, 0.4) 136rpx, rgba(0, 0, 0, 0.2) 180rpx, rgba(255, 255, 255, 0) 272rpx);
 }
 @keyframes glassSheen {
-  0%, 10%   { transform: translateX(-52%); opacity: .30; }
-  45%, 60%  { transform: translateX(52%);  opacity: .85; }
-  100%      { transform: translateX(52%);  opacity: .30; }
+  0%    { transform: translateX(-120%) skewX(-14deg); opacity: 0; }
+  10%   { opacity: .9; }
+  30%   { transform: translateX(150%) skewX(-14deg);  opacity: 1; }
+  50%   { transform: translateX(420%) skewX(-14deg);  opacity: .9; }
+  62%   { opacity: 0; }
+  100%  { transform: translateX(420%) skewX(-14deg);  opacity: 0; }
 }
 
 /* 滚动后：折射更实、磨砂叠层淡入（亮度自适应） */
-.nav.m-glass.is-scrolled::before { opacity: 1; }
-.nav.m-glass.is-scrolled::after { opacity: .95; }
+.nav.m-glass .nav-edge { opacity: .9; }
+.nav.m-glass.is-scrolled .nav-edge { opacity: 1; }
 .nav.m-glass.is-scrolled .nav-tint { opacity: .55; }
+/* 只有 m-glass 才让镜面带走起来（关 FLAG / 远程覆盖 / 低端机降级时整段不动）
+   ⚠️ opacity 给 .25 作基线：万一动画被系统节流/降级，至少还留一条静态斜光带，
+      不至于「玻璃看着完全没效果」。animation 期间由关键帧接管。 */
+.nav.m-glass .nav-sheen { opacity: .3; animation: glassSheen 5.5s cubic-bezier(.45, 0, .25, 1) infinite; }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .nav-tint { display: none; }
-  .nav.m-glass::before, .nav.m-glass::after { display: none; }
+  .nav-edge, .nav-sheen { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .nav-tint { transition: none; }
-  .nav.m-glass::after { animation: none; opacity: .45; }
+  .nav-sheen { animation: none; opacity: .45; transform: translateX(30%); }
 }
