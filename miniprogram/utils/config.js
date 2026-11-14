@@ -242,7 +242,6 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      `photo-plus` 的 `brand` 变体与 `trash`/`empty-box`/`cloud-off` 的 `gray` 变体（共 6 个），
  *      新增门禁 `scripts/check-icon-variants.js` 守住「变体缺失静默回落」类问题。
  *   纯前端改动，无需重部署云函数。
- */
  *   ① 顶部导航栏的**镜面扫光带**（斜向光带横扫）整段删除 —— 删掉 wxml 的 `.nav-sheen`
  *      真实节点、wxss 的 `.nav-sheen` / `.t-dark .nav-sheen` / `@keyframes glassSheen` /
  *      `.nav.m-glass .nav-sheen`，以及 `@supports not` 与 `prefers-reduced-motion` 里的两处引用。
