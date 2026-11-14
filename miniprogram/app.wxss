@@ -1059,12 +1059,43 @@ button::after { border: none; }
  *      写在 app.wxss 里对全站生效（app.wxss 是全局样式）。 */
 
 /* 按下态：压缩 + 深度内阴影；过渡压到 90ms 让「按下去」干脆利落 */
+/* ---------- #6 通用按压（2026-11-14 全站化）----------
+   用户口径：「所有按钮都要有按钮回弹……只要能点击打开或弹出新页面新抽屉的都算按钮」。
+   实现拆成两半，**都不改任何现有 class 字符串**（本仓库门禁大量用精确正则匹配
+   class / hover-class，一改就全红）：
+   ① **基态过渡**：由 scripts/_add-pressable.js 给所有可点元素追加的 `data-pressable`
+      标记命中 —— `[data-pressable]` 是属性选择器，不属于「类定义」，不污染作用域。
+      释放时元素回到基态，基态挂着 283ms 超调曲线 ⇒「松手弹一下」再停稳。
+   ② **按下态**：所有**已有的** hover 类（tap-hover / press-dim / tab-item-hover …）
+      统一在这里补压缩 + 深度内阴影；本来没有 hover-class 的元素由脚本新增
+      `press-shrink`，走同一套规则。
+   ⚠️ 按下用快压（90ms ease-out），释放用弹簧曲线（283ms / ζ=0.62 / 过冲 8.4%）。 */
+.m-press .press-shrink,
 .m-press .tap-hover,
-.m-press .press-dim {
+.m-press .press-dim,
+.m-press .btn-hover,
+.m-press .ws-bubble-hover,
+.m-press .ws-card-hover,
+.m-press .cl-import-hover,
+.m-press .cl-del-hover,
+.m-press .cl-add-hover,
+.m-press .cp-field-hov,
+.m-press .cp-opt-hov,
+.m-press .seg-hover,
+.m-press .tab-item-hover,
+.m-press .np-abtn-hover,
+.m-press .home-feed-hover,
+.m-press .hw-del-hover,
+.m-press .nt-del-hover,
+.m-press .lv-cell-hover,
+.m-press .tt-cell-hover {
   transform: scale(0.96);
   box-shadow: inset 0 3rpx 8rpx rgba(29, 33, 41, 0.14);
   transition-duration: 90ms;
   transition-timing-function: ease-out;
+}
+.m-press [data-pressable] {
+  transition: transform 283ms cubic-bezier(.34, 1.4, .64, 1), box-shadow .18s ease, background .18s ease, opacity .18s ease;
 }
 
 /* 基态过渡：释放时按超调曲线弹回（283ms / 过冲 8.4%）

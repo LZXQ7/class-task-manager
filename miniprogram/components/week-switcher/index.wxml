@@ -10,7 +10,7 @@
      ⚠️ 状态标签（statusText/statusType）只有值日页 / 手动排班页传，课表页不传 ——
         无标签时下行自然居中，不需要旧的 .ws-placeholder 占位块（已删除）。 -->
 <view class="ws">
-  <view
+  <view data-pressable
     class="ws-bubble {{week <= 1 ? 'off' : ''}}"
     hover-class="ws-bubble-hover"
     hover-start-time="0"
@@ -20,7 +20,7 @@
     <app-icon name="arrow-left" variant="gray" size="{{36}}" />
   </view>
 
-  <view
+  <view data-pressable
     class="ws-card"
     hover-class="ws-card-hover"
     hover-start-time="0"
@@ -38,7 +38,7 @@
     </view>
   </view>
 
-  <view
+  <view data-pressable
     class="ws-bubble {{week >= total ? 'off' : ''}}"
     hover-class="ws-bubble-hover"
     hover-start-time="0"

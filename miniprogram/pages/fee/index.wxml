@@ -88,13 +88,13 @@
             <text class="fee-rec-time">{{item.createdAt}}</text>
           </view>
           <view class="fee-rec-imgs" wx:if="{{item.images.length}}">
-            <view wx:for="{{item.images}}" wx:for-item="img" wx:for-index="imgIdx" wx:key="*this" class="fee-rec-img" data-id="{{item.id}}" data-idx="{{imgIdx}}" data-src="{{img}}" bindtap="onFeePreviewImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+            <view data-pressable wx:for="{{item.images}}" wx:for-item="img" wx:for-index="imgIdx" wx:key="*this" class="fee-rec-img" data-id="{{item.id}}" data-idx="{{imgIdx}}" data-src="{{img}}" bindtap="onFeePreviewImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
               <image class="fee-rec-img-pic" src="{{img}}" mode="aspectFill" />
             </view>
           </view>
           <!-- 仅管理人可见：追加图片（未满 9 张）/ 删除；view-only 用户完全看不到 -->
           <view class="fee-rec-ops" wx:if="{{feeCanManage}}">
-            <view class="fee-rec-append" wx:if="{{item.images.length < 9}}" data-id="{{item.id}}" bindtap="onFeeAppendTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">追加图片</view>
+            <view data-pressable class="fee-rec-append" wx:if="{{item.images.length < 9}}" data-id="{{item.id}}" bindtap="onFeeAppendTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">追加图片</view>
             <hold-confirm label="删除" duration="{{700}}" data-id="{{item.id}}" bind:confirm="onFeeDeleteRecord">
               <view class="fee-rec-del" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">删除</view>
             </hold-confirm>
@@ -103,7 +103,7 @@
         <view class="fee-rec-empty" wx:if="{{!feeActive.records.length}}">还没有消费记录</view>
 
         <view class="np-actions" wx:if="{{feeCanManage}}">
-          <view class="np-btn primary" bindtap="onFeeAddOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">增加消费</view>
+          <view data-pressable class="np-btn primary" bindtap="onFeeAddOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">增加消费</view>
         </view>
       </block>
 
@@ -122,19 +122,19 @@
           <view class="np-imgs">
             <view wx:for="{{feeImages}}" wx:key="*this" class="np-img">
               <image class="np-img-pic" src="{{item}}" mode="aspectFill" />
-              <view class="np-img-x" data-i="{{index}}" bindtap="onFeeRemoveImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+              <view data-pressable class="np-img-x" data-i="{{index}}" bindtap="onFeeRemoveImage" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
                 <app-icon name="close" variant="gray" size="{{24}}" />
               </view>
             </view>
-            <view wx:if="{{feeImages.length < 9}}" class="np-img np-img-add" bindtap="onFeePickImage" hover-class="np-abtn-hover" hover-start-time="0" hover-stay-time="60">
+            <view data-pressable wx:if="{{feeImages.length < 9}}" class="np-img np-img-add" bindtap="onFeePickImage" hover-class="np-abtn-hover" hover-start-time="0" hover-stay-time="60">
               <app-icon name="plus" variant="brand" size="{{40}}" />
               <text class="np-img-add-t">添加</text>
             </view>
           </view>
         </view>
         <view class="np-actions">
-          <view class="np-btn ghost" bindtap="onFeeFormBack" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">返回</view>
-          <view class="np-btn primary {{feeBusy ? 'off' : ''}}" bindtap="onFeeSubmit">{{feeBusy ? '提交中…' : '提交消费'}}</view>
+          <view data-pressable class="np-btn ghost" bindtap="onFeeFormBack" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">返回</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="np-btn primary {{feeBusy ? 'off' : ''}}" bindtap="onFeeSubmit">{{feeBusy ? '提交中…' : '提交消费'}}</view>
         </view>
       </block>
 

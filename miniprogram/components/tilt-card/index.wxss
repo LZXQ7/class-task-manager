@@ -1,47 +1,66 @@
 /* components/tilt-card/index.wxss（2026-11-14 试点 + #4 描边背光）
  * ============================================================
- * 组件负责「深度 + 描边 + 背光」，不负责材质：slot 里的 .card 仍是全站统一的玻璃卡，
- * 圆角 / 底色 / 边框 / 投影一个都不改，随时可整层摘掉、零回归。
- * ⚠️ will-change 常驻是有代价的（试点只挂 1~2 张卡）。
- * ⚠️ transform 的内联值由 WXS 每次 setStyle 覆盖；这里只是首帧/无 JS 时的静止态。
+ * 三层结构（修「光不对：现在就一个框的线条转圈」）：
+ *   .tg-wrap    定位上下文（背光放这里，才能透出到卡片外面）
+ *     .tg-edge  描边壳：padding 2.5rpx + overflow:hidden + border-radius 继承
+ *       .tg-cone    放大的 conic 圆盘（inset:-60%），被壳裁成**只沿边框一圈**
+ *       .tg-surface 卡片本体（3D 倾斜 / 流光在这里）
+ * ⚠️ 上一版把 conic 直接铺在卡片面上、靠 mask 掏空 —— WebView 不支持
+ *    `mask-composite: exclude` ⇒ conic 实心铺满卡片内部 ⇒ 看着就是「斜线 / 半圈」，
+ *    正是用户截图里圈出来的东西。改成「壳 + 放大圆盘」**不需要 mask**，各机型都稳。
  * ⚠️ 所有多行值一律写成**单行**：WXSS 里以 `,` 续行会被 check-wxss 的
- *    「漏分号」启发式误判（见历史：app.wxss / aura-card 都栽过）。 */
-
-/* 外壳：只为放背光而存在 —— .tg-surface 自带 overflow:hidden（裁 3D 倾斜的流光），
-   背光放它里面会被一起裁掉，所以背光必须是 .tg-surface 的兄弟节点。
-   ⚠️ 不设尺寸/边距，只做定位上下文 ⇒ 视觉与原来完全一致。 */
-.tg-wrap { position: relative; }
+ *    「漏分号」启发式误判（app.wxss / aura-card / nav-bar 都栽过）。
+ */
 
 /* ---------- #4 中性纯色背光（用户口径：不要彩色、简单平淡）----------
    居中、比卡略大的一团柔光，从四边均匀透出；只动 opacity + scale 呼吸。
    单一中性冷灰（不是蓝紫），强度刻意压低 —— 背光是「托」卡片的，不抢戏。 */
+.tg-wrap { position: relative; }
 .tg-glow {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 112%;
-  height: 112%;
+  width: 118%;
+  height: 118%;
   z-index: 0;
-  margin-left: -56%;
-  margin-top: -56%;
+  margin-left: -59%;
+  margin-top: -59%;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(150, 156, 170, 0.45) 0%, rgba(150, 156, 170, 0.16) 44%, transparent 70%);
-  filter: blur(22px);
-  opacity: .5;
+  background: radial-gradient(ellipse at center, rgba(138, 144, 158, 0.62) 0%, rgba(138, 144, 158, 0.26) 40%, rgba(138, 144, 158, 0.08) 58%, transparent 74%);
+  filter: blur(24px);
+  opacity: .62;
   animation: tgBreath 3.6s ease-in-out infinite;
 }
 .t-dark .tg-glow {
-  background: radial-gradient(ellipse at center, rgba(176, 190, 216, 0.34) 0%, rgba(150, 166, 200, 0.13) 44%, transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(176, 190, 216, 0.5) 0%, rgba(150, 166, 200, 0.2) 40%, rgba(150, 166, 200, 0.07) 58%, transparent 74%);
 }
 @keyframes tgBreath {
-  0%, 100% { opacity: .34; transform: scale(.95); }
-  50%      { opacity: .8;  transform: scale(1.05); }
+  0%, 100% { opacity: .4; transform: scale(.95); }
+  50%      { opacity: .9;  transform: scale(1.05); }
 }
+
+/* 描边壳：padding 2.5rpx 让里面的 conic 圆盘只露出**一圈**；overflow:hidden 把溢出部分裁掉 */
+.tg-edge {
+  position: relative;
+  z-index: 1;
+  padding: 2.5rpx;
+  border-radius: var(--r-md, 24rpx);
+  overflow: hidden;
+}
+/* 放大的 conic 圆盘：只被壳裁出一圈描边，卡片内部不会沾到 */
+.tg-cone {
+  position: absolute;
+  inset: -60%;
+  z-index: 0;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(154, 163, 178, 0.95) 42deg, rgba(154, 163, 178, 0.32) 92deg, transparent 150deg, transparent 240deg, rgba(154, 163, 178, 0.95) 292deg, transparent 360deg);
+  animation: tgSpin 5.5s linear infinite;
+}
+@keyframes tgSpin { to { transform: rotate(360deg); } }
 
 .tg-surface {
   position: relative;
   z-index: 1;
-  border-radius: var(--r-md, 24rpx);
+  border-radius: calc(var(--r-md, 24rpx) - 2.5rpx);
   overflow: hidden;
   transform: perspective(600px) rotateX(0deg) rotateY(0deg);
   transform-origin: center center;
@@ -49,52 +68,23 @@
 }
 .tg-off { will-change: auto; }
 
-/* ---------- #4 旋转描边（纯色单色高光，非彩色光晕）----------
-   conic 环 + mask 掏空中间 ⇒ 得到一圈会转的描边。
-   ⚠️ mask 不支持时降级为静态描边 + 内高光（宁可少转，也不能糊成彩色光晕）。 */
-.tg-ring {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: .9;
-  padding: 2.5rpx;
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(154, 163, 178, 0.95) 42deg, rgba(154, 163, 178, 0.3) 92deg, transparent 150deg, transparent 240deg, rgba(154, 163, 178, 0.95) 292deg, transparent 360deg);
-  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  animation: tgSpin 5.5s linear infinite;
-}
-@supports not ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
-  .tg-ring {
-    background: none;
-    border: 2.5rpx solid rgba(154, 163, 178, 0.55);
-    box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, 0.35);
-    animation: none;
-  }
-}
-@keyframes tgSpin { to { transform: rotate(360deg); } }
-.t-dark .tg-ring { opacity: .5; }
-
-/* ---------- 径向反射流光 ----------
-   ⚠️ WXS 逐帧跟随流光的那条路**在真机上拿不到节点**
+/* ---------- 径向反射流光（CSS 兜底，必定可见）----------
+   ⚠️ WXS 那条「逐帧跟随手指」的路**在真机上拿不到节点**
    （selectComponent 只能选中自定义组件，而 .tg-glare 是普通 <view>），
-   所以光效由 CSS 兜底：这里是一层常驻呼吸柔光（零 JS、必定可见）；
-   WXS 若能拿到节点，仍会额外叠加逐帧跟随的高光。 */
+   所以 2026-11-14 起**彻底删掉** WXS 里的 selectComponent，
+   光效全部交给 CSS：这里是一层常驻呼吸柔光。 */
 .tg-glare {
   position: absolute;
   left: 0; right: 0; top: 0; bottom: 0;
   z-index: 9;
   pointer-events: none;
-  opacity: .18;
-  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.14) 38%, transparent 68%);
+  opacity: .2;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.46) 0%, rgba(255, 255, 255, 0.16) 36%, transparent 66%);
   animation: tgGlareBreath 4.2s ease-in-out infinite;
 }
 @keyframes tgGlareBreath {
-  0%, 100% { opacity: .08; }
-  50%      { opacity: .30; }
+  0%, 100% { opacity: .1; }
+  50%      { opacity: .34; }
 }
 
 /* 🔴 无障碍：reduced-motion 用 !important 压过 WXS 写的内联 transform
@@ -102,8 +92,8 @@
 @media (prefers-reduced-motion: reduce) {
   .tg-surface { transform: none !important; will-change: auto; }
   .tg-glare { opacity: 0 !important; }
-  .tg-ring { animation: none; }
-  .tg-glow { animation: none; opacity: .45; }
+  .tg-cone { animation: none; }
+  .tg-glow { animation: none; opacity: .5; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .tg-glare { display: none; }

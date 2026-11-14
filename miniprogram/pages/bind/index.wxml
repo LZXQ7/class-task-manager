@@ -36,7 +36,7 @@
         <view class="bind-note">本小程序仅通过班级口令绑定，无需手机号、头像、昵称等授权</view>
       </view>
 
-      <view
+      <view data-pressable
         class="bind-primary {{token.length >= 4 && agreed && !checking ? '' : 'disabled'}}"
         hover-class="press-dim"
         hover-start-time="0"
@@ -47,7 +47,7 @@
         <view wx:else class="bind-spinner"></view>
       </view>
 
-      <view class="bind-scan" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onScan">
+      <view data-pressable class="bind-scan" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onScan">
         <app-icon name="scan" variant="brand" size="{{32}}" />
         <text>扫描班级邀请码</text>
       </view>
@@ -74,7 +74,7 @@
         <view wx:else class="bind-help">由管理员（超管 / 辅导员）在「班级管理」里生成，48 小时内有效、只能用一次</view>
       </view>
 
-      <view
+      <view data-pressable
         class="bind-primary {{staffCode.length === 8 && agreed && !staffBinding ? '' : 'disabled'}}"
         hover-class="press-dim"
         hover-start-time="0"
@@ -85,12 +85,12 @@
         <view wx:else class="bind-spinner"></view>
       </view>
 
-      <view class="bind-scan" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onExitStaff">
+      <view data-pressable class="bind-scan" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onExitStaff">
         <text>返回学生绑定</text>
       </view>
     </block>
 
-    <view
+    <view data-pressable
       wx:if="{{!staffMode}}"
       class="bind-switch"
       hover-class="press-dim"
@@ -108,7 +108,7 @@
     <view class="bind-review">
       <view class="bind-review-title">一键体验</view>
       <view class="bind-review-help">无需口令，点击即进入演示班（全虚拟测试数据，不含任何真实学生信息）。退出演示：我的 → 返回登录页。</view>
-      <view
+      <view data-pressable
         class="bind-primary {{!reviewEntering ? '' : 'disabled'}}"
         hover-class="press-dim"
         hover-start-time="0"
@@ -124,14 +124,14 @@
     <!-- 隐私合规（2026-09-25 审核要求）：不得默认同意，必须用户主动勾选后才可使用。
          链接用 catchtap：点协议名只看文档，不改变勾选状态 -->
     <view class="bind-agreement">
-      <view class="agree-row" bindtap="onToggleAgree">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="agree-row" bindtap="onToggleAgree">
         <view class="agree-box {{agreed ? 'on' : ''}}">
           <app-icon wx:if="{{agreed}}" name="check" variant="brand" size="{{24}}" />
         </view>
         <text class="agree-text">已阅读并同意</text>
-        <text class="link" catchtap="onDoc" data-type="agreement">《用户协议》</text>
+        <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="link" catchtap="onDoc" data-type="agreement">《用户协议》</text>
         <text class="agree-text">与</text>
-        <text class="link" catchtap="onDoc" data-type="privacy">《隐私政策》</text>
+        <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="link" catchtap="onDoc" data-type="privacy">《隐私政策》</text>
       </view>
     </view>
     <view style="height:{{safeBottom}}px"></view>
@@ -158,7 +158,7 @@
       <block wx:if="{{groups.length}}">
         <view wx:for="{{groups}}" wx:for-item="g" wx:key="tag" class="roster-group">
           <view class="roster-group-title">{{g.title}}</view>
-          <view
+          <view data-pressable
             wx:for="{{g.list}}"
             wx:for-item="m"
             wx:key="id"
@@ -203,7 +203,7 @@
         <text class="pick-name">{{picked.name}}</text>
       </block>
       <text wx:else class="pick-name placeholder">请选择</text>
-      <view class="pick-btn {{picked ? '' : 'disabled'}}" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onConfirmPerson">就是我</view>
+      <view data-pressable class="pick-btn {{picked ? '' : 'disabled'}}" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onConfirmPerson">就是我</view>
     </view>
   </block>
 
@@ -217,7 +217,7 @@
         <view class="picked-name">{{picked.name}}</view>
         <view class="picked-no">学号 {{picked.studentNoMasked}}</view>
       </view>
-      <view class="picked-change" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onChangePerson">换一个</view>
+      <view data-pressable class="picked-change" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onChangePerson">换一个</view>
     </view>
 
     <view class="code-title">请输入你的学号后 4 位</view>
@@ -240,7 +240,7 @@
 
     <view wx:if="{{codeError}}" class="code-err">{{codeError}}</view>
 
-    <view class="bind-primary {{code.length === 4 && !binding ? '' : 'disabled'}}" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onBind">
+    <view data-pressable class="bind-primary {{code.length === 4 && !binding ? '' : 'disabled'}}" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onBind">
       <text wx:if="{{!binding}}">完成绑定</text>
       <view wx:else class="bind-spinner"></view>
     </view>

@@ -58,16 +58,17 @@ function rectOf(inst) {
   return r;
 }
 
-function glareOf(inst) {
-  if (!inst.selectComponent) return null;
-  return inst.selectComponent('.tg-glare');
-}
-
-/** 🔴 2026-11-14 修正：告警一律走 **ownerInstance.callMethod**。
- *  原实现用 event.instance.callMethod —— event.instance 在 WXS 里可能不是自定义组件实例，
- *  真机上直接抛「Call method on a non-custom component node is invalid.
- *    ... try not to call method on 'event.instance', but on 'ownerInstance' instead」。
- *  ownerInstance = 本 WXS 所在的组件实例，才是合法的调用对象。 */
+/**
+ * 🔴 2026-11-14 彻底移除「WXS 逐帧驱动流光」这条路。
+ * 根因：WXS 里的 `selectComponent` **只能选中自定义组件**，而 `.tg-glare` 是普通 <view>
+ *   ⇒ 永远返回 null ⇒ 真机上**每张卡第一次按下**都会报
+ *   「[tilt-card] 视图层降级: {"reason":"glare descriptor unavailable"}」
+ *   （用户截图里就是这条），而且流光**从来没有真的亮过**。
+ * 现在：光效全部由 index.wxss 的 CSS 动画承担（必定可见、零报错），
+ *   WXS 只负责 1:1 跟随手指的 3D 倾斜（只动 transform，零跨线程）。
+ * ⚠️ 告警一律走 ownerInstance.callMethod —— 对 event.instance 调组件方法，
+ *    真机会抛「Call method on a non-custom component node is invalid」。
+ */
 function warnOnce(inst, state, key, reason) {
   if (state[key]) return;
   state[key] = true;
@@ -83,18 +84,6 @@ function paint(inst, state) {
     transform: 'perspective(' + PERSP + 'px) rotateX(' + f2(state.rx) + 'deg) rotateY(' + f2(state.ry) + 'deg)',
     transition: 'none'
   });
-  var glare = glareOf(inst);
-  if (glare) {
-    glare.setStyle({
-      transform: 'translate3d(' + f2(state.gx) + 'px,' + f2(state.gy) + 'px,0)',
-      opacity: f2(state.light)
-    });
-  } else {
-    /* 拿不到 glare 节点（selectComponent 只能选中自定义组件，而 .tg-glare 是普通 view）
-       ⇒ 流光的逐帧跟随失效。**光效本身由 index.wxss 的 CSS 动画兜底**（呼吸柔光），
-       所以这里只是降级告警，不再是「效果完全消失」。 */
-    warnOnce(inst, state, 'warnedGlare', 'glare descriptor unavailable');
-  }
 }
 
 /** 触摸点 → 倾角 + 流光圆心；pointer-down 也走这里 */

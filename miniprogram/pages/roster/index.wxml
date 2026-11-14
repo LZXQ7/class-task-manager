@@ -47,10 +47,10 @@
     <view wx:if="{{canLeave || isCounselor}}" class="rb-grp rb-grp-last">
       <view class="rb-grp-t">
         <text>今日在位</text>
-        <text class="rb-grp-more" bindtap="onLeaveViewOpen">请假名单 ›</text>
+        <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="rb-grp-more" bindtap="onLeaveViewOpen">请假名单 ›</text>
       </view>
       <view class="rb-grid">
-        <view class="rb-cell rb-cell-lv" bindtap="onLeaveViewOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+        <view data-pressable class="rb-cell rb-cell-lv" bindtap="onLeaveViewOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
           <text class="rb-num {{leaveStat && leaveStat.leave > 0 ? 'danger' : ''}}">{{leaveStat ? leaveStat.leave : '—'}}</text><text class="rb-lab">请假人数</text>
         </view>
         <view wx:if="{{!isCounselor}}" class="rb-cell">
@@ -84,26 +84,26 @@
   <!-- 操作按钮行（录入 / 请假）：整行平分，不再挤在搜索框右侧 -->
   <view wx:if="{{canRosterEdit || canLeave}}" class="mb-actions">
     <!-- 添加 / 导入 = 名册录入（增改）：超管 / 辅导员 / 班长（需求 D） -->
-    <view wx:if="{{canRosterEdit}}" class="mb-act" bindtap="onAddOpen">添加</view>
-    <view wx:if="{{canRosterEdit}}" class="mb-act mb-act-primary" bindtap="onImportOpen">导入名单</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{canRosterEdit}}" class="mb-act" bindtap="onAddOpen">添加</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{canRosterEdit}}" class="mb-act mb-act-primary" bindtap="onImportOpen">导入名单</view>
     <!-- 请假登记（1.0.5 需求④）：超管 / 本班学生班委（canLeave） -->
-    <view wx:if="{{canLeave}}" class="mb-act mb-act-leave" bindtap="onLeaveOpen">请假<text wx:if="{{leaveStat && leaveStat.leave > 0}}" class="mb-leave-dot">{{leaveStat.leave}}</text></view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{canLeave}}" class="mb-act mb-act-leave" bindtap="onLeaveOpen">请假<text wx:if="{{leaveStat && leaveStat.leave > 0}}" class="mb-leave-dot">{{leaveStat.leave}}</text></view>
   </view>
 
   <!-- 筛选：全班 / 仅班委 / A 组 / B 组（纯展示层过滤，不影响搜索与详情）
        2026-10-24：新增 A/B 分组查看。四个作用域**互斥**（四选一），
        统一走 onFilterScope 读 data-scope —— 沿用同一组 .mb-chip / .chip-motion 样式。 -->
   <view class="mb-filters">
-    <view class="mb-chip chip-motion {{groupFilter === 'ALL' ? 'on' : ''}}" data-scope="ALL" bindtap="onFilterScope">全班 {{members.length}}</view>
-    <view class="mb-chip chip-motion {{groupFilter === 'COMMITTEE' ? 'on' : ''}}" data-scope="COMMITTEE" bindtap="onFilterScope">仅班委 {{committeeCount}}</view>
-    <view class="mb-chip chip-motion {{groupFilter === 'A' ? 'on' : ''}}" data-scope="A" bindtap="onFilterScope">A 组 {{groupACount}}</view>
-    <view class="mb-chip chip-motion {{groupFilter === 'B' ? 'on' : ''}}" data-scope="B" bindtap="onFilterScope">B 组 {{groupBCount}}</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-chip chip-motion {{groupFilter === 'ALL' ? 'on' : ''}}" data-scope="ALL" bindtap="onFilterScope">全班 {{members.length}}</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-chip chip-motion {{groupFilter === 'COMMITTEE' ? 'on' : ''}}" data-scope="COMMITTEE" bindtap="onFilterScope">仅班委 {{committeeCount}}</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-chip chip-motion {{groupFilter === 'A' ? 'on' : ''}}" data-scope="A" bindtap="onFilterScope">A 组 {{groupACount}}</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-chip chip-motion {{groupFilter === 'B' ? 'on' : ''}}" data-scope="B" bindtap="onFilterScope">B 组 {{groupBCount}}</view>
   </view>
 
   <!-- 加载骨架（Req 3）：首屏名单异步拉取期间显示，替代原来「没有匹配的成员」的闪现 -->
   <skeleton wx:if="{{!membersLoaded}}" type="list" rows="{{6}}" />
 
-  <view
+  <view data-pressable
     wx:for="{{viewMembers}}"
     wx:key="id"
     class="mb-row fade-item {{item.status === 'DISABLED' ? 'off' : ''}}"
@@ -168,12 +168,12 @@
       </flip-detail>
       <view class="mb-detail-actions">
         <!-- 教职工（X）不参与 A/B 轮转，不给调组按钮；调组=名册编辑（需求 D：含班长） -->
-        <view wx:if="{{mDetail.groupTag !== 'X' && !mDetailIsSelf && canRosterEdit}}" class="mb-abtn" bindtap="onToggleGroup">调至 {{mDetail.groupTag === 'A' ? 'B' : 'A'}} 组</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{mDetail.groupTag !== 'X' && !mDetailIsSelf && canRosterEdit}}" class="mb-abtn" bindtap="onToggleGroup">调至 {{mDetail.groupTag === 'A' ? 'B' : 'A'}} 组</view>
         <!-- 设置班委（2026-09-26 需求②）：超管 + 辅导员均可，点开后选具体职位。
              需求 D（2026-09-27）：其中「生活委员」「班长兼团支书」是授权职位（分别给排班权、
              名册录入权），非超管置灰不可点 —— 见 onPickPosition 与云函数 requirePositionGrant。
              对「辅导员（X）」「超管（isSuper）」「自己」都不给 —— 后端 setPosition 同样会拒。 -->
-        <view
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
           wx:if="{{canManage && !mDetailIsSelf && mDetail.groupTag !== 'X' && !mDetail.isSuper}}"
           class="mb-abtn"
           bindtap="onOpenPosition"
@@ -181,7 +181,7 @@
         <!-- 固定到主页（v0.7.17 需求⑥；v0.7.18 需求① 收紧为**仅辅导员**）：
              辅导员把需要长期跟踪的学生钉在首页，点开首页卡片即可继续记备注。
              超管不再有这个入口 —— 与后端 pinList / pinToggle 的「仅辅导员」同口径。 -->
-        <view
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
           wx:if="{{pinVisible && !mDetailIsSelf}}"
           class="mb-abtn {{pinned ? 'on' : ''}} {{pinBusy ? 'busy' : ''}}"
           bindtap="onTogglePin"
@@ -189,11 +189,11 @@
         <!-- 自保（§41 需求①）：选中自己时不给「停用 / 解绑」按钮。
              把自己停用/解绑会立刻丢掉全部管理权限，把自己锁在外面。 -->
         <block wx:if="{{!mDetailIsSelf && (isSuper || isCounselor)}}">
-          <view class="mb-abtn" bindtap="onToggleStatus">{{mDetail.status === 'DISABLED' ? '恢复' : '停用'}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn" bindtap="onToggleStatus">{{mDetail.status === 'DISABLED' ? '恢复' : '停用'}}</view>
         </block>
-        <view wx:if="{{isSuper && !mDetailIsSelf}}" class="mb-abtn danger" bindtap="onUnbindMember">解除微信绑定</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{isSuper && !mDetailIsSelf}}" class="mb-abtn danger" bindtap="onUnbindMember">解除微信绑定</view>
         <!-- 移出班级（超管 / 辅导员）：破坏性主操作，独占一整行的大按钮 -->
-        <view wx:if="{{canManage && !mDetailIsSelf && !mDetail.bound}}" class="mb-abtn danger block" bindtap="onRemoveMember">移出班级</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{canManage && !mDetailIsSelf && !mDetail.bound}}" class="mb-abtn danger block" bindtap="onRemoveMember">移出班级</view>
       </view>
       <view wx:if="{{mDetailIsSelf}}" class="mb-super-hint">这是你自己的账号：不能在此停用或解绑，避免把自己锁在外面</view>
       <view wx:elif="{{!canManage && isAdmin}}" class="mb-super-hint">设置班委、停用、移出成员需超级管理员或辅导员操作</view>
@@ -218,7 +218,7 @@
           </view>
 
           <view wx:for="{{noteList}}" wx:key="id" class="mb-note {{item.mine ? 'mine' : ''}}">
-            <view class="mb-note-main" data-id="{{item.id}}" bindtap="{{item.mine ? 'onNoteEdit' : ''}}">
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-note-main" data-id="{{item.id}}" bindtap="{{item.mine ? 'onNoteEdit' : ''}}">
               <text class="mb-note-content">{{item.content}}</text>
               <view class="mb-note-foot">
                 <text class="mb-note-author">{{item.authorName}}</text>
@@ -226,7 +226,7 @@
                 <text wx:if="{{item.mine}}" class="mb-note-edit">点按编辑</text>
               </view>
             </view>
-            <view wx:if="{{item.mine || isSuper}}" class="mb-note-del" data-id="{{item.id}}" bindtap="onNoteDelete">删除</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.mine || isSuper}}" class="mb-note-del" data-id="{{item.id}}" bindtap="onNoteDelete">删除</view>
           </view>
 
         <view class="mb-note-form">
@@ -241,14 +241,14 @@
           />
           <view class="mb-note-formfoot">
             <text class="mb-note-counter">{{noteDraft.length}}/500</text>
-            <view wx:if="{{noteEditId}}" class="mb-note-cancel" bindtap="onNoteCancel">取消编辑</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{noteEditId}}" class="mb-note-cancel" bindtap="onNoteCancel">取消编辑</view>
           </view>
         </view>
       </view>
     </view>
     <!-- v0.7.25：保存备注固定底栏 —— 不随内容滚动，任何列表长度下都可见可点 -->
     <view slot="footer" wx:if="{{noteVisible}}" class="mb-footer-bar">
-      <view class="mb-abtn block {{noteBusy ? 'busy' : ''}}" bindtap="onNoteSave">{{noteBusy ? '保存中…' : (noteEditId ? '保存修改' : '保存备注')}}</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn block {{noteBusy ? 'busy' : ''}}" bindtap="onNoteSave">{{noteBusy ? '保存中…' : (noteEditId ? '保存修改' : '保存备注')}}</view>
     </view>
   </bottom-sheet>
 
@@ -257,7 +257,7 @@
     <view class="im-wrap">
       <view class="ps-title">为「{{mDetail.name}}」选择职位</view>
       <view class="ps-list">
-        <view
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
           wx:for="{{posList}}"
           wx:key="text"
           class="ps-item {{item.on ? 'on' : ''}} {{item.locked ? 'locked' : ''}}"
@@ -271,9 +271,9 @@
       </view>
       <text class="im-tip">设为班委后，该同学可发布通知、查看与管理本班名单。</text>
       <text wx:if="{{!canGrantPosition}}" class="im-tip">「生活委员」「班长兼团支书」为授权职位，由超级管理员任命：前者可安排值日表，后者可管理本班名单。</text>
-      <view wx:if="{{posIsCommittee}}" class="ps-cancel" bindtap="onCancelPosition">取消班委</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{posIsCommittee}}" class="ps-cancel" bindtap="onCancelPosition">取消班委</view>
       <view class="im-actions">
-        <view class="im-btn-ghost" bindtap="onPosClose">关闭</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-btn-ghost" bindtap="onPosClose">关闭</view>
       </view>
     </view>
   </bottom-sheet>
@@ -291,8 +291,8 @@
       </view>
       <text class="im-tip">学号尾号奇数为 A 组，偶数为 B 组（自动判定）</text>
       <view class="im-actions">
-        <view class="im-btn-ghost" bindtap="onAddClose">取消</view>
-        <view class="im-btn-primary {{addBusy ? 'busy' : ''}}" bindtap="onAddSubmit">{{addBusy ? '添加中…' : '添加成员'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-btn-ghost" bindtap="onAddClose">取消</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-btn-primary {{addBusy ? 'busy' : ''}}" bindtap="onAddSubmit">{{addBusy ? '添加中…' : '添加成员'}}</view>
       </view>
     </view>
   </bottom-sheet>
@@ -314,7 +314,7 @@
         <text class="im-tip">支持「姓名,学号」「学号,姓名」，也支持带班级列的整表（班级,学号,姓名,性别…）——带班级列时会自动分到各班，先预览再确认</text>
 
         <view class="im-or"><text>或直接导入表格</text></view>
-        <view class="im-pick {{importBusy ? 'busy' : ''}}" bindtap="onImportPickFile">
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-pick {{importBusy ? 'busy' : ''}}" bindtap="onImportPickFile">
           <app-icon name="download" variant="brand" size="{{34}}" />
           <text>从聊天选择 Excel / CSV</text>
         </view>
@@ -325,10 +325,10 @@
           新增 {{importResult.imported}} 人 / 更新 {{importResult.updated}} 人 / 跳过 {{importResult.skipped}} 人<block wx:if="{{importResult.createdClasses.length}}"> / 新建 {{importResult.createdClasses.length}} 个班级</block>
         </view>
         <view class="im-actions">
-          <view class="im-btn-primary {{importBusy ? 'busy' : ''}}" bindtap="onImportParse">{{importBusy ? '解析中…' : '解析并预览'}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-btn-primary {{importBusy ? 'busy' : ''}}" bindtap="onImportParse">{{importBusy ? '解析中…' : '解析并预览'}}</view>
         </view>
         <!-- 撤回最近一次导入 -->
-        <view wx:if="{{canRosterEdit && lastBatch}}" class="im-revert" bindtap="onRevertTap">
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{canRosterEdit && lastBatch}}" class="im-revert" bindtap="onRevertTap">
           撤回最近一次导入（{{lastBatch.createdAt}} · 新增 {{lastBatch.inserted}} 人）<app-icon name="undo" variant="gray" size="{{28}}" />
         </view>
       </block>
@@ -344,7 +344,7 @@
           <switch checked="{{importCreateMissing}}" color="#3370FF" bindchange="onToggleCreateMissing" />
         </view>
         <view wx:for="{{importGroups}}" wx:key="label" class="im-pg {{item.include ? 'on' : ''}}">
-          <view class="im-pg-chk {{item.include ? 'on' : ''}}" data-i="{{index}}" bindtap="onToggleInclude">{{item.include ? '✓' : ''}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-pg-chk {{item.include ? 'on' : ''}}" data-i="{{index}}" bindtap="onToggleInclude">{{item.include ? '✓' : ''}}</view>
           <view class="im-pg-main">
             <view class="im-pg-label">{{item.label || '（未标注班级）'}}</view>
             <view class="im-pg-meta">→ {{item.willCreate ? (item.suggestName + '（将新建）') : (item.className || '未指定班级')}} · {{item.count}} 人</view>
@@ -356,12 +356,12 @@
             <view wx:elif="{{item.classId}}" class="im-pg-sample">{{item.sample}}</view>
             <view wx:else class="im-pg-warn">未匹配到班级，请手动选择或开启「自动新建班级」</view>
           </view>
-          <view class="im-pg-sel" data-i="{{index}}" bindtap="onPickGroupClass">选班</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-pg-sel" data-i="{{index}}" bindtap="onPickGroupClass">选班</view>
         </view>
         <view wx:if="{{!importGroups.length}}" class="im-empty">没有解析到有效名单</view>
         <view class="im-actions">
-          <view class="im-btn-ghost" bindtap="onImportBack">返回</view>
-          <view class="im-btn-primary {{importBusy ? 'busy' : ''}}" bindtap="onImportConfirm">{{importBusy ? '导入中…' : '确认导入'}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-btn-ghost" bindtap="onImportBack">返回</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="im-btn-primary {{importBusy ? 'busy' : ''}}" bindtap="onImportConfirm">{{importBusy ? '导入中…' : '确认导入'}}</view>
         </view>
       </block>
 
@@ -405,7 +405,7 @@
             <!-- 「假条」= **缩略图**，全站同一条视觉规则（今日行 / 历史行 / 首页行都一样）：
                  文字看不出「到底传了没」，缩略图一眼就知道，还能点开核对。
                  没有图时才给幽灵「传假条」按钮 —— 上传入口不能被缩略图吃掉。 -->
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:if="{{item.hasImage}}"
               class="lv-thumb"
               data-id="{{item.leaveId}}"
@@ -415,7 +415,7 @@
               <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
               <text wx:else class="lv-thumb-t">假条</text>
             </view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:elif="{{canLeave}}"
               class="lv-btn ghost"
               data-id="{{item.leaveId}}"
@@ -442,7 +442,7 @@
             <!-- 「假条」= **缩略图**，全站同一条视觉规则（今日行 / 历史行 / 首页行都一样）：
                  文字看不出「到底传了没」，缩略图一眼就知道，还能点开核对。
                  没有图时才给幽灵「传假条」按钮 —— 上传入口不能被缩略图吃掉。 -->
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:if="{{item.hasImage}}"
               class="lv-thumb"
               data-id="{{item.leaveId}}"
@@ -452,7 +452,7 @@
               <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
               <text wx:else class="lv-thumb-t">假条</text>
             </view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:elif="{{canLeave}}"
               class="lv-btn ghost"
               data-id="{{item.leaveId}}"
@@ -489,10 +489,10 @@
         供 WXML 直接判 active（WXML 不支持 indexOf）。 -->
         <view class="lv-sec-t">请假时段（可多选）</view>
         <view class="lv-periods">
-          <view class="lv-pchip {{periodAllOn ? 'on' : ''}}" data-k="all" bindtap="onLeavePeriodTap">全天</view>
-          <view class="lv-pchip {{periodAmOn ? 'on' : ''}}" data-k="am" bindtap="onLeavePeriodTap">上午</view>
-          <view class="lv-pchip {{periodPmOn ? 'on' : ''}}" data-k="pm" bindtap="onLeavePeriodTap">下午</view>
-          <view class="lv-pchip {{periodEveOn ? 'on' : ''}}" data-k="eve" bindtap="onLeavePeriodTap">晚上</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="lv-pchip {{periodAllOn ? 'on' : ''}}" data-k="all" bindtap="onLeavePeriodTap">全天</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="lv-pchip {{periodAmOn ? 'on' : ''}}" data-k="am" bindtap="onLeavePeriodTap">上午</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="lv-pchip {{periodPmOn ? 'on' : ''}}" data-k="pm" bindtap="onLeavePeriodTap">下午</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="lv-pchip {{periodEveOn ? 'on' : ''}}" data-k="eve" bindtap="onLeavePeriodTap">晚上</view>
         </view>
         <!-- 提示文案随选择实时变化（由 _setLeavePeriods 算出 leavePeriodHint，含钟点，用户不用猜） -->
         <view class="lv-hint">{{leavePeriodHint}}</view>
@@ -505,7 +505,7 @@
         </view>
         <!-- 头像网格：每人一个圆牌 + 姓名，每行 4 个（比长列表紧凑，需求③） -->
         <view class="lv-grid">
-          <view
+          <view data-pressable
             wx:for="{{leaveCands}}"
             wx:key="id"
             class="lv-cell {{leaveMap[item.id] ? 'lv-cell-off' : ''}}"
@@ -553,7 +553,7 @@
             <picker mode="date" value="{{histToShow}}" bindchange="onHistToChange">
               <view class="lv-dr {{histToShow ? 'on' : ''}}">{{histToShow || '结束日期'}}</view>
             </picker>
-            <view wx:if="{{histAny}}" class="lv-clear" catchtap="onHistClear">清空</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{histAny}}" class="lv-clear" catchtap="onHistClear">清空</view>
           </view>
           <!-- 人员搜索（输入即筛）+ 选人多选：候选从本班名单现算，不额外请求 -->
           <view class="lv-search">
@@ -566,17 +566,17 @@
               confirm-type="search"
               bindinput="onHistSearchInput"
             />
-            <text wx:if="{{histKw}}" class="lv-search-x" catchtap="onHistClear">×</text>
+            <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{histKw}}" class="lv-search-x" catchtap="onHistClear">×</text>
           </view>
           <!-- 已选人员胶囊 -->
           <view wx:if="{{histMembers.length}}" class="lv-picked">
-            <view wx:for="{{histPickedNames}}" wx:key="id" class="lv-pick" data-id="{{item.id}}" catchtap="onHistMemberRemove">
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:for="{{histPickedNames}}" wx:key="id" class="lv-pick" data-id="{{item.id}}" catchtap="onHistMemberRemove">
               {{item.name}}×
             </view>
           </view>
           <view wx:if="{{histCandShow}}" class="lv-cands">
             <view wx:if="{{!histCands.length}}" class="lv-cands-empty">本班没有匹配的同学</view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{histCands}}"
               wx:key="id"
               class="lv-cand2 {{histPickedMap[item.id] ? 'on' : ''}}"
@@ -608,7 +608,7 @@
               <text class="lv-sub">{{item.subText}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
               <text wx:if="{{item.hasImage && item.imageArchived}}" class="lv-arc">{{item.clearText}}</text>
             </view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:if="{{item.hasImage}}"
               class="lv-thumb"
               data-id="{{item.leaveId}}"
@@ -618,7 +618,7 @@
               <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
               <text wx:else class="lv-thumb-t">假条</text>
             </view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:elif="{{canLeave && item.state !== 'CANCELLED'}}"
               class="lv-btn ghost"
               data-id="{{item.leaveId}}"
@@ -630,7 +630,7 @@
                     撤销过的记录仍可能补传假条截图存档，两个入口都要留。
                  ⚠️ 权限跟 canLeave（超管 + 班委，与撤销同一套口径）；辅导员不显示。
                  ⚠️ 用 lv-del（灰底红字）而不是主色按钮：破坏性操作不该长得像「确认」。 -->
-            <view
+            <view data-pressable
               wx:if="{{canLeave && item.state === 'CANCELLED'}}"
               class="lv-del"
               data-id="{{item.leaveId}}"
@@ -673,7 +673,7 @@
               <text class="lv-sub">{{item.startDate}} ~ {{item.endDate}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
             </view>
             <!-- 只读侧（辅导员）：有假条就显示同样的缩略图，可点开大图；没图就不显示任何东西。 -->
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:if="{{item.hasImage}}"
               class="lv-thumb"
               data-id="{{item.leaveId}}"
@@ -694,7 +694,7 @@
               <text class="lv-sub">{{item.startDate}} ~ {{item.endDate}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
             </view>
             <!-- 只读侧（辅导员）：有假条就显示同样的缩略图，可点开大图；没图就不显示任何东西。 -->
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:if="{{item.hasImage}}"
               class="lv-thumb"
               data-id="{{item.leaveId}}"
@@ -729,7 +729,7 @@
             <picker mode="date" value="{{histToShow}}" bindchange="onHistToChange">
               <view class="lv-dr {{histToShow ? 'on' : ''}}">{{histToShow || '结束日期'}}</view>
             </picker>
-            <view wx:if="{{histAny}}" class="lv-clear" catchtap="onHistClear">清空</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{histAny}}" class="lv-clear" catchtap="onHistClear">清空</view>
           </view>
           <view class="lv-search">
             <text class="lv-search-ico">搜</text>
@@ -741,16 +741,16 @@
               confirm-type="search"
               bindinput="onHistSearchInput"
             />
-            <text wx:if="{{histKw}}" class="lv-search-x" catchtap="onHistClear">×</text>
+            <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{histKw}}" class="lv-search-x" catchtap="onHistClear">×</text>
           </view>
           <view wx:if="{{histMembers.length}}" class="lv-picked">
-            <view wx:for="{{histPickedNames}}" wx:key="id" class="lv-pick" data-id="{{item.id}}" catchtap="onHistMemberRemove">
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:for="{{histPickedNames}}" wx:key="id" class="lv-pick" data-id="{{item.id}}" catchtap="onHistMemberRemove">
               {{item.name}}×
             </view>
           </view>
           <view wx:if="{{histCandShow}}" class="lv-cands">
             <view wx:if="{{!histCands.length}}" class="lv-cands-empty">本班没有匹配的同学</view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{histCands}}"
               wx:key="id"
               class="lv-cand2 {{histPickedMap[item.id] ? 'on' : ''}}"
@@ -778,7 +778,7 @@
               <text class="lv-sub">{{item.subText}}{{item.slotText ? ' ' + item.slotText : ''}}</text>
               <text wx:if="{{item.hasImage && item.imageArchived}}" class="lv-arc">{{item.clearText}}</text>
             </view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:if="{{item.hasImage}}"
               class="lv-thumb"
               data-id="{{item.leaveId}}"

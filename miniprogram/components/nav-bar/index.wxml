@@ -10,7 +10,7 @@
       <!-- ⚠️ sheetOpen（弹层打开时）不渲染返回键：否则它会从弹层左上角透出来 ——
            遮罩 rgba(0,0,0,.45) 盖不暗亮色图标，面板又是半透明玻璃，物理上遮不住。
            详见 index.js 里 sheetOpen 属性的注释。⚠️ 判据极性是「弹层开着就不渲染」。 -->
-      <view wx:if="{{showBack && !sheetOpen}}" class="nav-btn" bindtap="onBack">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{showBack && !sheetOpen}}" class="nav-btn" bindtap="onBack">
         <app-icon name="arrow-left" variant="{{color === '#FFFFFF' ? 'white' : 'gray'}}" size="{{44}}" />
       </view>
       <slot name="left" />
@@ -21,7 +21,7 @@
     </view>
     <view class="nav-side nav-right" style="{{padRight ? 'padding-right:' + padRight + 'px;' : ''}}">
       <slot name="right" />
-      <view wx:if="{{showHome}}" class="nav-btn" bindtap="onHome">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{showHome}}" class="nav-btn" bindtap="onHome">
         <app-icon name="tab-home" variant="on" size="{{44}}" />
       </view>
     </view>

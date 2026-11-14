@@ -83,7 +83,7 @@
                 padding="{{40}}"
               />
             </view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{candidates}}"
               wx:key="id"
               class="ds-cand {{toMemberId === item.id ? 'on' : ''}}"
@@ -102,7 +102,7 @@
 
           <view class="ds-block-title">原因（选填）</view>
           <view class="ds-chips">
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{reasons}}"
               wx:key="key"
               class="ds-chip {{reason === item.key ? 'on' : ''}}"
@@ -121,24 +121,24 @@
   <view slot="footer" class="ds-foot">
     <block wx:if="{{canAct && !adjusting}}">
       <block wx:if="{{isSuper}}">
-        <view class="ds-btn danger" bindtap="onRemoveDuty">取消值日</view>
-        <view class="ds-btn ghost" bindtap="onAdjust" data-type="REASSIGN">换人</view>
-        <view class="ds-btn ghost" bindtap="onAdjust" data-type="ADD">添加值日</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ds-btn danger" bindtap="onRemoveDuty">取消值日</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ds-btn ghost" bindtap="onAdjust" data-type="REASSIGN">换人</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ds-btn ghost" bindtap="onAdjust" data-type="ADD">添加值日</view>
       </block>
       <block wx:elif="{{mineActs}}">
-        <view class="ds-btn ghost" bindtap="onAdjust" data-type="LEAVE">申请请假</view>
-        <view class="ds-btn ghost" bindtap="onAdjust" data-type="SWAP">申请换班</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ds-btn ghost" bindtap="onAdjust" data-type="LEAVE">申请请假</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ds-btn ghost" bindtap="onAdjust" data-type="SWAP">申请换班</view>
       </block>
     </block>
 
     <!-- 还原换人：这条值日是被「换人」换上来的，超管可一键还给原值日同学（后端按 isSuper 才返回 reassign） -->
     <block wx:elif="{{detail.reassign && !adjusting}}">
-      <view class="ds-btn ghost" bindtap="onUndoReassign">还原换人（还给 {{detail.reassign.fromName}}）</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ds-btn ghost" bindtap="onUndoReassign">还原换人（还给 {{detail.reassign.fromName}}）</view>
     </block>
 
     <block wx:elif="{{detail && adjusting}}">
-      <view class="ds-btn ghost" bindtap="onCancelAdjust">取消</view>
-      <view class="ds-btn primary" bindtap="onSubmitAdjust">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ds-btn ghost" bindtap="onCancelAdjust">取消</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ds-btn primary" bindtap="onSubmitAdjust">
         {{submitting ? '处理中' : (adjusting === 'REASSIGN' ? '直接替换' : (adjusting === 'ADD' ? '添加值日' : '提交申请'))}}
       </view>
     </block>

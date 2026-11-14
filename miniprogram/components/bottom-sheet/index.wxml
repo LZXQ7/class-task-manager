@@ -3,7 +3,7 @@
      v0.7.32 拖拽：只有 .sheet-drag（grabber + 标题栏）接 touchmove —— 内容区 scroll-view
      的滚动不会触发拖动；拖动只改 transform / opacity，不碰布局（不闪、不重排）。 -->
 <view wx:if="{{mounted}}" class="sheet-root">
-  <view class="sheet-mask {{active ? 'in' : ''}}" style="{{maskStyle}}" bindtap="onMask" catchtouchmove="noop"></view>
+  <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sheet-mask {{active ? 'in' : ''}}" style="{{maskStyle}}" bindtap="onMask" catchtouchmove="noop"></view>
   <view class="sheet-panel {{active ? 'up' : ''}} {{dragging ? 'drag' : ''}} {{tall ? 'tall' : ''}} {{resizeCls}}" style="border-radius:{{radius}}rpx {{radius}}rpx 0 0;{{height ? 'height:' + height + 'rpx' : ''}};{{capStyle}};{{resizeStyle}};{{dragStyle}}">>
     <!-- ⚠️ `{{height …}}` 与 `{{capStyle}}` 之间**必须有 `;`**（2026-09-29 修复）：
          漏掉会拼成 `height:1040rpxmax-height:calc(100vh - 68px);` —— 长度值非法 ⇒
@@ -22,7 +22,7 @@
       <view class="sheet-head">
         <text wx:if="{{title}}" class="sheet-title">{{title}}</text>
         <view wx:else class="sheet-title" />
-        <view wx:if="{{showClose}}" class="sheet-close" data-nodrag="1" bindtap="onClose">
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{showClose}}" class="sheet-close" data-nodrag="1" bindtap="onClose">
           <app-icon name="close" variant="gray" size="{{40}}" />
         </view>
       </view>

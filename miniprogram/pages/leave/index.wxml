@@ -35,10 +35,10 @@
         <view class="lv-field">
           <text class="lv-label">时段（可多选）</text>
           <view class="lv-periods">
-            <view class="lv-chip {{periodAllOn ? 'on' : ''}}" data-k="all" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">全天</view>
-            <view class="lv-chip {{periodAmOn ? 'on' : ''}}" data-k="am" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">上午</view>
-            <view class="lv-chip {{periodPmOn ? 'on' : ''}}" data-k="pm" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">下午</view>
-            <view class="lv-chip {{periodEveOn ? 'on' : ''}}" data-k="eve" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">晚上</view>
+            <view data-pressable class="lv-chip {{periodAllOn ? 'on' : ''}}" data-k="all" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">全天</view>
+            <view data-pressable class="lv-chip {{periodAmOn ? 'on' : ''}}" data-k="am" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">上午</view>
+            <view data-pressable class="lv-chip {{periodPmOn ? 'on' : ''}}" data-k="pm" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">下午</view>
+            <view data-pressable class="lv-chip {{periodEveOn ? 'on' : ''}}" data-k="eve" bindtap="onPeriodTap" hover-class="press-dim" hover-stay-time="60">晚上</view>
           </view>
           <view class="lv-hint">{{leavePeriodHint}}</view>
         </view>
@@ -57,7 +57,7 @@
 
         <view class="lv-field">
           <text class="lv-label">假条<text class="lv-req">必传</text></text>
-          <view class="lv-upload" bindtap="onPickImage" hover-class="press-dim" hover-stay-time="60">
+          <view data-pressable class="lv-upload" bindtap="onPickImage" hover-class="press-dim" hover-stay-time="60">
             <app-icon name="photo-plus" variant="brand" size="{{36}}" />
             <text class="lv-upload-t">{{imageThumb ? '重新上传假条照片' : '上传假条照片'}}</text>
           </view>
@@ -65,7 +65,7 @@
         </view>
 
         <view class="f-actions">
-          <view class="btn f-save {{submitting ? 'disabled' : ''}}" bindtap="onSubmitApply" hover-class="btn-hover" hover-stay-time="60">{{submitting ? '提交中…' : '提交申请'}}</view>
+          <view data-pressable class="btn f-save {{submitting ? 'disabled' : ''}}" bindtap="onSubmitApply" hover-class="btn-hover" hover-stay-time="60">{{submitting ? '提交中…' : '提交申请'}}</view>
         </view>
       </view>
 
@@ -86,11 +86,11 @@
             <view class="lv-status {{item.statusClass}}">{{item.statusText}}</view>
           </view>
           <view class="lv-row-sub">{{item.startDate}}<text wx:if="{{item.endDate !== item.startDate}}"> ~ {{item.endDate}}</text> · {{item.periodsText}} · {{item.reasonText}}</view>
-          <view wx:if="{{item.imgUrl || item.image}}" class="lv-thumb-wrap" data-fid="{{item.image}}" bindtap="onPreviewImage" hover-class="press-dim" hover-stay-time="60">
+          <view data-pressable wx:if="{{item.imgUrl || item.image}}" class="lv-thumb-wrap" data-fid="{{item.image}}" bindtap="onPreviewImage" hover-class="press-dim" hover-stay-time="60">
             <image class="lv-thumb" src="{{item.imgUrl}}" mode="aspectFill" />
           </view>
           <view wx:if="{{item.status === 'PENDING'}}" class="lv-row-actions">
-            <view class="lv-link {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onWithdraw" hover-class="press-dim" hover-stay-time="60">撤回</view>
+            <view data-pressable class="lv-link {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onWithdraw" hover-class="press-dim" hover-stay-time="60">撤回</view>
           </view>
         </view>
       </block>
@@ -113,12 +113,12 @@
             <text wx:if="{{item.className}}" class="lv-row-cls">{{item.className}}</text>
           </view>
           <view class="lv-row-sub">{{item.startDate}}<text wx:if="{{item.endDate !== item.startDate}}"> ~ {{item.endDate}}</text> · {{item.periodsText}} · {{item.reasonText}}</view>
-          <view wx:if="{{item.imgUrl || item.image}}" class="lv-thumb-wrap" data-fid="{{item.image}}" bindtap="onPreviewImage" hover-class="press-dim" hover-stay-time="60">
+          <view data-pressable wx:if="{{item.imgUrl || item.image}}" class="lv-thumb-wrap" data-fid="{{item.image}}" bindtap="onPreviewImage" hover-class="press-dim" hover-stay-time="60">
             <image class="lv-thumb" src="{{item.imgUrl}}" mode="aspectFill" />
           </view>
           <view class="lv-row-actions">
-            <view class="btn btn-ghost btn-sm lv-reject {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onReject" hover-class="btn-hover" hover-stay-time="60">驳回</view>
-            <view class="btn btn-sm lv-pass {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onApprove" hover-class="btn-hover" hover-stay-time="60">通过</view>
+            <view data-pressable class="btn btn-ghost btn-sm lv-reject {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onReject" hover-class="btn-hover" hover-stay-time="60">驳回</view>
+            <view data-pressable class="btn btn-sm lv-pass {{busyId === item.leaveId ? 'disabled' : ''}}" data-id="{{item.leaveId}}" bindtap="onApprove" hover-class="btn-hover" hover-stay-time="60">通过</view>
           </view>
         </view>
       </block>

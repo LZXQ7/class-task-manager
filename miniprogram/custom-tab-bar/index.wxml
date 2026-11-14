@@ -7,7 +7,7 @@
          left/width 由 JS 按「胶囊内容宽四等分」算出（不是 750rpx 四等分），
          stretch/settle 两拍换速（见 index.js）。 -->
     <view class="tab-ind {{indCls}}" style="left:{{indLeft}}rpx;width:{{indWidth}}rpx"></view>
-    <view
+    <view data-pressable
       wx:for="{{list}}"
       wx:key="key"
       class="tab-item {{active === index ? 'on' : ''}} {{popIndex === index ? 'poping' : ''}}"

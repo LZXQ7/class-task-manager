@@ -13,7 +13,7 @@
   <!-- 工具行：刷新入口（原导航栏右上角）。空态自带刷新按钮，此时不重复出现。 -->
   <view wx:if="{{!loading && !empty}}" class="ta-bar">
     <text class="ta-bar-t">共 {{list.length}} 条待处理</text>
-    <view class="ta-refresh" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="_load">刷新</view>
+    <view data-pressable class="ta-refresh" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="_load">刷新</view>
   </view>
 
   <view wx:if="{{loading}}" class="ta-loading">加载中…</view>
@@ -41,9 +41,9 @@
         <text wx:if="{{item.summary.warnings.length}}" class="ta-sum-w">（有提醒）</text>
       </view>
       <view class="ta-actions">
-        <view class="ta-btn ghost" hover-class="press-dim" bindtap="onViewFile" data-id="{{item.id}}">查看原文件</view>
-        <view class="ta-btn ghost danger" hover-class="press-dim" bindtap="onReject" data-id="{{item.id}}">拒绝</view>
-        <view class="ta-btn primary {{importBusy ? 'off' : ''}}" hover-class="press-dim" bindtap="onAdapt" data-id="{{item.id}}">预览并适配</view>
+        <view data-pressable class="ta-btn ghost" hover-class="press-dim" bindtap="onViewFile" data-id="{{item.id}}">查看原文件</view>
+        <view data-pressable class="ta-btn ghost danger" hover-class="press-dim" bindtap="onReject" data-id="{{item.id}}">拒绝</view>
+        <view data-pressable class="ta-btn primary {{importBusy ? 'off' : ''}}" hover-class="press-dim" bindtap="onAdapt" data-id="{{item.id}}">预览并适配</view>
       </view>
     </view>
   </view>
@@ -71,8 +71,8 @@
         <view wx:if="{{!importPreview.courses.length}}" class="im-empty">没有解析到课程</view>
       </scroll-view>
       <view class="f-actions">
-        <view class="im-cancel" hover-class="press-dim" bindtap="onImportClose">取消</view>
-        <view class="f-save {{importBusy ? 'off' : ''}}" bindtap="onConfirmAdapt">{{importBusy ? '导入中' : '确认适配'}}</view>
+        <view data-pressable class="im-cancel" hover-class="press-dim" bindtap="onImportClose">取消</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="f-save {{importBusy ? 'off' : ''}}" bindtap="onConfirmAdapt">{{importBusy ? '导入中' : '确认适配'}}</view>
       </view>
     </view>
   </bottom-sheet>

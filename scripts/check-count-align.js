@@ -51,7 +51,7 @@ const VOID = new Set(['image', 'input', 'icon', 'import', 'include', 'open-data'
 const isSelfClose = (raw, tag) => /\/>$/.test(raw) || VOID.has(tag);
 const attrsOf = (s) => s || '';
 const classesOf = (attrs) => {
-  const m = /class="([^"]*)"/.exec(attrs);
+  const m = /(?:^|\s)class="([^"]*)"/.exec(attrs);
   return m ? m[1].split(/\s+/).filter(Boolean) : [];
 };
 

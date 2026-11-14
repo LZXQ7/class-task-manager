@@ -111,44 +111,44 @@ function behaviorProbes(wxsSrc) {
   const api = loadWxs(wxsSrc);
   const out = {};
 
-  /* pointer-down 即时反馈 + 四角映射 + 流光圆心跟随 */
+  /* pointer-down 即时反馈 + 四角映射 */
   {
     const h = harness();
-    api.onStart(ev(h, 20, 100), null);                 // 左上 (px=0, py=0)
+    api.onStart(ev(h, 20, 100), h.owner);              // 左上 (px=0, py=0)
     const first = rotate(h.styles[0]);
-    const g1 = glareXY(h.glareStyles[0]);
-    out.instant = !!first && h.glareStyles.length === 1 && Number(h.glareStyles[0].opacity) > 0;
+    /* 按下必须**立刻**写入 transform（不等第一次 move）—— 这是「手感」的地基 */
+    out.instant = !!first && h.styles.length >= 1;
     out.mapping = !!first && first.rx > 6 && first.ry < -6;
-    out.glareFollow = !!g1 && g1.gx < 0 && g1.gy < 0;
+    /* 2026-11-14：光效改由 CSS 承担（index.wxss 的 .tg-glare / .tg-cone / .tg-glow）。
+       WXS 里**不得**再出现 selectComponent —— 它只能选中自定义组件，而 .tg-glare 是
+       普通 <view> ⇒ 真机上永远拿不到 ⇒ 每张卡首按必报「glare descriptor unavailable」，
+       而且流光从来没真的亮过（用户截图里的报错就是这么来的）。 */
+    out.glareCssOwned = wxsSrc.indexOf('selectComponent') < 0;
 
-    api.onMove(ev(h, 340, 280), null);                 // 右下 (px=1, py=1)
+    api.onMove(ev(h, 340, 280), h.owner);              // 右下 (px=1, py=1)
     const second = rotate(h.styles[h.styles.length - 1]);
-    const g2 = glareXY(h.glareStyles[h.glareStyles.length - 1]);
     out.mapping = out.mapping && !!second && second.rx < -6 && second.ry > 6;
-    out.glareFollow = out.glareFollow && !!g2 && g2.gx > 0 && g2.gy > 0;
 
-    api.onMove(ev(h, 180, 190), null);                 // 正中 → 应归零
+    api.onMove(ev(h, 180, 190), h.owner);              // 正中 → 应归零
     const mid = rotate(h.styles[h.styles.length - 1]);
     out.mapping = out.mapping && !!mid && Math.abs(mid.rx) < 0.01 && Math.abs(mid.ry) < 0.01;
   }
 
-  /* 松手：真弹簧必须过冲、必须收敛、流光必须渐隐 */
+  /* 松手：真弹簧必须过冲、必须收敛；且正常按压**不得**产生任何降级告警 */
   {
     const h = harness();
-    api.onStart(ev(h, 20, 100), null);
-    api.onMove(ev(h, 20, 100), null);                  // 位置不变 → 松手初速度 0，过冲纯由弹簧产生
+    api.onStart(ev(h, 20, 100), h.owner);
+    api.onMove(ev(h, 20, 100), h.owner);               // 位置不变 → 松手初速度 0，过冲纯由弹簧产生
     const before = h.styles.length;
-    const beforeGlare = h.glareStyles.length;
-    api.onEnd(ev(h, 20, 100), null);
+    api.onEnd(ev(h, 20, 100), h.owner);
     step(h, 90);
     const traj = h.styles.slice(before).map(rotate).filter(Boolean);
     const last = rotate(h.styles[h.styles.length - 1]);
-    const ops = h.glareStyles.slice(beforeGlare).map(s => Number(s.opacity));
     /* 从 +7° 起跳，轨迹里出现负角 = 欠阻尼过冲；指数衰减/贝塞尔近似永远翻不过 0 */
     out.overshoot = traj.some(p => p.rx < -0.05);
     out.settle = !!last && last.rx === 0 && last.ry === 0;
-    out.glareFade = ops.length > 3 && ops[ops.length - 1] === 0 &&
-                    ops.some(v => v > 0 && v < 0.61);
+    /* 正常手势下**一条告警都不该有**（用户截图里那条 glare 报错就是这么来的） */
+    out.noGlareWarn = h.calls.filter(c => c.name === 'onTiltWarn').length === 0;
   }
 
   /* 可中断：回正途中重新按住，旧 rAF 循环必须立刻停手 */
@@ -185,10 +185,10 @@ function behaviorProbes(wxsSrc) {
     const h1 = harness({ noRect: true });
     api.onStart(ev(h1, 20, 100), h1.owner);
     out.rectWarn = h1.calls.some(c => c.name === 'onTiltWarn');
-    /* 拿不到 glare 节点时必须**降级告警**（流光的逐帧跟随会失效，光效由 CSS 兜底） */
-    const h2 = harness({ noGlare: true });
-    api.onStart(ev(h2, 20, 100), h2.owner);
-    out.glareWarn = h2.calls.some(c => c.name === 'onTiltWarn') && h2.styles.length > 0;
+    /* ⚠️ 2026-11-14：不再有「拿不到 glare 节点」这条降级路径 —— 光效已整体交给 CSS，
+       这里只保留「量不到矩形」这一条真实的降级告警（rectWarn）。
+       「正常按压不许有任何告警」由 noGlareWarn 守住，
+       「WXS 不得再 selectComponent」由 glareCssOwned 守住。 */
   }
 
   return out;
@@ -293,10 +293,14 @@ const MUTATIONS = [
     to: '    /* interruption guard removed */'
   },
   {
-    name: '流光亮度恒定（不随回正渐隐）',
-    scope: 'wxs', expect: 'glareFade',
-    from: '    state.light = state.light * GLARE_FADE;',
-    to: '    state.light = GLARE_ON;'
+    /* 2026-11-14：光效改由 CSS 承担，WXS 里**不得**再出现 selectComponent
+       （它只能选中自定义组件，.tg-glare 是普通 view ⇒ 真机上永远拿不到 ⇒
+        每张卡首按必报「glare descriptor unavailable」，流光从来没亮过）。
+       这组变异把 selectComponent 塞回去 ⇒ glareCssOwned 必须翻红。 */
+    name: 'WXS 又用 selectComponent 找普通 view（流光路径复活）',
+    scope: 'wxs', expect: 'glareCssOwned',
+    from: 'function paint(inst, state) {',
+    to: 'function paint(inst, state) {\n  var g = inst.selectComponent(\'.tg-glare\');'
   },
   {
     name: '去掉 maxTilt 夹紧（外部传 99 就倾 99°）',

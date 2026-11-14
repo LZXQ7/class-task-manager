@@ -83,7 +83,7 @@
         <text class="ms-sess-sub">{{s.room || '未填教室'}}</text>
 
         <view class="ms-chips">
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:for="{{s.members}}"
             wx:for-item="m"
             wx:key="dutyId"
@@ -98,7 +98,7 @@
             <app-icon name="chevron-down" variant="gray" size="{{24}}" />
           </view>
 
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             class="ms-add"
             data-date="{{item.date}}"
             data-sid="{{s.sessionId}}"
@@ -118,8 +118,8 @@
   <!-- 底部固定条：统计 + 发布 -->
   <view wx:if="{{!loading && !failed && days.length}}" class="ms-bar">
     <text class="ms-bar-text">共 {{stats.total}} 次值日 · {{stats.people}} 人</text>
-    <view wx:if="{{published}}" class="ms-bar-btn ghost" bindtap="onUnpublish">撤回发布</view>
-    <view wx:else class="ms-bar-btn primary" bindtap="onPublish">发布给全班</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{published}}" class="ms-bar-btn ghost" bindtap="onUnpublish">撤回发布</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:else class="ms-bar-btn primary" bindtap="onPublish">发布给全班</view>
   </view>
 
   <!-- 选人 -->
@@ -140,14 +140,14 @@
           placeholder-class="f-ph"
           bindinput="onPickerKw"
         />
-        <text wx:if="{{kw}}" class="pk-search-clear" bindtap="onPickerClear">清除</text>
+        <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{kw}}" class="pk-search-clear" bindtap="onPickerClear">清除</text>
       </view>
 
       <view class="pk-gap">
         <text class="pk-gap-text">共 {{pickerCount}} 人，灰色为不可选（已在此课次 / 请假 / 分组不符）；带「测试」标记的是测试账号，可手动排入，用来验证换班通知。</text>
       </view>
 
-      <view
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
         wx:for="{{list}}"
         wx:key="id"
         class="pk-row {{item.disabled ? 'off' : ''}}"

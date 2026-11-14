@@ -11,7 +11,7 @@
     wx:key="id"
     class="hw-wrap fade-item"
   >
-    <view
+    <view data-pressable
       wx:if="{{item.canDelete}}"
       class="hw-del-zone {{item.offset ? 'on' : ''}}"
       data-id="{{item.id}}"
@@ -24,7 +24,7 @@
       <text class="hw-deltxt">删除</text>
     </view>
 
-    <view
+    <view data-pressable
       class="hw-card"
       style="transform: translateX({{item.offset || 0}}px); transition: {{item.swiping ? 'none' : 'transform .2s ease'}};"
       data-id="{{item.id}}"

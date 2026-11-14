@@ -1,5 +1,5 @@
 <!-- #8 3D 翻转卡片：正面 / 背面 两个 slot，点击绕 Y 轴翻转 -->
-<view class="fd {{_flipped ? 'flipped' : ''}}" bindtap="onTap">
+<view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="fd {{_flipped ? 'flipped' : ''}}" bindtap="onTap">
   <view class="fd-inner">
     <view class="fd-front"><slot name="front" /></view>
     <view class="fd-back"><slot name="back" /></view>

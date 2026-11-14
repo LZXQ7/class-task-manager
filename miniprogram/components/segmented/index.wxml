@@ -9,7 +9,7 @@
         改 `.seg` 内边距/宽度的口径必须同步改 index.js 的 INSET_RPX 与 cell 计算。 -->
 <view class="seg" style="width:{{width}}rpx">
   <view class="seg-ind {{indCls}}" style="transform:translateX({{indLeft}}rpx);width:{{indWidth}}rpx"></view>
-  <view
+  <view data-pressable
     wx:for="{{items}}"
     wx:key="key"
     class="seg-item {{value === item.key ? 'on' : ''}}"

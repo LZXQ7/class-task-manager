@@ -8,7 +8,7 @@
 
   <nav-bar title="课表">
     <view slot="right" class="tt-nav-right">
-      <text wx:if="{{isSuper && hasTimetable && !isCounselor}}" class="tt-nav-btn" bindtap="onCalOpen">校历</text>
+      <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{isSuper && hasTimetable && !isCounselor}}" class="tt-nav-btn" bindtap="onCalOpen">校历</text>
     </view>
   </nav-bar>
 
@@ -164,7 +164,7 @@
                      底色与字色都写在块上，课名 / 教室**继承** color ——
                      深色下左侧那条 6rpx 色条取的就是这里的 currentColor
                      （见 wxss 的 .t-dark .tt-cell::before）。 -->
-                <view
+                <view data-pressable
                   wx:for="{{cell.courses}}"
                   wx:for-item="co"
                   wx:for-index="ci"
@@ -191,7 +191,7 @@
                   <view wx:if="{{co.isHoliday}}" class="tt-cell-holiday">假期</view>
                 </view>
               </block>
-              <view wx:else class="tt-cell empty" data-r="{{r}}" data-c="{{c}}" bindtap="onCell" bindlongpress="onCellLongPress"></view>
+              <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:else class="tt-cell empty" data-r="{{r}}" data-c="{{c}}" bindtap="onCell" bindlongpress="onCellLongPress"></view>
             </view>
           </view>
         </view>
@@ -217,30 +217,30 @@
        ⚠️ 「临时调课」只给超管；普通同学看到的菜单里就是 A 组 / B 组两行。 -->
   <view wx:if="{{!loading && ((canSwitchClass && classList.length) || (!isCounselor && hasTimetable))}}" class="fab-menu {{fabMenuOpen ? 'open' : ''}}">
     <view class="fab-menu-list">
-      <view
+      <view data-pressable
         wx:if="{{canSwitchClass}}"
         class="fab-menu-item {{viewGroup === 'ALL' ? 'on' : ''}}"
         hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
         data-key="ALL" bindtap="onMenuGroup"
       >全部</view>
-      <view
+      <view data-pressable
         class="fab-menu-item {{viewGroup === 'A' ? 'on' : ''}}"
         hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
         data-key="A" bindtap="onMenuGroup"
       >A 组</view>
-      <view
+      <view data-pressable
         class="fab-menu-item {{viewGroup === 'B' ? 'on' : ''}}"
         hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
         data-key="B" bindtap="onMenuGroup"
       >B 组</view>
-      <view
+      <view data-pressable
         wx:if="{{isSuper}}"
         class="fab-menu-item"
         hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
         bindtap="onMenuShift"
       >临时调课</view>
     </view>
-    <view class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onMenuToggle">
+    <view data-pressable class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onMenuToggle">
       <app-icon name="grid" variant="brand" size="{{34}}" />
       <text class="fab-menu-t">{{viewGroup === 'ALL' ? '全部' : (viewGroup === 'B' ? 'B 组' : 'A 组')}}</text>
       <app-icon name="{{fabMenuOpen ? 'chevron-down' : 'chevron-up'}}" variant="gray" size="{{26}}" />
@@ -249,7 +249,7 @@
 
   <!-- 新增课次 FAB：人人可见，**一律是添加个人选修课**（仅自己可见，含超管 —— 2026-10-16 用户定口径）；
        !isCounselor 保留在 wxml（辅导员只看不改，门禁 check-timetable-local 逐入口点名守卫） -->
-  <view wx:if="{{fabShow && !isCounselor}}" class="fab" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFab">
+  <view data-pressable wx:if="{{fabShow && !isCounselor}}" class="fab" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFab">
     <app-icon name="plus" variant="white" size="{{44}}" />
   </view>
 
@@ -284,8 +284,8 @@
         </view>
       </view>
       <view wx:if="{{isAdmin}}" class="tt-detail-actions">
-        <view class="tt-dbtn danger" bindtap="onDeleteCourse">删除课次</view>
-        <view class="tt-dbtn primary" bindtap="onEditCourse">编辑</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="tt-dbtn danger" bindtap="onDeleteCourse">删除课次</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="tt-dbtn primary" bindtap="onEditCourse">编辑</view>
       </view>
     </view>
   </bottom-sheet>
@@ -319,8 +319,8 @@
       <view wx:if="{{formMode !== 'elective' && form.courseType === 'GROUP'}}" class="f-row">
         <text class="f-label">上课分组</text>
         <view class="f-chips">
-          <view class="f-chip chip-motion {{form.groupScope === 'A' ? 'on' : ''}}" data-field="groupScope" data-value="A" bindtap="onFormChoose">A 组</view>
-          <view class="f-chip chip-motion {{form.groupScope === 'B' ? 'on' : ''}}" data-field="groupScope" data-value="B" bindtap="onFormChoose">B 组</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="f-chip chip-motion {{form.groupScope === 'A' ? 'on' : ''}}" data-field="groupScope" data-value="A" bindtap="onFormChoose">A 组</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="f-chip chip-motion {{form.groupScope === 'B' ? 'on' : ''}}" data-field="groupScope" data-value="B" bindtap="onFormChoose">B 组</view>
         </view>
         <text class="f-tip">A 组＝学号尾号单数，B 组＝学号尾号双数</text>
       </view>
@@ -328,7 +328,7 @@
       <view class="f-block">
         <text class="f-label">上课时间</text>
         <view class="f-chips">
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:for="{{dayChips}}"
             wx:key="key"
             class="f-chip chip-motion {{form.dayOfWeek === item.key ? 'on' : ''}}"
@@ -338,7 +338,7 @@
           >周{{item.text}}</view>
         </view>
         <view class="f-chips">
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:for="{{periodChips}}"
             wx:key="*this"
             class="f-chip chip-motion {{form.period === item ? 'on' : ''}}"
@@ -354,7 +354,7 @@
         <text class="f-label">上课周次</text>
         <text class="f-tip">不勾选＝每周都上；可多选指定周次（1–{{totalWeeks}}）</text>
         <view class="f-chips">
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:for="{{weekBtns}}"
             wx:key="n"
             class="f-chip chip-motion {{item.on ? 'on' : ''}} {{item.n === week ? 'cur' : ''}}"
@@ -370,11 +370,11 @@
       </view>
 
       <view wx:if="{{formMode === 'elective' && form.electiveId}}" class="f-actions">
-        <view class="f-save danger {{saving ? 'off' : ''}}" bindtap="onDeleteElective">删除选修课</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="f-save danger {{saving ? 'off' : ''}}" bindtap="onDeleteElective">删除选修课</view>
       </view>
 
       <view class="f-actions">
-        <view class="f-save {{saving ? 'off' : ''}}" bindtap="onSave">{{saving ? '保存中' : '保存'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="f-save {{saving ? 'off' : ''}}" bindtap="onSave">{{saving ? '保存中' : '保存'}}</view>
       </view>
     </view>
   </bottom-sheet>
@@ -382,7 +382,7 @@
   <!-- 周次选择 -->
   <bottom-sheet show="{{weekPickerShow}}" title="选择周次" bind:close="onWeekPickerClose">
     <view class="wk-grid">
-      <view
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
         wx:for="{{weekList}}"
         wx:key="*this"
         class="wk-chip chip-motion {{week === item ? 'on' : ''}} {{current === item ? 'cur' : ''}}"
@@ -431,7 +431,7 @@
         <view wx:if="{{shiftKind === 'MOVE'}}" class="f-block">
           <text class="f-label">改到</text>
           <view class="f-chips">
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{dayChips}}"
               wx:key="key"
               class="f-chip chip-motion {{shiftToDay === item.key ? 'on' : ''}}"
@@ -440,7 +440,7 @@
             >周{{item.text}}</view>
           </view>
           <view class="f-chips">
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{periodChips}}"
               wx:key="*this"
               class="f-chip chip-motion {{shiftToPeriod === item ? 'on' : ''}}"
@@ -454,7 +454,7 @@
           <text class="f-label">应用到哪些周</text>
           <text class="f-tip">可多选；带「本周」标记的是你正在看的这一周</text>
           <view class="f-chips">
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{shiftWeekBtns}}"
               wx:key="n"
               class="f-chip chip-motion {{item.on ? 'on' : ''}} {{item.cur ? 'cur' : ''}}"
@@ -465,12 +465,12 @@
         </view>
 
         <view class="f-actions">
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:if="{{shiftTab === 'week'}}"
             class="f-save {{shiftSaving ? 'off' : ''}}"
             bindtap="onShiftApplyWeek"
           >应用到第 {{week}} 周</view>
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:else
             class="f-save {{shiftSaving ? 'off' : ''}}"
             bindtap="onShiftApplyMulti"
@@ -484,7 +484,7 @@
           <text class="f-label">这几天不上课</text>
           <text class="f-tip">选中第 {{week}} 周里要取消的日期，那一整天所有课都不上</text>
           <view class="ts-days">
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{dates}}"
               wx:key="dow"
               class="ts-day {{item.off ? 'on' : ''}}"
@@ -495,7 +495,7 @@
               <text class="ts-day-d">{{item.day}}</text>
             </view>
           </view>
-          <view class="cal-save {{shiftSaving ? 'off' : ''}}" bindtap="onApplyDateOff">
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cal-save {{shiftSaving ? 'off' : ''}}" bindtap="onApplyDateOff">
             {{offDays.length ? ('取消这 ' + offDays.length + ' 天的课') : '取消选中的日期'}}
           </view>
         </view>
@@ -512,7 +512,7 @@
               <view class="cal-picker {{shiftForm.to ? '' : 'ph'}}">{{shiftForm.to || '调入日期'}}</view>
             </picker>
           </view>
-          <view class="cal-save" bindtap="onShiftSave">添加调课</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cal-save" bindtap="onShiftSave">添加调课</view>
           <text class="f-tip">调课只改变「上课与值日的日期」；调休日的值日请到值日页手动调整。</text>
         </view>
       </block>
@@ -530,7 +530,7 @@
             bindinput="onAiText"
           />
           <view class="ts-chips">
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{aiExamples}}"
               wx:key="*this"
               class="ts-chip"
@@ -542,11 +542,11 @@
 
         <view class="f-block">
           <view class="ts-row">
-            <view class="ts-btn ghost" bindtap="onAiPromptShow">查看提示词</view>
-            <view class="ts-btn ghost" bindtap="onAiCheck">链路自检</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ts-btn ghost" bindtap="onAiPromptShow">查看提示词</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ts-btn ghost" bindtap="onAiCheck">链路自检</view>
           </view>
           <view class="ts-row">
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               class="ts-btn primary {{aiBusy ? 'off' : ''}}"
               bindtap="onAiPlan"
             >{{aiBusy ? 'AI 正在想…' : 'AI 生成调课方案'}}</view>
@@ -558,8 +558,8 @@
           <text class="f-label">提示词（可编辑）</text>
           <textarea class="ts-area tall" value="{{aiPrompt}}" maxlength="4000" bindinput="onAiPromptInput" />
           <view class="ts-row">
-            <view class="ts-btn ghost" bindtap="onAiPromptClose">收起</view>
-            <view class="ts-btn ghost" bindtap="onAiPromptReset">恢复默认</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ts-btn ghost" bindtap="onAiPromptClose">收起</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ts-btn ghost" bindtap="onAiPromptReset">恢复默认</view>
           </view>
         </view>
 
@@ -575,8 +575,8 @@
           </view>
           <view wx:for="{{aiWarnings}}" wx:key="*this" class="ts-warn">⚠ {{item}}</view>
           <view class="ts-row">
-            <view class="ts-btn ghost" bindtap="onAiDiscard">放弃</view>
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ts-btn ghost" bindtap="onAiDiscard">放弃</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               class="ts-btn primary {{shiftSaving ? 'off' : ''}}"
               bindtap="onAiApply"
             >应用到第 {{week}} 周</view>
@@ -594,10 +594,10 @@
               <text class="ts-item-name">{{item.name}}</text>
               <text class="ts-item-eff">{{item.effText}}</text>
             </view>
-            <text class="ts-del" data-id="{{item.sessionId}}" data-week="{{item.undoWeek}}" catchtap="onShiftUndo">撤销</text>
+            <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ts-del" data-id="{{item.sessionId}}" data-week="{{item.undoWeek}}" catchtap="onShiftUndo">撤销</text>
           </view>
           <view wx:if="{{shiftItems.length}}" class="ts-row">
-            <view class="ts-btn ghost danger" bindtap="onShiftClearWeek">撤销本周全部临时调课</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ts-btn ghost danger" bindtap="onShiftClearWeek">撤销本周全部临时调课</view>
           </view>
           <text class="f-tip">调课会改变上课日期与值日日期；本周若已发布，调课后退回草稿，需要重新发布。跨周调课在「调出周」与「调入周」两边各显示一条，点任一条的撤销都会整笔撤销。</text>
         </view>
@@ -608,7 +608,7 @@
           <view wx:for="{{calShifts}}" wx:key="id" class="cal-item">
             <text class="cal-date">{{item.from}} → {{item.to}}</text>
             <text class="cal-name">{{item.note}}</text>
-            <text class="cal-del" data-id="{{item.id}}" catchtap="onShiftDel">取消</text>
+            <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cal-del" data-id="{{item.id}}" catchtap="onShiftDel">取消</text>
           </view>
         </view>
       </block>
@@ -627,7 +627,7 @@
             <text class="cal-date">{{item.date}}</text>
             <text class="cal-name">{{item.name}}</text>
             <text class="cal-kind {{item.kind === 'MAKEUP' ? 'mk' : ''}}">{{item.kind === 'MAKEUP' ? '调休上班' : '放假'}}</text>
-            <text class="cal-del" data-date="{{item.date}}" catchtap="onHolidayDel">删除</text>
+            <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cal-del" data-date="{{item.date}}" catchtap="onHolidayDel">删除</text>
           </view>
           <view wx:if="{{!calHolidays.length && !calLoading}}" class="cal-empty">暂无节假日</view>
         </view>
@@ -639,10 +639,10 @@
             <input class="cal-input" value="{{holidayForm.name}}" placeholder="名称，如 国庆节" placeholder-class="f-ph" bindinput="onHolidayName" />
           </view>
           <view class="f-chips">
-            <view class="f-chip chip-motion {{holidayForm.kind === 'OFF' ? 'on' : ''}}" data-value="OFF" bindtap="onHolidayKind">放假</view>
-            <view class="f-chip chip-motion {{holidayForm.kind === 'MAKEUP' ? 'on' : ''}}" data-value="MAKEUP" bindtap="onHolidayKind">调休上班</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="f-chip chip-motion {{holidayForm.kind === 'OFF' ? 'on' : ''}}" data-value="OFF" bindtap="onHolidayKind">放假</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="f-chip chip-motion {{holidayForm.kind === 'MAKEUP' ? 'on' : ''}}" data-value="MAKEUP" bindtap="onHolidayKind">调休上班</view>
           </view>
-          <view class="cal-save" bindtap="onHolidaySave">添加 / 保存</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cal-save" bindtap="onHolidaySave">添加 / 保存</view>
         </view>
       </view>
 
@@ -652,7 +652,7 @@
           <view wx:for="{{calShifts}}" wx:key="id" class="cal-item">
             <text class="cal-date">{{item.from}} → {{item.to}}</text>
             <text class="cal-name">{{item.note}}</text>
-            <text class="cal-del" data-id="{{item.id}}" catchtap="onShiftDel">取消</text>
+            <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cal-del" data-id="{{item.id}}" catchtap="onShiftDel">取消</text>
           </view>
           <view wx:if="{{!calShifts.length && !calLoading}}" class="cal-empty">暂无调课</view>
         </view>
@@ -667,7 +667,7 @@
             </picker>
           </view>
           <input class="cal-input" value="{{shiftForm.note}}" placeholder="备注（选填）" placeholder-class="f-ph" bindinput="onShiftNote" />
-          <view class="cal-save" bindtap="onShiftSave">添加调课</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cal-save" bindtap="onShiftSave">添加调课</view>
         </view>
         <view class="cal-hint">调课只改变「上课与值日的日期」；调休日的值日请手动调整。</view>
       </view>
@@ -678,8 +678,8 @@
   <!-- 调课刚保存后的撤回浮条（8 秒窗口）：误调是最高频事故，给一次一键反悔 -->
   <view wx:if="{{undoBar}}" class="tt-undo-bar">
     <text class="tt-undo-txt">{{undoBar.text}}</text>
-    <text class="tt-undo-act" bindtap="onShiftUndoBar">撤回</text>
-    <text class="tt-undo-x" bindtap="onShiftUndoBarClose">✕</text>
+    <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="tt-undo-act" bindtap="onShiftUndoBar">撤回</text>
+    <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="tt-undo-x" bindtap="onShiftUndoBarClose">✕</text>
   </view>
 
   <!-- #10 课程表长按弧形菜单：从触点放射性展开「本周调整 / 指定日期 / 取消」 -->

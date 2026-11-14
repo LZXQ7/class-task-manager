@@ -27,7 +27,7 @@
            预览走 getTempFileURL 换临时链接，cloud:// 不能直接喂 previewImage） -->
       <view wx:if="{{attaches.length}}" class="hd-attach">
         <view class="hd-attach-lab">作业附件</view>
-        <view
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
           wx:for="{{attaches}}"
           wx:key="id"
           class="fm-file {{item.isImage ? 'fm-file-tap' : ''}}"
@@ -57,7 +57,7 @@
         <text class="my-sub-remark-text">{{myRemark}}</text>
       </view>
       <view wx:if="{{myFiles.length}}" class="my-sub-files">
-        <view
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
           wx:for="{{myFiles}}"
           wx:key="id"
           class="fm-file {{item.isImage ? 'fm-file-tap' : ''}}"
@@ -87,14 +87,14 @@
          配合「已完成」芯片，全选一下勾完一批人，不用逐个点勾选框）。
          ⚠️ flex-wrap：五个芯片 + 全选在窄屏放不下时，全选换到第二行右对齐，不挤压芯片 -->
     <view class="fl-row">
-      <view
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
         wx:for="{{filters}}"
         wx:key="key"
         class="fl-chip chip-motion {{filter === item.key ? 'on' : ''}}"
         data-key="{{item.key}}"
         bindtap="onFilter"
       >{{item.label}}</view>
-      <view wx:if="{{canReview}}" class="fl-all {{allPicked ? 'on' : ''}}" bindtap="onTogglePickAll">{{allPicked ? '取消全选' : '全选'}}</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{canReview}}" class="fl-all {{allPicked ? 'on' : ''}}" bindtap="onTogglePickAll">{{allPicked ? '取消全选' : '全选'}}</view>
     </view>
 
     <!-- 批量操作条：班委在「已完成」筛选下勾选成员后才出现（2026-10-24 反馈⑧-a：
@@ -102,15 +102,15 @@
          行点击=查看提交，勾选框=选人，两者分离。 -->
     <view wx:if="{{canReview && pickedCount && filter === 'done'}}" class="batch-bar">
       <text class="batch-num">已选 {{pickedCount}} 人</text>
-      <view class="batch-name" bindtap="onToggleNameMode">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="batch-name" bindtap="onToggleNameMode">
         命名：{{nameMode === 'RENAME' ? '姓名+学号' : '原文件名'}}
       </view>
-      <view class="batch-clear" bindtap="onClearPick">取消</view>
-      <view class="batch-dl" bindtap="onBatchDownload">批量下载作业</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="batch-clear" bindtap="onClearPick">取消</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="batch-dl" bindtap="onBatchDownload">批量下载作业</view>
     </view>
 
     <!-- 提交名单：行点击=查看该成员提交的作业；行尾勾选框=多选批阅（catchtap 不冒泡） -->
-    <view
+    <view data-pressable
       wx:for="{{list}}"
       wx:key="id"
       class="mb-row"
@@ -133,7 +133,7 @@
            🔴 data-id 必须写在**勾选框自己身上**：catchtap 的 e.currentTarget 是本元素，
               dataset 不继承父行 —— 早年 id 只写在 .mb-row 上，点勾选框毫无反应
               （2026-10-24 用户反馈「无法选择成员了」） -->
-      <view wx:if="{{canReview && item.status}}" class="pk-box {{picked[item.id] ? 'on' : ''}}" data-id="{{item.id}}" catchtap="onTogglePick"></view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{canReview && item.status}}" class="pk-box {{picked[item.id] ? 'on' : ''}}" data-id="{{item.id}}" catchtap="onTogglePick"></view>
     </view>
 
     <view wx:if="{{!list.length}}" class="hw-empty"><text>该筛选下没有成员</text></view>
@@ -148,7 +148,7 @@
        提交按钮三态（2026-10-24 用户反馈）：只有未提交/被打回可点（走 onOpenSubmit）；
        待批阅/已完成/已截止置灰（全局 .btn.disabled），文案随状态变化。 -->
   <view wx:if="{{loaded && homework && ((canReview && iAmSubmitter) || (!canReview))}}" class="f-actions">
-    <view class="btn f-save {{canSubmit ? '' : 'disabled'}}" bindtap="onOpenSubmit">{{submitBtnText}}</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn f-save {{canSubmit ? '' : 'disabled'}}" bindtap="onOpenSubmit">{{submitBtnText}}</view>
   </view>
 
   <!-- 批阅确认弹层 -->
@@ -167,8 +167,8 @@
       ></textarea>
     </view>
     <view slot="footer" class="f-actions">
-      <view class="btn btn-ghost f-cancel" bindtap="onReviewClose">取消</view>
-      <view class="btn f-save" bindtap="onReviewConfirm">确定</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn btn-ghost f-cancel" bindtap="onReviewClose">取消</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn f-save" bindtap="onReviewConfirm">确定</view>
     </view>
   </bottom-sheet>
 
@@ -183,8 +183,8 @@
       <view class="fm-acts">
         <!-- 按发布时的提交要求显示按钮：IMAGE 只给图片、FILE 只给文件、EITHER/NONE 两个都给
              （2026-10-24 用户反馈「要求图片就不该出现添加文件按钮」；flag 由 _load 计算） -->
-        <view wx:if="{{homework.canPickImage}}" class="fm-act" bindtap="onChooseFile">+ 图片</view>
-        <view wx:if="{{homework.canPickFile}}" class="fm-act" bindtap="onChooseDoc">+ 文件</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{homework.canPickImage}}" class="fm-act" bindtap="onChooseFile">+ 图片</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{homework.canPickFile}}" class="fm-act" bindtap="onChooseDoc">+ 文件</view>
       </view>
       <view
         wx:for="{{files}}"
@@ -197,13 +197,13 @@
           <text class="fm-file-name">{{item.name}}</text>
           <text class="fm-file-size">{{item.sizeText}}</text>
         </view>
-        <view class="fm-file-del" data-idx="{{index}}" bindtap="onRemoveFile">×</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="fm-file-del" data-idx="{{index}}" bindtap="onRemoveFile">×</view>
       </view>
       <view wx:if="{{!files.length}}" class="hw-empty-sm">尚未选择文件</view>
     </view>
     <view slot="footer" class="f-actions">
-      <view class="btn btn-ghost f-cancel" bindtap="onSubmitClose">取消</view>
-      <view class="btn f-save" bindtap="onSubmit">提交</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn btn-ghost f-cancel" bindtap="onSubmitClose">取消</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn f-save" bindtap="onSubmit">提交</view>
     </view>
   </bottom-sheet>
 
@@ -220,7 +220,7 @@
         <text class="vw-remark-lab">老师批语</text>
         <text class="vw-remark-text">{{viewMember.remark}}</text>
       </view>
-      <view
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
         wx:for="{{viewFiles}}"
         wx:key="id"
         class="fm-file"
@@ -240,11 +240,11 @@
       <!-- 🔴 批阅入口内移（2026-10-24 用户反馈）：点进某成员提交后才可标记；
            普通成员提交的「我的提交」弹层 viewMember.id=0，不展示批阅按钮 -->
       <view wx:if="{{canReview && viewMember.id}}" class="f-actions">
-        <view class="btn btn-ghost f-cancel" bindtap="onReviewFromView" data-status="REJECT">标记有问题</view>
-        <view class="btn f-save" bindtap="onReviewFromView" data-status="DONE">标记已完成</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn btn-ghost f-cancel" bindtap="onReviewFromView" data-status="REJECT">标记有问题</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn f-save" bindtap="onReviewFromView" data-status="DONE">标记已完成</view>
       </view>
       <view class="f-actions">
-        <view class="btn f-save" bindtap="onDownloadMember">保存全部</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn f-save" bindtap="onDownloadMember">保存全部</view>
       </view>
     </view>
   </bottom-sheet>

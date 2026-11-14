@@ -2,6 +2,6 @@
   <app-icon name="{{icon}}" variant="line" size="{{size}}" />
   <view wx:if="{{title}}" class="empty-title">{{title}}</view>
   <view wx:if="{{desc}}" class="empty-desc">{{desc}}</view>
-  <view wx:if="{{btnText}}" class="empty-btn" bindtap="onTap">{{btnText}}</view>
+  <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{btnText}}" class="empty-btn" bindtap="onTap">{{btnText}}</view>
   <slot />
 </view>

@@ -9,7 +9,7 @@
 <view class="cp {{open ? 'cp-open' : ''}}">
   <text wx:if="{{label}}" class="cp-label">{{label}}</text>
 
-  <view
+  <view data-pressable
     class="cp-field"
     hover-class="cp-field-hov"
     hover-start-time="0"
@@ -26,8 +26,8 @@
        把「当前选中项」对齐到字段中心，其余选项分列上下。空串 = 未测量，走 wxss 普通下拉。
     ⚠️ catchtap 绑 onSelfClose 而不是 noop：浮层居中后会盖住字段行，「再点字段收起」
        不再可靠，点浮层空白处必须能收；点选项时 onPick 已先收起，这里自然空转。 -->
-    <view class="cp-pop {{open ? 'cp-pop-in' : ''}}" style="{{popStyle}}" catchtap="onSelfClose" catchtouchmove="noop">
-      <view
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cp-pop {{open ? 'cp-pop-in' : ''}}" style="{{popStyle}}" catchtap="onSelfClose" catchtouchmove="noop">
+      <view data-pressable
         wx:for="{{opts}}"
         wx:key="id"
         class="cp-opt {{item.id === curId ? 'cp-on' : ''}}"

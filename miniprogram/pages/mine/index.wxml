@@ -69,12 +69,12 @@
       <text class="mn-num">{{stats.termCount}}</text>
       <text class="mn-label">本学期</text>
     </view>
-    <view class="mn-stat-cell tappable" bindtap="onShowDutyList" data-type="pending" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60">
+    <view data-pressable class="mn-stat-cell tappable" bindtap="onShowDutyList" data-type="pending" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60">
       <text class="mn-num {{stats.pendingCount > 0 ? 'warn' : ''}}">{{stats.pendingCount}}</text>
       <text class="mn-label">待值日</text>
       <view class="mn-stat-go">›</view>
     </view>
-    <view class="mn-stat-cell tappable" bindtap="onShowDutyList" data-type="past" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60">
+    <view data-pressable class="mn-stat-cell tappable" bindtap="onShowDutyList" data-type="past" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60">
       <text class="mn-num">{{stats.expiredCount}}</text>
       <text class="mn-label">已结束</text>
       <view class="mn-stat-go">›</view>
@@ -87,14 +87,14 @@
   <!-- 管理 -->
   <view wx:if="{{isAdmin || switched}}" class="card mn-card st-item st-3">
     <!-- 换班确认权在生活委员：成员提交的申请都在这里拍板 -->
-    <view wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="openApps">
+    <view data-pressable wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="openApps">
       <app-icon name="bell" variant="brand" size="{{40}}" />
       <text class="mn-row-text">换班待确认</text>
       <view wx:if="{{pendingCount}}" class="mn-badge">{{pendingCount}}</view>
       <app-icon name="arrow-right" variant="gray" size="{{32}}" />
     </view>
     <!-- 发送更新公告（v0.7.25，仅超管）：全员主页弹窗、每人仅展示一次 -->
-    <view wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="openAnnc">
+    <view data-pressable wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="openAnnc">
       <app-icon name="bell" variant="brand" size="{{40}}" />
       <text class="mn-row-text">发送更新公告</text>
       <app-icon name="arrow-right" variant="gray" size="{{32}}" />
@@ -106,7 +106,7 @@
             生活委员（canSchedule）、班长兼团支书（团费设置权）都要能看到，
             而普通班委（无上述任一能力）不该看到一个空的弹层。
          ⚠️ 弹层内的各行再按原权限二次控制，别指望外层兜底。 -->
-    <view wx:if="{{showMore}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreOpen">
+    <view data-pressable wx:if="{{showMore}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreOpen">
       <app-icon name="more" variant="gray" size="{{40}}" />
       <text class="mn-row-text">更多</text>
       <app-icon name="arrow-right" variant="gray" size="{{32}}" />
@@ -116,7 +116,7 @@
            · 本人非超管 = 从口令页 / 一键体验进来的体验者 —— 他们不再有「切换正式版」
              （见下方两行 isSuper && realIsSuper），这里必须留一个退出口，否则正式版里卡在演示班；
            · 本人是超管 = 超管演示态：体验版仍走这里，正式版仍走「更多 → 切换正式版」（原行为不变）。 -->
-    <view wx:if="{{demo && (!realIsSuper || isTrial)}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onBackToLogin">
+    <view data-pressable wx:if="{{demo && (!realIsSuper || isTrial)}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onBackToLogin">
       <app-icon name="logout" variant="gray" size="{{40}}" />
       <text class="mn-row-text">返回登录页</text>
       <app-icon name="arrow-right" variant="gray" size="{{32}}" />
@@ -134,7 +134,7 @@
 
   <!-- 关于 -->
   <view class="card mn-card st-item st-5">
-    <view class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onAbout">
+    <view data-pressable class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onAbout">
       <app-icon name="info" variant="brand" size="{{40}}" />
       <text class="mn-row-text">关于</text>
       <app-icon name="arrow-right" variant="gray" size="{{32}}" />
@@ -177,8 +177,8 @@
           <view class="ap-sub">{{item.className ? item.className + ' · ' : ''}}{{item.classDate}} {{item.whenText}} · {{item.courseName}}</view>
         </view>
         <view class="ap-actions">
-          <view class="ap-btn" data-id="{{item.swapId}}" bindtap="onPendingReject">拒绝</view>
-          <view class="ap-btn primary" data-id="{{item.swapId}}" bindtap="onPendingAgree">同意</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ap-btn" data-id="{{item.swapId}}" bindtap="onPendingReject">拒绝</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ap-btn primary" data-id="{{item.swapId}}" bindtap="onPendingAgree">同意</view>
         </view>
       </view>
       <view class="ap-sect">我的申请</view>
@@ -202,9 +202,9 @@
         </view>
         <!-- 换班的确认权在生活委员：成员只能撤销自己的申请；超管在这里也能直接拍板 -->
         <view class="ap-actions" wx:if="{{item.canAgree || item.canCancel}}">
-          <view wx:if="{{item.canAgree}}" class="ap-btn" data-id="{{item.swapId}}" bindtap="onSwapReject">拒绝</view>
-          <view wx:if="{{item.canAgree}}" class="ap-btn primary" data-id="{{item.swapId}}" bindtap="onSwapAgree">同意</view>
-          <view wx:if="{{item.canCancel}}" class="ap-btn" data-id="{{item.swapId}}" bindtap="onSwapCancel">撤销</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.canAgree}}" class="ap-btn" data-id="{{item.swapId}}" bindtap="onSwapReject">拒绝</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.canAgree}}" class="ap-btn primary" data-id="{{item.swapId}}" bindtap="onSwapAgree">同意</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.canCancel}}" class="ap-btn" data-id="{{item.swapId}}" bindtap="onSwapCancel">撤销</view>
         </view>
       </view>
     </block>
@@ -219,14 +219,14 @@
       <view class="ab-ver">Version {{appVersion}}</view>
 
       <view class="ab-card">
-        <view class="ab-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onAgreement"><text>用户协议</text><app-icon name="arrow-right" variant="gray" size="{{32}}" /></view>
-        <view class="ab-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onPrivacy"><text>隐私政策</text><app-icon name="arrow-right" variant="gray" size="{{32}}" /></view>
+        <view data-pressable class="ab-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onAgreement"><text>用户协议</text><app-icon name="arrow-right" variant="gray" size="{{32}}" /></view>
+        <view data-pressable class="ab-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onPrivacy"><text>隐私政策</text><app-icon name="arrow-right" variant="gray" size="{{32}}" /></view>
       </view>
 
       <!-- ICP 备案号（2026-10-12 备案通过后展示）：合规要求「真实展示 + 主色加下划线 + 可点击」。
            小程序**不能**用 web-view 打开工信部域名（非自有域名、无法配业务域名）
            ⇒ 点击 = 复制工信部查询地址（见 pages/mine 的 onIcp），用户可自行粘贴核对。 -->
-      <view class="ab-icp" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onIcp">
+      <view data-pressable class="ab-icp" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onIcp">
         <text class="ab-icp-l">ICP 备案号</text>
         <text class="ab-icp-v">{{icpNo}}</text>
       </view>
@@ -248,7 +248,7 @@
         <textarea class="an-textarea" value="{{anncContent}}" maxlength="2000" placeholder="一行一条，写这次更新了什么…" placeholder-class="f-ph" bindinput="onAnncContent" />
       </view>
       <view class="an-tip">发送后：所有人下次打开小程序时主页弹窗展示一次，看过不再弹</view>
-      <view class="an-btn {{anncBusy ? 'busy' : ''}}" bindtap="onAnncSend">{{anncBusy ? '发送中…' : '发送公告'}}</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-btn {{anncBusy ? 'busy' : ''}}" bindtap="onAnncSend">{{anncBusy ? '发送中…' : '发送公告'}}</view>
     </view>
   </bottom-sheet>
 
@@ -260,9 +260,9 @@
       <view class="an-field">
         <text class="an-label">常用接口预设（点一下自动填好地址与默认模型）</text>
         <view class="an-presets">
-          <view class="an-preset {{aiProvider === 'deepseek' ? 'on' : ''}}" data-p="deepseek" bindtap="onAiPreset">DeepSeek</view>
-          <view class="an-preset {{aiProvider === 'glm' ? 'on' : ''}}" data-p="glm" bindtap="onAiPreset">智谱 GLM</view>
-          <view class="an-preset {{aiProvider === 'qwen' ? 'on' : ''}}" data-p="qwen" bindtap="onAiPreset">通义千问</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-preset {{aiProvider === 'deepseek' ? 'on' : ''}}" data-p="deepseek" bindtap="onAiPreset">DeepSeek</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-preset {{aiProvider === 'glm' ? 'on' : ''}}" data-p="glm" bindtap="onAiPreset">智谱 GLM</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-preset {{aiProvider === 'qwen' ? 'on' : ''}}" data-p="qwen" bindtap="onAiPreset">通义千问</view>
         </view>
       </view>
 
@@ -274,11 +274,11 @@
         <text class="an-label">模型名（可留空；填了密钥点「获取」从服务商拉列表）</text>
         <view class="an-model-row">
           <input class="an-input" value="{{aiModel}}" placeholder="留空=默认 deepseek-chat" placeholder-class="f-ph" bindinput="onAiModel" />
-          <view class="an-fetch {{aiBusy ? 'busy' : ''}}" bindtap="onAiFetchModels">获取</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-fetch {{aiBusy ? 'busy' : ''}}" bindtap="onAiFetchModels">获取</view>
         </view>
         <scroll-view wx:if="{{aiModels.length}}" scroll-y class="an-models-scroll">
           <view class="an-models-hint">点击选择模型（共 {{aiModels.length}} 个）</view>
-          <view wx:for="{{aiModels}}" wx:key="*this" class="an-model {{aiModel === item ? 'on' : ''}}" data-m="{{item}}" bindtap="onPickModel">{{item}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:for="{{aiModels}}" wx:key="*this" class="an-model {{aiModel === item ? 'on' : ''}}" data-m="{{item}}" bindtap="onPickModel">{{item}}</view>
         </scroll-view>
       </view>
       <view class="an-field">
@@ -291,10 +291,10 @@
 
       <!-- 左右并排一行：次行动（描边）在左，主行动（实心）在右 -->
       <view class="an-actions">
-        <view class="an-btn ghost {{aiBusy ? 'busy' : ''}}" bindtap="onAiTest">{{aiBusy ? '测试中…' : '测试连通'}}</view>
-        <view class="an-btn {{aiBusy ? 'busy' : ''}}" bindtap="onAiSave">{{aiBusy ? '保存中…' : '保存'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-btn ghost {{aiBusy ? 'busy' : ''}}" bindtap="onAiTest">{{aiBusy ? '测试中…' : '测试连通'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-btn {{aiBusy ? 'busy' : ''}}" bindtap="onAiSave">{{aiBusy ? '保存中…' : '保存'}}</view>
       </view>
-      <view wx:if="{{aiConfigured}}" class="an-tip" bindtap="onAiClear">清除我的密钥（清除后无法恢复，需重新填写）</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{aiConfigured}}" class="an-tip" bindtap="onAiClear">清除我的密钥（清除后无法恢复，需重新填写）</view>
     </view>
   </bottom-sheet>
 
@@ -329,7 +329,7 @@
            ⚠️ 条件必须 `isSuper && realIsSuper`（2026-11-13）：口令页 / 一键体验进演示班时，
               生效身份是演示班超管（isSuper 为真）但本人不是超管 —— 这类体验者不该看到本行
               （switchAccount 要求真实身份是超管，点了只会报错）。 -->
-      <view wx:if="{{isSuper && realIsSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSwitch">
+      <view data-pressable wx:if="{{isSuper && realIsSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSwitch">
         <app-icon name="people" variant="brand" size="{{40}}" />
         <text class="mn-row-text">切换测试账号</text>
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
@@ -343,26 +343,26 @@
            切换测试账号的顶部「模拟中」横幅行为保持不变。
            ⚠️ 条件 `isSuper && realIsSuper`（2026-11-13）：只有**本人是超管**才给这两枚入口。
               从口令页 / 一键体验进演示班的体验者不再看到「切换正式版」，退出改由上方「返回登录页」承担。 -->
-      <view wx:if="{{isSuper && realIsSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSwitchDemo">
+      <view data-pressable wx:if="{{isSuper && realIsSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSwitchDemo">
         <app-icon name="swap" variant="brand" size="{{40}}" />
         <text class="mn-row-text">{{demo ? '切换正式版' : '切换体验版'}}</text>
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
       <!-- 绑定入口开关（仅超管）：防爆破自动锁死或开学季统一开放时用 -->
-      <view wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onToggleBind">
+      <view data-pressable wx:if="{{isSuper}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onToggleBind">
         <app-icon name="lock" variant="brand" size="{{40}}" />
         <text class="mn-row-text">班级绑定入口</text>
         <view class="mn-mini-tag {{bindOpen ? 'ok' : 'warn'}}">{{bindOpen ? '开放中' : '已关闭'}}</view>
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
-      <view wx:if="{{canSchedule}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreManual">
+      <view data-pressable wx:if="{{canSchedule}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreManual">
         <app-icon name="grid" variant="brand" size="{{40}}" />
         <text class="mn-row-text">手动排班</text>
         <view class="mn-mini-tag super">排班</view>
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
       <!-- AI 排班设置：自带密钥（跟随本人，不是班）。密钥只回掩码，保存即覆盖，不回显明文 -->
-      <view wx:if="{{canSchedule}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreAi">
+      <view data-pressable wx:if="{{canSchedule}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreAi">
         <app-icon name="settings" variant="brand" size="{{40}}" />
         <text class="mn-row-text">AI 排班设置</text>
         <view wx:if="{{aiConfigured}}" class="mn-mini-tag ok">已配置</view>
@@ -373,7 +373,7 @@
            动效完全一致），在同一张弹层里分别改两个总额。
            权限 = 任一设置权（班费超管/生活委员；团费超管/班长兼团支书），
            弹层里只出现有权的那几档；只有一档时不渲染分段控件、直接编辑。 -->
-      <view wx:if="{{showFeeTotalRow}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onFeeTotalOpen">
+      <view data-pressable wx:if="{{showFeeTotalRow}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onFeeTotalOpen">
         <app-icon name="tag" variant="brand" size="{{40}}" />
         <text class="mn-row-text">班/团费总额</text>
         <text class="mn-row-done">{{feeTotalRowText}}</text>
@@ -398,8 +398,8 @@
         <input class="an-input" type="digit" value="{{feeTotalType === 'league' ? feeInputLeague : feeInputClass}}" placeholder="例如：500" placeholder-class="f-ph" bindinput="onFeeTotalInput" />
       </view>
       <view class="an-actions">
-        <view class="an-btn ghost" bindtap="onFeeTotalClose">取消</view>
-        <view class="an-btn {{feeTotalBusy ? 'busy' : ''}}" bindtap="onFeeTotalSave">{{feeTotalBusy ? '保存中…' : '保存'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-btn ghost" bindtap="onFeeTotalClose">取消</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-btn {{feeTotalBusy ? 'busy' : ''}}" bindtap="onFeeTotalSave">{{feeTotalBusy ? '保存中…' : '保存'}}</view>
       </view>
     </view>
   </bottom-sheet>

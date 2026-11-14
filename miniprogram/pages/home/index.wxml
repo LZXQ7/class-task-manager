@@ -35,7 +35,7 @@
        有同学交了作业 → 逐条滚动展示「张三 提交了《XXX》」，播完自动淡出收起；
        已播过的用本地游标记着（键含 成员+班级），不会每次进首页重播。
        点一下进作业页。数据与口径见 index.js 的 _loadHwFeed 注释块。 -->
-  <view
+  <view data-pressable
     wx:if="{{hwFeedShow}}"
     class="home-feed {{hwFeedOut ? 'home-feed-out' : ''}}"
     hover-class="home-feed-hover"
@@ -118,7 +118,7 @@
                班级名在半宽内会被省略号截断，这是横排的必然代价 —— 完整班级点进详情看。
                备注条数改成头像右上角的小角标，不再单占一列。 -->
           <view class="pin-grid">
-            <view
+            <view data-pressable
               wx:for="{{pins}}"
               wx:key="memberId"
               class="pin-cell"
@@ -147,7 +147,7 @@
            🔴 2026-11-14 3D 触摸倾斜试点扩到首页全部 5 张 st-item 卡：包一层 tilt-card，仅叠深度+流光，
            本体不变、可整层摘掉归零。 -->
       <tilt-card wx:if="{{!isCounselor}}">
-      <view class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
         <block wx:if="{{myDuty}}">
           <view class="hero-top">
             <view class="hero-chip">{{periodText}}</view>
@@ -201,7 +201,7 @@
                   详见 home/index.js 的 _withRowKey 注释）。
                  选修课仍保留 bindtap：onCourseTap 里有 `if (s.isPersonal) return` 守卫，
                  不会弹课堂情况；tappable 只是视觉提示，由 .personal 样式单独关掉按压反馈。 -->
-            <view wx:for="{{sessions}}" wx:key="key" wx:for-index="ci"
+            <view data-pressable wx:for="{{sessions}}" wx:key="key" wx:for-index="ci"
               class="course-row tappable {{item.isMine ? 'mine' : ''}} {{item.done ? 'done' : ''}} {{item.isPersonal ? 'personal' : ''}} {{item.current ? 'current' : ''}}"
               bindtap="onCourseTap" data-idx="{{ci}}"
               hover-class="{{item.isPersonal ? '' : 'press-dim'}}" hover-start-time="0" hover-stay-time="60">
@@ -294,7 +294,7 @@
           <!-- ⚠️ 2026-10-09：数字从 `stat`（日期口径）改成 **`now`（实时口径）**——
      上午请假的人到了下午就该翻回在位。日期口径的数字移到下方「今日共 N 人请假」，
      它与弹层名单行数恒等（统计同源），供核对用。两个数字口径不同是**有意的**。 -->
-          <view class="lh-body" bindtap="onLeaveHomeOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+          <view data-pressable class="lh-body" bindtap="onLeaveHomeOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
             <text class="lh-num {{leaveHomeLeave > 0 ? 'warn' : ''}}">{{leaveHomeHasNow ? leaveHomeLeave : '—'}}</text>
             <text class="lh-unit">{{leaveHomeHasNow ? '人当前请假' : '人数未知'}}</text>
           </view>
@@ -305,7 +305,7 @@
             <text class="lh-grp">B 组 {{leaveHomeLeaveB}} 人</text>
             <!-- 1.0.6 修：过去这行「查看名单 ›」**没绑 tap**（只有上面的「x人请假」块绑了），
                  点了没反应，用户只能猜到要点数字 —— 现在两处行为完全一致（同一个弹层）。 -->
-            <text
+            <text data-pressable
               class="lh-more"
               bindtap="onLeaveHomeOpen"
               hover-class="press-dim"
@@ -317,7 +317,7 @@
         <block wx:else>
           <view class="lh-head"><text class="lh-title">各班请假人数</text><view wx:if="{{demo}}" class="lh-pin">体验版常驻</view></view>
           <view class="lh-classes">
-            <view
+            <view data-pressable
               wx:for="{{leaveHomeClasses}}"
               wx:key="classId"
               class="lh-cls"
@@ -357,7 +357,7 @@
       <scroll-view class="an-view-scroll" scroll-y="{{true}}" enhanced show-scrollbar="{{false}}">
         <text class="an-view-content">{{anncNotice.content}}</text>
       </scroll-view>
-      <view class="an-view-btn" bindtap="onAnncDismiss">知道了</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-view-btn" bindtap="onAnncDismiss">知道了</view>
     </view>
   </bottom-sheet>
 
@@ -369,7 +369,7 @@
       <scroll-view class="an-view-scroll" scroll-y="{{true}}" enhanced show-scrollbar="{{false}}">
         <text class="an-view-content">{{npopNotice.content}}</text>
       </scroll-view>
-      <view class="an-view-btn" bindtap="onNpopDismiss">知道了</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-view-btn" bindtap="onNpopDismiss">知道了</view>
     </view>
   </bottom-sheet>
 
@@ -391,7 +391,7 @@
                文字看不出「到底传了没」，缩略图一眼就知道，而且能点开核对内容。
                没有图时保留幽灵「传假条」按钮：上传入口不能被缩略图吃掉。
                ⚠️ 换不到临时链接时退回「假条」二字（wx:else），不留空白方块。 -->
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:if="{{item.hasImage}}"
             class="lv-thumb"
             data-id="{{item.leaveId}}"
@@ -401,7 +401,7 @@
             <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
             <text wx:else class="lv-thumb-t">假条</text>
           </view>
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:elif="{{leaveHomeCanCancel}}"
             class="lv-btn ghost"
             data-id="{{item.leaveId}}"
@@ -422,7 +422,7 @@
                文字看不出「到底传了没」，缩略图一眼就知道，而且能点开核对内容。
                没有图时保留幽灵「传假条」按钮：上传入口不能被缩略图吃掉。
                ⚠️ 换不到临时链接时退回「假条」二字（wx:else），不留空白方块。 -->
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:if="{{item.hasImage}}"
             class="lv-thumb"
             data-id="{{item.leaveId}}"
@@ -432,7 +432,7 @@
             <image wx:if="{{leaveImgUrls[item.image]}}" class="lv-thumb-img" src="{{leaveImgUrls[item.image]}}" mode="aspectFill" />
             <text wx:else class="lv-thumb-t">假条</text>
           </view>
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:elif="{{leaveHomeCanCancel}}"
             class="lv-btn ghost"
             data-id="{{item.leaveId}}"
@@ -445,7 +445,7 @@
       <view wx:elif="{{!leaveHomeListA.length && !leaveHomeListB.length}}" class="lv-empty">今天没有人请假</view>
       <!-- 撤销的补偿入口：roster 不在 tabBar 里，从首页摸过去要 4 跳，
            没有指路牌等于把撤销藏起来了。仅班委/超管可见（辅导员只读，不改数据）。 -->
-      <view wx:if="{{leaveHomeCanCancel}}" class="lv-goto" bindtap="onLeaveHomeGotoRoster" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+      <view data-pressable wx:if="{{leaveHomeCanCancel}}" class="lv-goto" bindtap="onLeaveHomeGotoRoster" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
         <text class="lv-goto-t">需要撤销？去请假登记</text>
         <app-icon name="arrow-right" variant="light" size="{{24}}" />
       </view>
@@ -482,7 +482,7 @@
       </block>
     </view>
     <view slot="footer" class="ci-foot">
-      <view class="ci-copy" bindtap="onCourseInfoCopy" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+      <view data-pressable class="ci-copy" bindtap="onCourseInfoCopy" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
         复制课堂情况
       </view>
     </view>

@@ -106,7 +106,7 @@ function tokensOf(body) {
 function rootClassOf(wxml) {
   const bare = stripComments(wxml);
   let m;
-  const re = /<view\b[^>]*\bclass="([^"]*)"/g;
+  const re = /<view\b[^>]*\sclass="([^"]*)"/g;
   while ((m = re.exec(bare))) {
     const cls = m[1];
     if (/(^|\s)page(\s|$)/.test(cls)) return cls;

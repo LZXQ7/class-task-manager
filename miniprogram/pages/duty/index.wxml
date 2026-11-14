@@ -59,7 +59,7 @@
       />
     </view>
     <!-- 「已结束」弹层入口：只在有已结束日子时出现（check-duty-ended B2 断言此 wx:if） -->
-    <view
+    <view data-pressable
       wx:if="{{pastDays.length}}"
       class="dt-hist"
       bindtap="onEndedOpen"
@@ -74,10 +74,10 @@
        ⚠️ 容器条件从 canSchedule 放宽为 canSchedule || pastDays.length —— 普通成员没有排班权限，
           但同样要能翻看过去的日子，否则「历史」会对他消失。 -->
   <view wx:if="{{canSchedule || pastDays.length}}" class="dt-admin st-item st-3">
-    <view wx:if="{{canSchedule}}" class="dt-admin-btn danger" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onClear">清空值日表</view>
-    <view wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onAiOpen">{{busy ? '处理中' : '一键生成'}}</view>
-    <view wx:if="{{canSchedule && status === 'PUBLISHED'}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onUnpublish">撤回发布</view>
-    <view wx:if="{{canSchedule && status !== 'PUBLISHED'}}" class="dt-admin-btn primary" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onPublish">发布给全班</view>
+    <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn danger" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onClear">清空值日表</view>
+    <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onAiOpen">{{busy ? '处理中' : '一键生成'}}</view>
+    <view data-pressable wx:if="{{canSchedule && status === 'PUBLISHED'}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onUnpublish">撤回发布</view>
+    <view data-pressable wx:if="{{canSchedule && status !== 'PUBLISHED'}}" class="dt-admin-btn primary" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onPublish">发布给全班</view>
     <!-- 「历史」2026-11-14 已移到顶部工具行（与班级下拉同一行），此处不再重复 -->
   </view>
   <!-- 手动排班的入口只在「我的」页（goManual → P5），此处不再重复 -->
@@ -145,7 +145,7 @@
           <text class="dt-daysub">{{item.totalText}}</text>
         </view>
         <!-- 1.0.4.4 #27：同一节课的若干人合并成一行（双/多名牌 + 汇总 pill）；点整行打开本课次成员弹层 -->
-        <view
+        <view data-pressable
           wx:for="{{item.mergedDuties}}"
           wx:for-item="g"
           wx:key="id"
@@ -182,7 +182,7 @@
         <!-- 加值日生（v0.7.16 需求③，仅超管）：弹出本日课次 → 选人 → 挂到该课次 -->
         <!-- ⚠️ 2026-10-14 用户要求隐藏该入口：改由 data.showAddDutyBtn（当前 false）控制。
              功能代码（onAddOpen / bottom-sheet / scheduleAddManual）仍完整保留，恢复只需把开关改回 true。 -->
-        <view wx:if="{{canSchedule && showAddDutyBtn}}" class="dt-addrow" data-date="{{item.date}}" bindtap="onAddOpen" hover-class="press-dim" hover-stay-time="60">
+        <view data-pressable wx:if="{{canSchedule && showAddDutyBtn}}" class="dt-addrow" data-date="{{item.date}}" bindtap="onAddOpen" hover-class="press-dim" hover-stay-time="60">
           <app-icon name="plus" variant="brand" size="{{30}}" />
           <text>加值日生</text>
         </view>
@@ -208,7 +208,7 @@
     <view class="dt-add">
       <block wx:if="{{!addSessionId}}">
         <view class="cl-sec">选择课次</view>
-        <view
+        <view data-pressable
           wx:for="{{addSessions}}"
           wx:key="sessionId"
           class="dt-add-sess"
@@ -228,7 +228,7 @@
       </block>
 
       <block wx:else>
-        <view class="dt-add-back" bindtap="onAddBackSession" hover-class="press-dim" hover-stay-time="60">
+        <view data-pressable class="dt-add-back" bindtap="onAddBackSession" hover-class="press-dim" hover-stay-time="60">
           <app-icon name="arrow-left" variant="brand" size="{{28}}" />
           <text>换课次</text>
         </view>
@@ -239,7 +239,7 @@
           placeholder-class="f-ph"
           bindinput="onAddKw"
         />
-        <view
+        <view data-pressable
           wx:for="{{addMembers}}"
           wx:key="id"
           class="dt-add-mem {{item.taken ? 'taken' : ''}}"
@@ -272,7 +272,7 @@
   <!-- 合并行成员弹层（1.0.4.4 #27）：列出该节课每人一行，点某人分别操作 -->
   <bottom-sheet show="{{groupShow}}" title="{{groupTitle}}" bind:close="onGroupClose">
     <view class="dt-group">
-      <view
+      <view data-pressable
         wx:for="{{groupMembers}}"
         wx:key="id"
         class="dt-group-row {{item.isMine ? 'mine' : ''}}"
@@ -307,7 +307,7 @@
           <text class="dt-daytitle">{{item.weekdayText}} {{item.dateText}}</text>
           <text class="dt-daysub">{{item.totalText}}</text>
         </view>
-        <view
+        <view data-pressable
           wx:for="{{item.mergedDuties}}"
           wx:for-item="g"
           wx:key="id"
@@ -367,7 +367,7 @@
       <view class="ai-meta">
         <text class="ai-meta-k">模型</text>
         <text class="ai-meta-v">{{aiModel || 'DeepSeek'}}</text>
-        <text class="ai-meta-link" bindtap="onAiDiag">自检</text>
+        <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-meta-link" bindtap="onAiDiag">自检</text>
       </view>
 
       <view wx:if="{{!aiHasKey}}" class="ai-nokey">
@@ -379,8 +379,8 @@
         <text class="ai-err-t">生成失败</text>
         <text class="ai-err-msg">{{aiError}}</text>
         <view class="ai-err-bar">
-          <text class="ai-err-btn" bindtap="onAiCopyDiag">复制信息</text>
-          <text class="ai-err-btn" bindtap="onAiRun">重试</text>
+          <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-err-btn" bindtap="onAiCopyDiag">复制信息</text>
+          <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-err-btn" bindtap="onAiRun">重试</text>
         </view>
       </view>
 
@@ -389,7 +389,7 @@
            环境变量），看着像报错页。现在：点「自检」才出现，出现时也只露
            一行结论 + 「展开」，明细要手动点开。 -->
       <view wx:if="{{aiDiag}}" class="ai-diag">
-        <view class="ai-diag-hd" bindtap="onAiDiagToggle">
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-diag-hd" bindtap="onAiDiagToggle">
           <text class="ai-diag-hd-t">自检结果</text>
           <text class="ai-diag-hd-s">{{aiDiagBrief}}</text>
           <text class="ai-diag-arrow">{{aiDiagOpen ? '收起' : '展开'}}</text>
@@ -401,18 +401,18 @@
           <view class="ai-diag-row"><text class="ai-diag-k">部署包含 seqOf</text><text class="ai-diag-v">{{aiDiag.hasSeqOf ? '是' : '否（需重新部署）'}}</text></view>
           <view wx:if="{{aiDiag.reply}}" class="ai-diag-row"><text class="ai-diag-k">真实往返</text><text class="ai-diag-v">成功 {{aiDiag.probeMs}}ms → {{aiDiag.reply}}</text></view>
           <view wx:if="{{aiDiag.error}}" class="ai-diag-row"><text class="ai-diag-k">错误</text><text class="ai-diag-v err">{{aiDiag.error}}</text></view>
-          <text class="ai-diag-copy" bindtap="onAiCopyDiag">复制自检信息</text>
+          <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-diag-copy" bindtap="onAiCopyDiag">复制自检信息</text>
         </view>
       </view>
 
       <view class="ai-actions">
-        <view class="ai-btn ghost" bindtap="onGenerate">按序号轮转</view>
-        <view class="ai-btn primary {{aiBusy ? 'off' : ''}}" bindtap="onAiRun">{{aiBusy ? '生成中…' : '智能排班'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-btn ghost" bindtap="onGenerate">按序号轮转</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-btn primary {{aiBusy ? 'off' : ''}}" bindtap="onAiRun">{{aiBusy ? '生成中…' : '智能排班'}}</view>
       </view>
 
       <!-- 排班方式（2026-10-28）：生活委员自定义「岗位槽」，
            决定上面「一键生成」到底按什么制度排。保存只影响之后新生成的周。 -->
-      <view class="ai-slot" bindtap="onSlotOpen">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-slot" bindtap="onSlotOpen">
         <text class="ai-slot-k">排班方式</text>
         <text class="ai-slot-v">{{slotSummary}}</text>
         <text class="ai-slot-go">设置 ›</text>
@@ -449,8 +449,8 @@
         </view>
 
         <view class="ai-actions">
-          <view class="ai-btn ghost" bindtap="onAiDiscard">放弃</view>
-          <view class="ai-btn primary {{aiBusy ? 'off' : ''}}" bindtap="onAiApply">{{aiBusy ? '写入中…' : '应用到本周'}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-btn ghost" bindtap="onAiDiscard">放弃</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="ai-btn primary {{aiBusy ? 'off' : ''}}" bindtap="onAiApply">{{aiBusy ? '写入中…' : '应用到本周'}}</view>
         </view>
       </view>
     </view>
@@ -471,7 +471,7 @@
            ⚠️ slotDayChips 的 on 在 js 里预算好 —— WXML 不支持 indexOf 这类方法调用。 -->
       <view class="sl-sec">适用星期</view>
       <view class="sl-days">
-        <view wx:for="{{slotDayChips}}" wx:key="wd"
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:for="{{slotDayChips}}" wx:key="wd"
               class="sl-day {{item.on ? 'on' : ''}}"
               data-wd="{{item.wd}}" bindtap="onSlotDay">{{item.text}}</view>
       </view>
@@ -491,18 +491,18 @@
             <view class="sl-cell">{{item.periodText}}</view>
           </picker>
           <view class="sl-num">
-            <text class="sl-step" data-idx="{{index}}" data-d="-1" bindtap="onSlotNeed">−</text>
+            <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sl-step" data-idx="{{index}}" data-d="-1" bindtap="onSlotNeed">−</text>
             <text class="sl-num-v">{{item.needN}}</text>
-            <text class="sl-step" data-idx="{{index}}" data-d="1" bindtap="onSlotNeed">+</text>
+            <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sl-step" data-idx="{{index}}" data-d="1" bindtap="onSlotNeed">+</text>
           </view>
-          <text class="sl-del" data-idx="{{index}}" bindtap="onSlotDel">删</text>
+          <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sl-del" data-idx="{{index}}" bindtap="onSlotDel">删</text>
         </view>
         <view wx:if="{{!slotList.length}}" class="sl-empty">
           还没有岗位。点下面「添加岗位」开始；也可以直接保存为空（= 沿用课程表每节各排一人）。
         </view>
       </view>
 
-      <view class="sl-add" bindtap="onSlotAdd">+ 添加岗位</view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sl-add" bindtap="onSlotAdd">+ 添加岗位</view>
 
       <!-- 主教室（2026-10-28）：18:10 保洁打扫的房间。生活委员自己填，
            落库到 class.main_room —— 与后台「班级设置 · 主教室」同一个字段，
@@ -537,18 +537,18 @@
                 <view class="sl-cell">{{item.text}}</view>
               </picker>
               <view class="sl-num">
-                <text class="sl-step" data-idx="{{index}}" data-d="-1" bindtap="onCleanNeed">−</text>
+                <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sl-step" data-idx="{{index}}" data-d="-1" bindtap="onCleanNeed">−</text>
                 <text class="sl-num-v">{{item.needN}}</text>
-                <text class="sl-step" data-idx="{{index}}" data-d="1" bindtap="onCleanNeed">+</text>
+                <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sl-step" data-idx="{{index}}" data-d="1" bindtap="onCleanNeed">+</text>
               </view>
-              <text class="sl-del" data-idx="{{index}}" bindtap="onCleanDel">删</text>
+              <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sl-del" data-idx="{{index}}" bindtap="onCleanDel">删</text>
             </view>
             <view wx:if="{{!cleanRows.length}}" class="sl-empty">
               还没有打扫日。点下面「添加打扫日」，通常加周一到周五。
             </view>
           </view>
 
-          <view class="sl-add" bindtap="onCleanAdd">+ 添加打扫日</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sl-add" bindtap="onCleanAdd">+ 添加打扫日</view>
 
           <view class="sl-clean-tip">
             已配过保洁课次的天不会重复建；列表里没有的天，保洁在这套规则下不排人。周二是大扫除、人数更多时，直接在这一行调。
@@ -557,8 +557,8 @@
       </view>
 
       <view class="f-actions">
-        <view class="btn btn-ghost f-cancel" bindtap="onSlotClose">取消</view>
-        <view class="btn f-save {{slotBusy ? 'off' : ''}}" bindtap="onSlotSave">{{slotBusy ? '保存中…' : '保存'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn btn-ghost f-cancel" bindtap="onSlotClose">取消</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn f-save {{slotBusy ? 'off' : ''}}" bindtap="onSlotSave">{{slotBusy ? '保存中…' : '保存'}}</view>
       </view>
     </view>
   </bottom-sheet>

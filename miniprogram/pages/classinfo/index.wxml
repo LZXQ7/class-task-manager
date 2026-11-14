@@ -32,7 +32,7 @@
         </view>
         <!-- 右上角的 grid 图标：对本班有管理权的人（超管 / 辅导员）是「班级管理」入口，
              其余身份维持原来的纯装饰图标（首页精简后该入口曾一度全站消失）。 -->
-        <view wx:if="{{canManageClass}}" class="ci-manage" bindtap="goClasses"
+        <view data-pressable wx:if="{{canManageClass}}" class="ci-manage" bindtap="goClasses"
               hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
           <app-icon name="grid" variant="brand" size="{{28}}" />
           <text class="ci-manage-t">班级管理</text>
@@ -69,13 +69,13 @@
       <view class="ci-cd-head">
         <text class="ci-cd-title">倒数日</text>
         <view wx:if="{{demo}}" class="ci-cd-pin">体验版常驻</view>
-        <view class="ci-cd-add" bindtap="onCdAdd" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+        <view data-pressable class="ci-cd-add" bindtap="onCdAdd" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
           <text class="ci-cd-add-t">+ 添加</text>
         </view>
       </view>
       <view wx:if="{{countdowns.length === 0}}" class="ci-cd-empty">还没有倒数日，点「添加」记录重要节点</view>
       <view wx:else class="ci-cd-list">
-        <view wx:for="{{countdowns}}" wx:key="id" class="ci-cd-row" data-id="{{item.id}}" bindtap="onCdTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+        <view data-pressable wx:for="{{countdowns}}" wx:key="id" class="ci-cd-row" data-id="{{item.id}}" bindtap="onCdTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
           <view class="ci-cd-row-main">
             <text class="ci-cd-name">{{item.name}}</text>
             <text class="ci-cd-date">{{item.date}}</text>
@@ -87,7 +87,7 @@
 
     <!-- 子节点：班级模块入口（「课程表」已于 2026-10-28 下线；「通知/作业」于 2026-11-02 移除） -->
     <view class="ci-list">
-      <view class="ci-item card st-item st-3" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="roster">
+      <view data-pressable class="ci-item card st-item st-3" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="roster">
         <view class="ci-item-ic"><app-icon name="people" variant="brand" size="{{40}}" /></view>
         <view class="ci-item-main">
           <text class="ci-item-name">班级成员</text>
@@ -96,7 +96,7 @@
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
 
-      <view class="ci-item card st-item st-4" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="fee">
+      <view data-pressable class="ci-item card st-item st-4" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="fee">
         <view class="ci-item-ic"><app-icon name="tag" variant="brand" size="{{40}}" /></view>
         <view class="ci-item-main">
           <text class="ci-item-name">班费</text>
@@ -106,7 +106,7 @@
       </view>
 
       <!-- 请假 v3（2026-11-01）：普通成员本人申请入口 + 审批人待批入口 -->
-      <view wx:if="{{canApply}}" class="ci-item card st-item st-5" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoMyLeave">
+      <view data-pressable wx:if="{{canApply}}" class="ci-item card st-item st-5" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoMyLeave">
         <view class="ci-item-ic"><app-icon name="calendar" variant="brand" size="{{40}}" /></view>
         <view class="ci-item-main">
           <text class="ci-item-name">我的请假</text>
@@ -115,7 +115,7 @@
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
 
-      <view wx:if="{{canApprove}}" class="ci-item card st-item st-6" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoApprove">
+      <view data-pressable wx:if="{{canApprove}}" class="ci-item card st-item st-6" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoApprove">
         <view class="ci-item-ic"><app-icon name="check" variant="brand" size="{{40}}" /></view>
         <view class="ci-item-main">
           <text class="ci-item-name">请假审批</text>
@@ -150,8 +150,8 @@
         </picker>
       </view>
       <view class="f-actions">
-        <view class="btn btn-ghost f-cancel" bindtap="onCdSheetClose">取消</view>
-        <view class="btn f-save" bindtap="onCdSave">保存</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn btn-ghost f-cancel" bindtap="onCdSheetClose">取消</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn f-save" bindtap="onCdSave">保存</view>
       </view>
     </view>
   </bottom-sheet>

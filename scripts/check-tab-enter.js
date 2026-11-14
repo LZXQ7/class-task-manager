@@ -107,7 +107,7 @@ function auditStructure(wxml, fixedSet) {
       }
       continue;
     }
-    const cls = (/class="([^"]*)"/.exec(attrs) || [])[1] || '';
+    const cls = (/(?:^|\s)class="([^"]*)"/.exec(attrs) || [])[1] || '';
     const hasSt = /\bst-item\b/.test(cls);
     const fixes = Array.from(fixedSet).filter(f => new RegExp('\\b' + f + '\\b').test(cls));
     const ancestorSt = stack.some(s => s.st);
@@ -155,7 +155,7 @@ function tierSeq(wxml) {
   const tagScan = /<[a-zA-Z][\w-]*((?:"[^"]*"|'[^']*'|[^>"'/])*?)\s*\/?>/g;
   let m;
   while ((m = tagScan.exec(wxml))) {
-    const cls = (/class="([^"]*)"/.exec(m[1]) || [])[1] || '';
+    const cls = (/(?:^|\s)class="([^"]*)"/.exec(m[1]) || [])[1] || '';
     if (!/\bst-item\b/.test(cls)) continue;
     const t = /\bst-(\d)\b/.exec(cls);
     seq.push(t ? Number(t[1]) : 0);

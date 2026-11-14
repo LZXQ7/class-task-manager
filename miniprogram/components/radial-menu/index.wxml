@@ -1,8 +1,8 @@
 <!-- #10 弧形菜单：遮罩 + 以触点为圆心放射性铺开的菜单项 -->
 <view wx:if="{{visible}}" class="rm-root {{open ? 'in' : ''}}">
-  <view class="rm-mask" bindtap="onMask" catchtouchmove="noop"></view>
+  <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="rm-mask" bindtap="onMask" catchtouchmove="noop"></view>
   <view class="rm-origin" style="left:{{x}}px; top:{{y}}px;">
-    <view
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
       wx:for="{{arranged}}"
       wx:key="key"
       class="rm-item"

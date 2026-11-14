@@ -8,7 +8,7 @@
     <view class="wv-title">无法打开该链接</view>
     <view class="wv-desc" wx:if="{{!url}}">链接为空或格式不正确</view>
     <view class="wv-desc" wx:else>当前域名未在小程序后台配置业务域名，可复制后到浏览器打开</view>
-    <view wx:if="{{url}}" class="wv-btn" bindtap="onCopy">复制链接</view>
-    <view wx:else class="wv-btn" bindtap="onBack">返回</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{url}}" class="wv-btn" bindtap="onCopy">复制链接</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:else class="wv-btn" bindtap="onBack">返回</view>
   </view>
 </view>

@@ -16,7 +16,7 @@
          选中某教职工 = 只看 TA 绑定的班级。chip-motion：padding/font-size 过渡让邻项平滑让位；
          flex-wrap 允许小屏换行（图③规格：不重叠、不跳变、保持顺序）。 -->
     <view wx:if="{{isSuper && staffChips.length > 1}}" class="cl-fchips">
-      <view
+      <view data-pressable
         wx:for="{{staffChips}}"
         wx:key="id"
         class="cl-fchip chip-motion {{staffFilterId === item.id ? 'on' : ''}}"
@@ -34,7 +34,7 @@
       class="cl-swipe stagger-item"
       style="animation-delay:{{index > 8 ? 288 : index * 36}}ms"
     >
-      <view
+      <view data-pressable
         wx:if="{{canDelete}}"
         class="cl-del {{item.offset ? 'on' : ''}}"
         bindtap="onDeleteClass"
@@ -66,7 +66,7 @@
             <text wx:if="{{item.isMine && !isCounselor}}" class="cl-tag mine">本班</text>
             <text wx:if="{{!item.isActive}}" class="cl-tag off">已停用</text>
           </view>
-          <view wx:if="{{isSuper && item.isMine}}" class="cl-toggle" data-id="{{item.id}}" bindtap="onToggleActive" hover-class="press-dim" hover-stay-time="60">{{item.isActive ? '停用' : '启用'}}</view>
+          <view data-pressable wx:if="{{isSuper && item.isMine}}" class="cl-toggle" data-id="{{item.id}}" bindtap="onToggleActive" hover-class="press-dim" hover-stay-time="60">{{item.isActive ? '停用' : '启用'}}</view>
         </view>
         <view class="cl-meta">
           <text>口令 {{item.joinToken}}</text>
@@ -75,12 +75,12 @@
         </view>
         <!-- 手势用 bind（不是 catch）：与「通知」一致，避免 catchtouchstart 吞掉子按钮的 tap -->
         <view class="cl-actions">
-          <view class="cl-btn primary" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="onViewMembers">查看人员</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn primary" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="onViewMembers">查看人员</view>
         </view>
         <view class="cl-actions">
-          <view class="cl-btn" data-id="{{item.id}}" bindtap="onShowQr">邀请码 / 入班码</view>
-          <view class="cl-btn" data-id="{{item.id}}" bindtap="onOpenImport">导入名单</view>
-          <view wx:if="{{canCreate}}" class="cl-btn" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="onRename">改名</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn" data-id="{{item.id}}" bindtap="onShowQr">邀请码 / 入班码</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn" data-id="{{item.id}}" bindtap="onOpenImport">导入名单</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{canCreate}}" class="cl-btn" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="onRename">改名</view>
         </view>
       </view>
       </aura-card>
@@ -91,19 +91,19 @@
     <view wx:if="{{!classes.length && !staffFilterId}}" class="cl-empty">暂无班级</view>
 
     <!-- 新建班级（超管 / 辅导员）/ 整表批量导入（超管 / 辅导员）/ 教职工管理（仅超管） -->
-    <view wx:if="{{canCreate}}" class="cl-add" bindtap="onOpenCreate" hover-class="cl-add-hover" hover-stay-time="60">
+    <view data-pressable wx:if="{{canCreate}}" class="cl-add" bindtap="onOpenCreate" hover-class="cl-add-hover" hover-stay-time="60">
       <app-icon name="plus" variant="white" size="{{36}}" />
       <text>新建班级</text>
     </view>
 
-    <view wx:if="{{canCross}}" class="cl-import" bindtap="onWbOpen" hover-class="cl-import-hover" hover-stay-time="60">
+    <view data-pressable wx:if="{{canCross}}" class="cl-import" bindtap="onWbOpen" hover-class="cl-import-hover" hover-stay-time="60">
       <app-icon name="download" variant="brand" size="{{34}}" />
       <text>批量导入名单（一张表含多个班级）</text>
     </view>
 
     <!-- 教职工管理独立入口（v0.7.16 需求①，仅超管）：
          添加 / 解绑 / 删除教职工账号，把班级多选绑给教职工；不再挂在单个班级下面 -->
-    <view wx:if="{{isSuper}}" class="cl-import" bindtap="onOpenStaffMgr" hover-class="cl-import-hover" hover-stay-time="60">
+    <view data-pressable wx:if="{{isSuper}}" class="cl-import" bindtap="onOpenStaffMgr" hover-class="cl-import-hover" hover-stay-time="60">
       <app-icon name="people" variant="brand" size="{{34}}" />
       <text>教职工管理（添加 / 绑定班级 / 解绑）</text>
     </view>
@@ -125,8 +125,8 @@
         <input class="cl-input" type="number" value="{{createTotalWeeks}}" bindinput="onCreateWeeks" />
       </view>
       <view class="cl-actions-bar">
-        <view class="cl-btn-ghost" bindtap="onCloseCreate">取消</view>
-        <view class="cl-btn-primary {{createBusy ? 'busy' : ''}}" bindtap="onCreateSubmit">{{createBusy ? '创建中…' : '创建班级'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-ghost" bindtap="onCloseCreate">取消</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-primary {{createBusy ? 'busy' : ''}}" bindtap="onCreateSubmit">{{createBusy ? '创建中…' : '创建班级'}}</view>
       </view>
     </view>
   </bottom-sheet>
@@ -139,8 +139,8 @@
         <input class="cl-input" value="{{renameName}}" placeholder="班级名称" maxlength="64" bindinput="onRenameInput" />
       </view>
       <view class="cl-actions-bar">
-        <view class="cl-btn-ghost" bindtap="onCloseRename">取消</view>
-        <view class="cl-btn-primary {{renameBusy ? 'busy' : ''}}" bindtap="onRenameSubmit">{{renameBusy ? '保存中…' : '保存'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-ghost" bindtap="onCloseRename">取消</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-primary {{renameBusy ? 'busy' : ''}}" bindtap="onRenameSubmit">{{renameBusy ? '保存中…' : '保存'}}</view>
       </view>
     </view>
   </bottom-sheet>
@@ -151,13 +151,13 @@
       <view class="cl-qr-row">
         <text class="cl-qr-label">班级口令</text>
         <text class="cl-qr-val">{{qrClass.joinToken}}</text>
-        <view class="cl-copy" bindtap="onCopyToken" hover-class="press-dim" hover-stay-time="60">复制</view>
-        <view class="cl-random" bindtap="onRandomToken" hover-class="press-dim" hover-stay-time="60">随机</view>
+        <view data-pressable class="cl-copy" bindtap="onCopyToken" hover-class="press-dim" hover-stay-time="60">复制</view>
+        <view data-pressable class="cl-random" bindtap="onRandomToken" hover-class="press-dim" hover-stay-time="60">随机</view>
       </view>
       <view class="cl-qr-row">
         <text class="cl-qr-label">数字邀请码</text>
         <text class="cl-qr-val">{{qrClass.inviteCode}}</text>
-        <view class="cl-copy" bindtap="onCopyInvite" hover-class="press-dim" hover-stay-time="60">复制</view>
+        <view data-pressable class="cl-copy" bindtap="onCopyInvite" hover-class="press-dim" hover-stay-time="60">复制</view>
       </view>
       <view class="cl-qr-box">
         <image wx:if="{{qrImg}}" class="cl-qr-img" src="{{qrImg}}" mode="aspectFit" show-menu-by-longpress />
@@ -185,7 +185,7 @@
       <view class="cl-field">
         <view class="cl-label">绑定班级（可多选，之后可改）</view>
         <view class="cl-chips">
-          <view
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
             wx:for="{{classes}}"
             wx:key="id"
             class="cl-bchip chip-motion {{staffCreatePicks[item.id] ? 'on' : ''}}"
@@ -195,14 +195,14 @@
         </view>
       </view>
       <view class="cl-actions-bar">
-        <view class="cl-btn-primary {{staffBusy ? 'busy' : ''}}" bindtap="onAddStaff">{{staffBusy ? '生成中…' : '添加并生成绑定码'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-primary {{staffBusy ? 'busy' : ''}}" bindtap="onAddStaff">{{staffBusy ? '生成中…' : '添加并生成绑定码'}}</view>
       </view>
 
       <!-- 码明文只在这次响应里出现：后端只存码、不回码，关掉弹层后想再看只能「重发」 -->
       <view wx:if="{{staffCodeShow}}" class="cl-code">
         <view class="cl-code-head">{{staffCodeName}} 的绑定码</view>
         <view class="cl-code-val">{{staffCode}}</view>
-        <view class="cl-copy cl-code-copy" bindtap="onCopyStaffCode" hover-class="press-dim" hover-stay-time="60">复制绑定码</view>
+        <view data-pressable class="cl-copy cl-code-copy" bindtap="onCopyStaffCode" hover-class="press-dim" hover-stay-time="60">复制绑定码</view>
         <view class="cl-code-tip">{{staffCodeHours}} 小时内有效，且只能用一次。把码给到本人，他在绑定页选「我是老师 / 辅导员」输入即可进入。</view>
       </view>
 
@@ -218,16 +218,16 @@
           </view>
         </view>
         <view class="cl-staff-ops">
-          <view wx:if="{{!item.bound}}" class="cl-staff-btn" data-id="{{item.id}}" bindtap="onIssueStaffCode">{{item.hasCode ? '重发' : '生成码'}}</view>
-          <view class="cl-staff-btn" data-id="{{item.id}}" bindtap="onStaffBindEdit">{{bindEditId === item.id ? '收起' : '绑班'}}</view>
-          <view wx:if="{{item.bound}}" class="cl-staff-btn warn" data-id="{{item.id}}" bindtap="onStaffUnbind">解绑</view>
-          <view wx:if="{{!item.bound}}" class="cl-staff-btn warn" data-id="{{item.id}}" bindtap="onStaffDelete">删除</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{!item.bound}}" class="cl-staff-btn" data-id="{{item.id}}" bindtap="onIssueStaffCode">{{item.hasCode ? '重发' : '生成码'}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-staff-btn" data-id="{{item.id}}" bindtap="onStaffBindEdit">{{bindEditId === item.id ? '收起' : '绑班'}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.bound}}" class="cl-staff-btn warn" data-id="{{item.id}}" bindtap="onStaffUnbind">解绑</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{!item.bound}}" class="cl-staff-btn warn" data-id="{{item.id}}" bindtap="onStaffDelete">删除</view>
         </view>
 
         <!-- 行内绑班编辑器：班级多选 chip，保存 = 全量覆写该教职工的 staff_class 映射 -->
         <view wx:if="{{bindEditId === item.id}}" class="cl-bind-edit">
           <view class="cl-chips">
-            <view
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{classes}}"
               wx:for-item="c"
               wx:key="id"
@@ -237,8 +237,8 @@
             >{{c.name}}</view>
           </view>
           <view class="cl-actions-bar">
-            <view class="cl-btn-ghost" bindtap="onStaffBindEdit">取消</view>
-            <view class="cl-btn-primary {{staffBusy ? 'busy' : ''}}" bindtap="onStaffBindSave">{{staffBusy ? '保存中…' : '保存绑定'}}</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-ghost" bindtap="onStaffBindEdit">取消</view>
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-primary {{staffBusy ? 'busy' : ''}}" bindtap="onStaffBindSave">{{staffBusy ? '保存中…' : '保存绑定'}}</view>
           </view>
         </view>
       </view>
@@ -253,7 +253,7 @@
     <view class="cl-form">
 
       <block wx:if="{{wbPhase === 'input'}}">
-        <view class="cl-pick {{wbBusy ? 'busy' : ''}}" bindtap="onWbPickFile">
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-pick {{wbBusy ? 'busy' : ''}}" bindtap="onWbPickFile">
           <app-icon name="download" variant="brand" size="{{34}}" />
           <text>从聊天选择 Excel / CSV 文件</text>
         </view>
@@ -264,15 +264,15 @@
           新增 {{wbResult.imported}} 人 · 更新 {{wbResult.updated}} 人 · 无需变动 {{wbResult.unchanged}} 人 · 跳过 {{wbResult.skipped}} 人<block wx:if="{{wbResult.createdClasses.length}}"> · 新建 {{wbResult.createdClasses.length}} 个班级</block>
         </view>
         <view class="cl-actions-bar">
-          <view class="cl-btn-ghost" bindtap="onWbClose">取消</view>
-          <view class="cl-btn-primary {{wbBusy ? 'busy' : ''}}" bindtap="onWbParse">{{wbBusy ? '解析中…' : '解析并预览'}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-ghost" bindtap="onWbClose">取消</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-primary {{wbBusy ? 'busy' : ''}}" bindtap="onWbParse">{{wbBusy ? '解析中…' : '解析并预览'}}</view>
         </view>
       </block>
 
       <block wx:else>
         <view class="cl-sec">确认要导入的班级（共 {{wbGroups.length}} 组）</view>
         <view wx:for="{{wbGroups}}" wx:key="label" class="cl-g {{item.include ? 'on' : ''}}">
-          <view class="cl-g-chk {{item.include ? 'on' : ''}}" data-i="{{index}}" bindtap="onWbToggle">{{item.include ? '✓' : ''}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-g-chk {{item.include ? 'on' : ''}}" data-i="{{index}}" bindtap="onWbToggle">{{item.include ? '✓' : ''}}</view>
           <view class="cl-g-main">
             <view class="cl-g-label">{{item.label || '（未标注班级）'}}</view>
             <view class="cl-g-meta">→ {{item.willCreate ? '将新建' : (item.className || '未匹配')}} · {{item.count}} 人</view>
@@ -291,8 +291,8 @@
         </view>
         <view wx:if="{{!wbGroups.length}}" class="cl-empty">没有解析到有效名单</view>
         <view class="cl-actions-bar">
-          <view class="cl-btn-ghost" bindtap="onWbBack">返回</view>
-          <view class="cl-btn-primary {{wbBusy ? 'busy' : ''}}" bindtap="onWbConfirm">{{wbBusy ? '导入中…' : '确认导入'}}</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-ghost" bindtap="onWbBack">返回</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-primary {{wbBusy ? 'busy' : ''}}" bindtap="onWbConfirm">{{wbBusy ? '导入中…' : '确认导入'}}</view>
         </view>
       </block>
     </view>
@@ -312,8 +312,8 @@
       <text class="cl-tip">每行一条：姓名,学号；学号尾号奇数为 A 组，偶数为 B 组</text>
       <text wx:if="{{importResult}}" class="cl-result">{{importResult}}</text>
       <view class="cl-actions-bar">
-        <view class="cl-btn-ghost" bindtap="onCloseImport">取消</view>
-        <view class="cl-btn-primary {{importBusy ? 'busy' : ''}}" bindtap="onImportSubmit">{{importBusy ? '导入中…' : '解析并导入'}}</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-ghost" bindtap="onCloseImport">取消</view>
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cl-btn-primary {{importBusy ? 'busy' : ''}}" bindtap="onImportSubmit">{{importBusy ? '导入中…' : '解析并导入'}}</view>
       </view>
     </view>
   </bottom-sheet>

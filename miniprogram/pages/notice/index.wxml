@@ -11,7 +11,7 @@
     <app-icon name="bell" variant="brand" size="{{36}}" />
     <text class="nt-tiptext">开启后，班委发布通知会同时给你的微信发一条服务通知</text>
     <view wx:if="{{remindOn}}" class="nt-tipdone">已开启</view>
-    <view wx:else class="nt-tipbtn" bindtap="onRemind">开启</view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:else class="nt-tipbtn" bindtap="onRemind">开启</view>
   </view>
 
   <skeleton wx:if="{{loading}}" type="card" rows="{{3}}" height="{{220}}" />
@@ -51,7 +51,7 @@
            ⚠️ 必须按滑动量决定可见性（v0.7.24）：卡片是**半透明玻璃**，删除区的粉底会隔着它
            透上来 —— 未左滑时卡片本就完整盖住删除区，可玻璃一透明，静止状态就变成「卡片右半边
            泛粉」。offset 为 0 时挂不上 on，区间整块透明；手指往左一带（offset<0）才显形。 -->
-      <view class="nt-del-zone {{item.offset ? 'on' : ''}}" data-id="{{item.id}}" data-index="{{index}}" bindtap="onDelete" hover-class="nt-del-hover" hover-stay-time="60">
+      <view data-pressable class="nt-del-zone {{item.offset ? 'on' : ''}}" data-id="{{item.id}}" data-index="{{index}}" bindtap="onDelete" hover-class="nt-del-hover" hover-stay-time="60">
         <app-icon name="trash" variant="red" size="{{34}}" />
         <text class="nt-deltxt">删除</text>
       </view>
@@ -90,7 +90,7 @@
         <view class="nt-body" style="{{item.fold ? 'max-height:' + item.bodyH + 'rpx' : ''}}">
           <view class="nt-content {{item.fold && item.clamped ? 'is-fold' : ''}}">{{item.content}}</view>
         </view>
-        <view
+        <view data-pressable
           wx:if="{{item.fold}}"
           class="nt-fold"
           data-index="{{index}}"
@@ -107,7 +107,7 @@
         </view>
 
         <!-- 金山文档等外链：小程序打不开浏览器页面，只能复制后到浏览器打开 -->
-      <view wx:if="{{item.linkUrl}}" class="nt-link" data-url="{{item.linkUrl}}" bindtap="onLink">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.linkUrl}}" class="nt-link" data-url="{{item.linkUrl}}" bindtap="onLink">
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
         <text class="nt-linktext">{{item.linkLabel}}</text>
         <text class="nt-linkhint">点击打开</text>
@@ -115,7 +115,7 @@
 
         <!-- 配图（v0.7.14）：缩略图行，点击走 shared-element 展开动画（截图②） -->
         <view wx:if="{{item.images.length}}" class="nt-imgs">
-          <view
+          <view data-pressable
             wx:for="{{item.images}}"
             wx:key="*this"
             wx:for-item="img"
@@ -147,7 +147,7 @@
               <text wx:if="{{item.ackMore}}" class="nt-ackmore">+{{item.ackMore}}</text>
             </view>
           </view>
-          <view wx:if="{{item.needAck && !item.acked && !item.isPublisher && item.canAck !== false}}" class="nt-btn" data-id="{{item.id}}" bindtap="onAck">确认收到</view>
+          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.needAck && !item.acked && !item.isPublisher && item.canAck !== false}}" class="nt-btn" data-id="{{item.id}}" bindtap="onAck">确认收到</view>
         </view>
       </view>
       </view>
@@ -156,14 +156,14 @@
   </block>
 
   <!-- 清理入口（2026-09-25）：只对「测试超管」（99 段测试账号）显示，真实超管不可清线上数据 -->
-  <view wx:if="{{canClear && !loading}}" class="nt-clear" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onClearAll">
+  <view data-pressable wx:if="{{canClear && !loading}}" class="nt-clear" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onClearAll">
     清空全部通知（测试数据）
   </view>
 
   <!-- 回收站入口（v0.7.13 需求②）：右下角常驻，删除的卡片就是飞向这里。
        ⚠️ 它是 position: fixed，绝不能挪进任何带 transform 的容器
        （transform 会给 fixed 后代建包含块，它会跟着那个盒子飘，而不是贴在视口右下角）。 -->
-  <view
+  <view data-pressable
     wx:if="{{!loading && !failed}}"
     class="nt-trash {{trashPulse ? 'on' : ''}}"
     bindtap="onTrashOpen"
@@ -179,7 +179,7 @@
        v0.7.16 需求⑤：头部加「清空」—— 彻底移除全部软删行，二次确认，清了不可再恢复。 -->
   <bottom-sheet show="{{recycleShow}}" title="回收站" height="{{900}}" bind:close="onTrashClose">
     <view class="rc-wrap">
-      <view wx:if="{{recycleList.length}}" class="rc-clear" bindtap="onRecycleClear" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+      <view data-pressable wx:if="{{recycleList.length}}" class="rc-clear" bindtap="onRecycleClear" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
         <app-icon name="trash" variant="red" size="{{30}}" />
         <text>清空回收站（{{recycleCount}}）</text>
       </view>
@@ -194,7 +194,7 @@
           <text class="rc-title">{{item.titleText}}</text>
           <text class="rc-content">{{item.content}}</text>
         </view>
-        <view
+        <view data-pressable
           class="rc-restore"
           data-id="{{item.id}}"
           bindtap="onRestore"
@@ -212,12 +212,12 @@
        transform 包含块带跑。入场分两拍 setData（先挂到缩略图位置、下一帧再给目标值），
        合并成一次就不会有过渡（同其它动效踩过的坑）。 -->
   <view wx:if="{{viewerShow}}" class="nt-viewer">
-    <view class="nt-vbg" style="opacity:{{viewerBg}}" bindtap="onViewerClose"></view>
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="nt-vbg" style="opacity:{{viewerBg}}" bindtap="onViewerClose"></view>
     <view class="nt-vimg {{viewerAnim ? 'anim' : ''}}" style="{{viewerStyle}}">
-      <image class="nt-vimg-pic" src="{{viewerImages[viewerIndex]}}" mode="aspectFit" bindtap="onViewerClose" />
+      <image hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="nt-vimg-pic" src="{{viewerImages[viewerIndex]}}" mode="aspectFit" bindtap="onViewerClose"  />
     </view>
-    <view wx:if="{{viewerImages.length > 1}}" class="nt-vnav nt-vprev" bindtap="onViewerPrev" hover-class="press-dim" hover-stay-time="60">‹</view>
-    <view wx:if="{{viewerImages.length > 1}}" class="nt-vnav nt-vnext" bindtap="onViewerNext" hover-class="press-dim" hover-stay-time="60">›</view>
+    <view data-pressable wx:if="{{viewerImages.length > 1}}" class="nt-vnav nt-vprev" bindtap="onViewerPrev" hover-class="press-dim" hover-stay-time="60">‹</view>
+    <view data-pressable wx:if="{{viewerImages.length > 1}}" class="nt-vnav nt-vnext" bindtap="onViewerNext" hover-class="press-dim" hover-stay-time="60">›</view>
     <view wx:if="{{viewerImages.length > 1}}" class="nt-vdots">
       <view wx:for="{{viewerImages}}" wx:key="*this" class="nt-vdot {{index === viewerIndex ? 'on' : ''}}"></view>
     </view>
