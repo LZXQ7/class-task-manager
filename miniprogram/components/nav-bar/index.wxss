@@ -149,3 +149,59 @@
 @media (prefers-reduced-motion: reduce) {
   .theme-reveal { display: none; }
 }
+
+/* ============================================================
+ * #7 液态玻璃导航栏（v1.0.9.0）
+ * ------------------------------------------------------------
+ * 「液态玻璃」= 常驻的**边缘折射高光** + 随滚动增强的**镜面反射 + 磨砂叠层**（亮度自适应）。
+ * 仅当根节点带 `m-glass`（motion.on('glass') 为 true）时生效 —— 关 FLAG / 远程覆盖 /
+ * 低端机降级时这套样式整段不命中，导航退回改动前的普通玻璃，无需改代码。
+ *
+ * ⚠️ 分层（z-index，避免高光盖住标题文字）：
+ *   .nav-tint(0) → ::after 折射高光(1) → .nav-status/.nav-body(2)
+ * ⚠️ 底座背景是 inline style 的 `var(--glass-bg-strong)`（见 index.js 的 bg 属性），
+ *   类选择器改不了 inline 底色，所以「加厚」改用 .nav-tint 叠层淡入来表达，
+ *   而不是直接改 .nav 的 background（那会被 inline 覆盖、且破坏深色模式令牌）。
+ * ⚠️ 不支持 backdrop-filter 的机型：折射高光与 tint 都没意义（背后没东西可折射），
+ *   @supports not 里直接 display:none；这与项目「玻璃双降级」纪律一致（check-glass 管）。
+ * ============================================================ */
+.nav { position: relative; }
+.nav-tint {
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--glass-bg-strong, rgba(255,255,255,0.5));
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+.nav-status,
+.nav-body { position: relative; z-index: 2; }
+
+.m-glass .nav::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 96rpx;
+  z-index: 1;
+  pointer-events: none;
+  /* 顶部镜面反射：从亮到透明，模拟玻璃把环境光「折」进边缘 */
+  background: linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0) 70%);
+  opacity: .42;
+  transition: opacity .3s ease;
+}
+.t-dark .m-glass .nav::after {
+  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0) 70%);
+}
+/* 滚动后：折射高光更亮 + 磨砂叠层淡入（亮度自适应） */
+.m-glass .nav.is-scrolled::after { opacity: .95; }
+.m-glass .nav.is-scrolled .nav-tint { opacity: .55; }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .nav-tint { display: none; }
+  .m-glass .nav::after { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-tint,
+  .m-glass .nav::after { transition: none; }
+}

@@ -273,7 +273,11 @@ const CASES = [
 
   { id: 'cls-pagemeta', extra: [],
     desc: '新增 staffMgrShow 却没同步进 page-meta 滚动锁',
-    src: mutate(REAL, { CLS_WXML: REPLACE_ONCE(CLS_WXML, ' || staffMgrShow)', ')') }) },
+    // ⚠️ 锚点不能用 ' || staffMgrShow)'：班级管理页 page-meta 在 staffMgrShow 之后又追加了 || delShow，
+    //   原锚点 ' || staffMgrShow)' 已不再出现 ⇒ REPLACE_ONCE 静默返回原串 ⇒ 变异不生效 ⇒ 自证假通过。
+    //   改用 ' || staffMgrShow'（不含括号）：page-meta 出现在 nav-bar 之前，首次命中必是 page-meta 那条，
+    //   删除后 staffMgrShow 这一 show 标志就脱离了滚动锁，audit 应判 [cls-pagemeta]。
+    src: mutate(REAL, { CLS_WXML: REPLACE_ONCE(CLS_WXML, ' || staffMgrShow', '') }) },
 
   { id: 'code-len-fe-be', extra: [],
     desc: '绑定页 maxlength 与后端码长脱钩（改成 6）',

@@ -16,6 +16,7 @@ const pageAnim = require('../../utils/page-anim');
 const impersonate = require('../../utils/impersonate');
 const classScope = require('../../utils/class-scope');
 const theme = require('../../utils/theme');
+const motion = require('../../utils/motion');
 /*
  * v0.7.20 需求③「课程表左右切换添加动画」：复用值日页 / 手动排班页那套方向性过渡
  * （out 160ms 滑走 → 换数据 → in 220ms 滑入，class 与 keyframes 都在 app.wxss）。
@@ -149,6 +150,13 @@ Page({
       { key: 'list', text: '结果' }
     ],
     shiftSessionLabels: [],
+
+    /* #10 课程表长按弧形菜单 */
+    rmShow: false,
+    rmX: 0,
+    rmY: 0,
+    rmSid: 0,
+    rmItems: [],
     shiftSessionIndex: 0,
     shiftKind: 'OFF',          // OFF=本周不上；MOVE=改到别的格子
     shiftToDay: 1,
@@ -1082,23 +1090,53 @@ Page({
     return list[Number(this.data.shiftSessionIndex) || 0] || null;
   },
 
-  /** 长按课表格子 → 直接打开「本周调整」并定位到这一格的那节课 */
+  /** 长按课表格子 → 弹出弧形菜单（本周调整 / 指定日期 / 取消），选择后再开调课弹层 */
   onCellLongPress(e) {
     if (e.currentTarget.dataset.personal) return;   // 个人选修课不参与临时调课
     if (!this.data.isSuper) { util.toast('只有超级管理员可以临时调课'); return; }
     const sid = Number(e.currentTarget.dataset.sid);
     if (!sid) { util.toast('这个格子没有课，长按无效'); return; }
+    if (!motion.on('radial')) {
+      // 退化：直接打开（原行为）
+      this._syncShiftSessions();
+      this._syncShiftWeekBtns();
+      const idx = (this._shiftSessions || []).findIndex(s => Number(s.sessionId) === sid);
+      this.setData({ shiftShow: true, shiftTab: 'week', shiftSessionIndex: idx >= 0 ? idx : 0, shiftKind: 'OFF' });
+      return;
+    }
+    // 取触点坐标（视口坐标，radial-menu 用 fixed 定位）
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || null;
+    const x = t ? t.clientX : ((e.detail && e.detail.x) || 0);
+    const y = t ? t.clientY : ((e.detail && e.detail.y) || 0);
+    this.setData({
+      rmShow: true,
+      rmX: x, rmY: y,
+      rmSid: sid,
+      rmItems: [
+        { key: 'week', label: '本周调整' },
+        { key: 'date', label: '指定日期' },
+        { key: 'cancel', label: '取消' }
+      ]
+    });
+  },
+
+  /* 弧形菜单：选择后打开调课弹层并定位到该课次 */
+  onRmSelect(e) {
+    const key = e.detail.key;
+    this.setData({ rmShow: false });
+    if (!key || key === 'cancel') return;
+    const sid = this.data.rmSid;
     this._syncShiftSessions();
     this._syncShiftWeekBtns();
-    const idx = (this._shiftSessions || [])
-      .findIndex(s => Number(s.sessionId) === sid);
+    const idx = (this._shiftSessions || []).findIndex(s => Number(s.sessionId) === sid);
     this.setData({
       shiftShow: true,
-      shiftTab: 'week',
+      shiftTab: key === 'date' ? 'date' : 'week',
       shiftSessionIndex: idx >= 0 ? idx : 0,
       shiftKind: 'OFF'
     });
   },
+  onRmClose() { this.setData({ rmShow: false }); },
 
   /** 统一提交：成功后落本地并刷新课表；服务端告警（撞车等）用弹窗说清楚 */
   _applyShift(payload, localItems, tipText, undoInfo) {

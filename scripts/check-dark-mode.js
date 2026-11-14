@@ -576,16 +576,19 @@ const T = loadTheme(themeSrc, true);
   };
   const p1 = mkPage();
   th.mount(p1);
-  chk(p1.data.tClass === 't-light', 'mount 立刻把当前主题 class 写进页面');
+  // ⚠️ tClass 现在 = 主题类 + 动效降级类（theme.rootClass() 并入 motion.enabledClasses()，
+  //    见 utils/motion.js 注释）。主题类始终在最前，故用 startsWith 校验「主题类已正确写入」，
+  //    同时容纳后续追加的 .m-* 降级类（门禁设计随动效系统演进，严格 === 会误伤）。
+  chk(p1.data.tClass.indexOf('t-light') === 0, 'mount 立刻把当前主题 class 写进页面');
   const p2 = mkPage();
   th.mount(p2);
   th.setMode('dark');
-  chk(p1.data.tClass === 't-dark' && p2.data.tClass === 't-dark', '切主题时所有已挂载页面都更新');
+  chk(p1.data.tClass.indexOf('t-dark') === 0 && p2.data.tClass.indexOf('t-dark') === 0, '切主题时所有已挂载页面都更新');
   th.unmount(p1);
   const before = p1.sets;
   th.setMode('light');
   chk(p1.sets === before, 'unmount 之后不再 setData 到已销毁页面（否则泄漏 + 无效渲染）');
-  chk(p2.data.tClass === 't-light', 'unmount 只摘自己那个，另一个仍正常');
+  chk(p2.data.tClass.indexOf('t-light') === 0, 'unmount 只摘自己那个，另一个仍正常');
   // 重复挂载幂等（热重载 / onLoad 重入不会注册两个 listener）
   const p3 = mkPage();
   th.mount(p3); th.mount(p3);
@@ -669,7 +672,7 @@ console.log('\n── ⑥b 开关关闭态（DARK_MODE_ENABLED=false ⇒ 一律�
   chk(Toff.store.theme_mode === 'dark', '关闭态：setMode 仍落 storage（保留原选择，恢复开关即生效）');
   const p = { data: {}, sets: 0, setData(o) { Object.assign(this.data, o); this.sets += 1; } };
   th.mount(p);
-  chk(p.data.tClass === 't-light', '关闭态：mount 写进页面的是 t-light');
+  chk(p.data.tClass.indexOf('t-light') === 0, '关闭态：mount 写进页面的是 t-light');
   th.unmount(p);
   Toff.restore();
 }

@@ -1,0 +1,38 @@
+/* #8 3D 翻转卡片（v1.0.9.0） */
+.fd {
+  perspective: 1000rpx;
+}
+.fd-inner {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform .6s cubic-bezier(.22, .61, .36, 1);
+}
+.fd-front {
+  position: relative;
+}
+/* 默认（FLAG 关 / 低端机）：不做 3D，直接显示 / 隐藏两面 */
+.fd-back { display: none; }
+.fd.flipped .fd-front { display: none; }
+.fd.flipped .fd-back { display: block; }
+
+/* FLAG 开：真·3D 翻转（两面都常驻，靠 rotateY + backface-visibility 切换可见面） */
+.m-flipDetail .fd-back {
+  display: block;
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.m-flipDetail .fd-front {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.m-flipDetail .fd.flipped .fd-inner {
+  transform: rotateY(180deg);
+}
+
+/* 减弱动效：去掉翻转过渡（显隐切换仍可用） */
+@media (prefers-reduced-motion: reduce) {
+  .fd-inner { transition: none; }
+}

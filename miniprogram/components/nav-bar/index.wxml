@@ -1,4 +1,8 @@
-<view class="nav {{fixed ? 'nav-fixed' : ''}} {{border ? 'nav-border' : ''}}" style="background:{{bg}}">
+<view class="nav {{fixed ? 'nav-fixed' : ''}} {{border ? 'nav-border' : ''}} {{scrolled ? 'is-scrolled' : ''}}" style="background:{{bg}}">
+  <!-- #7 液态玻璃：亮度自适应叠层（仅 m-glass 生效）。滚动时由 .is-scrolled 把这块半透明白/冷色
+       叠层淡入，模拟「玻璃变厚、内容被磨砂」；不滚动时透明，只剩常驻的折射高光。
+       pointer-events:none 不挡交互；z-index:0 压在文字（z-index:2）之下。 -->
+  <view class="nav-tint"></view>
   <view class="nav-status" style="height:{{statusBarHeight}}px"></view>
   <view class="nav-body" style="height:{{bodyHpx ? bodyHpx + 'px' : '88rpx'}}">
     <view class="nav-side nav-left">

@@ -53,6 +53,26 @@
   align-items: center;
   padding: 24rpx 32rpx 0;
 }
+/* #11 搜索栏随滚动收起：折叠搜索胶囊（其高度随之塌缩，列表上移腾出空间） */
+.mb-bar .mb-search {
+  transition: height .26s ease, opacity .26s ease, margin .26s ease, padding .26s ease;
+}
+.mb-bar.collapsed { padding-top: 0; }
+.mb-bar.collapsed .mb-search {
+  height: 0;
+  opacity: 0;
+  margin: 0;
+  padding: 0 20rpx;
+  overflow: hidden;
+}
+/* #8 翻转卡片背面的提示 */
+.mb-flip-hint {
+  display: block;
+  margin-top: 24rpx;
+  font-size: 24rpx;
+  color: var(--text-3);
+  text-align: center;
+}
 .mb-search {
   flex: 1;
   min-width: 0;

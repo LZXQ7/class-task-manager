@@ -8,6 +8,8 @@
     "bottom-sheet": "/components/bottom-sheet/index",
     "segmented": "/components/segmented/index",
     "skeleton": "/components/skeleton/index",
-    "empty-state": "/components/empty-state/index"
+    "empty-state": "/components/empty-state/index",
+    "flip-detail": "/components/flip-detail/index",
+    "shared-element": "/components/shared-element/index"
   }
 }

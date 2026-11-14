@@ -1,0 +1,4 @@
+<!-- #2 共享元素 ghost：从源矩形 FLIP 到目标矩形，落地后由页面显形真实 hero -->
+<view wx:if="{{visible}}" class="se-ghost" style="{{style}}">
+  <text wx:if="{{label}}" class="se-label">{{label}}</text>
+</view>

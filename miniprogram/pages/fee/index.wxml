@@ -95,7 +95,9 @@
           <!-- 仅管理人可见：追加图片（未满 9 张）/ 删除；view-only 用户完全看不到 -->
           <view class="fee-rec-ops" wx:if="{{feeCanManage}}">
             <view class="fee-rec-append" wx:if="{{item.images.length < 9}}" data-id="{{item.id}}" bindtap="onFeeAppendTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">追加图片</view>
-            <view class="fee-rec-del" data-id="{{item.id}}" bindtap="onFeeDeleteRecord" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">删除</view>
+            <hold-confirm label="删除" duration="{{700}}" data-id="{{item.id}}" bind:confirm="onFeeDeleteRecord">
+              <view class="fee-rec-del" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">删除</view>
+            </hold-confirm>
           </view>
         </view>
         <view class="fee-rec-empty" wx:if="{{!feeActive.records.length}}">还没有消费记录</view>

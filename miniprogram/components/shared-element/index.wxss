@@ -1,0 +1,26 @@
+/* #2 共享元素 ghost（v1.0.9.0） */
+.se-ghost {
+  position: fixed;
+  z-index: 1180;            /* 高于各类浮层，保证飞行动画在最上层 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--brand, #3370FF);
+  color: #FFFFFF;
+  box-shadow: var(--glass-shadow, 0 16rpx 64rpx rgba(29,33,41,0.15));
+  pointer-events: none;
+}
+.se-label {
+  color: #FFFFFF;
+  font-size: 28rpx;
+  font-weight: 600;
+  white-space: nowrap;
+  /* 缩放时字号会跟着变，用 text-shadow 兜底可读性（缩到很小阶段几乎不可读，但那是转场中途） */
+}
+/* 减弱动效：去掉位移/缩放，只做极短淡入（不硬切，也不演动作） */
+@media (prefers-reduced-motion: reduce) {
+  .se-ghost {
+    transition: opacity .12s ease !important;
+  }
+}

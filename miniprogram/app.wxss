@@ -140,6 +140,9 @@ page {
   --glass-shadow: 0 16rpx 64rpx rgba(29,33,41,0.15);
   --glass-highlight: inset 0 2rpx 0 rgba(255, 255, 255, 0.60);
 
+  /* ---- #4 旋转描边卡的呼吸背光令牌（中性纯色，不混彩）---- */
+  --aura-glow: rgba(140, 146, 160, 0.50);
+
   /* ---- 浮层表面令牌（2026-11-04 深色适配）----
    * 弹层 / 对话框 / 底栏是**压在遮罩之上**的独立表面，不能复用 --glass-bg：
    *   · 遮罩已把背后的页面压暗，弹层再叠一层高透白玻璃会糊成灰板；
@@ -252,6 +255,9 @@ page {
   --glass-edge: rgba(200, 215, 245, 0.16);
   --glass-shadow: 0 16rpx 64rpx rgba(0,0,0,0.55);
   --glass-highlight: inset 0 2rpx 0 rgba(200, 215, 245, 0.10);
+
+  /* ---- #4 中性纯色背光（深色下略亮的冷灰）---- */
+  --aura-glow: rgba(176, 184, 202, 0.42);
 
   /* ---- 浮层表面令牌（深色版）----
    * 🔴 不是「把白玻璃调暗」：弹层压在 rgba(0,0,0,.65) 遮罩上，背后已经很暗，
@@ -1023,3 +1029,63 @@ button::after { border: none; }
 /* 同 .np-cls.on：变宽的目标值（0 22rpx → 0 32rpx） */
 .np-chip.on { color: #FFFFFF; background: #3370FF; padding: 0 32rpx; }
 .np-pos-tip { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: #86909C; }
+
+/* ============================================================
+ * 11 项动效 · 全局 CSS 类动效（v1.0.9.0）
+ * ------------------------------------------------------------
+ * 作用域：根节点带 `m-<key>` 类才生效（由 utils/theme.js 的 rootClass() 注入，
+ * 等于「motion.on(key) 为 true」）。某条被关掉（FLAGS / 远程 motion_flags / 设备降级）
+ * 时根节点就没有对应类，样式自然失效 —— 无需改代码即可整体退回改动前。
+ * ⚠️ 纯 CSS 动效只动 transform / opacity（合成层），不碰布局；减弱动效下全部退化为无动画。
+ * ============================================================ */
+
+/* ---------- #6 按钮按压：scale(0.96) 物理压缩 + 深度内阴影；释放时弹簧超调回弹 ----------
+ * 参数来自 utils/motion.js：press 弹簧 = 283ms / ζ=0.62 / 过冲 8.4% → cubic-bezier(.34,1.4,.64,1)。
+ * 按下用快压（90ms ease-out），释放用弹簧曲线回弹，手感是「按下去实、松手弹一下」。
+ * 覆盖既有 .btn 的 transition（.m-press .btn 权重 0-2-0 > .btn 0-1-0），不影响其它属性。 */
+.m-press .btn,
+.m-press .np-btn,
+.m-press .dlg-btn,
+.m-press .btn-ghost,
+.m-press .tap,
+.m-press .icon-btn {
+  transition: transform 200ms cubic-bezier(.34, 1.4, .64, 1), box-shadow .15s ease, opacity .12s ease;
+}
+.m-press .btn:active,
+.m-press .np-btn:active,
+.m-press .dlg-btn:active,
+.m-press .btn-ghost:active,
+.m-press .tap:active,
+.m-press .icon-btn:active {
+  transform: scale(0.96);
+  box-shadow: inset 0 3rpx 8rpx rgba(29, 33, 41, 0.18);
+  transition: transform 90ms ease-out, box-shadow 90ms ease-out, opacity .1s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-press .btn,
+  .m-press .np-btn,
+  .m-press .dlg-btn,
+  .m-press .btn-ghost,
+  .m-press .tap,
+  .m-press .icon-btn {
+    transition: opacity .1s ease;
+  }
+  .m-press .btn:active, .m-press .np-btn:active, .m-press .dlg-btn:active, .m-press .btn-ghost:active, .m-press .tap:active, .m-press .icon-btn:active { transform: none; box-shadow: none; }
+}
+
+/* ---------- #5 列表交错入场（Spring Cascade）----------
+ * 规范：首屏首次入场、≤8 项、相邻 36ms、位移 12px 上浮、ease-out。
+ * 长列表（成员/值日/通知）与筛选/翻页/滚动加载不进序列（页面侧用 motion.staggerDelay 封顶 8）。
+ * 用法：<view class="stagger-item" style="animation-delay:{{item._sd}}ms">，
+ *       item._sd 由页面在 setData 前算好（i 超过 8 则置 0 或干脆不加 class）。 */
+@keyframes stIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.m-stagger .stagger-item {
+  animation: stIn .24s cubic-bezier(.22, .61, .36, 1) backwards;
+  will-change: opacity, transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-stagger .stagger-item { animation: none; will-change: auto; }
+}

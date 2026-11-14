@@ -1,0 +1,54 @@
+/* #4 旋转渐变描边 + 中性纯色呼吸背光 */
+.aura-card-wrap { position: relative; }
+
+/* 描边壳：overflow:hidden 把放大的 conic 环裁成 1.5rpx 细边（不裁会整圈露出来变成彩色光晕） */
+.aura-border {
+  position: relative;
+  z-index: 1;
+  border-radius: var(--r-lg);
+  padding: 1.5rpx;
+  overflow: hidden;
+  isolation: isolate;
+}
+.aura-ring {
+  position: absolute;
+  inset: -60%;
+  z-index: 0;
+  background: conic-gradient(from 0deg, transparent 0deg, #4C8DFF 55deg, #7C5CFF 110deg, transparent 175deg, transparent 240deg, #4C8DFF 300deg, transparent 360deg);
+}
+.aura-border.is-spin .aura-ring { animation: auraSpin 5.5s linear infinite; }
+@keyframes auraSpin { to { transform: rotate(360deg); } }
+
+.aura-inner {
+  position: relative;
+  z-index: 1;
+  border-radius: calc(var(--r-lg) - 1.5rpx);
+  background: var(--bg-card, #FFFFFF);
+  padding: 20rpx;
+}
+
+/* 中性纯色背光：只动 opacity + scale 做呼吸，不混彩（用户要求纯色平淡）。
+   放在壳外、与卡片重叠居中且更大，从四边（尤其底部）透出柔光。 */
+.aura-glow {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: -28rpx;
+  height: 90rpx;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, var(--aura-glow, rgba(140,146,160,.5)), transparent 72%);
+  filter: blur(22px);
+  opacity: 0.55;
+}
+.aura-glow.is-breath { animation: auraBreath 3.4s ease-in-out infinite; }
+@keyframes auraBreath {
+  0%, 100% { opacity: 0.42; transform: scale(0.94); }
+  50%      { opacity: 0.95; transform: scale(1.06); }
+}
+
+/* 减弱动效：静止描边 + 静止光 */
+@media (prefers-reduced-motion: reduce) {
+  .aura-border.is-spin .aura-ring { animation: none; }
+  .aura-glow.is-breath { animation: none; }
+}

@@ -1,0 +1,19 @@
+<!-- #10 弧形菜单：遮罩 + 以触点为圆心放射性铺开的菜单项 -->
+<view wx:if="{{visible}}" class="rm-root {{open ? 'in' : ''}}">
+  <view class="rm-mask" bindtap="onMask" catchtouchmove="noop"></view>
+  <view class="rm-origin" style="left:{{x}}px; top:{{y}}px;">
+    <view
+      wx:for="{{arranged}}"
+      wx:key="key"
+      class="rm-item"
+      style="--dx:{{item.dx}}px; --dy:{{item.dy}}px; transition-delay:{{item.delay}}ms;"
+      data-key="{{item.key}}"
+      bindtap="onItem"
+    >
+      <view class="rm-btn">
+        <text wx:if="{{item.icon}}" class="rm-icon">{{item.icon}}</text>
+        <text class="rm-label">{{item.label}}</text>
+      </view>
+    </view>
+  </view>
+</view>

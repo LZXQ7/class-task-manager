@@ -378,17 +378,9 @@ Page({
   onFeeDeleteRecord(e) {
     const id = Number(e.currentTarget.dataset.id);
     if (!id) return;
-    wx.showModal({
-      title: '删除记录',
-      content: '删除后余额会回退，且图片会一并删除，确定吗？',
-      confirmText: '删除', confirmColor: '#F53F3F',
-      success: (r) => {
-        if (!r.confirm) return;
-        api.feeDeleteRecord({ type: this.data.feeType, id })
-          .then(() => { util.toast('已删除'); this._loadFee(true); })
-          .catch(() => {});
-      }
-    });
+    api.feeDeleteRecord({ type: this.data.feeType, id })
+      .then(() => { util.toast('已删除'); this._loadFee(true); })
+      .catch(() => {});
   },
 
   onReload() { this._loadFee(true); },

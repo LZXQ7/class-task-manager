@@ -37,6 +37,14 @@ Component({
     /** 默认固定：所有页面顶栏不随内容滚动（2026-09-25 用户要求）。特殊页面可显式传 fixed="{{false}}" 关闭 */
     fixed: { type: Boolean, value: true },
     /**
+     * #7 液态玻璃：是否已滚动（内容从导航下方滚过）。
+     * 由页面把滚动状态传进来（如 `<nav-bar scrolled="{{scrolled}}" />`）；
+     * 传 true 时增强镜面高光 + 微微加厚底色（亮度自适应），不传则走常驻的液态玻璃观感。
+     * 仅当根节点带 `m-glass`（motion.on('glass')）时这套增强才生效，
+     * 关掉 FLAG / 远程覆盖 / 低端机降级时整段样式自然失效，无需改代码退回。
+     */
+    scrolled: { type: Boolean, value: false },
+    /**
      * 是否渲染「把正文顶下来」的占位块。
      * ⚠️ 只有 fixed=true 时才真的渲染（见 index.wxml）——fixed=false 时 nav 本来就在文档流里，
      * 再渲染占位块会让正文被顶两倍导航高度（notice/poster/bind 三页踩过）。

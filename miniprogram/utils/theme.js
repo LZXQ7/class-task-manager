@@ -123,6 +123,23 @@ function themeClass() {
 }
 
 /**
+ * 根节点最终 class = 主题类 + 当前启用的动效类（m-press / m-stagger / m-aura / m-glass …）。
+ * 动效类由 utils/motion.js 的 enabledClasses() 给出（FLAGS + 远程 + 设备 + 减弱动效 全过）。
+ * 🔴 懒加载 motion：theme.js 被 motion.js require 过，若顶部静态 require 会形成循环依赖；
+ *    运行到这里时 motion.js 早已加载完（app.js 在 onLaunch 就 require 了它），缓存命中，无副作用。
+ * 取不到就只返回主题类 —— 宁多播一次动效，也不要把主题搞坏。
+ */
+function rootClass() {
+  let c = themeClass();
+  try {
+    const m = require('./motion');
+    const mc = (m.enabledClasses && m.enabledClasses()) || '';
+    if (mc) c += ' ' + mc;
+  } catch (e) { /* ignore */ }
+  return c;
+}
+
+/**
  * 系统是否要求「减弱动效」。**惰性算一次 + 进程内缓存**。
  * ------------------------------------------------------------
  * 为什么要缓存：`wx.getSystemInfoSync()` 是**同步跨线程调用**，而调用方
@@ -176,10 +193,10 @@ function mount(page) {
   if (!page || !page.setData) return resolved;
   unmount(page);                       // 重复挂载（热重载 / onLoad 重入）先清一次
   try {
-    page.setData({ tClass: themeClass() });
+    page.setData({ tClass: rootClass() });
   } catch (e) { /* ignore */ }
   const fn = () => {
-    try { page.setData({ tClass: themeClass() }); } catch (e) { /* ignore */ }
+    try { page.setData({ tClass: rootClass() }); } catch (e) { /* ignore */ }
   };
   onThemeChange(fn);
   mounted.push({ page, fn });

@@ -6,6 +6,8 @@
 const api = require('../../utils/api');
 const util = require('../../utils/util');
 const theme = require('../../utils/theme');
+const morph = require('../../utils/morph');
+const shared = require('../../utils/shared-element');
 
 Page({
   data: {
@@ -22,6 +24,15 @@ Page({
     canCreate: false,
     /** 是否可删除班级（超管 / 辅导员） */
     canDelete: false,
+
+    /** #7 液态玻璃导航：是否滚动过（驱动 nav-bar 镜面增强） */
+    scrolled: false,
+
+    /** #1 形态变换删除弹层（胶囊按钮 → 对话框 FLIP 长开） */
+    delShow: false,
+    delId: 0,
+    delName: '',
+    delMorph: null,
 
     /** 改名弹层 */
     renameShow: false,
@@ -204,14 +215,26 @@ Page({
       .catch(() => this.setData({ createBusy: false }));
   },
 
-  /* ---------------- 查看人员（复用「成员与分组」页，按班级过滤） ---------------- */
+  /* ---------------- 查看人员（复用「成员与分组」页，按班级过滤） ----------------
+   * #2 共享元素：点击前量出卡片矩形 + 品牌色 + 班级名，存进 shared-element 单例；
+   * roster 页 onReady 取走后把「卡片」FLIP 飞进它的头部（观感是卡片飞进详情页）。 */
   onViewMembers(e) {
     const id = Number(e.currentTarget.dataset.id);
     const name = String(e.currentTarget.dataset.name || '');
     if (!id) return;
-    wx.navigateTo({
-      url: '/pages/roster/index?classId=' + id + '&name=' + encodeURIComponent(name)
-    });
+    const q = wx.createSelectorQuery();
+    q.select('.cl-card[data-id="' + id + '"]').boundingClientRect((r) => {
+      if (r && r.width) {
+        shared.setHero({
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+          color: 'var(--brand)',
+          label: name
+        });
+      }
+      wx.navigateTo({
+        url: '/pages/roster/index?classId=' + id + '&name=' + encodeURIComponent(name)
+      });
+    }).exec();
   },
 
   /* ---------------- 邀请码 / 入班码 ---------------- */
@@ -538,20 +561,44 @@ Page({
     const classes = this.data.classes.map(c => Object.assign({}, c, { offset: 0 }));
     this.setData({ classes });
   },
+  /* #1 形态变换删除：先把触发按钮（胶囊）的矩形量出来存进 morph 单例，
+   * 再打开带 morphRect 的自定义 dialog —— dialog 从胶囊位置/尺寸 FLIP 长开成对话框。 */
   onDeleteClass(e) {
     const id = Number(e.currentTarget.dataset.id);
     const name = String(e.currentTarget.dataset.name || '');
     if (!this.data.canDelete) { util.toast('仅超级管理员或辅导员可删除班级'); return; }
-    util.confirm('删除后该班级将从列表移除；仅可删除「无人班级」，有成员则不可删（避免成员账号悬空）。', '删除『' + name + '』')
-      .then(ok => {
-        if (!ok) { this._closeAll(); return; }
-        api.classDelete({ classId: id }, { loading: '删除中' })
-          .then(() => { util.toast('已删除『' + name + '』'); this._load(); })
-          .catch((err) => {
-            util.toast((err && err.errMsg) || '删除失败');
-            this._load();
-          });
+    const q = wx.createSelectorQuery();
+    q.select('.cl-del[data-id="' + id + '"]').boundingClientRect((r) => {
+      const rect = (r && r.width) ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;
+      if (rect) morph.setSource(rect);
+      this.setData({
+        delShow: true,
+        delId: id,
+        delName: name,
+        delMorph: rect
       });
+    }).exec();
+  },
+  onDeleteConfirm() {
+    const id = this.data.delId;
+    const name = this.data.delName;
+    this.setData({ delShow: false });
+    api.classDelete({ classId: id }, { loading: '删除中' })
+      .then(() => { util.toast('已删除『' + name + '』'); this._load(); })
+      .catch((err) => {
+        util.toast((err && err.errMsg) || '删除失败');
+        this._load();
+      });
+  },
+  onDeleteCancel() {
+    this.setData({ delShow: false });
+    this._closeAll();
+  },
+
+  /* #7 液态玻璃导航：页面滚动时驱动 nav-bar 的镜面增强 */
+  onPageScroll(e) {
+    const s = e.scrollTop > 8;
+    if (s !== this.data.scrolled) this.setData({ scrolled: s });
   },
 
   /* ---------------- 改名（超管 / 辅导员；改名应用到全部成员） ---------------- */

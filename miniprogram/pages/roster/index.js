@@ -21,6 +21,7 @@ const mem = require('../../utils/mem');
 const theme = require('../../utils/theme');
 /** 直传云存储 / 取临时链接（请假条图片：前端直传绕开 VPC 慢下载，与通知配图同链路） */
 const request = require('../../utils/request');
+const shared = require('../../utils/shared-element');
 
 /**
  * 筛选作用域 → 空态文案（2026-10-24：新增 A/B 组后占位提示要跟着作用域走，
@@ -218,6 +219,16 @@ Page({
     memberKw: '',
     mDetailShow: false,
     mDetail: null,
+    /** #8 成员详情 3D 翻转：true=显示背面（角色 + 绑定态） */
+    mDetailFlipped: false,
+    /** #11 搜索栏随滚动收起 */
+    searchCollapsed: false,
+    /** #2 共享元素 ghost：从班级卡飞入 mb-bar */
+    seShow: false,
+    seFrom: null,
+    seTo: null,
+    seColor: '',
+    seLabel: '',
     /** 详情选中是否是自己；true 时调组/启停/解绑按钮一律隐藏 */
     mDetailIsSelf: false,
 
@@ -1463,6 +1474,7 @@ _clockNow() {
     const noteVisible = isCounselor || !!(app && app.isSuper && app.isSuper());
     this.setData({
       mDetailShow: true,
+      mDetailFlipped: false,
       mDetail: m,
       mDetailIsSelf: !!(me && me.id === m.id),
       isCounselor,
@@ -1481,7 +1493,36 @@ _clockNow() {
     }
   },
 
-  onMDetailClose() { this.setData({ mDetailShow: false }); },
+  onMDetailClose() { this.setData({ mDetailShow: false, mDetailFlipped: false }); },
+
+  /* #8 详情头部 3D 翻转：同步受控状态 */
+  onMDetailFlip(e) {
+    this.setData({ mDetailFlipped: !!e.detail.flipped });
+  },
+
+  /* #11 搜索栏随滚动收起：滚过阈值折叠搜索胶囊，回顶展开 */
+  onPageScroll(e) {
+    const c = (e.scrollTop || 0) > 40;
+    if (c !== this.data.searchCollapsed) this.setData({ searchCollapsed: c });
+  },
+
+  /* #2 共享元素：进入页面时若带班级卡 hero，则 FLIP 飞入 mb-bar */
+  onReady() {
+    const hero = shared.takeHero();
+    if (!hero || !hero.rect) return;
+    const q = wx.createSelectorQuery();
+    q.select('.mb-bar').boundingClientRect((r) => {
+      if (!r || !r.width) return;
+      this.setData({
+        seShow: true,
+        seFrom: hero.rect,
+        seTo: { left: r.left, top: r.top, width: r.width, height: r.height },
+        seColor: hero.color,
+        seLabel: hero.label
+      });
+    }).exec();
+  },
+  onSeArrive() { this.setData({ seShow: false }); },
 
   /* ---------------- 主页关注（v0.7.17 需求⑥；卡片 2026-11-14 迁回首页） ----------------
    * 本页只剩「固定到主页」按钮这一侧：状态查询 _loadPinState / 切换 onTogglePin。

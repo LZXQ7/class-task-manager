@@ -2,12 +2,12 @@
      「在弹层里滑到底 → 后面的页面跟着一起滑」就是这么来的。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(createShow || renameShow || qrShow || wbShow || importShow || staffMgrShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(createShow || renameShow || qrShow || wbShow || importShow || staffMgrShow || delShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <view class="page cl page-fade {{tClass}}">
 
   <!-- sheet-open：弹层打开时隐藏返回键（会被弹层左上角透出来，详见 nav-bar 的 sheetOpen 属性） -->
-  <nav-bar title="班级管理" show-back="{{true}}" custom-back="{{true}}" sheet-open="{{createShow || renameShow || qrShow || wbShow || importShow || staffMgrShow}}" bind:back="onBack" />
+  <nav-bar title="班级管理" show-back="{{true}}" custom-back="{{true}}" scrolled="{{scrolled}}" sheet-open="{{createShow || renameShow || qrShow || wbShow || importShow || staffMgrShow || delShow}}" bind:back="onBack" />
 
   <view wx:if="{{loading}}" class="cl-empty">加载中…</view>
 
@@ -31,7 +31,8 @@
     <view
       wx:for="{{classes}}"
       wx:key="id"
-      class="cl-swipe"
+      class="cl-swipe stagger-item"
+      style="animation-delay:{{index > 8 ? 288 : index * 36}}ms"
     >
       <view
         wx:if="{{canDelete}}"
@@ -45,15 +46,18 @@
         <app-icon name="trash" variant="red" size="{{34}}" />
         <text class="cl-deltxt">删除</text>
       </view>
-      <view
-        class="cl-card {{item.isMine && !isCounselor ? 'mine' : ''}} {{item.isActive ? '' : 'off'}}"
-        style="transform: translateX({{item.offset || 0}}rpx);{{item.noAnim ? '' : 'transition: transform .2s ease;'}}"
+      <aura-card
+        style="transform: translateX({{item.offset || 0}}rpx);{{item.noAnim ? '' : 'transition: transform .2s ease;'}};z-index:2"
         data-idx="{{index}}"
         data-id="{{item.id}}"
         bindtouchstart="onSwipeStart"
         bindtouchmove="onSwipeMove"
         bindtouchend="onSwipeEnd"
         bindtouchcancel="onSwipeEnd"
+      >
+      <view
+        class="cl-card {{item.isMine && !isCounselor ? 'mine' : ''}} {{item.isActive ? '' : 'off'}}"
+        data-id="{{item.id}}"
       >
         <view class="cl-head">
           <view class="cl-name">
@@ -79,6 +83,7 @@
           <view wx:if="{{canCreate}}" class="cl-btn" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="onRename">改名</view>
         </view>
       </view>
+      </aura-card>
     </view>
 
     <!-- 筛选空态：选中的教职工还没有绑定任何班级 -->
@@ -312,5 +317,20 @@
       </view>
     </view>
   </bottom-sheet>
+
+  <!-- #1 删除班级：从「删除」胶囊 FLIP 长开成对话框（morphRect 驱动形态变换） -->
+  <dialog
+    show="{{delShow}}"
+    title="删除『{{delName}}』"
+    content="删除后该班级将从列表移除；仅可删除「无人班级」，有成员则不可删（避免成员账号悬空）。"
+    icon="warn"
+    icon-variant="red"
+    confirm-text="删除"
+    confirm-color="#F53F3F"
+    morph-rect="{{delMorph}}"
+    bind:confirm="onDeleteConfirm"
+    bind:cancel="onDeleteCancel"
+    bind:close="onDeleteCancel"
+  />
 
 </view>

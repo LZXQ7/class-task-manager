@@ -1,0 +1,48 @@
+/* #9 长按确认：圆形按钮，按住沿边缘绘制进度环 */
+.hc-btn {
+  position: relative;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+  background: var(--danger-bg, #FFECE8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 120ms ease;
+}
+.hc-btn.is-holding { transform: scale(0.97); }
+.hc-btn.is-done { background: var(--success-bg, #E8FFEA); }
+
+/* 底环（轨道）：始终可见，提示「这里要长按」 */
+.hc-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--line-2, #E5E6EB) 0%, var(--line-2, #E5E6EB) 100%);
+  -webkit-mask: radial-gradient(circle, transparent 56%, #000 58%);
+  mask: radial-gradient(circle, transparent 56%, #000 58%);
+}
+/* 进度环：随 --p 从 0→100 填充 */
+.hc-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--danger, #F53F3F) calc(var(--p, 0) * 1%), transparent 0);
+  -webkit-mask: radial-gradient(circle, transparent 56%, #000 58%);
+  mask: radial-gradient(circle, transparent 56%, #000 58%);
+  pointer-events: none;
+}
+.hc-label {
+  position: relative;
+  z-index: 1;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--danger, #F53F3F);
+}
+.hc-btn.is-done .hc-label { color: var(--success, #00B42A); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-btn { transition: none; }
+}

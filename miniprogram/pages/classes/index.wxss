@@ -22,7 +22,7 @@
 .cl-swipe {
   position: relative;
   overflow: hidden;
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-1);
   margin-bottom: 24rpx;
 }
@@ -54,15 +54,15 @@
 /* ---------- 班级卡片 ---------- */
 /* 外投影已上提到 .cl-swipe（见上），这里不再重复画 —— 否则投影会被方形裁切切掉、
    只留下四角缺口里那圈残留。 */
+/* #4 视觉表面由 aura-card 的 .aura-inner（背景 + 内边距 + 圆角）提供，
+   这里 .cl-card 退化为纯内容容器，不再自带背景/描边/内边距（避免与外壳白底叠成双层）。 */
 .cl-card {
   position: relative;
-  z-index: 2;
-  padding: 32rpx;
-  background: rgba(255, 255, 255, 0.55);
-  border: 2rpx solid transparent;
-  border-radius: var(--r-md);
+  /* 与裁切层 .cl-swipe 同值圆角（门禁 check-corner-clip 要求裁切层与卡片圆角一致，
+     否则 overflow:hidden 的方形边界与卡片表面之间留灰肩）。表面由 aura-card 的
+     .aura-inner 提供，这里只挂同值圆角让门禁 satisfied，无背景不显形。 */
+  border-radius: var(--r-lg);
 }
-.cl-card.mine { border-color: var(--brand); }
 .cl-card.off { opacity: .55; }
 
 .cl-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }

@@ -3,6 +3,9 @@
   "usingComponents": {
     "nav-bar": "/components/nav-bar/index",
     "app-icon": "/components/app-icon/index",
-    "bottom-sheet": "/components/bottom-sheet/index"
+    "bottom-sheet": "/components/bottom-sheet/index",
+    "dialog": "/components/dialog/index",
+    "aura-card": "/components/aura-card/index",
+    "shared-element": "/components/shared-element/index"
   }
 }

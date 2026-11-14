@@ -1,0 +1,9 @@
+<!-- #4 旋转渐变描边 + 中性纯色呼吸背光（v1.0.9.0）
+     低端机由 JS 关掉 spin/breath（静态描边 + 静态光，不卡）；aura 关掉时整组件就是普通卡片。 -->
+<view class="aura-card-wrap">
+  <view class="aura-glow {{glowing ? 'is-breath' : ''}}"></view>
+  <view class="aura-border {{spinning ? 'is-spin' : ''}}">
+    <view class="aura-ring"></view>
+    <view class="aura-inner"><slot /></view>
+  </view>
+</view>

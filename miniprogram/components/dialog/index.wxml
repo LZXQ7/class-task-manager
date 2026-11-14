@@ -1,7 +1,7 @@
 <!-- mounted/active 两帧：详见 components/popup-anim.js（直接绑 show 会瞬间弹出、没有动画） -->
 <view wx:if="{{mounted}}" class="dlg-root" catchtouchmove="noop">
   <view class="dlg-mask {{active ? 'in' : ''}}" bindtap="onMask"></view>
-  <view class="dlg-box {{active ? 'in' : ''}}">
+  <view class="dlg-box {{active ? 'in' : ''}}" style="{{morphStyle}}">
     <view wx:if="{{icon}}" class="dlg-icon">
       <app-icon name="{{icon}}" variant="{{iconVariant}}" size="{{72}}" />
     </view>

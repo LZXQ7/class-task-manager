@@ -109,7 +109,20 @@ Component({
      * 只对**自适应高度**弹层有意义；传了 `height` 的弹层高度本来就固定。
      * 由使用方在 setData 回调里调 `resizeScroll()`；开合入场动画期间不参与。
      */
-    resizeAnim: { type: Boolean, value: false }
+    resizeAnim: { type: Boolean, value: false },
+    /**
+     * v1.0.9.0 #3 底部抽屉三档吸附：中间停靠档（百分比数组，相对面板高度）。
+     * 例如 `[0.45]` = 往下拉 45% 处有一个「半开 peek」档；配合始终存在的
+     * 「全开(0)」与「下滑超过阈值即关」两档，构成 开 / 半开 / 关 三档吸附。
+     * 传 `[]`（默认）= 维持原两态行为，关闭阈值仍是面板一半（不动旧弹层手感）。
+     * 松手时按「当前位移 + 速度投影」吸附到最近的档（橡皮筋已在拖动期处理）。
+     */
+    detents: { type: Array, value: () => [] },
+    /**
+     * 打开时直接停在某个档（而非全开）。值为 detents 里的一个比例，如 0.45。
+     * 仅当 detents 非空时有效：面板先滑入到全开，再平滑落到该档（peek 半开）。
+     */
+    initialDetent: { type: Number, value: 0 }
   },
   data: {
     safeBottom: 0, tabbarPx: 49, capStyle: '', bodyMaxH: '',
@@ -154,6 +167,21 @@ Component({
       if (v) {
         this._openedAt = Date.now();
         this._scheduleResize();
+        // #3 三档吸附：打开时直接停在某个档（peek 半开）。面板先滑入到全开，再平滑落到该档。
+        // 仅当 detents 非空 + initialDetent 在 (0,1) 内才生效（默认 0 = 全开，维持旧行为）。
+        if (this.properties.initialDetent && this.properties.detents && this.properties.detents.length) {
+          const ip = Number(this.properties.initialDetent);
+          if (ip > 0 && ip < 1) {
+            const self = this;
+            this._initDetentTimer = setTimeout(function () {
+              self._initDetentTimer = null;
+              self._measure();
+              const h = self._panelH || 480;
+              const py = ip * h;
+              if (py > 0 && py < h) self._springTo(py, self._applied || 0, 0);
+            }, 280);   // 等入场 transform（240ms）走完再落档，避免两段动画打架
+          }
+        }
         // v1.0.7：入场结束后量一次真实高度，作为**夹紧值**的初值。
         // 不夹的话，第一次筛选时没有可插值的起点 ⇒ 首筛不播动画；
         // 而且没有 max-height 兜着，内容一长就会先硬顶上去跳一下。
@@ -219,6 +247,8 @@ Component({
       if (this._resizeAnimTimer) { clearTimeout(this._resizeAnimTimer); this._resizeAnimTimer = null; }
       if (this._resizeEndTimer) { clearTimeout(this._resizeEndTimer); this._resizeEndTimer = null; }
       if (this._resizeFloorTimer) { clearTimeout(this._resizeFloorTimer); this._resizeFloorTimer = null; }
+      // #3：打开即停在 peek 档的落档定时器
+      if (this._initDetentTimer) { clearTimeout(this._initDetentTimer); this._initDetentTimer = null; }
     }
   },
   methods: {
@@ -552,28 +582,66 @@ Component({
       const y = this._applied || 0;
       const h = this._panelH || 480;
       const v = d.v || 0;
-      // ③ 位移 + 速度共同判定：过半 或 快速下滑轻扫 → 关闭；否则回位
-      if (y > h / 2 || v > FLICK_V) this._closeOut(y, h, v);
-      else this._springBack(y, v);
+      // ③ 位移 + 速度共同判定：滑过「关闭阈值」或快速下滑轻扫 → 关闭；否则吸附到最近档。
+      // ⚠️ 没有中间档时关闭阈值仍是面板一半（维持旧弹层手感）；有中间档（#3）时放宽到 0.92h，
+      //    否则拖到半开 peek（0.45h）会被误判为「过半关闭」，三档吸附就建不起来。
+      const hasDetents = !!(this.properties.detents && this.properties.detents.length);
+      const closeRatio = hasDetents ? 0.92 : 0.5;
+      // ③ 位移 + 速度双判据：无中间档时滑过面板一半（y > h / 2）即关；有中间档（#3）时
+      //    阈值放宽到 0.92h，否则拖到半开 peek（0.45h）会被误判关闭。快速下滑轻扫（v > FLICK_V）无论哪种都关。
+      if ((!hasDetents && y > h / 2) || y > h * closeRatio || v > FLICK_V) { this._closeOut(y, h, v); return; }
+      this._snapTo(y, h, v, hasDetents);
     },
 
-    /** 回弹：时长由「剩余距离 / 松手速度」算出（速度越大越快，带一点回弹手感） */
-    _springBack(y, v) {
+    /** 计算吸附档的像素位置：全开(0) + 各中间档(detents × 面板高)。detents 空则只有 [0]。 */
+    _restYs(h) {
+      const ds = this.properties.detents || [];
+      const arr = [0];
+      ds.forEach((r) => {
+        const rr = Number(r);
+        if (rr > 0 && rr < 1) arr.push(rr * h);
+      });
+      return arr;
+    },
+
+    /** 松手吸附：按「位移 + 速度投影」选最近档，再弹簧落位（#3 三档吸附） */
+    _snapTo(y, h, v) {
+      const rests = this._restYs(h);
+      // 速度投影：把当前位置沿松手速度方向推一小段，模拟「还会继续滑一点」，
+      // 让快速轻扫也能正确落到目标档（而非停在起手位置）。
+      const proj = y + (v || 0) * 100;
+      let target = 0; let best = Infinity;
+      rests.forEach((ry) => {
+        const dd = Math.abs(ry - proj);
+        if (dd < best) { best = dd; target = ry; }
+      });
+      this._springTo(target, y, v);
+    },
+
+    /** 弹簧落位到某个档（0 = 全开，peek = 半开）。非 0 档落定后**保留**内联 transform，
+     *  否则清掉会弹回 .up 的 translateY(0)（#3 关键：半开档要能停住）。 */
+    _springTo(targetY, fromY, v) {
       const speed = Math.max(Math.abs(v), 0.45);
-      const dur = Math.round(clamp((Math.abs(y) / speed) * 0.9 + 90, MIN_MS, MAX_MS));
-      this._anim = { t0: Date.now(), from: y, to: 0, dur };
+      const dist = Math.abs(targetY - fromY);
+      const dur = Math.round(clamp((dist / speed) * 0.9 + 90, MIN_MS, MAX_MS));
+      this._anim = { t0: Date.now(), from: fromY, to: targetY, dur };
+      // 全开用临界阻尼（不过冲）；其余档用轻微过冲的回弹曲线（更跟手）
+      const ease = targetY === 0 ? 'cubic-bezier(.22,1.06,.36,1)' : 'cubic-bezier(.34,1.4,.64,1)';
       this.setData({
         dragging: false,
-        dragStyle: 'transform: translateY(0px); transition: transform ' + dur
-          + 'ms cubic-bezier(.22,1.06,.36,1);',
+        dragStyle: 'transform: translateY(' + targetY + 'px); transition: transform ' + dur + 'ms ' + ease + ';',
         maskStyle: ''
       });
       this._finish(dur, () => {
         this._anim = null;
-        this._applied = 0;
-        this.setData({ dragStyle: '', maskStyle: '' });   // 交还给 class 规则
+        this._applied = targetY;
+        // 全开：交还 class 规则（.up = translateY(0)）；非 0 档：保留内联 transform 停住
+        if (targetY === 0) this.setData({ dragStyle: '', maskStyle: '' });
       });
     },
+
+    /** 回弹：时长由「剩余距离 / 松手速度」算出（速度越大越快，带一点回弹手感） */
+    _springBack(y, v) { this._springTo(0, y, v); },
 
     /** 滑出关闭：先播完位移动画，再通知页面关（页面把 show 置 false）——「先动画后卸载」 */
     _closeOut(y, h, v) {

@@ -681,4 +681,15 @@
     <text class="tt-undo-act" bindtap="onShiftUndoBar">撤回</text>
     <text class="tt-undo-x" bindtap="onShiftUndoBarClose">✕</text>
   </view>
+
+  <!-- #10 课程表长按弧形菜单：从触点放射性展开「本周调整 / 指定日期 / 取消」 -->
+  <radial-menu
+    show="{{rmShow}}"
+    x="{{rmX}}"
+    y="{{rmY}}"
+    items="{{rmItems}}"
+    bind:close="onRmClose"
+    bind:select="onRmSelect"
+  />
+
 </view>

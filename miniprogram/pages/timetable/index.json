@@ -14,6 +14,7 @@
     "status-pill": "../../components/status-pill/index",
     "segmented": "../../components/segmented/index",
     "stepper": "../../components/stepper/index",
-    "class-picker": "../../components/class-picker/index"
+    "class-picker": "../../components/class-picker/index",
+    "radial-menu": "../../components/radial-menu/index"
   }
 }

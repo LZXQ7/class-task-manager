@@ -73,8 +73,8 @@
     <notice-bar type="warning" text="两组人数相差较大，建议手动调整以保证轮转公平" />
   </view>
 
-  <!-- 搜索（独占一行） -->
-  <view class="mb-bar">
+  <!-- 搜索（独占一行）；#11 滚动超过阈值时收起 -->
+  <view class="mb-bar {{searchCollapsed ? 'collapsed' : ''}}">
     <view class="mb-search">
       <app-icon name="search" variant="gray" size="{{32}}" />
       <input class="mb-search-input" value="{{memberKw}}" placeholder="搜索姓名或学号" placeholder-class="f-ph" bindinput="onMemberKw" />
@@ -144,19 +144,25 @@
   <view style="height:40rpx"></view>
 
   <!-- 成员详情 -->
-  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}">
+  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}" detents="{{[0.45]}}">
     <view wx:if="{{mDetail}}" class="mb-detail">
-      <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" label="{{true}}" label-size="{{34}}" />
-      <view class="mb-detail-grid">
-        <!-- 只读身份（普通成员）后端不回学号 / 值日次数 ⇒ 不拼「学号 0 号」「值日 次」这种半截文案 -->
-        <text>{{mDetail.groupTag === 'X' ? '教职工（不参与分组与值日轮转）' : (mDetail.readOnly ? '班级成员' : '学号 ' + mDetail.seq + ' 号')}}</text>
-        <view>
-          <text>{{mDetail.groupTag === 'X' ? '辅导员' : mDetail.groupTag + ' 组'}}</text>
-          <block wx:if="{{!mDetail.readOnly}}"><text> · 值日</text><text class="cnt-num">{{mDetail.dutyCount}}</text><text>次</text></block>
+      <flip-detail flipped="{{mDetailFlipped}}" bind:flip="onMDetailFlip">
+        <view slot="front">
+          <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" label="{{true}}" label-size="{{34}}" />
+          <view class="mb-detail-grid">
+            <text>{{mDetail.groupTag === 'X' ? '教职工（不参与分组与值日轮转）' : (mDetail.readOnly ? '班级成员' : '学号 ' + mDetail.seq + ' 号')}}</text>
+            <view>
+              <text>{{mDetail.groupTag === 'X' ? '辅导员' : mDetail.groupTag + ' 组'}}</text>
+              <block wx:if="{{!mDetail.readOnly}}"><text> · 值日</text><text class="cnt-num">{{mDetail.dutyCount}}</text><text>次</text></block>
+            </view>
+          </view>
         </view>
-        <text wx:if="{{isSuper || isCounselor}}" class="{{mDetail.bound ? 'bound' : ''}}">微信 {{mDetail.bound ? '已绑定' : '未绑定'}}</text>
-      </view>
-      <view wx:if="{{mDetail.roleTag}}" class="mb-detail-role {{mDetail.roleTier}}">{{mDetail.roleTag}}<block wx:if="{{mDetail.isSuper}}"> · 可解绑账号、安排值日</block></view>
+        <view slot="back">
+          <view wx:if="{{mDetail.roleTag}}" class="mb-detail-role {{mDetail.roleTier}}">{{mDetail.roleTag}}<block wx:if="{{mDetail.isSuper}}"> · 可解绑账号、安排值日</block></view>
+          <text wx:if="{{isSuper || isCounselor}}" class="{{mDetail.bound ? 'bound' : ''}}">微信 {{mDetail.bound ? '已绑定' : '未绑定'}}</text>
+          <text class="mb-flip-hint">点击卡片翻回正面</text>
+        </view>
+      </flip-detail>
       <view class="mb-detail-actions">
         <!-- 教职工（X）不参与 A/B 轮转，不给调组按钮；调组=名册编辑（需求 D：含班长） -->
         <view wx:if="{{mDetail.groupTag !== 'X' && !mDetailIsSelf && canRosterEdit}}" class="mb-abtn" bindtap="onToggleGroup">调至 {{mDetail.groupTag === 'A' ? 'B' : 'A'}} 组</view>
@@ -774,4 +780,15 @@
       </view>
     </view>
   </bottom-sheet>
+
+  <!-- #2 共享元素：从班级卡 FLIP 飞入 mb-bar（onReady 取 hero 播放） -->
+  <shared-element
+    show="{{seShow}}"
+    from="{{seFrom}}"
+    to="{{seTo}}"
+    color="{{seColor}}"
+    label="{{seLabel}}"
+    bind:arrive="onSeArrive"
+  />
+
 </view>
