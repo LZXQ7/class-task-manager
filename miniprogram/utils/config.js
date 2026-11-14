@@ -266,8 +266,23 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      两个方向都冲过头再回落；`prefers-reduced-motion` 下退成 120ms 光效、不缩放不弹。
  *      `check-radial-menu.js` 新增 `hotSpring` / `reducedNoBounce` 探针 + 3 条变异自证守此行为。
  *   纯前端改动，无需重部署云函数。
+ * **`1.0.10.6`** = 课表默认视图统一为「只看自己所在的组」（2026-11-15，用户口径经弹窗确认）：
+ *   用户问「副班长账号首页查看的课表是不是包含 A 组和 B 组」，要求「所有人的账号都是一样，
+ *   仅显示自己所在的组的课次」。首页「今日/明日课次」早在 2026-10-10 已按本组过滤（无组只留全体课）；
+ *   会显示 A+B 的是**课表 tab 页**：`applyAuth` 写 `patch.viewGroup = ownGroup || 'ALL'`，
+ *   且 `_filterByGroup` 的 `if (!g || g === 'ALL') return courses` 把「无组」与「全部」混为一谈
+ *   ⇒ 无 A/B 组账号（含副班长 / 辅导员 / 超管）打开课表即见 A+B 两组课。
+ *   修法（口径：**只统一默认视图**，手动切换保留）：
+ *   ① 新增 `_defaultViewGroup(p)`：A/B 组 ⇒ 该组；无 A/B 组 ⇒ `''`（只看全体课）；**绝不返回 'ALL'**。
+ *   ② `applyAuth` 改为 `const ownGroup = this._defaultViewGroup(p);` 并直接 `patch.viewGroup = ownGroup;`，
+ *      去掉 `|| 'ALL'` 兜底；`_groupPicked` 守卫保留 ⇒ 弧形菜单「全部 / A / B」手动切换不动（四按钮不变）。
+ *   ③ `_filterByGroup` 拆三分支：'ALL' 全显（仅手动可达）、'A'/'B' 本组+全体、`''` 只全体课。
+ *   ④ data `viewGroup` 初值 `'A'` → `''`（首帧保守）；左下角标签无组时显示「全体课」，不再误显「A 组」。
+ *   ⑤ 新增门禁 `scripts/check-timetable-own-group.js`：vm 真加载两个方法体做 14 项断言 + 6 条变异自证
+ *      （无组回落 ALL / 旧过滤写法 / 写回 `|| 'ALL'` / 不调 `_defaultViewGroup` / 删「全部」按钮 / 标签回退，均须翻红）。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.10.5';
+const APP_VERSION = '1.0.10.6';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

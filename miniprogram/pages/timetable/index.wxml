@@ -232,7 +232,7 @@
       bindtouchend="onFabTouchEnd" bindtouchcancel="onFabTouchEnd"
       bindlongpress="onFabRadial">
       <app-icon name="grid" variant="brand" size="{{34}}" />
-      <text class="fab-menu-t">{{viewGroup === 'ALL' ? '全部' : (viewGroup === 'B' ? 'B 组' : 'A 组')}}</text>
+      <text class="fab-menu-t">{{viewGroup === 'ALL' ? '全部' : (viewGroup === 'B' ? 'B 组' : (viewGroup === 'A' ? 'A 组' : '全体课'))}}</text>
       <app-icon name="{{fabMenuOpen ? 'chevron-down' : 'chevron-up'}}" variant="gray" size="{{26}}" />
     </view>
     <radial-menu

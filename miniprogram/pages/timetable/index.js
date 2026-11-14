@@ -111,7 +111,9 @@ Page({
     headH: 72,          // 表头高（rpx）
     showScrollHint: false, // 仅在出现周末列（需要横向滚动）时提示
     tip: '',
-    viewGroup: 'A',     // 课表视图：仅看 A 组 / 仅看 B 组（含全体课）
+    // 课表视图：'A'/'B' = 全体课 + 该组课；'' = 无 A/B 组 ⇒ 只看全体课；'ALL' = 手动选「全部」（A+B 全显示）。
+    // ⚠️ 默认一律由 applyAuth 按账号自己的组下发，绝不把 'ALL' 当任何账号的默认值（2026-11-15 口径）。
+    viewGroup: '',
     /** 左下角入口（视图 + 临时调课合并）的展开态，v0.7.21 需求③ */
     fabMenuOpen: false,
     /** 右下角加课按钮是否可见（2026-10-15）：人人可见，但普通同学只能加个人选修课（限 2 门） */
@@ -238,12 +240,14 @@ Page({
       // canSwitchClass（周次条 / fab 菜单 / 空态 / 值日名单 classId）仍按 isCounselor || isSuper 放开，
       // 保证真实超管看本班时功能完整（能换周、能临时调课）；**分组默认不看它**（见下方 ownGroup）。
       const switched = !!(app && app.globalData && app.globalData.switched);
-      // 默认分组视图（2026-10-09 用户定「打开课表默认看自己所在的组」）：
-      //   · 自己 groupTag 是 A/B ⇒ 默认自己那组（A 组同学打开即见 A 组课）；
-      //   · 辅导员（groupTag='X'）或无组（超管/异常）⇒ 默认 'ALL'，
-      //     否则辅导员看多组班会「只显示一半」（问题③复发）。
-      // 手动选过组（_groupPicked）后不再被默认值覆盖。
-      const ownGroup = (p.groupTag === 'A' || p.groupTag === 'B') ? p.groupTag : '';
+      // 默认分组视图（2026-11-15 用户改口径「所有人的账号都是一样，仅显示自己所在的组的课次」）：
+      //   · 有 A/B 组 ⇒ 全体课 + 自己组课（班委/副班长不再因角色看到 A+B 两组）；
+      //   · 无 A/B 组（辅导员 'X' / 超管 / 未分组班委）⇒ '' = 只看全体课，
+      //     与首页「今日/明日课次」的 _filterSessions 口径一致；**绝不回落 'ALL'**（旧实现
+      //     正是 `ownGroup || 'ALL'` 让无组账号默认看到 A+B 两组课，用户实锤）。
+      //   · 'ALL'（A+B 全显示）只由用户手动点弧形菜单「全部」得到，不作为任何账号的默认。
+      // 手动选过组（_groupPicked）后不再被默认值覆盖（手动切换能力保留）。
+      const ownGroup = this._defaultViewGroup(p);
       const patch = {
         isAdmin: !!(app && app.isAdmin && app.isAdmin()),
         isSuper: isSuper,
@@ -251,7 +255,7 @@ Page({
         canSwitchClass: !!(firstCounselor || isSuper),
         showClassSwitch: !!(firstCounselor || (isSuper && switched))
       };
-      if (!this._groupPicked) patch.viewGroup = ownGroup || 'ALL';
+      if (!this._groupPicked) patch.viewGroup = ownGroup;
       this.setData(patch);
       // 右下角加课按钮可见性（人人可见个人选修课；管理员额外可加全班课次）
       this._recomputeFab();
@@ -381,8 +385,8 @@ Page({
   _afterClassPicked() {
     this._syncedWeek = 0;   // 换班强制重新同步（_syncFromCloud 按周去重，这里取消去重）
     this._dutyWeek = 0;     // 值日名单也要跟着换班重拉
-    // 默认分组由 applyAuth 统一决定（自己那组 / ALL）——这里**不要**再覆盖成 'ALL'，
-    // 否则会把「自己所在的组」又冲成全部（用户 2026-10-09 明确要默认看本组）。
+    // 默认分组由 applyAuth 统一决定（自己那组 / 无组时的「只看全体课」）——这里**不要**再覆盖成 'ALL'，
+    // 否则会把「自己所在的组」又冲成全部（用户 2026-11-15 明确要所有账号默认只看本组）。
     // 分支①（2026-10）：标记已启动 + 记录班级/身份，供 onShow 判断是否走本地缓存短路
     this._booted = true;
     this._bootedClassId = Number(this.data.viewClassId);
@@ -584,11 +588,31 @@ Page({
     return null;
   },
 
-  /** 按「分组视图」过滤：仅看所选组的分组课 + 全体课；'ALL' = 全体课 + A 组 + B 组全显示 */
+  /**
+   * 账号的默认分组视图（2026-11-15 用户定「所有人的账号都是一样，仅显示自己所在的组的课次」）。
+   * 抽成独立方法供门禁 `check-timetable-own-group.js` 真加载做行为断言。
+   *   · A/B 组 ⇒ 该组（含全体课）；
+   *   · 无 A/B 组（辅导员 'X'、超管、未分组班委）⇒ '' = 只看全体课。
+   * ⚠️ 绝不返回 'ALL'：'ALL' 只由用户手动切弧形菜单「全部」得到。
+   */
+  _defaultViewGroup(p) {
+    const tag = p && p.groupTag;
+    return (tag === 'A' || tag === 'B') ? tag : '';
+  },
+
+  /**
+   * 按「分组视图」过滤：
+   *   · 'A' / 'B' = 全体课 + 该组课；
+   *   · 'ALL'     = 手动选「全部」时的全班视图（A+B 都显示）——**仅手动可达**；
+   *   · ''        = 无组账号，只看全体课，绝不显示任何分组课。
+   * ⚠️ 旧实现 `if (!g || g === 'ALL') return courses` 把「无组」和「全部」混为一谈 ⇒
+   *    无组账号默认看到 A+B 两组课（副班长 / 辅导员 / 超管实锤），2026-11-15 拆分。
+   */
   _filterByGroup(courses) {
     const g = this.data.viewGroup;
-    if (!g || g === 'ALL') return courses;
-    return courses.filter(c => !c.groupScope || c.groupScope === g);
+    if (g === 'ALL') return courses;
+    if (g === 'A' || g === 'B') return courses.filter(c => !c.groupScope || c.groupScope === g);
+    return courses.filter(c => !c.groupScope);
   },
 
   /**
