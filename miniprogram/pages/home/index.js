@@ -1288,7 +1288,7 @@ Page({
     const seen = {};
     const out = [];
     visible.forEach(s => {
-      // ⚠️ 后端 `sessionsOnDate` 返回的对象**没有 classDate**（同一天���课次都在这一个数组里），
+      // ⚠️ 后端 `sessionsOnDate` 返回的对象**没有 classDate**（同一天的课次都在这一个数组里），
       //    所以判重键用 (节次, 课程名, 教室)。带上教室是为了「同名同节但不同教室」的两门课不被误合并。
       const room = util.fmtRoom(s.room);
       const key = [s.period || '', s.name || '', room].join('|');

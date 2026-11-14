@@ -188,7 +188,7 @@
 .nav-body { position: relative; z-index: 2; }
 
 /* ① 边缘折射：玻璃边缘把背景「折」进来的亮暗边
-   ⚠️ 2026-11-14 真机实测（五轮踩坑，这才��它一直看不见的原因）：
+   ⚠️ 2026-11-14 真机实测（五轮踩坑，这才找出它一直看不见的原因）：
       ① `.nav.m-glass::before`（**伪元素**）—— 实测整段不命中，只剩普通模糊。
       ② 真实节点 `.nav-edge` + **inset box-shadow** —— 同样不渲染。
       ③ 多层 background-image + background-size/position —— 整段被丢弃。
