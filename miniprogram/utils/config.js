@@ -251,8 +251,23 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      wxss 不得再有 `.nav-sheen` / `glassSheen` ⇒ 流光不许悄悄回来；变异自证相应改成
  *      「把流光带塞回来」必红。渐变百分比色标变异的锚点从 `.nav-sheen` 迁到 `.nav-edge`。
  *   纯前端改动，无需重部署云函数。
+ * **`1.0.10.5`** = 头像飞入转场取消 + 导航栏去暗边 + 弧形菜单弹性反馈（2026-11-15，用户三处反馈）：
+ *   ① **成员详情头像不再飞入**：用户要求「头像不用飞过去，直接显示在卡片里」。移除 `_flyMemberAvatar`
+ *      共享元素飞行（`seMode:'avatar'` 整段删）、`onMDetailClose` 改为直接收起详情卡（不再飞回列表），
+ *      同步删 `mdHideAvatar` 标志 / `.md-av-fly` 规则 / wxml 绑定；班级卡 → 成员页的 block 色块 FLIP 保留。
+ *   ② **导航栏去「黑边」**：1.0.10.3 移除镜面扫光带（`nav-sheen`）后，`.nav-edge` 仍残留深色 `border-bottom`
+ *      `rgba(40,54,86,.62)` + 渐变暗尾 `rgba(40,54,86,.34)`，浅色主题下显成一条暗带（用户报「上面黑黑的」）。
+ *      改为浅色发丝线 `rgba(229,230,235,.7)` + 渐变暗尾换透明（`104rpx` 锚点保留供 `check-nav-glass` 变异自证），
+ *      深色模式 `.t-dark .nav-edge` 底边也调成极淡 `rgba(255,255,255,.12)`；流光（sweep）本就在 1.0.10.3 删除。
+ *   ③ **课表弧形菜单悬停改弹性**：用户要求「手指滑到四个按钮其中一个上面，那个按钮放大弹一下，
+ *      移动开就缩小回原大小也弹一下」，实锤旧版「生硬扩大」。根因是 `.rm-item.hot .rm-btn` 只写死
+ *      `scale(1.14)` 而 `.rm-btn` 没有 `transition` ⇒ 加类/去类瞬间跳变。
+ *      修法：默认态（缩回）与 `.hot` 态（放大）各补一条 overshoot 贝塞尔过渡（y1 > 1），
+ *      两个方向都冲过头再回落；`prefers-reduced-motion` 下退成 120ms 光效、不缩放不弹。
+ *      `check-radial-menu.js` 新增 `hotSpring` / `reducedNoBounce` 探针 + 3 条变异自证守此行为。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.10.4';
+const APP_VERSION = '1.0.10.5';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

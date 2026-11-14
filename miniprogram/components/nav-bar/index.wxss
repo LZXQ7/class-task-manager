@@ -206,14 +206,14 @@
   z-index: 1;
   pointer-events: none;
   border-top: 4rpx solid rgba(255, 255, 255, 0.9);
-  border-bottom: 8rpx solid rgba(40, 54, 86, 0.62);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0rpx, rgba(255, 255, 255, 0) 44rpx, rgba(255, 255, 255, 0) 70rpx, rgba(40, 54, 86, 0.34) 104rpx);
+  border-bottom: 2rpx solid rgba(229, 230, 235, 0.7);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0rpx, rgba(255, 255, 255, 0) 44rpx, rgba(255, 255, 255, 0) 70rpx, rgba(255, 255, 255, 0) 104rpx);
   opacity: 0;
   transition: opacity .3s ease;
 }
 .t-dark .nav-edge {
   border-top-color: rgba(206, 222, 255, 0.55);
-  border-bottom-color: rgba(0, 0, 0, 0.55);
+  border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
 /* ② 镜面反射带（.nav-sheen）已整段删除

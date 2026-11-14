@@ -134,7 +134,7 @@
   flex-direction: column;
   align-items: center;
 }
-/* 详情卡里的头像外壳（固定 80rpx，供 ghost 精确量落点）：飞行期间隐藏，落地后显示 */
+/* 详情卡里的头像外壳（固定 80rpx）：头像直接显示在卡片里，无飞入转场 */
 .md-av {
   width: 80rpx;
   height: 80rpx;
@@ -147,7 +147,6 @@
   line-height: 44rpx;
   color: var(--text-1);
 }
-.md-av-fly { opacity: 0; }
 /* 操作按钮行：整行平分，与搜索框同一留白节奏（不再挤在搜索框右侧）
    下留白 12rpx + .mb-filters 上留白 16rpx = 与筛选胶囊共 28rpx 间隔（v0.7.32 问题④：
    原先只有 8rpx，两排贴在一起） */

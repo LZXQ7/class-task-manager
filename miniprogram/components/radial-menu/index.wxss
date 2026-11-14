@@ -51,6 +51,13 @@
   box-shadow: 0 10rpx 26rpx rgba(51, 112, 255, 0.32);
   font-size: 26rpx;
   color: #FFFFFF;
+  /* 🔴 手指滑过时的弹性反馈（2026-11-15 用户要求「放大弹一下、移开缩小也弹一下」）：
+     之前只在 .hot 里写死 scale(1.14)，这里没有 transition ⇒ 加类瞬间跳变（实锤「生硬扩大」）。
+     现在两条规则各带一条 overshoot 贝塞尔（y1 > 1）：
+       · 默认态这条管「手指移开 → 缩回」= 缩过头再归位（弹一下）
+       · .hot 那条管「手指滑上 → 放大」= 冲过头再回落（弹一下）
+     CSS transition 从当前值起步 ⇒ 手指快速滑过多个按钮时可半途改道、不会硬切。 */
+  transition: transform 300ms cubic-bezier(.34, 1.7, .64, 1), box-shadow 300ms ease, filter 300ms ease;
 }
 .rm-btn.long { font-size: 20rpx; }
 .rm-icon { font-size: 40rpx; line-height: 1; margin-bottom: 6rpx; }
@@ -61,6 +68,9 @@
   transform: scale(1.14);
   box-shadow: 0 14rpx 34rpx rgba(51, 112, 255, 0.45);
   filter: brightness(1.08);
+  /* 进入方向单独一条更饱满的回弹。⚠️ 不能只在默认态写：加 .hot 时
+     浏览器用的是**目标态**的 transition，漏写这条就只剩「生硬扩大」。 */
+  transition: transform 360ms cubic-bezier(.22, 1.62, .36, 1), box-shadow 360ms ease, filter 360ms ease;
 }
 
 /* 深色模式：品牌蓝在深底上略压暗，保证白字对比度 */
@@ -69,11 +79,15 @@
   box-shadow: 0 10rpx 26rpx rgba(0, 0, 0, 0.5);
 }
 
-/* 减弱动效：去掉位移与缩放，直接淡入 */
+/* 减弱动效：去掉位移与缩放，直接淡入；弹性也要去掉，只留短暂光效变化 */
 @media (prefers-reduced-motion: reduce) {
   .rm-item {
     transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(1);
     transition: opacity .12s ease;
   }
-  .rm-item.hot .rm-btn { transform: none; }
+  .rm-btn { transition: box-shadow .12s ease, filter .12s ease; }
+  .rm-item.hot .rm-btn {
+    transform: none;
+    transition: box-shadow .12s ease, filter .12s ease;
+  }
 }

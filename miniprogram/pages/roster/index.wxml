@@ -158,7 +158,7 @@
       <flip-detail flipped="{{mDetailFlipped}}" bind:flip="onMDetailFlip">
         <view slot="front">
           <view class="md-head">
-            <view id="md-av" class="md-av {{mdHideAvatar ? 'md-av-fly' : ''}}">
+            <view id="md-av" class="md-av">
               <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" />
             </view>
             <text class="md-name">{{mDetail.name}}</text>

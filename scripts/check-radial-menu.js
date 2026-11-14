@@ -7,6 +7,7 @@
  *   ② **手指拖到某个按钮上松开 = 点了那个按钮**。
  *   ③ **按住展开后直接松手（没拖到按钮）⇒ 四个按钮收回**。
  *   ④ 按钮是**圆形**、配色跟随整体；弧上**间距一致**、不出屏。
+ *   ⑤ 手指滑上/移开都要**弹一下**（放大、缩回双向 overshoot），减弱动效时不弹。
  *
  * 为什么不能只做静态正则：
  *   · 把 release() 的命中判定删掉 → 松手永远不选中，菜单也不收回（用户实锤）；
@@ -156,7 +157,32 @@ function behaviorProbes() {
 /* ============================================================
  * ③ 静态契约
  * ============================================================ */
+/** 从 wxss 里算出「双向弹性」与「减弱动效去弹性」两个探针。
+ *  静态断言和变异自证共用这一份实现，避免两处判定逻辑漂移。
+ *  🔴 背景：只在 .hot 写死 scale(1.14)、默认态没有 transition ⇒ 加类瞬间跳变，
+ *     用户实锤「生硬扩大」。所以两个方向都必须有 overshoot 贝塞尔。 */
+function springProbes(wxss) {
+  const btn = (/\.rm-btn\s*\{([^}]*)\}/.exec(wxss) || ['', ''])[1];
+  const hot = (/\.rm-item\.hot\s+\.rm-btn\s*\{([^}]*)\}/.exec(wxss) || ['', ''])[1];
+  // 必须是一条 transform 过渡，且贝塞尔 y1 > 1 ⇒ 有 overshoot（弹性）
+  const springOn = body => {
+    const m = /transition:\s*transform\s+[\d.]+ms\s+cubic-bezier\(\s*[\d.]+\s*,\s*([\d.]+)\s*,/.exec(body);
+    return !!m && Number(m[1]) > 1.05;
+  };
+  const at = wxss.indexOf('@media (prefers-reduced-motion: reduce)');
+  const reduced = at >= 0 ? wxss.slice(at) : '';
+  return {
+    // 放大（.hot 目标态）与缩回（默认态）各要弹一下
+    hotSpring: springOn(btn) && springOn(hot) && /transform:\s*scale\(/.test(hot),
+    // 减弱动效：去掉 overshoot，只留短光效；hot 不再缩放
+    reducedNoBounce: /\n\s*\.rm-btn\s*\{[^}]*transition:/.test(reduced) &&
+      !/cubic-bezier/.test(reduced) &&
+      /\.rm-item\.hot\s+\.rm-btn\s*\{[^}]*transform:\s*none/.test(reduced)
+  };
+}
+
 function staticProbes() {
+  const sp = springProbes(WXSS);
   return {
     // 圆形 + 品牌色（不要白色方块）
     roundBtn: /\.rm-btn\s*\{[^}]*border-radius:\s*50%/.test(WXSS) &&
@@ -176,7 +202,10 @@ function staticProbes() {
     // 组件要有 id（页面 selectComponent 要按 id 找）
     compId: /id="rm-fab"/.test(TT_WXML_RAW),
     // 组件方法齐
-    methods: /moveTo\s*\(/.test(JS) && /release\s*\(/.test(JS)
+    methods: /moveTo\s*\(/.test(JS) && /release\s*\(/.test(JS),
+    // 手指滑上/移开都要「弹一下」，且减弱动效时不弹
+    hotSpring: sp.hotSpring,
+    reducedNoBounce: sp.reducedNoBounce
   };
 }
 
@@ -256,6 +285,32 @@ const mutants = [
       const m = mutate(TT_JS_RAW, 'if (comp && comp.release) comp.release();', '');
       return m === null ? null : { ttjs: m };
     }
+  },
+  {
+    name: '默认态删掉 transition（又变回「生硬扩大 / 生硬缩回」）',
+    scope: 'wxss', expect: 'hotSpring',
+    build: () => {
+      const m = mutate(WXSS,
+        'transition: transform 300ms cubic-bezier(.34, 1.7, .64, 1), box-shadow 300ms ease, filter 300ms ease;',
+        'transition: none;');
+      return m === null ? null : { wxss: m };
+    }
+  },
+  {
+    name: '弹性曲线换成 ease-out（没有 overshoot，只是平滑放大）',
+    scope: 'wxss', expect: 'hotSpring',
+    build: () => {
+      const m = mutate(WXSS, 'cubic-bezier(.34, 1.7, .64, 1)', 'ease-out');
+      return m === null ? null : { wxss: m };
+    }
+  },
+  {
+    name: '减弱动效下仍保留弹性（reduced-motion 未去 overshoot）',
+    scope: 'wxss', expect: 'reducedNoBounce',
+    build: () => {
+      const m = mutate(WXSS, '.rm-btn { transition: box-shadow .12s ease, filter .12s ease; }', '');
+      return m === null ? null : { wxss: m };
+    }
   }
 ];
 
@@ -274,6 +329,9 @@ function runWith(over) {
   res.touchForward = /bindtouchmove="onFabTouchMove"/.test(ttwxml) &&
     /bindtouchend="onFabTouchEnd"/.test(ttwxml) &&
     /selectComponent\('#rm-fab'\)/.test(ttjs) && /comp\.moveTo/.test(ttjs) && /comp\.release/.test(ttjs);
+  const sp = springProbes(wxss);
+  res.hotSpring = sp.hotSpring;
+  res.reducedNoBounce = sp.reducedNoBounce;
   // 行为
   const inst = makeInst(desc, { x: 61, y: 715, items: ITEMS, radius: 140, spanStart: -105, spanEnd: 5 });
   inst._open();
@@ -305,6 +363,6 @@ mutants.forEach(mt => {
   check(r[mt.expect] === false, '变异被抓：' + mt.name);
 });
 
-console.log(failed === 0 ? '\nOK · 弧形菜单（长按展示 / 拖到按钮松手即选中 / 松手收回 / 圆形 / 间距一致）门禁全部通过'
+console.log(failed === 0 ? '\nOK · 弧形菜单（长按展示 / 拖到按钮松手即选中 / 松手收回 / 圆形 / 间距一致 / 悬停双向弹性）门禁全部通过'
   : '\nFAIL · 弧形菜单门禁 ' + failed + ' 项未通过');
 process.exit(failed === 0 ? 0 : 1);
