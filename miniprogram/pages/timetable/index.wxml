@@ -252,7 +252,7 @@
   <!-- 新增课次 FAB：人人可见，**一律是添加个人选修课**（仅自己可见，含超管 —— 2026-10-16 用户定口径）；
        !isCounselor 保留在 wxml（辅导员只看不改，门禁 check-timetable-local 逐入口点名守卫） -->
   <view data-pressable wx:if="{{fabShow && !isCounselor}}" class="fab" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFab">
-    <app-icon name="plus" variant="white" size="{{44}}" />
+    <text class="fab-plus">＋</text>
   </view>
 
   <!-- 课次详情 -->

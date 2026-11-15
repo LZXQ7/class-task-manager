@@ -88,7 +88,7 @@ function themeBlock(css, sel) {
 const LIGHT = themeBlock(app, '.t-light');
 const DARK = themeBlock(app, '.t-dark');
 const TOKENS = ['--nav-edge-fill', '--nav-edge-top', '--nav-edge-bottom', '--nav-line', '--nav-solid',
-  '--brand-glass', '--brand-glass-edge', '--brand-glass-shadow', '--tilt-ring', '--float-shadow-color'];
+  '--tilt-ring', '--float-shadow-color'];
 TOKENS.forEach((t) => {
   check(new RegExp('\\' + t + '\\s*:').test(LIGHT), '浅色定义了 ' + t);
   check(new RegExp('\\' + t + '\\s*:').test(DARK), '深色覆盖了 ' + t);

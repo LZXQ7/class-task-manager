@@ -234,22 +234,29 @@
   width: 96rpx;
   height: 96rpx;
   border-radius: 48rpx;
-  /* 🔴 2026-11-15 用户口径：「课程表页右边加号，也改为玻璃效果」。
-     原来 0.84 的品牌蓝几乎等于实心块，和弧形菜单那四个圆按钮也不是一套观感。
-     现在两者**共用同一组令牌**（--brand-glass / --brand-glass-edge / --brand-glass-shadow，
-     定义在 app.wxss 的 .t-light / .t-dark 里）⇒ 深浅色自动跟着主题走，
-     也不再需要 `.t-dark .fab` 这种页面级覆盖。 */
-  background: var(--brand-glass, rgba(51, 112, 255, 0.66));
+  /* 🔴 2026-11-15 用户口径：「课程表页右边加号，也改为玻璃效果」→ 后续追加
+     「改成和底栏一样的玻璃效果」。所以这里直接引用 custom-tab-bar 的
+     `--tabbar-bg / -edge / -shadow / -highlight`（与弧形菜单四个圆按钮同一组），
+     深浅色自动跟随主题，不再需要 `.t-dark .fab` 这种页面级覆盖。
+     ⚠️ 中性玻璃上白色「＋」会消失 ⇒ 内容改成品牌色文字（见 .fab-plus）。 */
+  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
-  border: 1rpx solid var(--brand-glass-edge, rgba(255, 255, 255, 0.45));
+  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.6));
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--brand-glass-shadow, 0 10rpx 26rpx rgba(51, 112, 255, 0.28));
+  box-shadow: var(--tabbar-shadow, 0 8rpx 28rpx rgba(29,33,41,0.14)), var(--tabbar-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.95));
   z-index: 700;
 }
 .fab:active { filter: brightness(.92); }
+/* 「＋」不再用图标：图标库里 plus 只有 white 变体，放在浅色玻璃上会看不见 */
+.fab-plus {
+  font-size: 56rpx;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--brand, #3370FF);
+}
 
 /* 临时调课：左下角胶囊（超管）。与右侧「＋」分列两边，互不遮挡。 */
 /* ---------- 左下角视图入口（v0.7.21 需求③） ----------

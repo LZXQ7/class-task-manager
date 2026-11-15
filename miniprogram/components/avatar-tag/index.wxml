@@ -3,7 +3,7 @@
   <image
     wx:if="{{showImg}}"
     class="avatar-img {{ring ? 'avatar-ring' : ''}}"
-    style="width:{{size}}rpx;height:{{size}}rpx;{{ring ? 'box-shadow:0 0 0 ' + ringWidth + 'rpx #FFFFFF' : ''}}"
+    style="width:{{size}}rpx;height:{{size}}rpx"
     src="{{src}}"
     mode="aspectFill"
     lazy-load="{{true}}"
@@ -12,7 +12,7 @@
   <view
     wx:else
     class="avatar-circle {{ring ? 'avatar-ring' : ''}}"
-    style="width:{{size}}rpx;height:{{size}}rpx;background:{{bg}};{{ring ? 'box-shadow:0 0 0 ' + ringWidth + 'rpx #FFFFFF' : ''}}"
+    style="width:{{size}}rpx;height:{{size}}rpx;background:{{bg}}"
   >
     <text class="avatar-char" style="font-size:{{fs}}rpx;line-height:{{size}}rpx;color:{{fg}}">{{char}}</text>
   </view>

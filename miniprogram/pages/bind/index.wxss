@@ -176,7 +176,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--fill-soft, #F7F8FA);
 }
 .agree-box.on {
   background: var(--brand-light);
@@ -328,7 +328,7 @@
 .picked-card {
   margin: 16rpx 32rpx;
   padding: 24rpx;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--fill-soft, #F7F8FA);
   border: 2rpx solid var(--bg-fill);
   border-radius: 40rpx;
   display: flex;

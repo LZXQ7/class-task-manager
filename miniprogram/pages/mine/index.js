@@ -23,12 +23,15 @@ const AI_PROVIDERS = {
 
 /** 数据新鲜度窗口：切换回「我的」时，只要在这个窗口内拉过数据，就直接复用、不再发起请求 */
 
+/* 🔴 2026-11-15：换班状态色改**主题令牌**（理由与 utils/util.js 的 DUTY_STATUS 同）。
+ * 这组值由 `_loadApps` 写成 `statusBg / statusFg`，wxml 内联到 `.ap-status` 上 ——
+ * 写死 hex 的话深色模式永远是浅底深字的一块浅色胶囊。浅色值与原来逐值相同。 */
 const SWAP_STATUS = {
-  PENDING_PEER: { text: '待对方确认', bg: '#FFF7E8', fg: '#FF7D00' },
-  PENDING_ADMIN: { text: '待管理员确认', bg: '#F0F5FF', fg: '#3370FF' },
-  DONE: { text: '已完成', bg: '#E8FFEA', fg: '#00B42A' },
-  REJECTED: { text: '已拒绝', bg: '#FFECE8', fg: '#F53F3F' },
-  CANCELLED: { text: '已撤销', bg: '#F2F3F5', fg: '#86909C' }
+  PENDING_PEER: { text: '待对方确认', bg: 'var(--warning-bg, #FFF7E8)', fg: 'var(--warning, #FF7D00)' },
+  PENDING_ADMIN: { text: '待管理员确认', bg: 'var(--brand-light, #F0F5FF)', fg: 'var(--brand, #3370FF)' },
+  DONE: { text: '已完成', bg: 'var(--success-bg, #E8FFEA)', fg: 'var(--success, #00B42A)' },
+  REJECTED: { text: '已拒绝', bg: 'var(--danger-bg, #FFECE8)', fg: 'var(--danger, #F53F3F)' },
+  CANCELLED: { text: '已撤销', bg: 'var(--bg-fill, #F2F3F5)', fg: 'var(--text-3, #86909C)' }
 };
 const REASON_TEXT = { COURSE: '有课冲突', SICK: '身体不适', INTERN: '实习外出', OTHER: '其他' };
 

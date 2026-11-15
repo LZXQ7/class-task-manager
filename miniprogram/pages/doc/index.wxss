@@ -34,7 +34,7 @@
 .dc-sec {
   margin: 16rpx 32rpx 24rpx;
   padding: 28rpx 32rpx;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--fill-soft, #F7F8FA);
   border: 2rpx solid var(--bg-fill);
   border-radius: 40rpx;
 }

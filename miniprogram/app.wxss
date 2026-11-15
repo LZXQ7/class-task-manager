@@ -154,11 +154,11 @@ page {
   --nav-line: rgba(255, 255, 255, 0.6);
   --nav-solid: rgba(255, 255, 255, 0.92);
 
-  /* ---- 品牌蓝玻璃（课表「＋」与弧形菜单按钮共用同一配方）----
-   * 用户口径（2026-11-15）：这两处不要「实心蓝圆块」，要和全站其它面同一套玻璃语汇。 */
-  --brand-glass: rgba(51, 112, 255, 0.66);
-  --brand-glass-edge: rgba(255, 255, 255, 0.45);
-  --brand-glass-shadow: 0 10rpx 26rpx rgba(51, 112, 255, 0.28);
+  /* ---- 圆形浮层按钮 = 与底栏同一套玻璃（2026-11-15 用户口径）----
+   * 课表「＋」与弧形菜单四个圆形项**直接引用 --tabbar-* 令牌**，不另立一套：
+   * 用户要求「改成和底栏一样的玻璃效果」，共用令牌才能保证真的「一样」。
+   * （1.0.8.42 曾加过 `--brand-glass / -edge / -shadow` 三件套做「品牌蓝玻璃」，
+   *   1.0.8.43 按新口径作废并删除 —— 留着就是死令牌。） */
 
   /* ---- 3D 卡描边（tilt-card）：同上，组件内不能写 .t-dark 后代 ---- */
   --tilt-ring: rgba(154, 163, 178, 0.5);
@@ -289,10 +289,7 @@ page {
   --nav-line: rgba(200, 215, 245, 0.14);
   --nav-solid: rgba(28, 32, 39, 0.96);
 
-  /* 品牌蓝玻璃：深底上降 alpha、边缘换成冷白，白字仍可读 */
-  --brand-glass: rgba(77, 139, 255, 0.48);
-  --brand-glass-edge: rgba(200, 215, 245, 0.22);
-  --brand-glass-shadow: 0 10rpx 26rpx rgba(0, 0, 0, 0.5);
+  /* 圆形浮层按钮不另立令牌：直接用上面的 --tabbar-*（与底栏同一套玻璃），见浅色段注释 */
 
   --tilt-ring: rgba(170, 186, 214, 0.34);
 
@@ -401,7 +398,7 @@ button::after { border: none; }
 @media (prefers-reduced-transparency: reduce) {
   .card,
   .card-bordered {
-    background: #FFFFFF;
+    background: var(--bg-card, #FFFFFF);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -825,21 +822,21 @@ button::after { border: none; }
   align-items: baseline;
   margin-bottom: 12rpx;
   font-size: 26rpx;
-  color: #4E5969;
+  color: var(--text-2, #4E5969);
 }
 .np-opt {
   margin-left: 10rpx;
   font-size: 22rpx;
-  color: #86909C;
+  color: var(--text-3, #86909C);
 }
 
 .np-input {
   height: 92rpx;
   padding: 0 24rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft, #F7F8FA);
   border-radius: 32rpx;
   font-size: 28rpx;
-  color: #1D2129;
+  color: var(--text-1, #1D2129);
   box-sizing: border-box;
 }
 .np-input-2 { margin-top: 12rpx; }
@@ -847,26 +844,27 @@ button::after { border: none; }
   display: block;
   margin-top: 12rpx;
   font-size: 24rpx;
-  color: #86909C;
+  color: var(--text-3, #86909C);
   line-height: 32rpx;
 }
 .np-textarea {
   width: 100%;
   height: 240rpx;
   padding: 22rpx 24rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft, #F7F8FA);
   border-radius: 32rpx;
   font-size: 28rpx;
   line-height: 44rpx;
-  color: #1D2129;
+  color: var(--text-1, #1D2129);
   box-sizing: border-box;
 }
 
 /* 「指定成员」的搜索 + 名单，整体收进一块浅底面板，跟上面的输入控件区分开 */
 .np-panel {
   padding: 20rpx 20rpx 8rpx;
-  background: #F5F6F8;
-  border: 2rpx solid #F2F3F5;
+  /* 令牌化（2026-11-15）：深色下 --bg-page(#0E1116) 比 --bg-card(#1C2027) 更深 ⇒ 仍是「凹陷面板」 */
+  background: var(--bg-page, #F5F6F8);
+  border: 2rpx solid var(--bg-fill, #F2F3F5);
   border-radius: 32rpx;
 }
 /* §42 隔离提示：picker 顶部说明「测试账号与辅导员不接收」—— 避免用户疑惑「为什么看不到 XX」 */
@@ -874,7 +872,7 @@ button::after { border: none; }
   padding: 0 8rpx 16rpx;
   font-size: 22rpx;
   line-height: 32rpx;
-  color: #86909C;
+  color: var(--text-3, #86909C);
 }
 .np-search {
   display: flex;
@@ -882,7 +880,7 @@ button::after { border: none; }
   align-items: center;
   height: 72rpx;
   padding: 0 20rpx;
-  background: #FFFFFF;
+  background: var(--bg-card, #FFFFFF);
   border-radius: 999rpx;
 }
 .np-search-input {
@@ -890,7 +888,7 @@ button::after { border: none; }
   min-width: 0;
   margin-left: 12rpx;
   font-size: 26rpx;
-  color: #1D2129;
+  color: var(--text-1, #1D2129);
 }
 .np-picked { margin-left: 8rpx; font-size: 24rpx; color: #3370FF; }
 /* 一键选组（需求④）：A / B / 清空 */
@@ -912,7 +910,7 @@ button::after { border: none; }
   background: #DCE8FF;
   border-radius: 999rpx;
 }
-.np-abtn.ghost { color: #4E5969; background: #FFFFFF; border: 2rpx solid #E5E6EB; }
+.np-abtn.ghost { color: var(--text-2, #4E5969); background: var(--bg-card, #FFFFFF); border: 2rpx solid var(--line-1, #E5E6EB); }
 .np-abtn.on { color: #FFFFFF; background: #3370FF; padding: 0 34rpx; }
 .np-abtn-hover { opacity: 0.7; }
 /* 小图形网格：每个成员一个头像圆点（显示序号），比长列表紧凑得多（需求④）。
@@ -942,13 +940,13 @@ button::after { border: none; }
    所以它只吃 .chip-motion.on 的轻微顶起（scale 1.04），不参与「挤开」——
    强行让 50+ 个格子逐个改宽度会整片重排，低端机点一下卡一下。 */
 .np-cell.on { background: #DCE8FF; }
-.np-cell-hover { background: #F2F3F5; }
+.np-cell-hover { background: var(--bg-fill, #F2F3F5); }
 .np-cell-name {
   margin-top: 8rpx;
   max-width: 96rpx;
   font-size: 20rpx;
   line-height: 26rpx;
-  color: #4E5969;
+  color: var(--text-2, #4E5969);
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -960,12 +958,12 @@ button::after { border: none; }
   flex-direction: row;
   align-items: center;
   padding: 24rpx;
-  background: #F7F8FA;
+  background: var(--fill-soft, #F7F8FA);
   border-radius: 32rpx;
 }
 .np-switch-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.np-switch-title { font-size: 28rpx; color: #1D2129; }
-.np-switch-sub { margin-top: 6rpx; font-size: 22rpx; line-height: 32rpx; color: #86909C; }
+.np-switch-title { font-size: 28rpx; color: var(--text-1, #1D2129); }
+.np-switch-sub { margin-top: 6rpx; font-size: 22rpx; line-height: 32rpx; color: var(--text-3, #86909C); }
 
 .np-actions { display: flex; flex-direction: row; margin-top: 40rpx; }
 .np-btn {
@@ -978,7 +976,7 @@ button::after { border: none; }
   /* 发布/取消按钮按下反馈（v0.7.14 · #4/#5①）：缩放 + 淡入回弹，点下去「实」一点 */
   transition: opacity .1s ease, transform .1s ease;
 }
-.np-btn.ghost { flex: 0 0 200rpx; background: #F2F3F5; color: #4E5969; margin-right: 16rpx; }
+.np-btn.ghost { flex: 0 0 200rpx; background: var(--bg-fill, #F2F3F5); color: var(--text-2, #4E5969); margin-right: 16rpx; }
 .np-btn.primary { background: #3370FF; color: #FFFFFF; font-weight: 600; }
 .np-btn.primary.off { background: #A8C1FF; }
 .np-btn:active { opacity: 0.85; transform: scale(0.975); }
@@ -997,7 +995,7 @@ button::after { border: none; }
   height: 160rpx;
   border-radius: 32rpx;
   overflow: hidden;
-  background: #F2F3F5;
+  background: var(--bg-fill, #F2F3F5);
 }
 .np-img-pic { width: 100%; height: 100%; display: block; }
 .np-img-x {
@@ -1017,8 +1015,8 @@ button::after { border: none; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 2rpx dashed #C9CDD4;
-  color: #86909C;
+  border: 2rpx dashed var(--line-1, #C9CDD4);
+  color: var(--text-3, #86909C);
   font-size: 22rpx;
   gap: 4rpx;
 }
@@ -1047,8 +1045,8 @@ button::after { border: none; }
    app.wxss 的 .chip-motion 负责过渡 padding（邻项才会跟着让位），
    这里负责给出**变宽后的目标值**。只加 class 不给目标值 = 宽度没变 = 动画看不见。 */
 .np-cls.on { color: #FFFFFF; background: #3370FF; padding: 0 34rpx; }
-.np-cls.ghost { color: #4E5969; background: #F2F3F5; }
-.np-cls-tip { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: #86909C; }
+.np-cls.ghost { color: var(--text-2, #4E5969); background: var(--bg-fill, #F2F3F5); }
+.np-cls-tip { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: var(--text-3, #86909C); }
 /* 「按职位」预设职位：一键选择的圆角 chip（与 .np-cls 同刻度，蓝底浅色） */
 .np-chips {
   display: flex;
@@ -1069,7 +1067,7 @@ button::after { border: none; }
 }
 /* 同 .np-cls.on：变宽的目标值（0 22rpx → 0 32rpx） */
 .np-chip.on { color: #FFFFFF; background: #3370FF; padding: 0 32rpx; }
-.np-pos-tip { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: #86909C; }
+.np-pos-tip { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: var(--text-3, #86909C); }
 
 /* ============================================================
  * 11 项动效 · 全局 CSS 类动效（v1.0.9.0）

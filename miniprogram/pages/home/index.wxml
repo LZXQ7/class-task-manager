@@ -135,7 +135,7 @@
                 <text wx:if="{{item.noteCount}}" class="pin-cnt">{{item.noteCount}}</text>
               </view>
               <text class="pin-cell-name">{{item.name}}</text>
-              <text wx:if="{{item.className}}" class="pin-cell-cls">{{item.className}}</text>
+              <text wx:if="{{item.clsShort || item.className}}" class="pin-cell-cls">{{item.clsShort || item.className}}</text>
             </view>
           </view>
         </block>

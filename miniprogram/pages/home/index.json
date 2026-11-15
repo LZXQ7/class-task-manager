@@ -1,6 +1,5 @@
 {
   "navigationStyle": "custom",
-  "backgroundColor": "#F5F6F8",
   "initialRenderingCache": "static",
   "usingComponents": {
     "app-icon": "../../components/app-icon/index",

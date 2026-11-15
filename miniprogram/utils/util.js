@@ -140,14 +140,25 @@ function avatarColor(seed) {
 /* ---------------- 值日状态 → 文案 / 配色 ----------------
  * 本工具只做值日提醒（不打卡），所以文案是「待值日 / 已结束」这类排期口径，
  * 而不是「待完成 / 待补录」这类待办口径。 */
+/**
+ * 🔴 2026-11-15：色值改成**主题令牌**（原来是写死 hex）。
+ * `status-pill` 组件用 `style="color:{{fg}};background:{{bg}}"` 内联渲染，
+ * 写死 hex 意味着深色模式下永远是「浅底深字」的一块浅色胶囊 —— 与页面完全不同色系。
+ * 这里换成 `var(--token, 浅色兜底)`：**浅色值与原来逐值相同**（零视觉变化），
+ * 深色自动翻成 `.t-dark` 里那份。令牌会继承进组件，内联 style 里写 var() 是合法且生效的
+ * （nav-bar 的 `bg: 'var(--glass-bg-strong)'` 是同一套做法）。
+ * ⚠️ 这里**不能**用 `--success` / `--warning` 这类语义色当 **solid 背景**用：
+ *    它们在深色下是「提亮后的浅色」（为了让文字压在深底上可读），拿去做实心底 + 白字会糊。
+ *    目前 `status-pill` 的 solid 分支全站无人使用，故不受影响；将来要用需另加令牌。
+ */
 const DUTY_STATUS = {
-  PENDING: { text: '待值日', color: '#86909C', bg: '#F2F3F5' },
-  ONGOING: { text: '进行中', color: '#3370FF', bg: '#F0F5FF' },
-  DONE: { text: '已值日', color: '#00B42A', bg: '#E8FFEA' },
-  LEAVE: { text: '已请假', color: '#FF7D00', bg: '#FFF7E8' },
-  SWAPPED_OUT: { text: '已换出', color: '#7C5CFF', bg: '#F3F0FF' },
-  SWAPPED: { text: '已换出', color: '#7C5CFF', bg: '#F3F0FF' },
-  EXPIRED: { text: '已结束', color: '#86909C', bg: '#F2F3F5' }
+  PENDING: { text: '待值日', color: 'var(--text-3, #86909C)', bg: 'var(--bg-fill, #F2F3F5)' },
+  ONGOING: { text: '进行中', color: 'var(--brand, #3370FF)', bg: 'var(--brand-light, #F0F5FF)' },
+  DONE: { text: '已值日', color: 'var(--success, #00B42A)', bg: 'var(--success-bg, #E8FFEA)' },
+  LEAVE: { text: '已请假', color: 'var(--warning, #FF7D00)', bg: 'var(--warning-bg, #FFF7E8)' },
+  SWAPPED_OUT: { text: '已换出', color: 'var(--purple, #7C5CFF)', bg: 'var(--purple-bg, #F3F0FF)' },
+  SWAPPED: { text: '已换出', color: 'var(--purple, #7C5CFF)', bg: 'var(--purple-bg, #F3F0FF)' },
+  EXPIRED: { text: '已结束', color: 'var(--text-3, #86909C)', bg: 'var(--bg-fill, #F2F3F5)' }
 };
 function dutyStatus(key) {
   return DUTY_STATUS[key] || DUTY_STATUS.PENDING;
@@ -419,6 +430,14 @@ const MAJOR_RULES = [
   ['小学教育', 0], ['小教', 0],
   ['英语', 1]
 ];
+/**
+ * 专业全称 → 显示简称（**只给窄格用**，见 shortClassLabel 的注释）。
+ * ⚠️ 顺序即优先级，长名必须在前（`商务英语` 放在 `英语` 前面，否则会被截成「商英英语…」）。
+ * ⚠️ 没在表里的专业**保持全称**：宁可省略号截断，也不要自己编一个用户没认可的简称。
+ */
+const MAJOR_ABBR = [
+  ['小学教育', '小教']
+];
 function classNameOf(c) {
   return String((c && (c.name || c.className)) || '');
 }
@@ -440,6 +459,39 @@ function sortClasses(list) {
     if (na !== nb) return na - nb;
     return an < bn ? -1 : (an > bn ? 1 : 0);
   });
+}
+
+/**
+ * 班级名「显示用简称」（2026-11-15 用户口径）。
+ * ------------------------------------------------------------
+ * 原话：「示例专业x班改为小教x班，专升本一律不显示专升本，
+ *        若是本科则显示本，例如小学教育（本科）/ 小学教育本科，则显示小教（本）x班」。
+ *
+ * 三条规则：
+ *   ① `（专升本）` / `专升本` 一律**整段删掉** —— 专升本在本校是默认学制，写出来只占位置；
+ *   ② `（本科）` / `本科` → `（本）`，保留「本科」这个区分信息；
+ *   ③ 专业简称：小学教育 → 小教（**唯一真源**，别在页面里另写一份）。
+ *
+ * ⚠️ ①必须在②之前：`专升本` 三个字里含 `本科`，顺序反了会先被替换成 `（本）`，
+ *    得到「小教（本）x班」—— 正是用户要求「专升本不要显示」要避免的结果。
+ * ⚠️ 只用于**窄格显示**（首页「关注的学生」那排小字）。班级管理 / 通知标题这类
+ *    有整行宽度的位置仍用全名，不要全局替换 —— 用户认可全名在那里更好认。
+ *
+ * @param {string} name 班级全名，如「示例专业B1班」
+ * @returns {string} 简称，如「示例班级C」/「小教（本）示例班级C」
+ */
+function shortClassLabel(name) {
+  let s = String(name || '').replace(/\s+/g, '');
+  if (!s) return '';
+  s = s.replace(/[（(]专升本[）)]/g, '').replace(/专升本/g, '');
+  s = s.replace(/[（(]本科[）)]/g, '（本）').replace(/本科/g, '（本）');
+  for (let i = 0; i < MAJOR_ABBR.length; i++) {
+    if (s.indexOf(MAJOR_ABBR[i][0]) === 0) {
+      s = MAJOR_ABBR[i][1] + s.slice(MAJOR_ABBR[i][0].length);
+      break;
+    }
+  }
+  return s;
 }
 
 /**
@@ -487,6 +539,9 @@ module.exports = {
    *    而调用方又挂在 `.catch(()=>{})` 后面，异常被静默吞掉 ⇒ 班级名恒为空、页面显示「未绑定班级」。
    *    同类事故（fee 页 setData 写错变量名被 catch 吞）同源，见 MEMORY「吞异常」条目。 */
   classNameOf,
+  /* 2026-11-15：班级名显示简称（专升本去掉 / 本科→（本）/ 小学教育→小教）。
+   * ⚠️ 同 classNameOf 那条教训 —— 新增方法必须同步进 exports，否则调用处拿到 undefined。 */
+  shortClassLabel,
   toast, confirm, confirmStrict, throttleTap, randPath, pad, roleTag, POSITIONS, GRANTED_POSITIONS,
   isDemo, isTrial, isReadonly, readonlyBlocked,
   feeRights

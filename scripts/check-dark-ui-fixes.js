@@ -18,8 +18,8 @@
  *      （否则白光的直角从卡片圆角外侧漏出来，就是「卡片周围一圈白光」）。
  *
  * ④ **圆形浮层按钮统一玻璃** —— 课表「＋」与弧形菜单四个圆形项共用
- *    `--brand-glass / --brand-glass-edge / --brand-glass-shadow` 三个令牌。
- *    组件里不许再写实心渐变（`linear-gradient(140deg, #5A97FF …)`）。
+ *    底栏那套 `--tabbar-bg / -edge / -shadow / -highlight` 令牌（用户 1.0.8.43 口径：
+ *    「改成和底栏一样的玻璃效果」）。组件里不许再写实心渐变。
  *
  * 用法：node scripts/check-dark-ui-fixes.js
  */
@@ -46,7 +46,8 @@ const F = {
   ssWxss: 'miniprogram/components/spring-scroll/index.wxss',
   tiltWxss: 'miniprogram/components/tilt-card/index.wxss',
   rmWxss: 'miniprogram/components/radial-menu/index.wxss',
-  ttWxss: 'miniprogram/pages/timetable/index.wxss'
+  ttWxss: 'miniprogram/pages/timetable/index.wxss',
+  ttWxml: 'miniprogram/pages/timetable/index.wxml'
 };
 const SRC = {};
 Object.keys(F).forEach((k) => { SRC[k] = read(F[k]); });
@@ -91,12 +92,19 @@ function evalAll(s) {
     glareStatic: glare.length > 0 && !/animation\s*:/.test(glare),
     glareRounded: /border-radius\s*:\s*inherit/.test(glare),
     noGlareKeyframes: !/tgGlareBreath/.test(stripCss(s.tiltWxss)),
-    // ④ 圆形按钮玻璃
-    /* ⚠️ 必须锚到 `background:` 上：`--brand-glass` 是 `--brand-glass-edge` / `-shadow` 的
-       前缀，只匹配前缀的话「背景改回实心蓝」也照样命中（本门禁第一次写就这样假通过过）。 */
-    rmGlass: /background:\s*var\(--brand-glass\b/.test(rmBtn) && !/linear-gradient\(140deg/.test(rmBtn),
+    // ④ 圆形浮层按钮 = 与底栏同一套玻璃（1.0.8.43 用户口径）
+    /* ⚠️ 必须锚到 `background:` 上：`--tabbar-bg` 与 `--tabbar-edge` / `--tabbar-shadow` 同前缀，
+       只匹配前缀的话「背景改回实心蓝」也照样命中（本门禁第一次写就这样假通过过）。 */
+    rmGlass: /background:\s*var\(--tabbar-bg\b/.test(rmBtn) && !/linear-gradient\(140deg/.test(rmBtn),
     rmFallbacks: /@supports not \(\(backdrop-filter/.test(s.rmWxss) && /prefers-reduced-transparency/.test(s.rmWxss),
-    fabGlass: /background:\s*var\(--brand-glass\b/.test(fab)
+    /* 底栏玻璃是中性底 ⇒ 文字必须转品牌色。留着 `color: #FFFFFF` 就是白字压白玻璃，看不见。 */
+    rmBrandText: /color:\s*var\(--brand\b/.test(rmBtn),
+    fabGlass: /background:\s*var\(--tabbar-bg\b/.test(fab),
+    /* 课表「＋」不再用图标：图标库里 plus 只有 white 变体，浅色玻璃上会消失 ⇒ 改成品牌色文字。
+       wxss 有 .fab-plus 规则 + wxml 用 <text class="fab-plus">，两边都要对得上。 */
+    fabPlusText: /\.fab-plus\s*\{[^}]*color:\s*var\(--brand\b/.test(stripCss(s.ttWxss))
+      && /<text class="fab-plus">/.test(stripXml(s.ttWxml))
+      && !/name="plus"/.test(stripXml(s.ttWxml))
   };
 }
 
@@ -119,10 +127,12 @@ check(S.glareStatic, '.tg-glare 不带 animation');
 check(S.glareRounded, '.tg-glare 写了 border-radius: inherit（否则直角从圆角外漏出白光）');
 check(S.noGlareKeyframes, 'tgGlareBreath 关键帧已删除');
 
-console.log('\n── ④ 圆形浮层按钮统一玻璃');
-check(S.rmGlass, '弧形菜单 .rm-btn 用 var(--brand-glass)，不再实心渐变');
+console.log('\n── ④ 圆形浮层按钮 = 与底栏同一套玻璃');
+check(S.rmGlass, '弧形菜单 .rm-btn 用 var(--tabbar-bg)（不再是实心渐变 / 品牌玻璃）');
+check(S.rmBrandText, '弧形菜单按钮文字转品牌色（中性玻璃上白字看不见）');
 check(S.rmFallbacks, 'radial-menu 补了 @supports not + prefers-reduced-transparency 两条降级');
-check(S.fabGlass, '课表 .fab 用 var(--brand-glass)（与弧形菜单同一组令牌）');
+check(S.fabGlass, '课表 .fab 用 var(--tabbar-bg)（与底栏、弧形菜单同一组令牌）');
+check(S.fabPlusText, '课表「＋」是品牌色文字而不是 plus 图标（图标库只有 white 变体）');
 
 /* ---------------- 变异自证 ---------------- */
 console.log('\n── ⑤ 变异自证（改坏 → 对应契约必须翻红）');
@@ -141,11 +151,17 @@ const MUT = [
     from: '  border-radius: inherit;\n  pointer-events: none;',
     to: '  border-radius: inherit;\n  pointer-events: none;\n  animation: tgGlareBreath 4.2s ease-in-out infinite;' },
   { name: '弧形菜单按钮改回实心蓝渐变', file: 'rmWxss', probe: 'rmGlass',
-    from: '  background: var(--brand-glass, rgba(51, 112, 255, 0.66));',
+    from: '  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));',
     to: '  background: linear-gradient(140deg, #5A97FF 0%, #3370FF 100%);' },
+  { name: '弧形菜单按钮文字又写死白色', file: 'rmWxss', probe: 'rmBrandText',
+    from: '  color: var(--brand, #3370FF);',
+    to: '  color: #FFFFFF;' },
   { name: '课表加号改回实心蓝', file: 'ttWxss', probe: 'fabGlass',
-    from: '  background: var(--brand-glass, rgba(51, 112, 255, 0.66));\n  -webkit-backdrop-filter: blur(24px) saturate(180%);',
-    to: '  background: rgba(51,112,255,0.84);\n  -webkit-backdrop-filter: blur(24px) saturate(180%);' }
+    from: '  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));',
+    to: '  background: rgba(51,112,255,0.84);' },
+  { name: '课表「＋」改回 white 图标（浅色玻璃上会消失）', file: 'ttWxml', probe: 'fabPlusText',
+    from: '<text class="fab-plus">＋</text>',
+    to: '<app-icon name="plus" variant="white" size="{{44}}" />' }
 ];
 
 MUT.forEach((mu) => {

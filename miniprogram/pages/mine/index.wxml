@@ -197,7 +197,9 @@
             提交于 {{item.createdAt}} · {{item.reasonText || '其他'}}
           </view>
         </view>
-        <view class="ap-status" style="color:{{item.statusFg || '#86909C'}};background:{{item.statusBg || '#F2F3F5'}}">
+        <!-- ⚠️ 颜色值全部由 JS（SWAP_STATUS）算好，wxml 里只做兜底，**不要**在这里写 var(--x)：
+       WXML 表达式里出现 `var(` 会被 check-wxml 判死（表达式不支持函数调用，运行期静默失效）。 -->
+  <view class="ap-status" style="color:{{item.statusFg || '#86909C'}};background:{{item.statusBg || '#F2F3F5'}}">
           {{item.statusText || '已撤销'}}
         </view>
         <!-- 换班的确认权在生活委员：成员只能撤销自己的申请；超管在这里也能直接拍板 -->

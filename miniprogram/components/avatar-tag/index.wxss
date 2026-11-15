@@ -18,6 +18,14 @@
   border-radius: 999rpx;
   background: var(--bg-fill);
 }
+/* 叠放时的描边（2026-11-15）：原来由 wxml 内联 `box-shadow: 0 0 0 Nrpx #FFFFFF` 写死白圈 ——
+   深色模式下头像周围会亮出一圈白光。改成类 + 令牌（深色 = 卡片底色）。
+   ⚠️ 不能用内联 `var()`：WXML 表达式里出现 `var(` 会被 check-wxml 判死（表达式不支持函数调用）。
+   代价是宽度固定 3rpx（= ringWidth 的默认值）；全站至今没有任何地方传 `ring`，
+   真要动态宽度时改由 JS 算好整条 box-shadow 字符串再绑，别在 wxml 里拼函数。 */
+.avatar-ring {
+  box-shadow: 0 0 0 3rpx var(--bg-card, #FFFFFF);
+}
 .avatar-char {
   font-weight: 600;
   text-align: center;

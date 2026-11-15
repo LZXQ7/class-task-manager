@@ -1,6 +1,5 @@
 {
   "navigationStyle": "custom",
-  "backgroundColor": "#FFFFFF",
   "usingComponents": {
     "app-icon": "../../components/app-icon/index",
     "nav-bar": "../../components/nav-bar/index",

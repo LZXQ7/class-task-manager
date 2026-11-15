@@ -489,7 +489,9 @@ Page({
     this._pinsBusy = true;
     api.pinList({}, { toast: false })
       .then((r) => this.setData({
-        pins: (r && r.list) || [],
+        pins: ((r && r.list) || []).map((x) => Object.assign({}, x, {
+          clsShort: util.shortClassLabel(x.className)
+        })),
         pinLimit: Number((r && r.limit) || 8)
       }))
       .catch(() => {})

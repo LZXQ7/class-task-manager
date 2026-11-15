@@ -137,7 +137,7 @@
   margin-top: 20rpx;
   font-size: 28rpx;
   color: var(--brand);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--fill-soft, #F7F8FA);
   border: 2rpx solid var(--brand-light);
   border-radius: var(--r-md);
 }
@@ -154,7 +154,7 @@
   margin-bottom: 16rpx;
   font-size: 28rpx;
   color: var(--brand);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--fill-soft, #F7F8FA);
   border: 2rpx solid var(--brand-light);
   border-radius: 32rpx;
 }
@@ -389,7 +389,7 @@
   line-height: 60rpx;
   font-size: 26rpx;
   color: var(--brand);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--fill-soft, #F7F8FA);
   border: 2rpx solid var(--brand-light);
   border-radius: 999rpx;
 }
@@ -417,7 +417,7 @@
   font-size: 24rpx;
   line-height: 1.2;
   color: var(--text-2);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--fill-soft, #F7F8FA);
   border: 2rpx solid var(--line-1);
   border-radius: 999rpx;
 }
@@ -444,7 +444,7 @@
   padding: 10rpx 26rpx;
   font-size: 26rpx;
   color: var(--text-2);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--fill-soft, #F7F8FA);
   border: 2rpx solid var(--line-1);
   border-radius: 999rpx;
 }
