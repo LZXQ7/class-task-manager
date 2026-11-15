@@ -478,6 +478,7 @@
     show="{{pinDetailShow}}"
     member-id="{{pinDetailMemberId}}"
     class-id="{{pinDetailClassId}}"
+    member-name="{{pinDetailName}}"
     bind:close="onPinDetailClose"
     bind:changed="onPinDetailChanged"
   />

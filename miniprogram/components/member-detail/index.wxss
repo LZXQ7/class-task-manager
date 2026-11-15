@@ -34,6 +34,34 @@
   color: var(--text-1);
 }
 
+/* v1.0.8.41：切人加载占位。与 .mb-detail 同样的内边距和头像尺寸，
+   避免新数据到达时整块内容上下跳动；底色走令牌，深色模式自动反色。 */
+.md-loading {
+  padding: 40rpx 32rpx 20rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.md-loading-av {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 40rpx;
+  background: var(--fill-soft);
+}
+.md-loading-name {
+  margin-top: 16rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 44rpx;
+  color: var(--text-1);
+}
+.md-loading-tip {
+  margin-top: 24rpx;
+  font-size: 26rpx;
+  line-height: 40rpx;
+  color: var(--text-3);
+}
+
 /* 学号 / 组别 / 值日 */
 .mb-detail-grid {
   margin-top: 24rpx;

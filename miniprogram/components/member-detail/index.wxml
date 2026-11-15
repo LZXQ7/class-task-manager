@@ -11,6 +11,19 @@
   show-close="{{false}}"
   bind:close="onClose"
 >
+  <!-- v1.0.8.41：切人首帧。mDetail 已被同步清空，这里只显示**本次点的学生**姓名，
+       绝不会把上一个人的卡片内容画出来（关掉 A 再点 B 时尤其明显）。 -->
+  <view wx:if="{{!mDetail && !loadFailed}}" class="md-loading">
+    <view class="md-loading-av"></view>
+    <text class="md-loading-name">{{memberName || '成员详情'}}</text>
+    <text class="md-loading-tip">正在加载…</text>
+  </view>
+  <view wx:if="{{loadFailed}}" class="md-loading">
+    <view class="md-loading-av"></view>
+    <text class="md-loading-name">{{memberName || '成员详情'}}</text>
+    <text class="md-loading-tip">暂时没能加载，关掉重试一下</text>
+  </view>
+
   <view wx:if="{{mDetail}}" class="mb-detail">
     <!-- 头像 + 姓名（姓名作为独立兄弟节点，不被 80rpx 外壳压掉） -->
     <view class="md-head">

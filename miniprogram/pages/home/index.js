@@ -45,6 +45,8 @@ Page({
     pinDetailShow: false,
     pinDetailMemberId: 0,
     pinDetailClassId: 0,
+    /* v1.0.8.41：同步传姓名，卡片加载首帧就显示本次点的学生，不残留上一个人 */
+    pinDetailName: '',
     /* 作业提交播报（2026-10-28）：取代原「远程配置横幅」。
      * show=横条可见；out=收尾淡出；queue=已排好的播报队列（正序，旧的先播）；
      * idx=当前播到第几条（track 据此 translateY 上滚）。 */
@@ -505,13 +507,15 @@ Page({
     const memberId = Number(d.id) || 0;
     if (!memberId) return;
     const classId = Number(d.classId) || 0;
+    const name = String(d.name || '');
     const myClassId = Number((((getApp() || {}).globalData || {}).profile || {}).classId) || 0;
     const app = getApp() || {};
     if (app.track) app.track.action('pin_open_detail');
     this.setData({
       pinDetailShow: true,
       pinDetailMemberId: memberId,
-      pinDetailClassId: (classId && classId !== myClassId) ? classId : 0
+      pinDetailClassId: (classId && classId !== myClassId) ? classId : 0,
+      pinDetailName: name
     });
   },
 
