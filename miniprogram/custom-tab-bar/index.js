@@ -110,14 +110,17 @@ const freshHandoff = (index) => {
 Component({
   options: { addGlobalClass: true },
   data: {
-    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色） */
+    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色）。
+       用 rootClass()：它内部就是 init() + themeClass() + 动效类，且 **theme.mount() 下发的
+       也正是 rootClass()** —— 初值与运行时口径一致才不会在挂载瞬间闪一下。
+       ⚠️ 2026-11-15：这里原来**同时**写了 `theme.rootClass()` 和 `theme.themeClass()` 两个键
+       （对象字面量后者覆盖前者），纯粹是为了同时满足两条互相打架的门禁。已删掉多余那行。 */
     tClass: theme.rootClass(),
     active: 0,
     /* 🔴 主题 class 必须挂在 tabBar 自己身上：自定义 tabBar 是**独立于页面根节点**
        的渲染树，拿不到 `<view class="page {{tClass}}">` 上定义的 CSS 变量 ——
        不自己挂，底栏在深色下会一直保持浅色（用户 2026-11-04 截图所见）。
        用 theme.mount/unmount 与页面走同一条订阅，切主题时自动跟随。 */
-    tClass: theme.themeClass(),
     popIndex: -1,            // 只在「点击切换」的那一项上播弹跳动画（attached 初始化不播，防闪烁）
     safeBottom: 0,
     /** 实际施加到 `.tabbar-wrap` 的 padding-bottom(px)：有安全区用安全区，无安全区用兜底留白 */

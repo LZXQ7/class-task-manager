@@ -2,7 +2,9 @@
      导航：nav-bar 带回退键（二级页，走系统转场，不用 st-item 入场，见 check-tab-enter ④）。
      滚动：原生滚动（仿 homework，无 bottom-sheet，故无需 page-meta 锁页面滚动）。
      切换：顶端 segmented 在 班费 / 团费 间切换（团费仅有权限者可见）；表单视图直接内联在页面内。 -->
-<view class="page fee-page page-fade {{tClass}}">
+<!-- 2026-11-15：根节点去掉了 `fee-page` 类 —— 那条 `.page.fee-page { background: var(--bg) }`
+     引用的是不存在的变量，反而把主题暗色极光抹掉了（深色下整页发白）。底色真源只留 .t-light/.t-dark。 -->
+<view class="page page-fade {{tClass}}">
 
   <nav-bar title="{{navTitle}}" show-back="{{true}}" />
 

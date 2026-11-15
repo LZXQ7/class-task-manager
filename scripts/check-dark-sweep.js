@@ -68,6 +68,17 @@ const RULES = [
     re: /(?<![\w-])color\s*:\s*#(?:1D2129|4E5969|86909C)\b/gi,
     msg: '没有写死深色文字（一律走 --text-1 / --text-2 / --text-3）',
     scope: 'all'
+  },
+  {
+    /* 渐变里的浅色色标（骨架屏流光就是栽在这：`linear-gradient(90deg,#F2F3F5,…)`）。
+       渐变不吃 `background` 的令牌，必须给色标单独定义变量。 */
+    id: 'lightGradient',
+    re: /background(?:-image)?\s*:[^;{}]*linear-gradient\([^;{}]*#(?:F2F3F5|F5F6F8|FFFFFF|E5E6EB|DCE8FF|EAF1FF|F3F0FF)/gi,
+    msg: '渐变里没有写死浅色色标（走 --sk-base / --sk-shine 之类的令牌）',
+    scope: 'pages',
+    /* ⚠️ 先把 `var(--x, #fff)` 整段抹掉再匹配：兜底里的浅色是**正当**写法
+       （第一版没抹，`var(--sk-base, #F2F3F5)` 直接被判红 —— 又是一次误报）。 */
+    prep: (body) => body.replace(/var\([^)]*\)/g, '')
   }
 ];
 
@@ -98,8 +109,9 @@ function scanLight(files) {
     RULES.forEach((r) => {
       if (r.scope === 'pages' && isApp) return;
       if ((ALLOW[r.id] || []).indexOf(rel) >= 0) return;
+      const text = r.prep ? r.prep(body) : body;
       r.re.lastIndex = 0;
-      const m = body.match(r.re);
+      const m = text.match(r.re);
       if (m) out.push({ file: rel, rule: r.id, hit: m.slice(0, 3) });
     });
   });
@@ -186,11 +198,85 @@ check(/\{\{item\.clsShort \|\| item\.className\}\}/.test(read('miniprogram/pages
   'wxml 优先显示 clsShort，取不到才回落全名');
 
 /* ============================================================
- * 四、原生窗口底色：页面 json 不许写死 backgroundColor
- *    那一层是 webview 背后的原生底，CSS 改不到；写死 #F5F6F8 后
- *    「系统深色 + 切页」仍会闪一条浅色（app.json 的 @backgroundColor 被页面级覆盖）。
+ * 四、引用不到的 CSS 变量（1.0.8.44 班费页整页发白的根因）
+ *    `background: var(--bg)` 而 `--bg` 从未定义 ⇒ 计算值阶段失效 ⇒ 等价 unset
+ *    ⇒ 连 `.t-dark` 画在根节点上的暗色极光都被抹掉，只剩 `page{}` 的浅色极光。
+ *    有兜底的（`var(--x, #fff)`）不致命，但兜底是浅色值 ⇒ 深色下永远是浅色，同样要报。
  * ============================================================ */
-console.log('\n── ④ 原生窗口底色跟随主题（页面 json 不写死 backgroundColor）');
+console.log('\n── ④ 引用的 CSS 变量必须真的定义过');
+const TOKEN_SRC = stripCss(read('miniprogram/app.wxss'));
+const DEFINED = new Set();
+(TOKEN_SRC.match(/--[a-z0-9-]+\s*:/g) || []).forEach((m) => DEFINED.add(m.replace(/\s*:$/, '').trim()));
+/** 由 JS / wxml 内联下发的变量，本来就不该在 app.wxss 里定义 */
+const RUNTIME_VARS = new Set(['--dx', '--dy', '--p']);
+/** 兜底本身就是主题令牌（`var(--line-soft, var(--fill-soft))`）或语义上两主题通用的 */
+const SAFE_FALLBACK = { '--on-brand-fg': '品牌色面上的白字，两个主题都该是白', '--line-soft': '兜底是 var(--fill-soft)' };
+
+function scanVars(files) {
+  const fatal = [];
+  const soft = [];
+  (files || CSS_FILES).forEach((f) => {
+    const body = stripCss(fs.readFileSync(f, 'utf8'));
+    const re = /var\(\s*(--[a-z0-9-]+)\s*(,)?/g;
+    let m;
+    while ((m = re.exec(body))) {
+      const name = m[1];
+      if (DEFINED.has(name) || RUNTIME_VARS.has(name) || SAFE_FALLBACK[name]) continue;
+      const item = path.relative(ROOT, f).replace(/\\/g, '/') + '  ' + name;
+      if (m[2]) soft.push(item); else fatal.push(item);
+    }
+  });
+  return { fatal: [...new Set(fatal)], soft: [...new Set(soft)] };
+}
+const VARS = scanVars();
+VARS.fatal.forEach((x) => console.log('    · [无兜底] ' + x));
+VARS.soft.forEach((x) => console.log('    · [只有浅色兜底] ' + x));
+check(VARS.fatal.length === 0, '没有引用未定义且无兜底的变量（这类声明会整条失效，把主题底色打掉）');
+check(VARS.soft.length === 0, '没有引用未定义的变量（只靠浅色兜底 ⇒ 深色下永远是浅色）');
+
+/* ============================================================
+ * 五、页面根节点不许自己写 background（会盖掉主题极光）
+ *    `.page.fee-page`(0-2-0) 权重高于 `.t-dark`(0-1-0)，写了就盖；
+ *    即使是 `var(--bg-page)` 这种合法值，`background` 简写也会把 background-image 重置。
+ * ============================================================ */
+console.log('\n── ⑤ 页面根节点不写 background（底色真源只有 .t-light / .t-dark）');
+function scanRootBg(files) {
+  const out = [];
+  (files || walk(path.join(MINI, 'pages'), '.wxss', [])).forEach((f) => {
+    const body = stripCss(fs.readFileSync(f, 'utf8'));
+    const re = /^\.page(?:\.[\w-]+)?\s*\{[^}]*?background[^}]*?\}/gm;
+    const m = body.match(re);
+    if (m) out.push({ file: path.relative(ROOT, f).replace(/\\/g, '/'), hit: m[0].replace(/\s+/g, ' ').slice(0, 90) });
+  });
+  return out;
+}
+const ROOT_BG = scanRootBg();
+ROOT_BG.forEach((b) => console.log('    · ' + b.file + '  →  ' + b.hit));
+check(ROOT_BG.length === 0, '没有页面在根节点上写背景');
+
+/* ============================================================
+ * 六、`data` 里不许有重复的 tClass 键
+ *    对象字面量后者覆盖前者 ⇒ 写成 `tClass: theme.rootClass(), tClass: ''`
+ *    等于首帧没有主题（浅色）。check-dark-first-frame 只匹配前者，一直没发现。
+ * ============================================================ */
+console.log('\n── ⑥ data 里没有重复的 tClass 键');
+function scanDupTClass(files) {
+  const out = [];
+  const list = files || walk(path.join(MINI, 'pages'), '.js', []).concat([path.join(MINI, 'custom-tab-bar/index.js')]);
+  list.forEach((f) => {
+    const s = stripCssless(fs.readFileSync(f, 'utf8'));
+    const m = s.match(/^\s*tClass:/gm);
+    if (m && m.length > 1) out.push(path.relative(ROOT, f).replace(/\\/g, '/') + '  ×' + m.length);
+  });
+  return out;
+}
+/** 只去块注释，保留行结构（不能用 stripCss —— 它会把注释里的文本一并吃掉，行号也乱） */
+function stripCssless(s) { return s.replace(/\/\*[\s\S]*?\*\//g, ''); }
+const DUP = scanDupTClass();
+DUP.forEach((x) => console.log('    · ' + x));
+check(DUP.length === 0, '每个页面的 data 里只有一个 tClass 键');
+
+console.log('\n── ⑦ 原生窗口底色跟随主题（页面 json 不写死 backgroundColor）');
 const appJson = read('miniprogram/app.json');
 const themeJson = read('miniprogram/theme.json');
 const pageJsons = walk(path.join(MINI, 'pages'), '.json', []);
@@ -201,7 +287,7 @@ check(/"darkmode"\s*:\s*true/.test(appJson) && /"themeLocation"/.test(appJson), 
 check(/"backgroundColor"\s*:\s*"@backgroundColor"/.test(appJson), 'app.window 的 backgroundColor 走 @backgroundColor 变量');
 check(/"dark"[\s\S]{0,200}"backgroundColor"\s*:/.test(themeJson), 'theme.json 的 dark 段定义了 backgroundColor');
 
-console.log('\n── ⑤ 变异自证（改坏 → 判据必须翻红）');
+console.log('\n── ⑧ 变异自证（改坏 → 判据必须翻红）');
 const TMP = path.join(ROOT, '.wb_mut');
 fs.mkdirSync(TMP, { recursive: true });
 const MUT = [
@@ -210,7 +296,9 @@ const MUT = [
   { name: '页面又写回浅色底', rule: 'lightBg',
     css: '.x { background: #F7F8FA; }' },
   { name: '页面又写回深色文字', rule: 'darkText',
-    css: '.x { color: #1D2129; }' }
+    css: '.x { color: #1D2129; }' },
+  { name: '骨架屏流光又写死浅灰渐变', rule: 'lightGradient',
+    css: '.x { background-image: linear-gradient(90deg, #F2F3F5 25%, #E5E6EB 37%); }' }
 ];
 MUT.forEach((m) => {
   const f = path.join(TMP, 'mut.wxss');
@@ -220,8 +308,20 @@ MUT.forEach((m) => {
 });
 fs.writeFileSync(path.join(TMP, 'ok.wxss'), '.x { background: var(--fill-soft, #F7F8FA); color: var(--text-1); }');
 check(scanLight([path.join(TMP, 'ok.wxss')]).length === 0, '好样本不误报：var() 兜底写法放行');
-fs.unlinkSync(path.join(TMP, 'mut.wxss'));
-fs.unlinkSync(path.join(TMP, 'ok.wxss'));
+
+/* ④⑤⑥ 三条新判据各配一条变异（否则等于没守） */
+fs.writeFileSync(path.join(TMP, 'v1.wxss'), '.page.fee-page { background: var(--nope); }');
+check(scanVars([path.join(TMP, 'v1.wxss')]).fatal.length > 0, '变异被抓：引用不存在的变量（无兜底）→ 整条声明失效');
+fs.writeFileSync(path.join(TMP, 'v2.wxss'), '.x { color: var(--nope2, #FFFFFF); }');
+check(scanVars([path.join(TMP, 'v2.wxss')]).soft.length > 0, '变异被抓：引用不存在的变量（只靠浅色兜底）');
+fs.writeFileSync(path.join(TMP, 'v3.wxss'), '.page.fee-page { background: var(--bg-page); }');
+check(scanRootBg([path.join(TMP, 'v3.wxss')]).length > 0, '变异被抓：页面根节点又写 background（盖掉主题极光）');
+fs.writeFileSync(path.join(TMP, 'v4.js'), 'Page({ data: {\n  tClass: theme.rootClass(),\n  tClass: \'\',\n} });');
+check(scanDupTClass([path.join(TMP, 'v4.js')]).length > 0, '变异被抓：data 里又出现两个 tClass 键');
+['v1.wxss', 'v2.wxss', 'v3.wxss', 'v4.js', 'mut.wxss', 'ok.wxss'].forEach((n) => {
+  const f = path.join(TMP, n);
+  if (fs.existsSync(f)) fs.unlinkSync(f);
+});
 fs.rmdirSync(TMP);
 
 /* 简称函数的变异：把专业简称表改坏 → 用例必须翻红。

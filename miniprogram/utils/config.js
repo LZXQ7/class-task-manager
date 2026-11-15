@@ -476,8 +476,32 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      `check-theme-token-scope.js`（令牌清单去掉作废的 brand-glass）。
  *   全量门禁 **130 过 / 14 历史存量红**（基线 129/14 + 新门禁 1 绿），零新增回归。
  *   纯前端改动，无需重部署云函数。
+ * ---------------------------------------------------------------------------
+ * v1.0.8.44（2026-11-15）· 修「页面级样式把主题底色吃掉」这类深色事故（班费页整页发白）
+ *   用户截图：班费页深色下整页发白、文字几乎看不见，要求「全部适配」。
+ *   根因**不是**没写深色，而是**写了一个不存在的变量**：
+ *     `pages/fee/index.wxss` 的 `.page.fee-page { background: var(--bg); }`
+ *     `--bg` 全仓未定义 ⇒ 声明在计算值阶段失效 ⇒ 对 `background` 简写等价于 unset
+ *     ⇒ 把 `.t-dark` 画在根节点上的暗色极光一起抹掉，露出 `page{}` 的浅色极光，
+ *     而文字色仍是 `.t-dark` 的白色令牌 ⇒ 白字压浅底。
+ *     选择器权重也是帮凶：`.page.fee-page`(0-2-0) > `.t-dark`(0-1-0)。
+ *   同批扫出并修掉的同类问题：
+ *     ① 作业列表页 `.page { background: var(--bg-page) }` —— 值合法，但 `background` 是简写，
+ *        会把 `.t-dark` 的 background-image（极光）重置成 none ⇒ 该页没有极光、与别的页不一致；
+ *     ② **重复 `tClass` 键** 3 处（fee / leave / custom-tab-bar）：对象字面量后者覆盖前者，
+ *        `tClass: ''` 赢 ⇒ 首帧无主题（浅色）。`check-dark-first-frame` 只匹配
+ *        `tClass: theme.rootClass()` 那一行，重复键一直没被发现 ⇒ 新增判据。
+ *     ③ `pages/classes` 的 `var(--line)` 未定义（连浅色下都没有边框）⇒ `--line-1`；
+ *     ④ `--tab-ind` / `--tab-ind-edge` 只有浅色兜底、从未定义 ⇒ 补进 app.wxss 浅深两份；
+ *     ⑤ `skeleton` 骨架屏流光是写死浅灰渐变 ⇒ 深色下每个页面的首屏骨架都是发亮的白条，
+ *        改 `--sk-base` / `--sk-shine` 令牌（background-image 不吃 background 令牌）。
+ *   门禁 `check-dark-sweep.js` 扩到 7 段 + 10 变异：新增「引用的变量必须定义过」
+ *   （无兜底=致命 / 只有浅色兜底=永不翻色）、「页面根节点不许写 background」、
+ *   「data 里不许有重复 tClass 键」、「渐变不许写死浅色色标」。
+ *   全量门禁 **130 过 / 14 历史存量红**（门禁数不变，判据扩在同一文件内），零新增回归。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.43';
+const APP_VERSION = '1.0.8.44';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

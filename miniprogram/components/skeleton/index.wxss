@@ -60,8 +60,11 @@
 }
 .sk-line-1 { width: 40%; margin-bottom: 16rpx; }
 .sk-line-2 { width: 70%; }
+/* 🔴 2026-11-15：渐变里的两个色标原来写死浅灰（#F2F3F5 / #E5E6EB）——
+   骨架屏是**每个页面首屏都会出现**的东西，深色下它会变成一道发亮的白条。
+   `background-image` 不吃 `background` 简写的令牌，所以单独给 --sk-base / --sk-shine。 */
 .sk-card, .sk-grid-item, .sk-avatar, .sk-line, .sk-dayhead {
-  background-image: linear-gradient(90deg, #F2F3F5 25%, #E5E6EB 37%, #F2F3F5 63%);
+  background-image: linear-gradient(90deg, var(--sk-base, #F2F3F5) 25%, var(--sk-shine, #E5E6EB) 37%, var(--sk-base, #F2F3F5) 63%);
   background-size: 400% 100%;
   animation: sk-shimmer 1.4s ease infinite;
 }

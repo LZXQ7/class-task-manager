@@ -1,9 +1,11 @@
 /* P7 · 作业列表（2026-10-24）
    ⚠️ wxss 硬约定：只用**类选择器**，禁用 `~` 兄弟选择器（真机 fatal）。 */
 
+/* ⚠️ 2026-11-15：原来这里还写了 `background: var(--bg-page)` —— `background` 是**简写**，
+   会把 .t-dark 的 background-image（极光）一起重置成 none ⇒ 本页变成纯色平底，
+   和别的页放在一起能看出「这页没有极光」。底色交给主题类，这里只管最小高度。 */
 .page {
   min-height: 100vh;
-  background: var(--bg-page);
 }
 
 .hw {

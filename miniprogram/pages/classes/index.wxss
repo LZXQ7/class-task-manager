@@ -209,7 +209,9 @@
 .cl-g-input {
   flex: 1 1 auto; min-width: 0;
   padding: 10rpx 16rpx; font-size: 26rpx; color: var(--text-1);
-  background: rgba(0,0,0,0.03); border: 1rpx solid var(--line); border-radius: 24rpx;
+  /* 2026-11-15：原来 `background: rgba(0,0,0,.03)` 在深色卡片上等于没有填充（黑叠黑），
+     `var(--line)` 又是个从未定义的变量（连浅色下边框也没生效）⇒ 一起换成令牌。 */
+  background: var(--fill-soft, #F7F8FA); border: 1rpx solid var(--line-1); border-radius: 24rpx;
 }
 
 .cl-g-stat { margin-top: 8rpx; font-size: 22rpx; line-height: 32rpx; color: var(--text-3); }

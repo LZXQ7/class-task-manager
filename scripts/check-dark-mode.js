@@ -947,7 +947,11 @@ console.log('\n── ⑪ 浮层表面（弹层 / 对话框 / 底栏）');
   const tbJs = stripComments(read('miniprogram/custom-tab-bar/index.js'));
   const tbWxml = stripComments(read('miniprogram/custom-tab-bar/index.wxml'));
   const tbWxss2 = stripComments(read('miniprogram/custom-tab-bar/index.wxss'));
-  chk(/tClass:\s*theme\.themeClass\(\)/.test(tbJs), 'tabBar data 有 tClass（独立渲染树继承不到页面根令牌）');
+  /* 🔴 2026-11-15：这里原来只认 `theme.themeClass()`，而 check-dark-first-frame 只认
+     `theme.rootClass()` —— 两条门禁互相打架，结果组件里同时写了两个 tClass 键（后者覆盖前者，
+     重复键还把两个门禁都骗过去了）。正确做法是**两种写法都接受**：rootClass() 内部就是
+     init() + themeClass() + 动效类，语义上是超集，且 theme.mount() 下发的正是 rootClass()。 */
+  chk(/tClass:\s*theme\.(?:rootClass|themeClass)\(\)/.test(tbJs), 'tabBar data 有 tClass（独立渲染树继承不到页面根令牌）');
   chk(/theme\.mount\(this\)/.test(tbJs) && /theme\.unmount\(this\)/.test(tbJs),
     'tabBar 成对 mount/unmount（切主题跟随 + 销毁时不留死监听）');
   chk(/class="tabbar-wrap \{\{tClass\}\}"/.test(tbWxml), 'tabBar 根节点真的挂了 tClass');

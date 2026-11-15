@@ -1,7 +1,11 @@
 /* ============ 班费 / 团费（独立页，从首页迁出；2026-10-27） ============
    .np-* / .f-ph / .press-dim / .np-abtn-hover / .foot-space 等走全局 app.wxss，
    本文件只放本页专属样式。 */
-.page.fee-page { background: var(--bg); }
+/* 🔴 2026-11-15：这里原来写 `.page.fee-page { background: var(--bg); }` —— `--bg` 从未定义，
+   声明在计算值阶段失效 ⇒ 等价于 unset ⇒ 把 .t-dark 画在根节点上的暗色极光一起抹掉，
+   露出 page{} 的浅色极光，而文字仍是深色的白令牌 ⇒ 深色下整页发白、看不清（用户实拍）。
+   ⚠️ 页面根节点**不要**自己写 background：底色真源是 .t-light / .t-dark（app.wxss）。
+   就算要写，也必须带主题类（.t-dark .fee-page），权重不够会被 .t-dark 反盖。 */
 
 /* 内容容器：左右 32rpx 与全站一致（首页 `.wrap` / roster `.lv` / `.np` 都是 32rpx）。
    ⚠️ 不能叫 `.wrap`：`.wrap{padding:24rpx 32rpx}` 只存在于 **home 的 wxss**，
