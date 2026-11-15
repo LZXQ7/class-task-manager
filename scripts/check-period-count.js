@@ -145,7 +145,11 @@ pin('D3 admin-web 大节下拉按本班 periodTime 生成（periodOptions）', (
 pin('D4 /api/me 的班级清单放行 periodTime 与 mainRoom', () => {
   const meIdx = indexSrc.indexOf("app.get('/api/me'");
   assert.ok(meIdx > 0, '找不到 /api/me 路由');
-  const meBlock = indexSrc.slice(meIdx, meIdx + 900);
+  /* 窗口按「下一个路由声明」截，而不是固定 900 字符：
+     2026-11-15 在 /api/me 顶部加了演示班过滤的注释后，900 字符窗口刚好切不到
+     classes.map 那段 ⇒ 判据凭空翻红（功能其实是好的）。按路由边界截才不会被注释长度影响。 */
+  const nextRoute = indexSrc.indexOf("\napp.", meIdx + 10);
+  const meBlock = indexSrc.slice(meIdx, nextRoute > 0 ? nextRoute : meIdx + 3000);
   assert.ok(/periodTime:\s*c\.periodTime/.test(meBlock), '/api/me 未放行 periodTime（下拉只能走兜底 5 项）');
   assert.ok(/mainRoom:\s*c\.mainRoom/.test(meBlock), '/api/me 未放行 mainRoom');
   assert.ok(!/classes: classes\.map\(\(c\) => \(\{ id: c\.id, name: c\.name, isActive: c\.isActive \}\)\)/.test(meBlock),

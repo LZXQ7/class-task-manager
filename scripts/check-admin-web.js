@@ -581,8 +581,11 @@ mutateAndExpectFail(
 mutateAndExpectFail(
   '登录不再回查 member 超管态（会话不吊销）',
   'lib/auth.js',
-  "if (!m || Number(m.is_super) !== 1 || m.status !== 'ACTIVE') return null;",
-  'if (!m) return null;'
+  // 2026-11-15：权限从「只看 is_super」扩成「按职位推导页签」，
+  // 原锚点 `Number(m.is_super) !== 1` 已不存在。现在守的是「每次请求都回查 member 状态」：
+  // 把 status 校验删掉 ⇒ 被停用的人还能用旧 Cookie 继续操作，必须翻红。
+  "if (!m || m.status !== 'ACTIVE') return null;\n  const perms = permsMod.resolve(m, row.perms);",
+  'if (!m) return null;\n  const perms = permsMod.resolve(m, row.perms);'
 );
 mutateAndExpectFail(
   '切班又跳回概览（就地刷新被改回 go(overview)）',
@@ -784,7 +787,8 @@ t('请假：后端 listLeave/updateLeave 存在且安全属性齐全（2026-10-1
   // 路由与前端入口都在
   assert.ok(/'\/api\/leave',/.test(idx), '后端缺请假列表路由');
   assert.ok(/'\/api\/leave\/:id',/.test(idx), '后端缺请假编辑路由');
-  assert.ok(/data-view="leave"/.test(html), '导航缺请假入口');
+  // 导航 2026-11-15 起由 renderNav() 按权限动态生成，不再写在 index.html 里 ⇒ 断言移到 VIEWS 注册
+  assert.ok(/leave:\s*\{\s*title:\s*'请假'/.test(js), '导航缺请假入口（VIEWS 未注册 leave）');
   assert.ok(/function renderLeave/.test(js), '前端缺 renderLeave');
   assert.ok(/function openLeaveEditDialog/.test(js), '前端缺 openLeaveEditDialog');
 });
@@ -803,7 +807,8 @@ t('绑定情况：概览含各班绑定数 + 成员列表内联绑定列（2026-
   assert.ok(/<span class="tag tag-off">未绑定<\/span>/.test(js), '绑定列缺「未绑定」标签');
   assert.ok(/c\.boundCount/.test(js), '概览应展示各班已绑定人数');
   // 独立绑定页已删除：导航入口、视图名、渲染函数都不应残留
-  assert.ok(!/data-view="binding"/.test(html), '独立绑定页已合并，导航不应再有绑定入口');
+  assert.ok(!/data-view="binding"/.test(html) && !/binding:\s*\{\s*title:/.test(js),
+    '独立绑定页已合并，导航不应再有绑定入口');
   assert.ok(!/function renderBinding/.test(js), '独立绑定页已合并，不应再有 renderBinding');
   assert.ok(!/binding:\s*\{\s*title:\s*'绑定'/.test(js), 'VIEWS 不应再有 binding');
 });

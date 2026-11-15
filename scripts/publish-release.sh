@@ -107,7 +107,7 @@ if git -C "$PUBLIC_DIR" ls-files | grep -iqE '\.(xlsx|xls)$'; then
 fi
 # 4b 原始令牌 / AppID / 姓名 / 学号 / 班级名 / 教师名 / ICP / 品牌
 if grep -rI -n -E \
-  "<YOUR_ENV_ID>|<YOUR_APPID>|<TENCENT_DOCS_APPID>|0000000000|0000000003|0000000002|0000000001|00000000|209903030101|209903020101|示例成员57|示例成员01|<INVITE_CODE>|<INVITE_CODE>|<INVITE_CODE>|admin|班级任务管理|<ICP_NO>|示例老师01|示例老师02|示例老师04|示例老师05|示例老师07|示例老师08|示例老师09|示例老师10|示例老师11|示例老师12|示例老师06|示例老师03|示例专业|示例专业简称|示例班级A|示例班级B|示例班级C" \
+  "<YOUR_ENV_ID>|<YOUR_APPID>|<TENCENT_DOCS_APPID>|0000000000|0000000003|0000000002|0000000001|00000000|209903030101|209903020101|示例成员57|示例成员01|<INVITE_CODE>|<INVITE_CODE>|<INVITE_CODE>|admin|admin|班级任务管理|<ICP_NO>|示例老师01|示例老师02|示例老师04|示例老师05|示例老师07|示例老师08|示例老师09|示例老师10|示例老师11|示例老师12|示例老师06|示例老师03|示例专业|示例专业简称|示例班级A|示例班级B|示例班级C" \
   "$PUBLIC_DIR" --exclude-dir=.git >/dev/null 2>&1; then
   echo "❌ 公开树命中原始 PII 词，已中止（请检查 scrub.js 规则是否覆盖新增 PII）" >&2
   exit 1

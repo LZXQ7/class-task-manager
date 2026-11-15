@@ -95,13 +95,16 @@ let awApp = '';
 try { awApp = read('cloudfunctions/admin-web/public/app.js'); } catch (e) { bad('admin-web/public/app.js 不存在'); }
 if (awApp) {
   has(awApp, /function renderRules\(host\)/, 'app.js 有 renderRules');
-  has(awApp, /rules:\s*\{\s*title:\s*'排班规则',\s*render:\s*renderRules\s*\}/, 'VIEWS 注册「排班规则」');
+  // 2026-11-15 起 VIEWS 每项多了 perm 字段（页签级权限），所以中间用 [^}]* 而不是只允许空格
+  has(awApp, /rules:\s*\{[^}]*title:\s*'排班规则'[^}]*render:\s*renderRules[^}]*\}/, 'VIEWS 注册「排班规则」');
   has(awApp, /f-dutyoff/, '成员编辑含「不排值日」下拉');
 }
 
 let awHtml = '';
 try { awHtml = read('cloudfunctions/admin-web/public/index.html'); } catch (e) { bad('admin-web/public/index.html 不存在'); }
-if (awHtml) has(awHtml, /data-view="rules"/, '导航有「排班规则」按钮');
+  /* 导航项 2026-11-15 起由 renderNav() 按账号权限动态生成，index.html 里不再写 data-view="rules"。
+     改为断言「导航容器存在 + VIEWS 有注册」，两者齐备才会真的出现这个页签。 */
+  if (awHtml) has(awHtml, /<nav[^>]*id="nav"/, '导航容器存在（导航项按权限动态渲染）');
 
 console.log('');
 if (failed) { console.log('❌ 失败 ' + failed + ' 项'); process.exit(1); }

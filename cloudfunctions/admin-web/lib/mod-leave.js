@@ -195,4 +195,102 @@ async function resyncDutiesForMember(pool, memberId, from, to) {
   }
 }
 
-module.exports = { listLeave, updateLeave };
+/**
+ * 后台代登记一条请假（2026-11-15 新增）。
+ * 与小程序 `adjust.addLeave` 同口径：后台代登记默认 `source='register'` + **直接 APPROVED**
+ * （班委代登记不需要再走一遍审批），随后重算该成员这几天的值日 LEAVE 标记。
+ * @param {object} payload { classId, memberId, startDate, endDate, startTime, endTime, status? }
+ */
+async function createLeave(payload, session, req) {
+  const pool = getPool();
+  const classId = Number(payload.classId);
+  const memberId = Number(payload.memberId);
+  if (!classId) throw new BizError(40001, '缺少班级');
+  if (!memberId) throw new BizError(40001, '请选择成员');
+
+  // ⚠️ 必须校验成员确实属于这个班：否则后台可以给 A 班成员在 B 班记一条请假，
+  //    而列表按 m.class_id 过滤 ⇒ 这条记录会变成"谁都看不见"的幽灵数据。
+  const [m] = await pool.query('SELECT id, name, class_id FROM member WHERE id = ?', [memberId]);
+  if (!m[0]) throw new BizError(40404, '成员不存在');
+  if (Number(m[0].class_id) !== classId) throw new BizError(40001, '该成员不属于所选班级');
+
+  const startDate = normDate(payload.startDate);
+  const endDate = normDate(payload.endDate) || startDate;
+  if (!startDate) throw new BizError(40001, '请选择起始日期');
+  if (startDate > endDate) throw new BizError(40001, '起始日期不能晚于结束日期');
+
+  const startTime = normTime(payload.startTime);
+  const endTime = normTime(payload.endTime);
+  if (startTime && endTime && startTime >= endTime) throw new BizError(40001, '开始时间须早于结束时间');
+
+  let status = 'APPROVED';
+  if (payload.status !== undefined) {
+    const s = String(payload.status).toUpperCase();
+    if (!LEAVE_STATUS.includes(s)) throw new BizError(40001, '非法状态');
+    status = s;
+  }
+
+  const by = Number((session && session.memberId) || 0) || null;
+  // periods 留空 = 按 start_time / end_time 判定时段；两者都空 = 整天。
+  // 不在这里编造 am/pm/eve 组合 —— 那会把"手工钟点"谎报成某个半天（1.0.8.20 踩过）。
+  const [r] = await pool.query(
+    'INSERT INTO leave_request (class_id, member_id, start_date, end_date, start_time, end_time, ' +
+    'periods, reason, source, applied_by, approved_by, approved_at, status) ' +
+    'VALUES (?, ?, ?, ?, ?, ?, NULL, ?, \'register\', ?, ?, ?, ?)',
+    [classId, memberId, startDate, endDate, startTime, endTime, 'OTHER',
+      by, status === 'APPROVED' ? by : null, status === 'APPROVED' ? new Date() : null, status]
+  );
+
+  await resyncDutiesForMember(pool, memberId, startDate, endDate);
+
+  await logAction(session, {
+    module: 'leave',
+    action: 'leave.create',
+    classId,
+    summary: '后台代登记请假 #' + r.insertId + '：' + m[0].name + ' ' +
+      startDate + (endDate !== startDate ? ' ~ ' + endDate : '') + '（' + status + '）',
+    detail: { id: r.insertId, classId, memberId, startDate, endDate, startTime: startTime || '', endTime: endTime || '', status }
+  }, req);
+
+  return { id: r.insertId, status };
+}
+
+/**
+ * 删除一条请假（2026-11-15 新增）。
+ * ⚠️ 必须重算该成员这段时间的 duty 标记：删掉 APPROVED 请假后，
+ *    原本被标成 LEAVE 的值日要退回 PENDING，否则会一直显示"已请假"。
+ */
+async function deleteLeave(payload, session, req) {
+  const pool = getPool();
+  const id = Number(payload.id);
+  if (!id) throw new BizError(40001, '缺少请假 id');
+  const [rows] = await pool.query(
+    'SELECT l.*, m.class_id AS member_class_id, m.name FROM leave_request l ' +
+    'JOIN member m ON m.id = l.member_id WHERE l.id = ?', [id]
+  );
+  if (!rows[0]) throw new BizError(40404, '请假记录不存在');
+  const old = rows[0];
+
+  await pool.query('DELETE FROM leave_request WHERE id = ?', [id]);
+  await resyncDutiesForMember(pool, Number(old.member_id), toDateStr(old.start_date), toDateStr(old.end_date));
+
+  await logAction(session, {
+    module: 'leave',
+    action: 'leave.delete',
+    classId: Number(old.member_class_id),
+    summary: '删除请假 #' + id + '：' + old.name + ' ' + toDateStr(old.start_date) +
+      ' ~ ' + toDateStr(old.end_date) + '（原状态 ' + old.status + '）',
+    detail: {
+      id,
+      memberId: Number(old.member_id),
+      startDate: toDateStr(old.start_date),
+      endDate: toDateStr(old.end_date),
+      status: old.status,
+      hadImage: !!old.leave_image
+    }
+  }, req);
+
+  return { id };
+}
+
+module.exports = { listLeave, updateLeave, createLeave, deleteLeave };

@@ -20,6 +20,10 @@
     classes: [],
     classId: null,
     view: 'overview',
+    /* 当前账号可访问的页签（后端 /api/me 下发，2026-11-15）。
+       空数组 = 还没拿到登录态；拿到后由 showMain 写入并渲染导航。
+       **前端只做「不给入口」，真正的拦截在后端 requirePerm** —— 前端过滤不是安全边界。 */
+    perms: [],
     // 使用统计：默认「全部班级」总览（2026-10-18 用户要求直接看全部账号）
     usageAll: true,
     // 使用统计：三个板块各自的指标筛选（纯本地重绘，不重拉 API）
@@ -198,18 +202,66 @@
     return true;
   }
 
-  /* ---------------- 视图切换 ---------------- */
+  /* ---------------- 视图切换 ----------------
+   * `perm` = 该页签所需的后端权限 key（lib/perms.js 的 VIEWS）。
+   * ⚠️ 前端视图 key 与权限 key **不总相同**（member↔members / timetable↔course），
+   *    这是历史命名，不能为了「看起来整齐」去改前端 key ——
+   *    `state.view` 存在 localStorage 里，改 key 会让所有人的刷新恢复失效。
+   *    `config`（系统配置）与 `class`（账号班级）同属「班级/系统管理」，共用一个权限。
+   */
+  /* 导航顺序口径（2026-11-16 用户要求）：**标题字数越少越靠上，同字数保持原相对顺序**。
+   * 即 2 字（概览/成员/请假/班费）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
+   * 账号班级/系统配置/排班规则/使用统计/操作审计/后台账号）。「值日记录/换班申请」自然
+   * 落在「课程表」下面。⚠️ 只调整声明顺序，key 是 localStorage 里的 state.view，不可改。
+   * 改顺序须同步 lib/perms.js 的 VIEWS 数组 + index.html 注释 + check-admin-nav-order。 */
   var VIEWS = {
-    overview:  { title: '概览',   render: renderOverview },
-    timetable: { title: '课程表', render: renderTimetable },
-    member:    { title: '成员',   render: renderMember },
-    class:     { title: '账号班级', render: renderClass },
-    config:    { title: '系统配置', render: renderConfig },
-    audit:     { title: '操作审计', render: renderAudit },
-    leave:     { title: '请假',     render: renderLeave },
-    usage:     { title: '使用统计', render: renderUsage },
-    rules:     { title: '排班规则', render: renderRules }
+    overview:  { title: '概览',     perm: 'overview',  render: renderOverview },
+    member:    { title: '成员',     perm: 'members',   render: renderMember },
+    leave:     { title: '请假',     perm: 'leave',     render: renderLeave },
+    fee:       { title: '班费',     perm: 'fee',       render: renderFee },
+    countdown: { title: '倒数日',   perm: 'countdown', render: renderCountdown },
+    timetable: { title: '课程表',   perm: 'course',    render: renderTimetable },
+    duty:      { title: '值日记录', perm: 'duty',      render: renderDuty },
+    swap:      { title: '换班申请', perm: 'swap',      render: renderSwap },
+    class:     { title: '账号班级', perm: 'class',     render: renderClass },
+    config:    { title: '系统配置', perm: 'class',     render: renderConfig },
+    rules:     { title: '排班规则', perm: 'rules',     render: renderRules },
+    usage:     { title: '使用统计', perm: 'usage',     render: renderUsage },
+    audit:     { title: '操作审计', perm: 'audit',     render: renderAudit },
+    accounts:  { title: '后台账号', perm: 'accounts',  render: renderAccount }
   };
+
+  /** 当前账号能进哪些视图（顺序即导航顺序，与 VIEWS 声明顺序一致） */
+  function allowedViews() {
+    return Object.keys(VIEWS).filter(function (k) {
+      return state.perms.indexOf(VIEWS[k].perm) >= 0;
+    });
+  }
+
+  function canView(view) {
+    return !!(VIEWS[view] && state.perms.indexOf(VIEWS[view].perm) >= 0);
+  }
+
+  /**
+   * 按权限渲染导航。
+   * 为什么不直接在 index.html 里写死再逐个 hidden：
+   * 写死会让「HTML 有 10 个、JS 有 14 个」这种漂移长期存在，
+   * 而且顺序永远对不上 VIEWS 的声明顺序。全量重绘只有一个真源。
+   */
+  function renderNav() {
+    var nav = $('#nav');
+    if (!nav) return;
+    nav.innerHTML = allowedViews().map(function (k) {
+      return '<button class="nav-item" data-view="' + k + '">' + esc(VIEWS[k].title) + '</button>';
+    }).join('');
+    if (!canView(state.view)) {
+      var list = allowedViews();
+      state.view = list.length ? list[0] : 'overview';
+    }
+    $$('.nav-item', nav).forEach(function (b) {
+      b.classList.toggle('active', b.dataset.view === state.view);
+    });
+  }
 
   /* ---------------- 刷新后恢复现场（2026-10-18 用户要求） ----------------
    * F5 刷新后不要跳回概览、也不要每次重置到第 1 个班：把当前 view / classId /
@@ -230,6 +282,19 @@
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* 忽略：不影响功能 */ } }
 
   function go(view) {
+    if (!VIEWS[view]) view = 'overview';
+    // 前端守卫：localStorage 里可能存着上一个账号（或降权前）的视图，
+    // 直接渲染会让没权限的人看到页面骨架 + 一连串 403。
+    if (!canView(view)) {
+      var list = allowedViews();
+      if (!list.length) {
+        $('#view').innerHTML = '<div class="empty">当前账号没有后台权限，请联系管理员</div>';
+        $('#page-title').textContent = '';
+        return;
+      }
+      toast('当前账号没有「' + ((VIEWS[view] || {}).title || view) + '」的权限', 'warn');
+      view = list[0];
+    }
     state.view = view;
     lsSet(LS_VIEW, view);
     $$('.nav-item').forEach(function (b) {
@@ -946,7 +1011,10 @@
           '<option value="CANCELLED">已撤销</option>' +
           '</select>' +
           '<input type="search" id="lv-kw" class="input-search" placeholder="搜索姓名或学号" value="' + esc(kw) + '">' +
-          '<div class="toolbar-right"><button class="btn" id="lv-refresh">刷新</button></div>' +
+          '<div class="toolbar-right">' +
+          '<button class="btn" id="lv-add">新增代登记</button>' +
+          '<button class="btn" id="lv-refresh">刷新</button>' +
+          '</div>' +
           '</div>' +
           '<div class="card">' +
           '<div class="card-hd">请假列表 · 共 ' + rows.length + ' 条</div>' +
@@ -966,7 +1034,10 @@
               '<td>' + leaveTimeText(r.startTime, r.endTime) + '</td>' +
               '<td>' + leaveStatusTag(r.status) + '</td>' +
               '<td>' + (r.hasImage ? '<span class="tag tag-ok">有</span>' : '<span class="muted-note">无</span>') + '</td>' +
-              '<td class="td-ops"><button class="link" data-edit-leave="' + r.id + '">编辑</button></td>' +
+              '<td class="td-ops">' +
+              '<button class="link" data-edit-leave="' + r.id + '">编辑</button>' +
+              '<button class="link link-danger" data-del-leave="' + r.id + '">删除</button>' +
+              '</td>' +
               '</tr>';
           }).join('') +
           '</tbody></table></div>' +
@@ -983,6 +1054,12 @@
       }
       var kwi = $('#lv-kw', root);
       if (kwi) kwi.onkeydown = function (e) { if (e.key === 'Enter') { state.leaveKw = kwi.value.trim(); kw = state.leaveKw; load(); } };
+      var ad = $('#lv-add', root);
+      if (ad) ad.onclick = function () { openLeaveCreateDialog(); };
+      /* 🔴 同上：$$ 而非 $（$ 返回单元素，.forEach 抛错会让后面的刷新/编辑绑定全部失效） */
+      $$('[data-del-leave]', root).forEach(function (b) {
+        b.onclick = function () { deleteLeave(Number(b.dataset.delLeave)); };
+      });
       var rf = $('#lv-refresh', root);
       if (rf) rf.onclick = function () { state.leaveKw = (kwi ? kwi.value.trim() : ''); kw = state.leaveKw; load(); };
       $$('[data-edit-leave]', root).forEach(function (b) {
@@ -1044,6 +1121,937 @@
         reload();
       });
     };
+  }
+
+  /* ---------------- 请假：后台代登记 / 删除（2026-11-15 新增） ----------------
+   * 代登记与小程序 `adjust.addLeave` 同口径：source='register'、**默认直接 APPROVED**，
+   * 保存后服务端会重算该成员这几天的 duty「请假」标记。
+   * 删除会连带把 duty 的 LEAVE 标记退回 PENDING（否则那条值日会一直显示"已请假"）。
+   */
+  function openLeaveCreateDialog() {
+    api('/api/members?classId=' + state.classId + '&page=1&pageSize=0&scope=ALL').then(function (d) {
+      if (!d.ok) { toast(d.errMsg || '读取成员失败', 'err'); return; }
+      var items = (d.data && d.data.items) || [];
+      if (!items.length) { toast('该班没有可登记的成员', 'err'); return; }
+      var opts = items.map(function (m) {
+        return '<option value="' + m.id + '">' + esc(m.name) +
+          (m.studentNo ? '（' + esc(m.studentNo) + '）' : '') + '</option>';
+      }).join('');
+      var today = ymd(new Date());
+      var statusOpts = ['APPROVED', 'PENDING', 'REJECTED'].map(function (s) {
+        return '<option value="' + s + '"' + (s === 'APPROVED' ? ' selected' : '') + '>' +
+          (LEAVE_STATUS_TEXT[s] || s) + '</option>';
+      }).join('');
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML =
+        '<div class="dlg"><div class="dlg-hd">代登记请假</div>' +
+        '<div class="dlg-bd">' +
+        fld('成员', '<select id="lvc-member">' + opts + '</select>') +
+        '<div class="field-row">' +
+        fld('起始日期', '<input type="date" id="lvc-start" value="' + today + '">') +
+        fld('结束日期', '<input type="date" id="lvc-end" value="' + today + '">') +
+        '</div>' +
+        '<div class="field-row">' +
+        fld('开始时间（可空）', '<input type="time" id="lvc-st">') +
+        fld('结束时间（可空）', '<input type="time" id="lvc-et">') +
+        '</div>' +
+        fld('状态', '<select id="lvc-status">' + statusOpts + '</select>') +
+        '<div class="muted-note">时间留空 = 整天请假。后台代登记默认直接「通过」，如需走审批可改为「待审」。</div>' +
+        '</div><div class="dlg-ft">' +
+        '<button class="btn" id="lvc-cancel">取消</button>' +
+        '<button class="btn btn-primary" id="lvc-save">保存</button>' +
+        '</div></div>';
+      document.body.appendChild(dlg);
+      $('#lvc-cancel', dlg).onclick = function () { dlg.remove(); };
+      $('#lvc-save', dlg).onclick = function () {
+        var btn = $('#lvc-save', dlg);
+        btn.disabled = true; btn.textContent = '保存中…';
+        api('/api/leave', {
+          method: 'POST',
+          body: {
+            classId: state.classId,
+            memberId: Number($('#lvc-member', dlg).value),
+            startDate: $('#lvc-start', dlg).value,
+            endDate: $('#lvc-end', dlg).value,
+            startTime: $('#lvc-st', dlg).value,
+            endTime: $('#lvc-et', dlg).value,
+            status: $('#lvc-status', dlg).value
+          }
+        }).then(function (res) {
+          if (!res.ok) { btn.disabled = false; btn.textContent = '保存'; toast(res.errMsg || '保存失败', 'err'); return; }
+          dlg.remove();
+          toast('已登记；对应日期的值日标记已同步', 'ok');
+          reload();
+        });
+      };
+    });
+  }
+
+  function deleteLeave(id) {
+    if (!confirm('确认删除这条请假？\n\n· 删除不可恢复；\n· 该成员这几天原本被标成「已请假」的值日会退回「待值日」。\n\n如果只是想改成已撤销，请用「编辑」把状态改为「已撤销」。')) return;
+    api('/api/leave/' + id + '/delete', { method: 'POST' }).then(function (res) {
+      if (!res.ok) { toast(res.errMsg || '删除失败', 'err'); return; }
+      toast('已删除；值日标记已同步', 'ok');
+      reload();
+    });
+  }
+
+  /* ============================================================
+   * 值日记录 / 换班申请（2026-11-15 新增）
+   * ============================================================
+   * 两者共用 `openMemberPicker`：都要「从本班选一个人」，
+   * 各自写一遍就会各自漏掉「只列 ACTIVE 成员」或「只列本班」这类约束。
+   */
+
+  var DUTY_STATUS_TEXT = {
+    PENDING: '待值日', ONGOING: '进行中', DONE: '已值日',
+    LEAVE: '已请假', SWAPPED_OUT: '已换出', EXPIRED: '已结束'
+  };
+  function dutyTag(s) {
+    var cls = { DONE: 'tag-ok', PENDING: 'tag-warn', ONGOING: 'tag-warn' }[s] || 'tag-off';
+    return '<span class="tag ' + cls + '">' + esc(DUTY_STATUS_TEXT[s] || s) + '</span>';
+  }
+
+  var SWAP_STATUS_TEXT = {
+    PENDING_PEER: '待对方确认', PENDING_ADMIN: '待管理员确认',
+    DONE: '已完成', REJECTED: '已拒绝', CANCELLED: '已撤销'
+  };
+  function swapTag(s) {
+    var cls = { DONE: 'tag-ok' }[s] || (/^PENDING/.test(s) ? 'tag-warn' : 'tag-off');
+    return '<span class="tag ' + cls + '">' + esc(SWAP_STATUS_TEXT[s] || s) + '</span>';
+  }
+
+  /**
+   * 通用「选一个人」弹层。
+   * 只列本班 ACTIVE 成员；调用方拿到 { id, name } 后自己做后续动作。
+   */
+  function openMemberPicker(title, onPick) {
+    api('/api/members?classId=' + state.classId + '&page=1&pageSize=0&scope=ALL').then(function (d) {
+      if (!d.ok) { toast(d.errMsg || '读取成员失败', 'err'); return; }
+      var items = ((d.data && d.data.items) || []).filter(function (m) {
+        return m.status === 'ACTIVE' || m.status === undefined;
+      });
+      if (!items.length) { toast('本班没有可用成员', 'err'); return; }
+      var opts = items.map(function (m) {
+        return '<option value="' + m.id + '">' + esc(m.name) +
+          (m.studentNo ? '（' + esc(m.studentNo) + '）' : '') +
+          (m.groupTag ? ' · ' + esc(m.groupTag) + '组' : '') + '</option>';
+      }).join('');
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML =
+        '<div class="dlg"><div class="dlg-hd">' + esc(title) + '</div>' +
+        '<div class="dlg-bd">' + fld('选择成员', '<select id="pk-member">' + opts + '</select>') + '</div>' +
+        '<div class="dlg-ft">' +
+        '<button class="btn" id="pk-cancel">取消</button>' +
+        '<button class="btn btn-primary" id="pk-ok">确定</button>' +
+        '</div></div>';
+      document.body.appendChild(dlg);
+      $('#pk-cancel', dlg).onclick = function () { dlg.remove(); };
+      $('#pk-ok', dlg).onclick = function () {
+        var sel = $('#pk-member', dlg);
+        var id = Number(sel.value);
+        var name = sel.options[sel.selectedIndex].textContent;
+        dlg.remove();
+        onPick(id, name);
+      };
+    });
+  }
+
+  /* ---------------- 值日记录 ---------------- */
+
+  function renderDuty(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+    // 默认看最近 7 天（含今天）：后台最常见的诉求是「这周谁值日 / 昨天谁没做」
+    var f = state.dutyFilter || (state.dutyFilter = {
+      dateFrom: ymd(new Date(Date.now() - 6 * 86400000)),
+      dateTo: ymd(new Date()),
+      status: '',
+      kind: ''
+    });
+
+    function load() {
+      var qs = 'classId=' + state.classId +
+        '&dateFrom=' + encodeURIComponent(f.dateFrom) +
+        '&dateTo=' + encodeURIComponent(f.dateTo) +
+        (f.status ? '&status=' + f.status : '') +
+        (f.kind ? '&kind=' + f.kind : '') +
+        '&pageSize=200';
+      api('/api/duty?' + qs).then(function (d) {
+        if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        var rows = d.data.items || [];
+        var statusOpts = ['', 'PENDING', 'ONGOING', 'DONE', 'SWAPPED_OUT', 'EXPIRED'].map(function (s) {
+          return '<option value="' + s + '"' + (s === f.status ? ' selected' : '') + '>' +
+            (s ? DUTY_STATUS_TEXT[s] : '全部状态') + '</option>';
+        }).join('');
+        var kindOpts = [['', '全部课次'], ['COURSE', '课程'], ['CLEAN', '保洁']].map(function (p) {
+          return '<option value="' + p[0] + '"' + (p[0] === f.kind ? ' selected' : '') + '>' + p[1] + '</option>';
+        }).join('');
+
+        var body = rows.length ? rows.map(function (r) {
+          // 状态下拉直接改（一次点击完成），不再点进弹层再选一遍
+          var st = '<select class="duty-st" data-duty-status="' + r.id + '">' +
+            ['PENDING', 'ONGOING', 'DONE', 'SWAPPED_OUT', 'EXPIRED'].map(function (s) {
+              return '<option value="' + s + '"' + (s === r.status ? ' selected' : '') + '>' +
+                DUTY_STATUS_TEXT[s] + '</option>';
+            }).join('') + '</select>';
+          return '<tr>' +
+            '<td class="td-period">' + esc(r.classDate) + '</td>' +
+            '<td>' + r.week + '</td>' +
+            '<td>' + r.period + '</td>' +
+            '<td>' + esc(r.courseName) + '</td>' +
+            '<td>' + esc(r.memberName) + (r.studentNo ? '<span class="muted-note"> · ' + esc(r.studentNo) + '</span>' : '') + '</td>' +
+            '<td>' + dutyTag(r.status) + '</td>' +
+            '<td>' + (r.source === 'MANUAL' ? '<span class="muted-note">手工</span>' : '<span class="muted-note">自动</span>') + '</td>' +
+            '<td class="td-ops">' + st +
+            '<button class="link" data-duty-swap="' + r.id + '">换人</button>' +
+            '<button class="link link-danger" data-duty-del="' + r.id + '">删除</button>' +
+            '</td></tr>';
+        }).join('') : '<tr><td colspan="8"><div class="empty">这段时间没有值日记录</div></td></tr>';
+
+        host.innerHTML =
+          '<div class="toolbar">' +
+          '<div class="toolbar-left">' +
+          '<input type="date" id="duty-from" value="' + esc(f.dateFrom) + '">' +
+          '<span class="muted-note">至</span>' +
+          '<input type="date" id="duty-to" value="' + esc(f.dateTo) + '">' +
+          '<select id="duty-status">' + statusOpts + '</select>' +
+          '<select id="duty-kind">' + kindOpts + '</select>' +
+          '</div>' +
+          '<div class="toolbar-right"><button class="btn" id="duty-refresh">刷新</button></div>' +
+          '</div>' +
+          '<div class="card">' +
+          '<div class="card-hd">值日明细 · 共 ' + rows.length + ' 条' +
+          '<span class="muted-note">（状态可直接下拉修改；「已请假」由请假审批产生，这里不提供手工设置）</span></div>' +
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>日期</th><th>周次</th><th>节次</th><th>课次</th><th>值日人</th><th>状态</th><th>来源</th><th>操作</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+
+        bind();
+      });
+    }
+
+    function bind() {
+      var fromEl = $('#duty-from', host);
+      var toEl = $('#duty-to', host);
+      var stEl = $('#duty-status', host);
+      var kdEl = $('#duty-kind', host);
+      if (fromEl) fromEl.onchange = function () { f.dateFrom = fromEl.value; load(); };
+      if (toEl) toEl.onchange = function () { f.dateTo = toEl.value; load(); };
+      if (stEl) stEl.onchange = function () { f.status = stEl.value; load(); };
+      if (kdEl) kdEl.onchange = function () { f.kind = kdEl.value; load(); };
+      var rf = $('#duty-refresh', host);
+      if (rf) rf.onclick = function () { load(); };
+
+      $$('[data-duty-status]', host).forEach(function (s) {
+        s.onchange = function () {
+          var id = Number(s.dataset.dutyStatus);
+          s.disabled = true;
+          api('/api/duty/' + id + '/status', { method: 'POST', body: { status: s.value } }).then(function (r) {
+            s.disabled = false;
+            if (!r.ok) { toast(r.errMsg || '修改失败', 'err'); load(); return; }
+            toast('状态已更新', 'ok');
+            load();
+          });
+        };
+      });
+      $$('[data-duty-swap]', host).forEach(function (b) {
+        b.onclick = function () {
+          var id = Number(b.dataset.dutySwap);
+          openMemberPicker('换人值日', function (memberId, name) {
+            api('/api/duty/' + id + '/member', { method: 'POST', body: { memberId: memberId } }).then(function (r) {
+              if (!r.ok) { toast(r.errMsg || '换人失败', 'err'); return; }
+              toast('已换给 ' + name, 'ok');
+              load();
+            });
+          });
+        };
+      });
+      $$('[data-duty-del]', host).forEach(function (b) {
+        b.onclick = function () {
+          if (!confirm('确认删除这条值日记录？\n\n· 只删这一条，不影响其它周次；\n· 不会改动任何人的值日次数（轮转队列不变）；\n· 删掉后该时段就没有值日人了。')) return;
+          api('/api/duty/' + Number(b.dataset.dutyDel) + '/delete', { method: 'POST' }).then(function (r) {
+            if (!r.ok) { toast(r.errMsg || '删除失败', 'err'); return; }
+            toast('已删除', 'ok');
+            load();
+          });
+        };
+      });
+    }
+
+    load();
+  }
+
+  /* ---------------- 换班申请 ---------------- */
+
+  function renderSwap(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+    if (!state.swapStatus) state.swapStatus = '';
+
+    function load() {
+      var qs = 'classId=' + state.classId + (state.swapStatus ? '&status=' + state.swapStatus : '') + '&pageSize=100';
+      api('/api/swap?' + qs).then(function (d) {
+        if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        var rows = d.data.items || [];
+        var segs = [['', '全部'], ['PENDING_PEER', '待对方'], ['PENDING_ADMIN', '待管理员'], ['DONE', '已完成'], ['REJECTED', '已拒绝'], ['CANCELLED', '已撤销']]
+          .map(function (p) {
+            return '<button type="button" class="seg-btn' + (p[0] === state.swapStatus ? ' active' : '') +
+              '" data-swap-st="' + p[0] + '">' + p[1] + '</button>';
+          }).join('');
+
+        var body = rows.length ? rows.map(function (r) {
+          var ops = '';
+          if (r.canAct) {
+            if (r.type === 'SWAP') ops += '<button class="link" data-swap-ok="' + r.id + '">通过</button>';
+            ops += '<button class="link link-danger" data-swap-no="' + r.id + '">驳回</button>' +
+                   '<button class="link" data-swap-cancel="' + r.id + '">撤销</button>';
+          } else {
+            ops = '<span class="muted-note">已处理</span>';
+          }
+          return '<tr' + (r.expired ? ' class="row-warn"' : '') + '>' +
+            '<td class="td-period">' + esc(r.createdAt) + '</td>' +
+            '<td>' + esc(r.typeText) + '</td>' +
+            '<td>' + esc(r.classDate) + '<span class="muted-note"> 第' + r.week + '周 ' + r.period + '节</span><br>' +
+            '<span class="muted-note">' + esc(r.courseName) + '</span></td>' +
+            '<td>' + esc(r.fromName) + '</td>' +
+            '<td>' + (r.toName ? esc(r.toName) : '<span class="muted-note">未指定</span>') + '</td>' +
+            '<td>' + esc(r.reasonText) + '</td>' +
+            '<td>' + swapTag(r.status) + (r.expired ? '<br><span class="muted-note">已过期</span>' : '') + '</td>' +
+            '<td class="td-ops">' + ops + '</td></tr>';
+        }).join('') : '<tr><td colspan="8"><div class="empty">没有换班申请</div></td></tr>';
+
+        host.innerHTML =
+          '<div class="toolbar">' +
+          '<div class="seg" role="group">' + segs + '</div>' +
+          '<div class="toolbar-right"><button class="btn" id="swap-refresh">刷新</button></div>' +
+          '</div>' +
+          '<div class="card">' +
+          '<div class="card-hd">换班 / 请假代班申请 · 共 ' + rows.length + ' 条' +
+          '<span class="muted-note">（「通过」会真的把值日换成替补，并记进换人历史，小程序里可还原）</span></div>' +
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>申请时间</th><th>类型</th><th>值日</th><th>申请人</th><th>替补</th><th>原因</th><th>状态</th><th>操作</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+
+        bind();
+      });
+    }
+
+    function bind() {
+      $$('[data-swap-st]', host).forEach(function (b) {
+        b.onclick = function () { state.swapStatus = b.dataset.swapSt; load(); };
+      });
+      var rf = $('#swap-refresh', host);
+      if (rf) rf.onclick = function () { load(); };
+
+      $$('[data-swap-ok]', host).forEach(function (b) {
+        b.onclick = function () {
+          if (!confirm('通过这条换班申请？\n\n值日人会立刻换成替补，并写入换人记录（小程序里可还原）。')) return;
+          api('/api/swap/' + Number(b.dataset.swapOk) + '/approve', { method: 'POST', body: {} }).then(function (r) {
+            if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); load(); return; }
+            toast('已通过，值日人已更新', 'ok');
+            load();
+          });
+        };
+      });
+      $$('[data-swap-no]', host).forEach(function (b) {
+        b.onclick = function () {
+          if (!confirm('驳回这条申请？')) return;
+          api('/api/swap/' + Number(b.dataset.swapNo) + '/reject', { method: 'POST', body: {} }).then(function (r) {
+            if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); return; }
+            toast('已驳回', 'ok');
+            load();
+          });
+        };
+      });
+      $$('[data-swap-cancel]', host).forEach(function (b) {
+        b.onclick = function () {
+          if (!confirm('撤销这条申请？\n\n若它已把值日置为「已请假」，会一并退回「待值日」。')) return;
+          api('/api/swap/' + Number(b.dataset.swapCancel) + '/cancel', { method: 'POST', body: {} }).then(function (r) {
+            if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); return; }
+            toast('已撤销', 'ok');
+            load();
+          });
+        };
+      });
+    }
+
+    load();
+  }
+
+  /* ---------------- 倒数日（只读） ---------------- */
+
+  function renderCountdown(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+    if (state.cdKeyword === undefined) state.cdKeyword = '';
+
+    function load() {
+      var qs = 'classId=' + state.classId + (state.cdKeyword ? '&keyword=' + encodeURIComponent(state.cdKeyword) : '');
+      api('/api/countdown?' + qs).then(function (d) {
+        if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        var rows = d.data.items || [];
+        var body = rows.length ? rows.map(function (r) {
+          var dl = r.daysLeft;
+          var txt = dl > 0 ? ('还有 ' + dl + ' 天') : (dl === 0 ? '就是今天' : (Math.abs(dl) + ' 天前'));
+          var cls = dl < 0 ? 'muted-note' : '';
+          return '<tr' + (r.past ? ' class="row-muted"' : '') + '>' +
+            '<td class="td-period">' + esc(r.targetDate) + '</td>' +
+            '<td class="' + cls + '">' + esc(txt) + '</td>' +
+            '<td>' + esc(r.name) + '</td>' +
+            '<td>' + esc(r.memberName) + (r.studentNo ? '<span class="muted-note"> · ' + esc(r.studentNo) + '</span>' : '') + '</td>' +
+            '<td>' + esc(r.position || '—') + '</td>' +
+            '<td class="muted-note">' + esc(r.createdAt) + '</td>' +
+            '</tr>';
+        }).join('') : '<tr><td colspan="6"><div class="empty">本班还没有人添加倒数日</div></td></tr>';
+
+        host.innerHTML =
+          '<div class="toolbar">' +
+          '<div class="toolbar-left">' +
+          '<input type="search" id="cd-kw" placeholder="搜事件或姓名" value="' + esc(state.cdKeyword) + '">' +
+          '</div>' +
+          '<div class="toolbar-right"><button class="btn" id="cd-refresh">刷新</button></div>' +
+          '</div>' +
+          '<div class="card">' +
+          '<div class="card-hd">倒数日 · 共 ' + rows.length + ' 条' +
+          '<span class="muted-note">（今天 ' + d.data.todayCount + ' 条，未来 ' + d.data.upcomingCount +
+          ' 条；这是同学们各自添加的私人日子，后台只读，不做增删改）</span></div>' +
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>目标日期</th><th>倒计时</th><th>事件</th><th>添加人</th><th>职位</th><th>添加时间</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+
+        bind();
+      });
+    }
+
+    function bind() {
+      var kw = $('#cd-kw', host);
+      if (kw) {
+        // 输入即筛（本地 300ms 防抖），不用按回车
+        var t = null;
+        kw.oninput = function () {
+          clearTimeout(t);
+          t = setTimeout(function () {
+            state.cdKeyword = kw.value.trim();
+            load();
+          }, 300);
+        };
+      }
+      var rf = $('#cd-refresh', host);
+      if (rf) rf.onclick = function () { load(); };
+    }
+
+    load();
+  }
+
+  /* ---------------- 后台账号（仅超管） ---------------- */
+
+  /** 权限勾选网格。selected 为已勾选的 view key 数组 */
+  function permChecks(selected) {
+    var list = state.accountViews || [];
+    return '<div class="perm-grid">' + list.map(function (v) {
+      var on = selected.indexOf(v.key) >= 0;
+      return '<label class="perm-item"><input type="checkbox" value="' + esc(v.key) + '"' +
+        (on ? ' checked' : '') + '><span>' + esc(v.label) + '</span></label>';
+    }).join('') + '</div>';
+  }
+
+  function pickedPerms(dlg) {
+    return $$('.perm-grid input:checked', dlg).map(function (c) { return c.value; });
+  }
+
+  function renderAccount(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+
+    function load() {
+      api('/api/accounts?classId=' + state.classId).then(function (d) {
+        if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        // 页签清单与职位模板只在第一次拿到时缓存（后续弹层要用）
+        if (d.data.views) state.accountViews = d.data.views;
+        if (!state.accountViews) state.accountViews = [];
+        var accs = d.data.accounts || [];
+        var cands = d.data.candidates || [];
+
+        var accBody = accs.length ? accs.map(function (a) {
+          var permTxt = (a.perms || []).map(function (k) {
+            var v = (state.accountViews || []).filter(function (x) { return x.key === k; })[0];
+            return v ? v.label : k;
+          }).join(' / ') || '<span class="muted-note">无</span>';
+          return '<tr>' +
+            '<td>' + esc(a.memberName) + (a.studentNo ? '<span class="muted-note"> · ' + esc(a.studentNo) + '</span>' : '') + '</td>' +
+            '<td>' + esc(a.position || '—') + (a.isSuper ? ' <span class="tag tag-ok">超管</span>' : '') + '</td>' +
+            '<td class="fee-amt">' + esc(a.username) + '</td>' +
+            '<td class="td-perms">' + permTxt + '</td>' +
+            '<td>' + (a.status ? '<span class="tag tag-ok">启用</span>' : '<span class="tag tag-off">停用</span>') + '</td>' +
+            '<td class="muted-note">' + (a.lastLoginAt || '从未登录') + '</td>' +
+            '<td class="td-ops">' +
+            '<button class="link" data-acc-perm="' + a.adminId + '">改权限</button>' +
+            '<button class="link" data-acc-toggle="' + a.adminId + '" data-on="' + a.status + '">' +
+            (a.status ? '停用' : '启用') + '</button>' +
+            '<button class="link link-danger" data-acc-del="' + a.adminId + '">删除</button>' +
+            '</td></tr>';
+        }).join('') : '<tr><td colspan="7"><div class="empty">本班还没有开通后台账号</div></td></tr>';
+
+        host.innerHTML =
+          '<div class="toolbar">' +
+          '<div class="toolbar-left"><span class="muted-note">' +
+          '后台权限按「职位」自动套用默认模板；开通时可手工调整。停用或改权限后，对方当前登录状态会立即失效。</span></div>' +
+          '<div class="toolbar-right">' +
+          '<button class="btn btn-primary" id="acc-open">开通后台</button>' +
+          '<button class="btn" id="acc-refresh">刷新</button>' +
+          '</div>' +
+          '</div>' +
+          '<div class="card">' +
+          '<div class="card-hd">已开通账号 · 共 ' + accs.length + ' 个</div>' +
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>姓名</th><th>职位</th><th>账号</th><th>权限</th><th>状态</th><th>最后登录</th><th>操作</th>' +
+          '</tr></thead><tbody>' + accBody + '</tbody></table></div></div>';
+
+        bind(cands);
+      });
+    }
+
+    function bind(cands) {
+      var rf = $('#acc-refresh', host);
+      if (rf) rf.onclick = function () { load(); };
+
+      var op = $('#acc-open', host);
+      if (op) op.onclick = function () { openAccountPickDialog(cands, load); };
+      $$('[data-acc-perm]', host).forEach(function (b) {
+        b.onclick = function () { openAccountPermDialog(Number(b.dataset.accPerm), load); };
+      });
+      $$('[data-acc-toggle]', host).forEach(function (b) {
+        b.onclick = function () {
+          var on = Number(b.dataset.on) ? 1 : 0;
+          var next = on ? 0 : 1;
+          if (!confirm(next ? '启用这个后台账号？' : '停用这个后台账号？\n\n停用后对方会立刻被踢出后台，需要重新登录（且登录会被拒）。')) return;
+          api('/api/accounts/' + Number(b.dataset.accToggle), { method: 'POST', body: { status: next } }).then(function (r) {
+            if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); return; }
+            toast(next ? '已启用' : '已停用', 'ok');
+            load();
+          });
+        };
+      });
+      $$('[data-acc-del]', host).forEach(function (b) {
+        b.onclick = function () {
+          if (!confirm('删除这个后台账号？\n\n只删「登录后台的资格」，不会删除班级成员档案、也不影响小程序使用。')) return;
+          api('/api/accounts/' + Number(b.dataset.accDel) + '/delete', { method: 'POST' }).then(function (r) {
+            if (!r.ok) { toast(r.errMsg || '删除失败', 'err'); return; }
+            toast('已删除', 'ok');
+            load();
+          });
+        };
+      });
+    }
+
+    /**
+     * 选人弹层：搜索 / 过滤候选，点选后进入开通弹层。
+     * 取代原来「底部铺开一个大表格逐行点开通」的展示方式（2026-11-15 用户要求）。
+     * candidate 由后端下发，已含辅导员（class_id=0 / group_tag=X）与班级成员。
+     */
+    function openAccountPickDialog(cands, done) {
+      if (!cands.length) { toast('没有可开通的人员（本班成员都已开通，且无可用教职工）', 'err'); return; }
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML =
+        '<div class="dlg dlg-pick"><div class="dlg-hd">开通后台 · 选择人员</div>' +
+        '<div class="dlg-bd">' +
+        fld('搜索（姓名 / 学号 / 职位 / 分组）',
+          '<input type="text" id="pick-kw" placeholder="输入关键字筛选，如：生活委员 / 辅导员 / 260805">') +
+        '<div class="seg pick-filter">' +
+        '<button class="seg-btn active" data-pick-kind="all">全部</button>' +
+        '<button class="seg-btn" data-pick-kind="staff">教职工</button>' +
+        '<button class="seg-btn" data-pick-kind="committee">班委</button>' +
+        '</div>' +
+        '<div class="pick-list" id="pick-list"></div>' +
+        '<div class="muted-note">共 ' + cands.length + ' 人可开通；教职工（含辅导员）为全校账号，开通后在所有班级生效。</div>' +
+        '</div><div class="dlg-ft">' +
+        '<button class="btn" id="pick-cancel">取消</button>' +
+        '</div></div>';
+      document.body.appendChild(dlg);
+      $('#pick-cancel', dlg).onclick = function () { dlg.remove(); };
+
+      // 角色文案：辅导员/教职工单独标注，避免超管误当普通学生
+      function roleText(c) {
+        if (c.groupTag === 'X') return '教职工';
+        return c.role === 'MEMBER' ? '普通成员' : (c.role === 'MONITOR' ? '班长' : '管理员');
+      }
+      // 身份分类：staff=教职工(group_tag=X)，committee=班委(非教职工且非普通成员)
+      function isStaff(c) { return c.groupTag === 'X'; }
+      function isCommittee(c) { return c.groupTag !== 'X' && c.role !== 'MEMBER'; }
+      function renderList(kw, kind) {
+        kw = String(kw || '').trim().toLowerCase();
+        kind = kind || 'all';
+        var hit = cands.filter(function (c) {
+          // 身份筛选（2026-11-15 用户要求：全部 / 教职工 / 班委）
+          if (kind === 'staff' && !isStaff(c)) return false;
+          if (kind === 'committee' && !isCommittee(c)) return false;
+          if (!kw) return true;
+          return [c.memberName, c.studentNo, c.position, c.groupTag, roleText(c)]
+            .some(function (v) { return String(v || '').toLowerCase().indexOf(kw) >= 0; });
+        });
+        // 「全部」视图教职工置顶（2026-11-16 用户要求）：带原始序号做稳定排序，
+        // 教职工排最前，其余保持后端返回顺序，不受搜索词影响。
+        if (kind === 'all') {
+          hit = hit.map(function (c, i) { return { c: c, i: i }; })
+            .sort(function (a, b) {
+              var ka = isStaff(a.c) ? 0 : 1;
+              var kb = isStaff(b.c) ? 0 : 1;
+              return ka === kb ? a.i - b.i : ka - kb;
+            })
+            .map(function (x) { return x.c; });
+        }
+        var list = $('#pick-list', dlg);
+        if (!hit.length) { list.innerHTML = '<div class="empty">没有匹配的人员</div>'; return; }
+        list.innerHTML = hit.map(function (c) {
+          return '<button class="pick-item" data-pick-member="' + c.memberId + '">' +
+            '<span class="pick-name">' + esc(c.memberName) +
+            (isStaff(c) ? ' <span class="tag tag-all">教职工</span>' : '') +
+            (isCommittee(c) ? ' <span class="tag tag-ok">班委</span>' : '') + '</span>' +
+            '<span class="pick-meta">' + esc(c.position || '未设职位') + ' · ' + esc(roleText(c)) +
+            (c.groupTag && c.groupTag !== 'X' ? ' · ' + esc(c.groupTag) + '组' : '') +
+            (c.studentNo ? ' · ' + esc(c.studentNo) : '') + '</span></button>';
+        }).join('');
+        $$('[data-pick-member]', list).forEach(function (b) {
+          b.onclick = function () {
+            var id = Number(b.dataset.pickMember);
+            var c = cands.filter(function (x) { return x.memberId === id; })[0];
+            dlg.remove();
+            if (c) openAccountCreateDialog(c, done);
+          };
+        });
+      }
+      var curKind = 'all';
+      $$('[data-pick-kind]', dlg).forEach(function (b) {
+        b.onclick = function () {
+          curKind = b.dataset.pickKind;
+          $$('[data-pick-kind]', dlg).forEach(function (x) {
+            x.classList.toggle('active', x === b);
+          });
+          renderList($('#pick-kw', dlg).value, curKind);
+        };
+      });
+      $('#pick-kw', dlg).oninput = function (e) { renderList(e.target.value, curKind); };
+      renderList('', curKind);
+      $('#pick-kw', dlg).focus();
+    }
+
+    /** 开通弹层：默认账号名 = 学号（好记、不撞），权限默认按职位模板勾好 */
+    function openAccountCreateDialog(c, done) {
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML =
+        '<div class="dlg"><div class="dlg-hd">开通后台账号 · ' + esc(c.memberName) + '</div>' +
+        '<div class="dlg-bd">' +
+        fld('账号名（登录用）', '<input type="text" id="ac-name" value="' + esc(c.studentNo || '') +
+          '" placeholder="字母开头，4–32 位">') +
+        fld('初始密码', '<input type="text" id="ac-pwd" placeholder="留空自动生成 10 位随机密码">') +
+        '<div class="field"><span class="field-label">权限（已按职位「' + esc(c.position || '未设置') + '」预勾）</span>' +
+        permChecks(c.templatePerms || []) + '</div>' +
+        '<div class="muted-note">初始密码只显示这一次，请当场记下转给对方；忘了只能重置。</div>' +
+        '</div><div class="dlg-ft">' +
+        '<button class="btn" id="ac-cancel">取消</button>' +
+        '<button class="btn btn-primary" id="ac-save">开通</button>' +
+        '</div></div>';
+      document.body.appendChild(dlg);
+      $('#ac-cancel', dlg).onclick = function () { dlg.remove(); };
+      $('#ac-save', dlg).onclick = function () {
+        var btn = $('#ac-save', dlg);
+        var username = $('#ac-name', dlg).value.trim();
+        var pwd = $('#ac-pwd', dlg).value.trim();
+        var perms = pickedPerms(dlg);
+        if (!perms.length) { toast('至少要给一个页签权限', 'err'); return; }
+        btn.disabled = true; btn.textContent = '开通中…';
+        api('/api/accounts', {
+          method: 'POST',
+          body: { memberId: c.memberId, username: username, password: pwd, perms: perms }
+        }).then(function (r) {
+          btn.disabled = false; btn.textContent = '开通';
+          if (!r.ok) { toast(r.errMsg || '开通失败', 'err'); return; }
+          dlg.remove();
+          showPasswordDialog('账号已开通', r.data.username, r.data.password, done);
+        });
+      };
+    }
+
+    /** 改权限 / 重置密码 */
+    function openAccountPermDialog(adminId, done) {
+      api('/api/accounts?classId=' + state.classId).then(function (d) {
+        if (!d.ok) { toast(d.errMsg || '读取失败', 'err'); return; }
+        var a = (d.data.accounts || []).filter(function (x) { return x.adminId === adminId; })[0];
+        if (!a) { toast('账号不存在', 'err'); return; }
+        var dlg = document.createElement('div');
+        dlg.className = 'dlg-mask';
+        dlg.innerHTML =
+          '<div class="dlg"><div class="dlg-hd">' + esc(a.memberName) + ' · ' + esc(a.username) + '</div>' +
+          '<div class="dlg-bd">' +
+          '<div class="field"><span class="field-label">权限（当前职位：' + esc(a.position || '未设置') + '）</span>' +
+          permChecks(a.perms || []) + '</div>' +
+          fld('重置密码', '<input type="text" id="ac-newpwd" placeholder="留空则不修改，至少 6 位">') +
+          '<div class="muted-note">保存后该账号的登录状态会立即失效，需要用新密码重新登录。</div>' +
+          '</div><div class="dlg-ft">' +
+          '<button class="btn" id="ap-cancel">取消</button>' +
+          '<button class="btn btn-primary" id="ap-save">保存</button>' +
+          '</div></div>';
+        document.body.appendChild(dlg);
+        $('#ap-cancel', dlg).onclick = function () { dlg.remove(); };
+        $('#ap-save', dlg).onclick = function () {
+          var btn = $('#ap-save', dlg);
+          var perms = pickedPerms(dlg);
+          var pwd = $('#ac-newpwd', dlg).value.trim();
+          if (!perms.length) { toast('至少要给一个页签权限', 'err'); return; }
+          btn.disabled = true; btn.textContent = '保存中…';
+          var body = { perms: perms };
+          if (pwd) body.password = pwd;
+          api('/api/accounts/' + adminId, { method: 'POST', body: body }).then(function (r) {
+            btn.disabled = false; btn.textContent = '保存';
+            if (!r.ok) { toast(r.errMsg || '保存失败', 'err'); return; }
+            dlg.remove();
+            toast('已保存' + (pwd ? '；请把新密码转给对方' : ''), 'ok');
+            if (done) done();
+          });
+        };
+      });
+    }
+
+    /** 初始密码一次性展示（页面刷新后拿不到，必须当场记） */
+    function showPasswordDialog(title, username, password, done) {
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML =
+        '<div class="dlg"><div class="dlg-hd">' + esc(title) + '</div>' +
+        '<div class="dlg-bd">' +
+        fld('账号', '<input type="text" readonly value="' + esc(username) + '">') +
+        fld('初始密码', '<input type="text" readonly value="' + esc(password) + '">') +
+        '<div class="muted-note">这个密码<b>只显示这一次</b>。关闭后无法再查看，只能重置。</div>' +
+        '</div><div class="dlg-ft">' +
+        '<button class="btn btn-primary" id="pw-ok">我已记下</button>' +
+        '</div></div>';
+      document.body.appendChild(dlg);
+      $('#pw-ok', dlg).onclick = function () { dlg.remove(); if (done) done(); };
+    }
+
+    load();
+  }
+
+  /* ---------------- 班费 / 团费（2026-11-15 新增） ----------------
+   * 与小程序共用同一套表与口径：余额 = 总额 − 已消费，**不落库**，改/删一条记录立即联动。
+   * 🔴 后台删除**只删数据库行、不删云存储凭证图**（小程序删除会连带删图，且不可恢复）。
+   * 凭证图直接走公网 URL（存储桶 ACL = 所有用户可读，2026-11-15 实测），不需要签名/SDK。
+   */
+  var FEE_TYPE_LABEL = { class: '班费', league: '团费' };
+
+  function fmtMoney(n) {
+    var v = Number(n) || 0;
+    return (Math.round(v * 100) / 100).toFixed(2);
+  }
+
+  function renderFee(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+    var type = state.feeType || 'class';
+
+    function load() {
+      api('/api/fee?classId=' + state.classId).then(function (d) {
+        if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        var fund = (d.data.funds && d.data.funds[type]) || { total: 0, spent: 0, balance: 0, records: [] };
+        var segs = ['class', 'league'].map(function (k) {
+          var on = k === type;
+          return '<button type="button" class="seg-btn' + (on ? ' active' : '') +
+            '" data-fee-type="' + k + '">' + FEE_TYPE_LABEL[k] + '</button>';
+        }).join('');
+        var records = fund.records || [];
+        var body = records.length ? records.map(function (r) {
+          var thumbs = r.images.length
+            ? '<span class="fee-thumbs">' + r.images.slice(0, 3).map(function (im) {
+                return '<img class="fee-thumb" src="' + esc(im.url) + '" data-fee-img="' + esc(im.url) + '" alt="凭证">';
+              }).join('') +
+              (r.images.length > 3 ? '<span class="muted-note">+' + (r.images.length - 3) + '</span>' : '') +
+              '</span>'
+            : '<span class="muted-note">无</span>';
+          return '<tr>' +
+            '<td class="td-period">' + esc(r.createdAt) + '</td>' +
+            '<td class="fee-amt">¥' + fmtMoney(r.amount) + '</td>' +
+            '<td>' + (r.note ? esc(r.note) : '<span class="muted-note">—</span>') + '</td>' +
+            '<td>' + esc(r.operatorName || '—') + '</td>' +
+            '<td>' + thumbs + '</td>' +
+            '<td class="td-ops">' +
+            '<button class="link" data-fee-edit="' + r.id + '">编辑</button>' +
+            '<button class="link link-danger" data-fee-del="' + r.id + '">删除</button>' +
+            '</td></tr>';
+        }).join('') : '<tr><td colspan="6"><div class="empty">还没有消费记录</div></td></tr>';
+
+        host.innerHTML =
+          '<div class="toolbar">' +
+          '<div class="seg" role="group" aria-label="经费类型">' + segs + '</div>' +
+          '<div class="toolbar-right">' +
+          '<button class="btn" id="fee-total">设置总额</button>' +
+          '<button class="btn btn-primary" id="fee-add">登记消费</button>' +
+          '</div></div>' +
+          '<div class="card">' +
+          '<div class="card-hd">' + FEE_TYPE_LABEL[type] + '汇总 · 余额 = 总额 − 已消费（运行时计算，不落库）</div>' +
+          '<div class="fee-sum">' +
+          '<div class="fee-sum-i"><div class="fee-sum-k">总额</div><div class="fee-sum-v">¥' + fmtMoney(fund.total) + '</div></div>' +
+          '<div class="fee-sum-i"><div class="fee-sum-k">已消费</div><div class="fee-sum-v">¥' + fmtMoney(fund.spent) + '</div></div>' +
+          '<div class="fee-sum-i"><div class="fee-sum-k">当前余额</div><div class="fee-sum-v fee-sum-bal">¥' + fmtMoney(fund.balance) + '</div></div>' +
+          '</div></div>' +
+          '<div class="card">' +
+          '<div class="card-hd">消费明细 · 共 ' + records.length + ' 条</div>' +
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>时间</th><th>金额</th><th>备注</th><th>操作人</th><th>凭证</th><th>操作</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div></div>' +
+          '<div class="card muted-note">后台删除只移除记录，<b>凭证图片仍保留在云存储</b>' +
+          '（小程序里删除才会连带删图，且无法恢复）。后台登记消费不支持上传图片，凭证请在小程序「追加图片」里补。</div>';
+
+        bind(fund);
+      });
+    }
+
+    function bind(fund) {
+      /* 🔴 必须是 $$（querySelectorAll）。写成 $ 会拿到**单个元素**，
+         .forEach 立刻抛 TypeError ⇒ 下面所有 onclick 一个都绑不上，
+         而 innerHTML 早已写完 ⇒ 页面看着完全正常，只是「按钮点了没反应」。 */
+      $$('[data-fee-type]', host).forEach(function (b) {
+        b.onclick = function () { state.feeType = b.dataset.feeType; load(); };
+      });
+      var bt = $('#fee-total', host);
+      if (bt) bt.onclick = function () { openFeeTotalDialog(type, Number(fund.total) || 0); };
+      var ba = $('#fee-add', host);
+      if (ba) ba.onclick = function () { openFeeRecordDialog(type, null); };
+      $$('[data-fee-edit]', host).forEach(function (b) {
+        b.onclick = function () { openFeeRecordDialog(type, Number(b.dataset.feeEdit)); };
+      });
+      $$('[data-fee-del]', host).forEach(function (b) {
+        b.onclick = function () { deleteFeeRecord(Number(b.dataset.feeDel)); };
+      });
+      $$('[data-fee-img]', host).forEach(function (img) {
+        img.onclick = function () { openImagePreview(img.dataset.feeImg); };
+      });
+    }
+
+    load();
+  }
+
+  /** 设置总额。总额是「收缴总数」，余额由它减去已消费算出来，所以这里只改总额。 */
+  function openFeeTotalDialog(type, current) {
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    dlg.innerHTML =
+      '<div class="dlg"><div class="dlg-hd">设置' + FEE_TYPE_LABEL[type] + '总额</div>' +
+      '<div class="dlg-bd">' +
+      fld('总额（元）', '<input type="number" step="0.01" min="0" id="fee-total-in" value="' +
+        esc(String(Number(current) || 0)) + '">') +
+      '<div class="muted-note">总额是已收缴的总金额；余额 = 总额 − 已消费明细合计，改这里不需要动任何记录。</div>' +
+      '</div><div class="dlg-ft">' +
+      '<button class="btn" id="fee-total-cancel">取消</button>' +
+      '<button class="btn btn-primary" id="fee-total-save">保存</button>' +
+      '</div></div>';
+    document.body.appendChild(dlg);
+    $('#fee-total-cancel', dlg).onclick = function () { dlg.remove(); };
+    $('#fee-total-save', dlg).onclick = function () {
+      var btn = $('#fee-total-save', dlg);
+      var v = Number($('#fee-total-in', dlg).value);
+      if (!isFinite(v) || v < 0) { toast('总额须为不小于 0 的数字', 'err'); return; }
+      btn.disabled = true; btn.textContent = '保存中…';
+      api('/api/fee/total', {
+        method: 'POST',
+        body: { classId: state.classId, type: type, total: v }
+      }).then(function (res) {
+        if (!res.ok) { btn.disabled = false; btn.textContent = '保存'; toast(res.errMsg || '保存失败', 'err'); return; }
+        dlg.remove();
+        toast('总额已更新', 'ok');
+        reload();
+      });
+    };
+  }
+
+  /** 编辑/新增消费。r 为 null 表示新增。数据从服务端重新取，避免用到过期快照。 */
+  function openFeeRecordDialog(type, id) {
+    api('/api/fee?classId=' + state.classId).then(function (d) {
+      if (!d.ok) { toast(d.errMsg || '读取失败', 'err'); return; }
+      var fund = (d.data.funds && d.data.funds[type]) || { records: [] };
+      var r = null;
+      if (id) {
+        for (var i = 0; i < fund.records.length; i++) if (fund.records[i].id === id) r = fund.records[i];
+        if (!r) { toast('找不到这条记录', 'err'); return; }
+      }
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML =
+        '<div class="dlg"><div class="dlg-hd">' +
+        (r ? '编辑消费 · #' + r.id : '登记' + FEE_TYPE_LABEL[type] + '消费') +
+        '</div><div class="dlg-bd">' +
+        fld('金额（元）', '<input type="number" step="0.01" min="0.01" id="fee-amt" value="' +
+          (r ? esc(String(r.amount)) : '') + '" placeholder="例如：12.50">') +
+        fld('备注', '<input type="text" id="fee-note" maxlength="200" value="' +
+          (r ? esc(r.note || '') : '') + '" placeholder="例如：打印活动照片">') +
+        fld('时间', '<input type="datetime-local" id="fee-time" value="' +
+          (r ? esc(String(r.createdAt).replace(' ', 'T').slice(0, 16)) : '') + '">') +
+        (r && r.images.length
+          ? '<div class="muted-note">这条记录有 ' + r.images.length + ' 张凭证图（在列表里点缩略图可放大）。</div>'
+          : '<div class="muted-note">' + (r ? '这条记录没有凭证图。' : '后台不支持上传凭证，保存后在小程序里「追加图片」。') + '时间留空 = 取服务器当前时间。</div>') +
+        '</div><div class="dlg-ft">' +
+        '<button class="btn" id="fee-cancel">取消</button>' +
+        '<button class="btn btn-primary" id="fee-save">保存</button>' +
+        '</div></div>';
+      document.body.appendChild(dlg);
+      $('#fee-cancel', dlg).onclick = function () { dlg.remove(); };
+      $('#fee-save', dlg).onclick = function () {
+        var btn = $('#fee-save', dlg);
+        var amount = Number($('#fee-amt', dlg).value);
+        if (!(amount > 0)) { toast('金额须大于 0', 'err'); return; }
+        var payload = {
+          classId: state.classId,
+          type: type,
+          amount: amount,
+          note: $('#fee-note', dlg).value,
+          createdAt: $('#fee-time', dlg).value ? $('#fee-time', dlg).value.replace('T', ' ') : ''
+        };
+        btn.disabled = true; btn.textContent = '保存中…';
+        var url = r ? '/api/fee/record/' + r.id : '/api/fee/record';
+        api(url, { method: 'POST', body: payload }).then(function (res) {
+          if (!res.ok) { btn.disabled = false; btn.textContent = '保存'; toast(res.errMsg || '保存失败', 'err'); return; }
+          dlg.remove();
+          toast(r ? '已保存' : '已登记', 'ok');
+          reload();
+        });
+      };
+    });
+  }
+
+  function deleteFeeRecord(id) {
+    api('/api/fee?classId=' + state.classId).then(function (d) {
+      if (!d.ok) { toast(d.errMsg || '读取失败', 'err'); return; }
+      var found = null;
+      ['class', 'league'].forEach(function (k) {
+        var f = (d.data.funds || {})[k];
+        if (!f) return;
+        f.records.forEach(function (r) { if (r.id === id) found = { r: r, t: k }; });
+      });
+      if (!found) { toast('找不到这条记录', 'err'); return; }
+      var r = found.r;
+      var tip = '确认删除这条消费记录？\n\n' +
+        '· ' + r.createdAt + '　¥' + fmtMoney(r.amount) + (r.note ? '　' + r.note : '') + '\n' +
+        '· 删除后余额会立即相应增加（余额 = 总额 − 已消费）\n' +
+        '· 记录不可恢复；凭证图片（' + r.images.length + ' 张）会保留在云存储，但记录本身没了\n\n' +
+        '如果只是想改金额，请用「编辑」。';
+      if (!confirm(tip)) return;
+      api('/api/fee/record/' + id + '/delete', { method: 'POST' }).then(function (res) {
+        if (!res.ok) { toast(res.errMsg || '删除失败', 'err'); return; }
+        toast('已删除', 'ok');
+        reload();
+      });
+    });
+  }
+
+  function openImagePreview(url) {
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    dlg.innerHTML =
+      '<div class="dlg dlg-img"><div class="dlg-hd">凭证图片</div>' +
+      '<div class="dlg-bd"><img class="img-preview" src="' + esc(url) + '" alt="凭证"></div>' +
+      '<div class="dlg-ft"><button class="btn" id="img-close">关闭</button></div></div>';
+    document.body.appendChild(dlg);
+    $('#img-close', dlg).onclick = function () { dlg.remove(); };
+    dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
   }
 
   /** 删课次：课次是「所有周共用」的一行，删它 = 删掉这门课在这个时段的所有周 */
@@ -2559,6 +3567,8 @@
   function showMain(me) {
     state.user = me.user;
     state.classes = me.classes || [];
+    // 权限必须在渲染任何页面之前写入：renderNav/go 都依赖它
+    state.perms = me.perms || [];
     // 刷新后恢复上次选中的班级；该班已不在可选列表（换账号 / 班级停用）则回退第 1 个
     var savedClass = Number(lsGet(LS_CLASS));
     if (savedClass && state.classes.some(function (c) { return c.id === savedClass; })) {
@@ -2599,13 +3609,20 @@
         toast('已切换到「' + cls.name + '」');
       }
     };
-    $('#who').textContent = me.user.memberName + '（' + me.user.username + '）';
+    // 顶栏显示「姓名 · 职位」：后台多人共用时，一眼能确认自己是谁、什么权限
+    $('#who').textContent = me.user.memberName +
+      (me.user.position ? ' · ' + me.user.position : '') +
+      (me.user.isSuper ? ' · 超管' : '') +
+      '（' + me.user.username + '）';
     hideBoot();
     $('#login-view').hidden = true;
     $('#main-view').hidden = false;
-    // 刷新后留在上次所在的页，而不是一律跳回概览
+    // 导航由权限全量重绘（没权限的页签根本不出现，而不是点了报 403）
+    renderNav();
+    // 刷新后留在上次所在的页，而不是一律跳回概览；但上一个账号的页可能已无权访问
     var savedView = lsGet(LS_VIEW);
-    go(savedView && VIEWS[savedView] ? savedView : 'overview');
+    var list = allowedViews();
+    go(savedView && canView(savedView) ? savedView : (list[0] || 'overview'));
   }
 
   function boot() {

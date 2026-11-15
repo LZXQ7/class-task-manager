@@ -1,20 +1,28 @@
 /**
- * 后台鉴权与会话（网页管理后台 · 2026-10-10）
+ * 后台鉴权与会话（网页管理后台 · 2026-10-10，2026-11-15 扩为页签级权限）
  *
  * 为什么不用 guard.getContext()：
  *   既有 13 个云函数全部靠 cloud.getWXContext().OPENID 拿身份，
  *   网页端根本没有微信上下文 ⇒ 一个都不能复用。所以后台**独立成一套鉴权**，
- *   但**权限真源仍然是 member.is_super**（见 assertSuper 里的回查）。
+ *   但**权限真源仍然是 member 表**（见 assertSuper 里的回查）。
  *
  * 三条硬规则（缺一条后台就是后门）：
  *   ① admin_user 只回答「谁可以登录后台」；
- *   ② 每次请求都回查 member.is_super=1 且 status='ACTIVE' —— member 被停用/降权
- *      后后台必须立刻失权，而不是等下次登录；
+ *   ② 每次请求都回查 member 的 is_super / position / status ——
+ *      按 `lib/perms.js` 重新推导页签权限。member 被停用、降职、取消后台权限后
+ *      后台必须**立刻**失权，而不是等下次登录（会话里存的是权限快照会过期，
+ *      所以这里每次都重算，不用会话里的旧值）。
  *   ③ 会话存服务端（admin_session 表）⇒ 可即时吊销；Cookie 里的 sid 是
  *      SHA-256 哈希，库里被拖走也拿不到可用凭证。
+ *
+ * 2026-11-15 变更：原先要求 `member.is_super=1` 才能登录后台。
+ *   现在改为「按职位推导出的页签权限**非空**即可登录」，超管仍是全量。
+ *   这满足「给生活委员开后台，他只能看班费/值日/排班规则」的诉求。
  */
 const crypto = require('crypto');
 const { getPool } = require('../common/db');
+const permsMod = require('./perms');
+
 
 const COOKIE_NAME = 'admin_sid';
 const SESSION_HOURS = 12;          // 12h 滑动续期
@@ -78,7 +86,7 @@ async function loadSession(req) {
   const pool = getPool();
   const sidHash = sha256(raw);
   const [rows] = await pool.query(
-    "SELECT s.id AS sid_id, s.admin_id, s.expires_at, a.username, a.member_id, a.status, a.pass_hash " +
+    "SELECT s.id AS sid_id, s.admin_id, s.expires_at, a.username, a.member_id, a.status, a.pass_hash, a.perms " +
     'FROM admin_session s JOIN admin_user a ON a.id = s.admin_id ' +
     'WHERE s.sid = ? AND s.expires_at > NOW() LIMIT 1',
     [sidHash]
@@ -86,13 +94,17 @@ async function loadSession(req) {
   const row = rows[0];
   if (!row) return null;
   if (Number(row.status) !== 1) return null;
-  // 规则②：回查 member —— 后台权限的真源在这里，不在 admin_user
+  // 规则②：回查 member —— 后台权限的真源在这里，不在 admin_user。
+  // 每次请求都重算（不缓存进会话），这样「降职 / 停用 / 收回权限」立刻生效。
   const [ms] = await pool.query(
-    "SELECT id, name, is_super, status FROM member WHERE id = ? LIMIT 1",
+    'SELECT id, name, is_super, status, position, group_tag, role FROM member WHERE id = ? LIMIT 1',
     [row.member_id]
   );
   const m = ms[0];
-  if (!m || Number(m.is_super) !== 1 || m.status !== 'ACTIVE') return null;
+  if (!m || m.status !== 'ACTIVE') return null;
+  const perms = permsMod.resolve(m, row.perms);
+  // 一个页签都没有 = 不该留在后台（普通成员开通后台后又改了职位就会走到这）
+  if (!perms.length) return null;
   // 滑动续期
   await pool.query(
     'UPDATE admin_session SET expires_at = DATE_ADD(NOW(), INTERVAL ? HOUR) WHERE id = ?',
@@ -103,6 +115,10 @@ async function loadSession(req) {
     username: row.username,
     memberId: m.id,
     memberName: m.name,
+    position: m.position || '',
+    isSuper: permsMod.isSuper(m),
+    canSeeDemo: permsMod.canSeeDemo(m),
+    perms,
     // 已登录账号的口令哈希：敏感操作（改密 / 停用后台账号）要用它做**二次校验**。
     // ⚠️ 这个字段只存在于服务端内存，**绝不能出现在任何响应里**
     //    （session 一律只手工挑字段回前端，不做 JSON.stringify(session)）。
@@ -152,11 +168,18 @@ async function login(username, password, req) {
   if (a.locked_until && new Date(a.locked_until.replace(' ', 'T') + 'Z') > new Date()) {
     return { ok: false, errMsg: '失败次数过多，请稍后再试' };
   }
-  // 规则②：登录这一刻就要回查 member
-  const [ms] = await pool.query('SELECT id, name, is_super, status FROM member WHERE id = ? LIMIT 1', [a.member_id]);
+  // 规则②：登录这一刻就要回查 member，并按职位推导页签权限
+  const [ms] = await pool.query(
+    'SELECT id, name, is_super, status, position, group_tag, role FROM member WHERE id = ? LIMIT 1',
+    [a.member_id]
+  );
   const m = ms[0];
-  if (!m || Number(m.is_super) !== 1 || m.status !== 'ACTIVE') {
-    return { ok: false, errMsg: '该账号已不是有效的超级管理员，无法登录后台' };
+  if (!m || m.status !== 'ACTIVE') {
+    return { ok: false, errMsg: '该成员的班级档案已停用，无法登录后台' };
+  }
+  const perms = permsMod.resolve(m, a.perms);
+  if (!perms.length) {
+    return { ok: false, errMsg: '该账号没有后台管理权限，请联系管理员开通' };
   }
   await pool.query(
     'UPDATE admin_user SET fail_count = 0, locked_until = NULL, last_login_at = NOW(), last_login_ip = ? WHERE id = ?',
@@ -167,7 +190,11 @@ async function login(username, password, req) {
     'INSERT INTO admin_session (sid, admin_id, expires_at, ip, ua) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? HOUR), ?, ?)',
     [sha256(raw), a.id, SESSION_HOURS, ip, String(req.headers['user-agent'] || '').slice(0, 255)]
   );
-  return { ok: true, raw, adminId: a.id, username: a.username, memberId: m.id };
+  return {
+    ok: true, raw, adminId: a.id, username: a.username, memberId: m.id,
+    memberName: m.name, position: m.position || '',
+    isSuper: permsMod.isSuper(m), canSeeDemo: permsMod.canSeeDemo(m), perms
+  };
 }
 
 /** 记一次失败；连续到 MAX_FAIL 就锁 LOCK_MINUTES 分钟（成功登录会清零） */

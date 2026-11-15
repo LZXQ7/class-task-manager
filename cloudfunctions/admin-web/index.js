@@ -21,8 +21,14 @@ const modMember = require('./lib/mod-member');
 const modCourse = require('./lib/mod-course');
 const modConfig = require('./lib/mod-config');
 const modLeave = require('./lib/mod-leave');
+const modFee = require('./lib/mod-fee');
+const modDuty = require('./lib/mod-duty');
+const modSwap = require('./lib/mod-swap');
+const modCountdown = require('./lib/mod-countdown');
+const modAccounts = require('./lib/mod-accounts');
 const modUsage = require('./lib/mod-usage');
 const modScheduleRules = require('./lib/mod-schedule-rules');
+const perms = require('./lib/perms');
 
 const app = express();
 app.disable('x-powered-by');
@@ -70,7 +76,12 @@ app.post('/api/auth/login', async (req, res) => {
     //    session.selfHash 是口令哈希，整个对象序列化会把它泄给浏览器。
     return res.json({
       ok: true,
-      user: { username: r.username, memberId: r.memberId }
+      user: {
+        username: r.username, memberId: r.memberId,
+        memberName: r.memberName, position: r.position, isSuper: r.isSuper
+      },
+      perms: r.perms,
+      nav: perms.navFor(r.perms)
     });
   } catch (e) {
     // ⚠️ 这里必须把真实异常打出来：e.message 有可能是空串
@@ -100,10 +111,19 @@ app.post('/api/auth/logout', async (req, res) => {
 app.get('/api/me', async (req, res) => {
   const s = await auth.loadSession(req);
   if (!s) return res.status(401).json({ ok: false, errMsg: '未登录或登录已过期' });
-  const classes = await modClass.listClasses();
+  const all = await modClass.listClasses();
+  // 演示班（class 104）只给超管看：辅导员进后台时，下拉里不该出现一个假的演示班，
+  // 否则很容易点错——演示班的数据是虚构的，改了也没意义。
+  const classes = s.canSeeDemo ? all : all.filter((c) => !c.isDemo);
   res.json({
     ok: true,
-    user: { username: s.username, memberId: s.memberId, memberName: s.memberName },
+    user: {
+      username: s.username, memberId: s.memberId, memberName: s.memberName,
+      position: s.position, isSuper: s.isSuper
+    },
+    // 前端据此**动态渲染导航**：没权限的页签根本不出现，而不是出现了点了报 403。
+    perms: s.perms,
+    nav: perms.navFor(s.perms),
     // ⚠️ 这里曾只回传 {id,name,isActive} 三个字段，把 maskClass 解析好的 periodTime **丢掉了**：
     //   前端「添加课次」的大节下拉（periodOptions）要读 cls.periodTime 才知道本班配了几个大节，
     //   拿不到就只能走兜底 5 项 ⇒ 线上给 示例班级A 配了 6 个大节，下拉仍然只有 5 项（2026-10-14 用户实锤）。
@@ -150,18 +170,53 @@ function handle(res, fn) {
     });
 }
 
-/* ---------------- 概览 / 配置 / 审计 ---------------- */
+/**
+ * 页签级权限中间件（2026-11-15）
+ * 必须在 `app.use('/api', ...)` 之后使用 —— 那时 req.session2 已就绪。
+ *
+ * 403 而不是 404：前端要靠明确的状态码区分「没登录」和「没这个权限」，
+ * 否则会把人踢回登录页，看起来像登录态丢了（实际是权限不够）。
+ */
+function requirePerm(key) {
+  return function (req, res, next) {
+    const s = req.session2;
+    if (!s) return res.status(401).json({ ok: false, errMsg: '未登录或登录已过期' });
+    if (!perms.has(s.perms, key)) {
+      return res.status(403).json({ ok: false, errCode: 40301, errMsg: '当前账号没有该功能的权限' });
+    }
+    next();
+  };
+}
 
-app.get('/api/overview', (req, res) => handle(res, () => modConfig.overview()));
+/**
+ * 满足任意一个页签权限即可通过。
+ * 用于**被多个页签共用**的只读接口：成员列表要给请假代登记、值日改人、换班审批、
+ * 倒数日查人都用；如果只挂 members，生活委员（没有 members 权限）会在
+ * 点「换人」时拿到 403，看起来像功能坏了。
+ */
+function requireAnyPerm(keys) {
+  const list = Array.isArray(keys) ? keys : [keys];
+  return function (req, res, next) {
+    const s = req.session2;
+    if (!s) return res.status(401).json({ ok: false, errMsg: '未登录或登录已过期' });
+    const ok = list.some((k) => perms.has(s.perms, k));
+    if (!ok) return res.status(403).json({ ok: false, errCode: 40301, errMsg: '当前账号没有该功能的权限' });
+    next();
+  };
+}
 
-app.get('/api/audit', (req, res) => handle(res, () => modConfig.listAudit(req.query)));
+/** 概览 / 配置 / 审计 ---------------- */
+
+app.get('/api/overview', requirePerm('overview'), (req, res) => handle(res, () => modConfig.overview()));
+
+app.get('/api/audit', requirePerm('audit'), (req, res) => handle(res, () => modConfig.listAudit(req.query)));
 
 /* ---------------- 使用统计（2026-10-16） ---------------- */
-app.get('/api/usage', (req, res) => handle(res, () => modUsage.usage(req.query)));
+app.get('/api/usage', requirePerm('usage'), (req, res) => handle(res, () => modUsage.usage(req.query)));
 
-app.get('/api/admin-users', (req, res) => handle(res, () => modConfig.listAdminUsers()));
+app.get('/api/admin-users', requirePerm('accounts'), (req, res) => handle(res, () => modConfig.listAdminUsers()));
 
-app.post('/api/admin-users/:id', (req, res) => handle(res, () =>
+app.post('/api/admin-users/:id', requirePerm('accounts'), (req, res) => handle(res, () =>
   modConfig.updateAdminUser(
     Number(req.params.id),
     req.body || {},
@@ -173,25 +228,30 @@ app.post('/api/admin-users/:id', (req, res) => handle(res, () =>
 
 /* ---------------- 班级 ---------------- */
 
-app.get('/api/classes', (req, res) => handle(res, () => modClass.listClasses()));
+/** 班级列表：所有登录用户都要用（顶部选择器），所以不挂 class 权限；但要过滤演示班 */
+app.get('/api/classes', (req, res) => handle(res, async () => {
+  const all = await modClass.listClasses();
+  const s = req.session2;
+  return s && s.canSeeDemo ? all : all.filter((c) => !c.isDemo);
+}));
 
-app.get('/api/classes/:id', (req, res) => handle(res, () => modClass.classDetail(Number(req.params.id))));
+app.get('/api/classes/:id', requirePerm('class'), (req, res) => handle(res, () => modClass.classDetail(Number(req.params.id))));
 
-app.post('/api/classes/:id', (req, res) => handle(res, () =>
+app.post('/api/classes/:id', requirePerm('class'), (req, res) => handle(res, () =>
   modClass.updateClass(Number(req.params.id), req.body || {}, req.session2, req)
 ));
 
 /* ---------------- 成员 ---------------- */
 
-app.get('/api/members', (req, res) => handle(res, () => modMember.listMembers(req.query)));
+app.get('/api/members', requireAnyPerm(['members', 'leave', 'fee', 'duty', 'swap', 'countdown']), (req, res) => handle(res, () => modMember.listMembers(req.query)));
 
-app.get('/api/members/:id', (req, res) => handle(res, () => modMember.memberDetail(Number(req.params.id))));
+app.get('/api/members/:id', requireAnyPerm(['members', 'leave', 'duty', 'swap']), (req, res) => handle(res, () => modMember.memberDetail(Number(req.params.id))));
 
-app.post('/api/members', (req, res) => handle(res, () =>
+app.post('/api/members', requirePerm('members'), (req, res) => handle(res, () =>
   modMember.addMember(req.body || {}, req.session2, req)
 ));
 
-app.post('/api/members/:id', (req, res) => handle(res, () => {
+app.post('/api/members/:id', requirePerm('members'), (req, res) => handle(res, () => {
   const body = req.body || {};
   if (body.__action === 'setSuper') {
     return modMember.setSuper(Number(req.params.id), !!body.isSuper, req.session2, req);
@@ -204,44 +264,44 @@ app.post('/api/members/:id', (req, res) => handle(res, () => {
 
 /* ---------------- 课程表 ---------------- */
 
-app.get('/api/timetable', (req, res) => handle(res, () =>
+app.get('/api/timetable', requirePerm('course'), (req, res) => handle(res, () =>
   modCourse.listTimetable(Number(req.query.classId), String(req.query.group || 'ALL'))
 ));
 
 /** 干跑预览：只算不改，强制回显目标班级名 + 影响行数 */
-app.post('/api/timetable/dry-run', (req, res) => handle(res, () =>
+app.post('/api/timetable/dry-run', requirePerm('course'), (req, res) => handle(res, () =>
   modCourse.dryRunImport(req.body || {})
 ));
 
 /** 正式导入：自动 bak_* 备份 + 事务 + 审计 */
-app.post('/api/timetable/import', (req, res) => handle(res, () =>
+app.post('/api/timetable/import', requirePerm('course'), (req, res) => handle(res, () =>
   modCourse.commitImport(req.body || {}, req.session2, req)
 ));
 
 /** 单独新增一节课（A 组 / B 组 / 全体），body 含 classId / courseName / dayOfWeek / period / groupScope 等 */
-app.post('/api/timetable/session', (req, res) => handle(res, () =>
+app.post('/api/timetable/session', requirePerm('course'), (req, res) => handle(res, () =>
   modCourse.addSession(req.body || {}, req.session2, req)
 ));
 
-app.post('/api/timetable/session/:id', (req, res) => handle(res, () =>
+app.post('/api/timetable/session/:id', requirePerm('course'), (req, res) => handle(res, () =>
   modCourse.updateSession(Number(req.params.id), req.body || {}, req.session2, req)
 ));
 
 // 删课次：POST 而非 DELETE 方法 —— 与 member 的 remove 同风格，
 // 且网关/浏览器代理对 DELETE 的预检与重定向行为不一致，没必要踩。
-app.post('/api/timetable/session/:id/delete', (req, res) => handle(res, () =>
+app.post('/api/timetable/session/:id/delete', requirePerm('course'), (req, res) => handle(res, () =>
   modCourse.deleteSession(Number(req.params.id), req.session2, req)
 ));
 
 /** 清空课表：删除某班某组（A / B）或全部 COURSE 课次，可选 dryRun 预览 */
-app.post('/api/timetable/clear', (req, res) => handle(res, () =>
+app.post('/api/timetable/clear', requirePerm('course'), (req, res) => handle(res, () =>
   modCourse.clearTimetable(req.body || {}, req.session2, req)
 ));
 
 /* ---------------- 请假 ---------------- */
 
 /** 请假列表：按班级 / 状态 / 关键字 / 日期筛选（不显示测试账号） */
-app.get('/api/leave', (req, res) => handle(res, () =>
+app.get('/api/leave', requirePerm('leave'), (req, res) => handle(res, () =>
   modLeave.listLeave({
     classId: Number(req.query.classId),
     memberId: req.query.memberId ? Number(req.query.memberId) : undefined,
@@ -253,17 +313,128 @@ app.get('/api/leave', (req, res) => handle(res, () =>
 ));
 
 /** 修改请假（日期 / 时段 / 状态），POST 同 member / session 风格 */
-app.post('/api/leave/:id', (req, res) => handle(res, () =>
+app.post('/api/leave/:id', requirePerm('leave'), (req, res) => handle(res, () =>
   modLeave.updateLeave(Object.assign({ id: Number(req.params.id) }, req.body || {}), req.session2, req)
 ));
 
+/** 后台代登记一条请假（2026-11-15）：默认 source=register + APPROVED，并重算值日 LEAVE 标记 */
+app.post('/api/leave', requirePerm('leave'), (req, res) => handle(res, () =>
+  modLeave.createLeave(req.body || {}, req.session2, req)
+));
+
+/** 删除一条请假（2026-11-15）：连带把该成员这几天的 duty LEAVE 标记退回 PENDING */
+app.post('/api/leave/:id/delete', requirePerm('leave'), (req, res) => handle(res, () =>
+  modLeave.deleteLeave({ id: Number(req.params.id) }, req.session2, req)
+));
+
+/* ---------------- 班费 / 团费（2026-11-15 新增） ----------------
+ * 余额不落库（= total − SUM(amount)），改/删一条记录即联动，与小程序同一套口径。
+ * ⚠️ 后台删除只删数据库行、**不删云存储凭证图**（小程序删除会连带删图且不可恢复）；
+ *    凭证图在网页里用「公网 URL」直接显示（桶为所有用户可读），不需要 SDK。
+ */
+app.get('/api/fee', requirePerm('fee'), (req, res) => handle(res, () =>
+  modFee.getFund({ classId: Number(req.query.classId) })
+));
+
+app.post('/api/fee/total', requirePerm('fee'), (req, res) => handle(res, () =>
+  modFee.saveTotal(req.body || {}, req.session2, req)
+));
+
+app.post('/api/fee/record', requirePerm('fee'), (req, res) => handle(res, () =>
+  modFee.addRecord(req.body || {}, req.session2, req)
+));
+
+app.post('/api/fee/record/:id', requirePerm('fee'), (req, res) => handle(res, () =>
+  modFee.updateRecord(Object.assign({ id: Number(req.params.id) }, req.body || {}), req.session2, req)
+));
+
+app.post('/api/fee/record/:id/delete', requirePerm('fee'), (req, res) => handle(res, () =>
+  modFee.deleteRecord({ id: Number(req.params.id) }, req.session2, req)
+));
+
+/** 只把某张凭证图从记录的 images 数组里摘掉（云存储文件保留） */
+app.post('/api/fee/record/:id/image/remove', requirePerm('fee'), (req, res) => handle(res, () =>
+  modFee.removeImage(
+    Object.assign({ id: Number(req.params.id) }, req.body || {}),
+    req.session2, req
+  )
+));
+
 /* ---------------- 排班规则（免代码 / 免送审的远程配置入口） ---------------- */
-app.get('/api/schedule-rules', (req, res) => handle(res, async () => {
+app.get('/api/schedule-rules', requirePerm('rules'), (req, res) => handle(res, async () => {
   const pool = getPool();
   return modScheduleRules.getScheduleRules(pool, req.query.classId);
 }));
 
-app.post('/api/schedule-rules', (req, res) => handle(res, () => {
+/* ---------------- 值日记录（2026-11-15 新增） ----------------
+ * 后台能改状态、换人、删除单条值日；写操作都进 duty_log（与小程序同一个日志表），
+ * 这样两端看到的「谁在什么时候改了这条值日」是同一份事实。
+ */
+app.get('/api/duty', requirePerm('duty'), (req, res) => handle(res, () =>
+  modDuty.listDuty(req.query)
+));
+
+app.post('/api/duty/:id/status', requirePerm('duty'), (req, res) => handle(res, () =>
+  modDuty.setStatus(Object.assign({ id: Number(req.params.id) }, req.body || {}), req.session2, req)
+));
+
+app.post('/api/duty/:id/member', requirePerm('duty'), (req, res) => handle(res, () =>
+  modDuty.setMember(Object.assign({ id: Number(req.params.id) }, req.body || {}), req.session2, req)
+));
+
+app.post('/api/duty/:id/delete', requirePerm('duty'), (req, res) => handle(res, () =>
+  modDuty.removeDuty({ id: Number(req.params.id) }, req.session2, req)
+));
+
+/* ---------------- 换班申请（2026-11-15 新增） ----------------
+ * 审批口径与小程序一致：PENDING_PEER（等对方）→ PENDING_ADMIN（等管理员）→ DONE。
+ * 后台可以直接「通过 / 驳回 / 撤销」；通过时会真的把 duty.member_id 换成对方。
+ */
+app.get('/api/swap', requirePerm('swap'), (req, res) => handle(res, () =>
+  modSwap.listSwap(req.query)
+));
+
+app.post('/api/swap/:id/approve', requirePerm('swap'), (req, res) => handle(res, () =>
+  modSwap.approve({ id: Number(req.params.id), note: (req.body || {}).note }, req.session2, req)
+));
+
+app.post('/api/swap/:id/reject', requirePerm('swap'), (req, res) => handle(res, () =>
+  modSwap.reject(Object.assign({ id: Number(req.params.id) }, req.body || {}), req.session2, req)
+));
+
+app.post('/api/swap/:id/cancel', requirePerm('swap'), (req, res) => handle(res, () =>
+  modSwap.cancel(Object.assign({ id: Number(req.params.id) }, req.body || {}), req.session2, req)
+));
+
+/* ---------------- 倒数日（2026-11-15 新增） ----------------
+ * 只读：倒数日是「每个人自己的」本地记录，后台不做增删改，
+ * 只回答「谁添加了哪一天」——用于辅导员了解学生在关注什么节点（考试/生日/纪念日）。
+ */
+app.get('/api/countdown', requirePerm('countdown'), (req, res) => handle(res, () =>
+  modCountdown.listCountdown(req.query)
+));
+
+/* ---------------- 后台账号开通（2026-11-15 新增，仅超管） ----------------
+ * 与「/api/admin-users」的区别：那是「改已有账号的密码/状态」；
+ * 这里是「从班级成员里挑一个人，给他开后台账号 + 按职位预填权限」。
+ */
+app.get('/api/accounts', requirePerm('accounts'), (req, res) => handle(res, () =>
+  modAccounts.listAccounts(req.query, req.session2)
+));
+
+app.post('/api/accounts', requirePerm('accounts'), (req, res) => handle(res, () =>
+  modAccounts.createAccount(req.body || {}, req.session2, req)
+));
+
+app.post('/api/accounts/:id', requirePerm('accounts'), (req, res) => handle(res, () =>
+  modAccounts.updateAccount(Object.assign({ id: Number(req.params.id) }, req.body || {}), req.session2, req)
+));
+
+app.post('/api/accounts/:id/delete', requirePerm('accounts'), (req, res) => handle(res, () =>
+  modAccounts.removeAccount({ id: Number(req.params.id) }, req.session2, req)
+));
+
+app.post('/api/schedule-rules', requirePerm('rules'), (req, res) => handle(res, () => {
   const pool = getPool();
   return modScheduleRules.saveScheduleRules(pool, (req.body || {}).classId, req.body || {}, req.session2);
 }));
