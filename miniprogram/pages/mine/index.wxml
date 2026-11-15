@@ -2,7 +2,7 @@
      「在弹层里滑到底 → 后面的页面跟着一起滑」就是这么来的。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(appShow || aboutShow || anncShow || aiShow || dutyListShow || moreShow || feeTotalShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(appShow || aboutShow || anncShow || aiShow || dutyListShow || moreShow || feeTotalShow || accSheetShow || demoConfirmShow || bindConfirmShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <view class="page mn {{paReady ? (animSeq === 0 ? 'pa-first' : (animSeq === 1 ? 'pa-lite-a' : 'pa-lite-b')) : 'pa-hold'}} {{tClass}}">
 
@@ -403,5 +403,56 @@
       </view>
     </view>
   </bottom-sheet>
+
+  <!-- ============================================================
+       2026-11-15：两处系统弹窗改成站内组件
+       ------------------------------------------------------------
+       用户实拍：深色模式下「切换测试账号」还是纯白 ActionSheet、
+       「切换为体验版？」还是纯白 Modal —— 这两个都是 **微信原生弹窗**，
+       颜色由微信客户端决定，**小程序无法给它们上深色主题**。
+       ⇒ 一律换成项目自带的组件（都吃 --dlg-* / --sheet-* 令牌，深浅色自动跟随）：
+         · 账号列表 → bottom-sheet（贴底抽屉，和「更多」同一套观感）
+         · 二次确认 → dialog（居中玻璃卡）
+       两条都保留退出动画；点空白关闭沿用组件默认行为。
+       ⚠️ 新增弹层必须同步进 <page-meta> 的滚动锁表达式（check-scroll-lock 守着）。
+       ============================================================ -->
+  <bottom-sheet show="{{accSheetShow}}" title="切换测试账号" bind:close="onAccClose">
+    <view class="mn-more">
+      <view data-pressable
+        wx:for="{{accList}}"
+        wx:key="id"
+        class="mn-row"
+        hover-class="tap-hover"
+        hover-start-time="0"
+        hover-stay-time="60"
+        data-idx="{{index}}"
+        bindtap="onAccPick"
+      >
+        <app-icon name="people" variant="brand" size="{{40}}" />
+        <text class="mn-row-text">{{item.label}}</text>
+        <view wx:if="{{item.current}}" class="mn-mini-tag ok">当前</view>
+        <app-icon wx:else name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <dialog
+    show="{{demoConfirmShow}}"
+    title="切换为体验版？"
+    content="将 impersonate 到演示班 104（全虚拟数据），可随时在「我的 → 更多」里点「切换正式版」切回本人。"
+    cancel-text="取消"
+    confirm-text="切换"
+    bind:confirm="onDemoConfirm"
+    bind:close="onDemoClose"
+  />
+
+  <dialog
+    show="{{bindConfirmShow}}"
+    title="{{bindConfirmTitle}}"
+    cancel-text="取消"
+    confirm-text="{{bindConfirmOkText}}"
+    bind:confirm="onBindConfirm"
+    bind:close="onBindConfirmClose"
+  />
 
 </view>

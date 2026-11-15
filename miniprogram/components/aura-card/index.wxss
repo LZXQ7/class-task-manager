@@ -61,10 +61,10 @@
   0%, 100% { opacity: 0.42; transform: scale(0.94); }
   50%      { opacity: 0.95; transform: scale(1.06); }
 }
-/* 深色下背光换成更亮的冷白，压深底才有「玻璃内透光」的观感 */
-.t-dark .aura-glow {
-  background: radial-gradient(ellipse at center, var(--aura-glow-dark, rgba(178,190,214,0.42)) 0%, rgba(150,166,200,0.16) 42%, transparent 70%);
-}
+/* 🔴 2026-11-15：原来的 `.t-dark .aura-glow { … }` 已删除 —— 组件内后代选择器跨组件
+   边界不命中（.t-dark 在页面根节点），那条深色渐变从未生效过。
+   现在只用 `--aura-glow` 令牌：它在 app.wxss 的 .t-light / .t-dark 里各有一份，
+   深色那份是更亮的冷灰，正是这里想要的「玻璃内透光」。 */
 
 /* 减弱动效：静止描边 + 静止光 */
 @media (prefers-reduced-motion: reduce) {

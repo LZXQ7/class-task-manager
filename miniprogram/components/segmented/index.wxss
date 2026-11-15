@@ -36,14 +36,10 @@
     inset 0 0 0 1rpx var(--glass-edge, rgba(255, 255, 255, 0.55)),
     var(--glass-highlight, inset 0 2rpx 0 rgba(255, 255, 255, 0.55));
 }
-/* 深色：由 .seg 的 var(--glass-*) 从页面根继承翻色；这里只补一层压淡后的内描边意图，
-   值同样走令牌（写死白会在深底上显出「漏白框」，2026-11-04 用户反馈）。 */
-.t-dark .seg {
-  background: var(--glass-bg);
-  box-shadow:
-    inset 0 0 0 1rpx var(--glass-edge),
-    var(--glass-highlight);
-}
+/* 🔴 2026-11-15：原来的 `.t-dark .seg { … }` 已删除 —— 它是**组件内后代选择器**，
+   而 `.t-dark` 挂在页面根节点 ⇒ 跨组件边界永远不命中（等于一段死代码）。
+   上面 `.seg` 那条已经全部走 var(--glass-*) 令牌，深浅色本来就会跟着翻，
+   这里再写一遍纯属自欺。check-no-cross-component-theme 反向守着不许写回来。 */
 /* 深色下选中胶囊要比轨道「更亮」才读得出浮起：由 --seg-ind 令牌从页面根继承翻色。
    🔴 原写法 `.t-dark .seg-ind` 是**组件内后代选择器**，祖先在页面根 ⇒ 跨组件不命中，
       深色实际落到 --bg-card(#1C2027) 暗底，读成「凹陷」（2026-11-11 补）。 */

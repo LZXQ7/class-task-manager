@@ -46,10 +46,17 @@
   padding: 0 8rpx;
   border-radius: 50%;
   white-space: nowrap;
-  /* 配色跟随整体：品牌蓝实心 + 白字（不再是白色方块 —— 用户实锤） */
-  background: linear-gradient(140deg, #5A97FF 0%, var(--brand, #3370FF) 100%);
-  box-shadow: 0 10rpx 26rpx rgba(51, 112, 255, 0.32);
-  font-size: 26rpx;
+  /* 🔴 2026-11-15 用户口径：「这四个按钮也改成统一样式，玻璃效果」。
+     原来是实心蓝渐变（上浅下深的高光渐变），和全站其它玻璃面不是一套语汇。
+     现在改成**品牌蓝玻璃**：半透明底 + 背景模糊 + 1rpx 亮边 + 外投影，
+     与课表页「＋」（pages/timetable 的 .fab）共用同一组令牌 ⇒ 两处观感一致。
+     ⚠️ 组件 wxss 里不能再写 `.t-dark .rm-btn`（跨组件不命中），深浅色全部由令牌承担。 */
+  background: var(--brand-glass, rgba(51, 112, 255, 0.66));
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1rpx solid var(--brand-glass-edge, rgba(255, 255, 255, 0.45));
+  box-shadow: var(--brand-glass-shadow, 0 10rpx 26rpx rgba(51, 112, 255, 0.28));
+  font-size: 24rpx;
   color: #FFFFFF;
   /* 🔴 手指滑过时的弹性反馈（2026-11-15 用户要求「放大弹一下、移开缩小也弹一下」）：
      之前只在 .hot 里写死 scale(1.14)，这里没有 transition ⇒ 加类瞬间跳变（实锤「生硬扩大」）。
@@ -59,10 +66,12 @@
      CSS transition 从当前值起步 ⇒ 手指快速滑过多个按钮时可半途改道、不会硬切。 */
   transition: transform 300ms cubic-bezier(.34, 1.7, .64, 1), box-shadow 300ms ease, filter 300ms ease;
 }
-.rm-btn.long { font-size: 20rpx; }
+/* 「统一样式」的第二半：四字项（临时课表）原来单独缩到 20rpx、其余 24rpx，
+   一眼就能看出不是一套。现在统一 22rpx —— 四个字在 112rpx 圆里仍排得下。 */
+.rm-btn.long { font-size: 22rpx; }
 .rm-icon { font-size: 40rpx; line-height: 1; margin-bottom: 6rpx; }
-.rm-label { font-size: 24rpx; line-height: 32rpx; color: #FFFFFF; }
-.rm-btn.long .rm-label { font-size: 20rpx; line-height: 26rpx; }
+.rm-label { font-size: 22rpx; line-height: 30rpx; color: #FFFFFF; }
+.rm-btn.long .rm-label { font-size: 22rpx; line-height: 30rpx; }
 /* 手指悬停的按钮：放大 + 提亮，一眼看出「松在这里就会选中它」 */
 .rm-item.hot .rm-btn {
   transform: scale(1.14);
@@ -73,10 +82,18 @@
   transition: transform 360ms cubic-bezier(.22, 1.62, .36, 1), box-shadow 360ms ease, filter 360ms ease;
 }
 
-/* 深色模式：品牌蓝在深底上略压暗，保证白字对比度 */
-.t-dark .rm-btn {
-  background: linear-gradient(140deg, #4C8DFF 0%, #2F62D8 100%);
-  box-shadow: 0 10rpx 26rpx rgba(0, 0, 0, 0.5);
+/* 玻璃降级（check-glass 强制两条路径）：
+   ① 不支持 backdrop-filter 的安卓 WebView —— 半透明底会让背后的课表透上来压住白字，
+      必须加厚到接近实心；② 系统开「降低透明度」—— 直接实心、关掉模糊。 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .rm-btn { background: var(--brand, #3370FF); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rm-btn {
+    background: var(--brand, #3370FF);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 /* 减弱动效：去掉位移与缩放，直接淡入；弹性也要去掉，只留短暂光效变化 */

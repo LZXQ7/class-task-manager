@@ -234,18 +234,22 @@
   width: 96rpx;
   height: 96rpx;
   border-radius: 48rpx;
-  /* 主操作 FAB = 品牌色玻璃（v0.7.17）：仍以品牌蓝为主色（白色「＋」的可读性靠 tint 保底），
-     只把实心蓝换成「半透明蓝 + 模糊 + 顶部高光」，与其余玻璃面同一套语汇。 */
-  background: rgba(51,112,255,0.84);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  backdrop-filter: blur(24px) saturate(160%);
+  /* 🔴 2026-11-15 用户口径：「课程表页右边加号，也改为玻璃效果」。
+     原来 0.84 的品牌蓝几乎等于实心块，和弧形菜单那四个圆按钮也不是一套观感。
+     现在两者**共用同一组令牌**（--brand-glass / --brand-glass-edge / --brand-glass-shadow，
+     定义在 app.wxss 的 .t-light / .t-dark 里）⇒ 深浅色自动跟着主题走，
+     也不再需要 `.t-dark .fab` 这种页面级覆盖。 */
+  background: var(--brand-glass, rgba(51, 112, 255, 0.66));
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1rpx solid var(--brand-glass-edge, rgba(255, 255, 255, 0.45));
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6rpx 22rpx rgba(51,112,255,0.28), inset 0 1rpx 0 rgba(255, 255, 255, 0.45);
+  box-shadow: var(--brand-glass-shadow, 0 10rpx 26rpx rgba(51, 112, 255, 0.28));
   z-index: 700;
 }
-.fab:active { background: rgba(36,91,219,0.9); }
+.fab:active { filter: brightness(.92); }
 
 /* 临时调课：左下角胶囊（超管）。与右侧「＋」分列两边，互不遮挡。 */
 /* ---------- 左下角视图入口（v0.7.21 需求③） ----------

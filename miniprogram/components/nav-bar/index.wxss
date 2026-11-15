@@ -5,27 +5,20 @@
   width: 100%;
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: inset 0 -1rpx 0 rgba(255, 255, 255, 0.6);
+  /* 🔴 2026-11-15：底部高光改成**令牌**。
+   *    原写法是 `.t-dark .nav { box-shadow: ... }` —— 组件 wxss 里的祖先类
+   *    跨组件边界不命中（.t-dark 在页面根节点），深色下那条 60% 白线其实一直没被压下去。 */
+  box-shadow: inset 0 -1rpx 0 var(--nav-line, rgba(255, 255, 255, 0.6));
 }
-/* 🔴 深色模式：底部高光那条 `inset 0 -1rpx 0 rgba(255,255,255,.6)` 在深色下会变成
- *   一条刺眼的白线（深色玻璃的「厚度感」要靠更弱的高光）。两条兜底底色同理。 */
-.t-dark .nav {
-  box-shadow: inset 0 -1rpx 0 rgba(200, 215, 245, 0.14);
-}
-/* 不支持模糊的机型：底色不足以撑住文字（半透明白 + 无模糊 = 正文透上来）→ 加厚 */
+/* 不支持模糊的机型：底色不足以撑住文字（半透明白 + 无模糊 = 正文透上来）→ 加厚。
+ * 🔴 走 `--nav-solid` 令牌：深色由 .t-dark 换值，避免再写跨组件不命中的后代选择器。 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .nav { background: rgba(255, 255, 255, 0.92) !important; }
-  /* 深色下必须是深色实心，否则标题白字压在白底上完全看不见 */
-  .t-dark .nav { background: rgba(28, 32, 39, 0.96) !important; }
+  .nav { background: var(--nav-solid, rgba(255, 255, 255, 0.92)) !important; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .nav {
+    /* --bg-card 本身就是主题化的（深色 #1C2027），不必再另写深色分支 */
     background: var(--bg-card) !important;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-  .t-dark .nav {
-    background: #1C2027 !important;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -207,20 +200,19 @@
   pointer-events: none;
   border-top: 4rpx solid rgba(255, 255, 255, 0.9);
   border-bottom: 2rpx solid rgba(229, 230, 235, 0.7);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0rpx, rgba(255, 255, 255, 0) 44rpx, rgba(255, 255, 255, 0) 70rpx, rgba(255, 255, 255, 0) 104rpx);
+  /* 🔴 2026-11-15：上下亮暗边 + 顶部聚光全部改走**主题令牌**。
+     原写法 `.t-dark .nav-edge { background: none; ... }` 是组件内后代选择器，
+     而 `.t-dark` 挂在页面根节点 ⇒ 跨组件边界不命中 ⇒ 深色模式下那整条银白渐变
+     （0rpx 处白色 .9 → 约一个状态栏高之后转透明）从来没被关掉，
+     用户实拍「上面的白色还是存在」就是它。
+     令牌会继承进组件，深色由 `.t-dark` 换值即生效。
+     ⚠️ 注释里不要写出色标那个数字（check-nav-glass 的变异自证按首个命中替换，
+        写在注释里会让变异打在注释上 ⇒ 静默失效、假通过）。 */
+  border-top-color: var(--nav-edge-top, rgba(255, 255, 255, 0.9));
+  border-bottom-color: var(--nav-edge-bottom, rgba(229, 230, 235, 0.7));
+  background: var(--nav-edge-fill, linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0rpx, rgba(255, 255, 255, 0) 44rpx, rgba(255, 255, 255, 0) 70rpx, rgba(255, 255, 255, 0) 104rpx));
   opacity: 0;
   transition: opacity .3s ease;
-}
-.t-dark .nav-edge {
-  /* 🔴 2026-11-15 用户实拍：深色模式状态栏有一整条银白色圆角横条。
-     根因：上面 .nav-edge 的 background 是 `linear-gradient(180deg,
-     rgba(255,255,255,.9) 0rpx → 透明 104rpx)`，而 104rpx ≈ 状态栏高度 ——
-     浅色下它是玻璃顶部的聚光，深色下却成了一块白板（旧版只覆盖了两条 border 色，
-     没覆盖 background）。⇒ 深色整段关掉渐变，顶部亮边也压到几乎看不见。
-     ⚠️ 浅色段那条 `104rpx` 是 check-nav-glass 的变异锚点，必须保留，别删。 */
-  background: none;
-  border-top-color: rgba(206, 222, 255, 0.14);
-  border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ② 镜面反射带（.nav-sheen）已整段删除

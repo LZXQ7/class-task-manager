@@ -88,16 +88,16 @@
   transform: scale(0.94);
   opacity: 0;
   transition: transform .24s cubic-bezier(.22, .61, .36, 1), opacity .24s ease;
-  box-shadow: 0 24rpx 70rpx rgba(29, 33, 41, 0.28), inset 0 1rpx 0 var(--sheet-edge, rgba(255, 255, 255, 0.95));
+  box-shadow: 0 24rpx 70rpx var(--float-shadow-color, rgba(29, 33, 41, 0.28)), inset 0 1rpx 0 var(--sheet-edge, rgba(255, 255, 255, 0.95));
 }
 .sheet-root.float .sheet-panel.up {
   transform: scale(1);
   opacity: 1;
 }
 .sheet-root.float .sheet-panel.tall { max-height: 72vh; }
-.t-dark .sheet-root.float .sheet-panel {
-  box-shadow: 0 24rpx 70rpx rgba(0, 0, 0, 0.6), inset 0 1rpx 0 var(--sheet-edge, rgba(255, 255, 255, 0.95));
-}
+/* 🔴 2026-11-15：原来的 `.t-dark .sheet-root.float .sheet-panel { box-shadow … }` 已删除 ——
+   组件内后代选择器跨组件边界不命中（.t-dark 在页面根节点），深色下那条"更重的投影"
+   从来没有生效过。改成 `--float-shadow-color` 令牌，深浅色各一份。 */
 @media (prefers-reduced-motion: reduce) {
   .sheet-root.float .sheet-panel,
   .sheet-root.float .sheet-panel.up { transform: none; }

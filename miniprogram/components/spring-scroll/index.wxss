@@ -22,35 +22,6 @@
   transform: translate3d(0, 0, 0);
 }
 
-/* 下拉刷新指示器：绝对定位在视口顶部，跟随拉伸的 transform 在「拉出的空间」里移动。
-   只用 transform + opacity，不用 top/margin 动画（避免每帧重排 + 位置跳变）。 */
-.ss-indicator {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 0;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  pointer-events: none;
-  z-index: 2;
-  will-change: transform, opacity;
-}
-.ss-ring {
-  width: 28rpx;
-  height: 28rpx;
-  margin-top: 18rpx;
-  border: 3rpx solid rgba(51, 112, 255, 0.25);
-  border-top-color: var(--brand);
-  border-radius: 50%;
-}
-.ss-ring.spin {
-  animation: ss-spin 0.7s linear infinite;
-}
-@keyframes ss-spin {
-  to { transform: rotate(360deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ss-ring.spin { animation: none; }
-}
+/* 下拉刷新指示器（.ss-indicator / .ss-ring / @keyframes ss-spin）已于 2026-11-15 整段删除：
+   用户实拍「下拉为什么有个圆形，去掉」。刷新行为不变，只是不再有可见指示物。
+   ⚠️ 别再把圆环加回来 —— 深色模式下它是一块明显的蓝白圆点，比任何加载反馈都抢眼。 */

@@ -65,6 +65,16 @@ Page({
        ⚠️ 这里**不**写职位字面量，一律走 util.feeRights（与首页、后端 fee 云函数同一份口径）。 */
     showMore: false,
     moreShow: false,
+    /* -------- 站内账号切换 / 二次确认（2026-11-15） --------
+       🔴 原来是 wx.showActionSheet + wx.showModal —— 那是**微信原生弹窗**，
+          颜色由客户端决定，小程序没有任何接口改它的背景 ⇒ 深色模式下必然是一块纯白
+          （用户实拍两次）。现在拆成三个自绘弹层，全部走 --sheet-* / --dlg-* 令牌。 */
+    accSheetShow: false,
+    accList: [],
+    demoConfirmShow: false,
+    bindConfirmShow: false,
+    bindConfirmTitle: '',
+    bindConfirmOkText: '确定',
     /** 班费 / 团费总额设置权：班费 = 超管 / 生活委员；团费 = 超管 / 班长兼团支书 */
     feeCanSetTotalClass: false,
     feeCanSetTotalLeague: false,
@@ -416,24 +426,51 @@ Page({
       .then((list) => { this._testAccounts = list || []; })
       .catch(() => {});
   },
+  /**
+   * 打开「切换测试账号」列表（2026-11-15 改自 wx.showActionSheet）。
+   *
+   * 🔴 为什么不用原生 ActionSheet：它的底色由**微信客户端**决定，小程序没有任何 API
+   *    能改（连 backgroundColor 都没有），深色模式下必然弹出一整块纯白面板 ——
+   *    用户实拍两次。现在换成 bottom-sheet（贴底抽屉），材质走 --sheet-* 令牌，
+   *    深浅色随主题自动翻转，观感与「更多」完全一致。
+   *
+   * itemList 的文案口径保持原样：`姓名（组别）`+ 超管后缀，辅导员特判为「辅导员」。
+   */
   _showSwitchSheet(accounts) {
     if (!accounts || !accounts.length) { util.toast('没有可切换的测试账号'); return; }
-    wx.showActionSheet({
-      itemList: accounts.map(x => x.name +
+    // 当前生效身份打「当前」标：原来原生 ActionSheet 无法表达选中态，这里顺带补上
+    // ⚠️ profile 的形状是 { id, name, role, groupTag, studentNoMasked, status }（见 app.js），
+    //    没有 memberId 字段 —— 这里必须读 id，写错就永远不会高亮。
+    const meId = Number((this.data.profile && this.data.profile.id) || 0);
+    const list = accounts.map((x) => ({
+      id: x.id,
+      current: !!meId && Number(x.id) === meId,
+      label: x.name +
         (x.groupTag === 'X' ? '（辅导员）' : '（' + x.groupTag + ' 组）') +
-        (x.isSuper ? ' · 超管' : '')),
-      success: (res) => {
-        const target = accounts[res.tapIndex];
-        if (!target) return;
-        api.switchAccount({ memberId: target.id }, { loading: '切换中' })
-          .then(() => {
-            // 演示态与切换测试账号共用同一个 impersonation 行（互斥）：一旦进入后者，前者标记必须清掉
-            getApp().globalData.demo = false;
-            this._afterSwitch('已切换为 ' + target.name);
-          })
-          .catch(() => {});
-      }
-    });
+        (x.isSuper ? ' · 超管' : '')
+    }));
+    this._accAccounts = accounts;
+    this.setData({ accList: list, accSheetShow: true });
+  },
+
+  onAccClose() { this.setData({ accSheetShow: false }); },
+
+  /** 选中一条：先收起列表（带退出动画），再切身份 —— 不叠两层弹层 */
+  onAccPick(e) {
+    const idx = Number(e.currentTarget.dataset.idx);
+    const list = this.data.accList || [];
+    if (!(idx >= 0) || idx >= list.length) return;
+    const target = (this._accAccounts || [])[idx];
+    if (!target) return;
+    this.setData({ accSheetShow: false });
+    if (list[idx].current) { util.toast('已经是这个身份了'); return; }
+    api.switchAccount({ memberId: target.id }, { loading: '切换中' })
+      .then(() => {
+        // 演示态与切换测试账号共用同一个 impersonation 行（互斥）：一旦进入后者，前者标记必须清掉
+        getApp().globalData.demo = false;
+        this._afterSwitch('已切换为 ' + target.name);
+      })
+      .catch(() => {});
   },
 
   onSwitchAccount() {
@@ -477,20 +514,22 @@ Page({
       return;
     }
     if (getApp().track) getApp().track.action('switch_demo');
-    wx.showModal({
-      title: '切换为体验版？',
-      content: '将 impersonate 到演示班 104（全虚拟数据），可随时在「我的 → 更多」里点「切换正式版」切回本人。',
-      confirmText: '切换',
-      success: (res) => {
-        if (!res.confirm) return;
-        api.switchDemo({}, { loading: '切换中' })
-          .then((r) => {
-            app.globalData.demo = true;   // 演示态标记：不显示顶部横幅、按钮变「切换正式版」
-            this._afterSwitch('已切换为体验版 · ' + ((r && r.name) || '演示班'));
-          })
-          .catch(() => {});
-      }
-    });
+    /* 🔴 2026-11-15：原来是 wx.showModal —— 微信原生弹窗，深色模式下必然是一块纯白卡片
+       （客户端决定颜色，小程序改不了）。改成站内 <dialog>，走 --dlg-* 令牌。 */
+    this.setData({ demoConfirmShow: true });
+  },
+
+  onDemoClose() { this.setData({ demoConfirmShow: false }); },
+
+  onDemoConfirm() {
+    const app = getApp();
+    this.setData({ demoConfirmShow: false });
+    api.switchDemo({}, { loading: '切换中' })
+      .then((r) => {
+        app.globalData.demo = true;   // 演示态标记：不显示顶部横幅、按钮变「切换正式版」
+        this._afterSwitch('已切换为体验版 · ' + ((r && r.name) || '演示班'));
+      })
+      .catch(() => {});
   },
   /**
    * 绑定入口开关（仅超管）。关闭后所有人无法走「口令 → 选人 → 学号验证」流程，
@@ -499,20 +538,25 @@ Page({
    */
   onToggleBind() {
     const next = !this.data.bindOpen;
-    const tip = next ? '开放班级绑定入口？' : '关闭班级绑定入口？关闭后新成员将无法绑定';
-    wx.showModal({
-      title: tip,
-      confirmText: next ? '开放' : '关闭',
-      success: (res) => {
-        if (!res.confirm) return;
-        api.setBindOpen({ open: next }, { loading: '处理中' })
-          .then(() => {
-            this.setData({ bindOpen: next });
-            util.toast(next ? '绑定入口已开放' : '绑定入口已关闭');
-          })
-          .catch(() => {});
-      }
+    /* 同上方：wx.showModal 是原生弹窗，深色下纯白 ⇒ 换站内 <dialog> */
+    this.setData({
+      bindConfirmShow: true,
+      bindConfirmTitle: next ? '开放班级绑定入口？' : '关闭班级绑定入口？关闭后新成员将无法绑定',
+      bindConfirmOkText: next ? '开放' : '关闭'
     });
+  },
+
+  onBindConfirmClose() { this.setData({ bindConfirmShow: false }); },
+
+  onBindConfirm() {
+    const next = !this.data.bindOpen;
+    this.setData({ bindConfirmShow: false });
+    api.setBindOpen({ open: next }, { loading: '处理中' })
+      .then(() => {
+        this.setData({ bindOpen: next });
+        util.toast(next ? '绑定入口已开放' : '绑定入口已关闭');
+      })
+      .catch(() => {});
   },
 
   _afterSwitch(tip) {

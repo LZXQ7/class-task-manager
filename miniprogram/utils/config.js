@@ -420,8 +420,37 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      CHANGELOG / HANDOFF / 旧版更新说明里的事实性提及保留不改。
  *   全量门禁 **127 过 / 14 历史存量红**（基线 126/14 + 新门禁 1 绿），零新增回归。
  *   纯前端改动，无需重部署云函数。
+ * ---------------------------------------------------------------------------
+ * v1.0.8.42（2026-11-15）· 深色模式原生弹窗 + 顶部白条 + 下拉圆环 + 卡片白光 + 玻璃按钮
+ *   用户真机连报 7 条，其中 6 条是 UI/主题缺陷，1 条（卡片白光）是动效性能缺陷。
+ *   ① 🔴 **本轮的总根因**：`.t-dark` 挂在页面根节点，而组件内的 `.t-dark .xxx`
+ *      是**跨组件边界的后代选择器，永远不命中**。实测受害者：
+ *      nav-bar（`.t-dark .nav-edge`）、radial-menu（`.t-dark .rm-btn`）、
+ *      tilt-card（`.t-dark .tg-surface`）、segmented（`.t-dark .seg`）、
+ *      aura-card（`.t-dark .aura-glow`）、bottom-sheet（`.t-dark .sheet-root.float .sheet-panel`）。
+ *      ⇒ 全部改成**主题令牌**（app.wxss 的 .t-light / .t-dark 各一份）：
+ *      `--nav-edge-fill/top/bottom`、`--nav-line`、`--nav-solid`、
+ *      `--brand-glass/-edge/-shadow`、`--tilt-ring`、`--float-shadow-color`。
+ *   ② 深色状态栏那条银白横条：真因就是上面①——`--nav-edge-fill: none` 才真正关掉
+ *      那条「0rpx 白 .9 → 一个状态栏高渐隐」的顶部聚光（此前两版都写了规则但没生效）。
+ *   ③ 「我的 → 切换测试账号 / 切换体验版 / 班级绑定入口」深色下仍是纯白：
+ *      `wx.showActionSheet` / `wx.showModal` 是**微信客户端自绘**、小程序无法着色。
+ *      ⇒ 账号列表改 `bottom-sheet`（带「当前」标记），两处确认改 `<dialog>`。
+ *   ④ 下拉刷新的小圆环（spring-scroll 的 `.ss-indicator / .ss-ring`）整段删除；
+ *      刷新行为保留、不再画指示物。
+ *   ⑤ 首页卡片白光「闪来闪去」：`.tg-glare` 原来挂 `animation: tgGlareBreath 4.2s infinite`，
+ *      首页 5 张卡各一层合成层同时逐帧改 opacity，触摸倾斜时层反复重建 ⇒ 抖动。
+ *      ⇒ 改为**静态**柔光，并补 `border-radius: inherit`（否则直角从圆角外漏出白光）。
+ *   ⑥ 课表「＋」与弧形菜单四个圆形按钮统一成**品牌蓝玻璃**（同一组令牌、
+ *      同一套 `@supports not` / `prefers-reduced-transparency` 降级），
+ *      四字项（临时课表）与其余项字号统一 22rpx。
+ *   ⑦ 新增两条门禁：`check-theme-token-scope.js`（组件内禁 `.t-dark/.t-light`
+ *      选择器 + 令牌双份存在 + 3 变异）、`check-dark-ui-fixes.js`
+ *      （原生弹窗退场 / 圆环删除 / 柔光静态 / 玻璃令牌统一 + 8 变异）。
+ *   全量门禁 **129 过 / 14 历史存量红**（基线 127/14 + 新门禁 2 绿），零新增回归。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.41';
+const APP_VERSION = '1.0.8.42';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

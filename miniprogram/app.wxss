@@ -140,6 +140,29 @@ page {
   --glass-shadow: 0 16rpx 64rpx rgba(29,33,41,0.15);
   --glass-highlight: inset 0 2rpx 0 rgba(255, 255, 255, 0.60);
 
+  /* ---- 导航玻璃边缘令牌（2026-11-15 立规）----
+   * 🔴 为什么必须是令牌而不是 `.t-dark .nav-edge`：
+   *    `.t-dark` 挂在**页面根节点**上，而 `.nav-edge` 在 nav-bar 组件内部 ——
+   *    **组件 wxss 里的祖先类跨组件边界不命中**（本项目多处踩过，见 segmented 的注释）。
+   *    实测后果：深色模式状态栏上方那一整条银白渐变（104rpx 聚光）从来没被关掉过。
+   *    自定义属性会**继承进组件** ⇒ 组件里写 `var(--nav-edge-fill, 浅色值)`，
+   *    深色由 `.t-dark` 换值即生效，不需要任何跨边界选择器。
+   * ⚠️ 浅色值就是原来写死在 nav-bar wxss 里的那套（逐值相同，浅色零变化）。 */
+  --nav-edge-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0rpx, rgba(255, 255, 255, 0) 44rpx, rgba(255, 255, 255, 0) 70rpx, rgba(255, 255, 255, 0) 104rpx);
+  --nav-edge-top: rgba(255, 255, 255, 0.9);
+  --nav-edge-bottom: rgba(229, 230, 235, 0.7);
+  --nav-line: rgba(255, 255, 255, 0.6);
+  --nav-solid: rgba(255, 255, 255, 0.92);
+
+  /* ---- 品牌蓝玻璃（课表「＋」与弧形菜单按钮共用同一配方）----
+   * 用户口径（2026-11-15）：这两处不要「实心蓝圆块」，要和全站其它面同一套玻璃语汇。 */
+  --brand-glass: rgba(51, 112, 255, 0.66);
+  --brand-glass-edge: rgba(255, 255, 255, 0.45);
+  --brand-glass-shadow: 0 10rpx 26rpx rgba(51, 112, 255, 0.28);
+
+  /* ---- 3D 卡描边（tilt-card）：同上，组件内不能写 .t-dark 后代 ---- */
+  --tilt-ring: rgba(154, 163, 178, 0.5);
+
   /* ---- #4 旋转描边卡的呼吸背光令牌（中性纯色，不混彩）---- */
   --aura-glow: rgba(140, 146, 160, 0.50);
 
@@ -160,6 +183,8 @@ page {
   --dlg-solid: rgba(255, 255, 255, 0.95);
   --dlg-edge: rgba(255, 255, 255, 0.7);
   --dlg-shadow: 0 20rpx 60rpx rgba(29,33,41,0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
+  /* float 居中弹卡的投影色（bottom-sheet variant="float"）：深色要更重才看得出浮起 */
+  --float-shadow-color: rgba(29, 33, 41, 0.28);
   --tabbar-bg: rgba(255, 255, 255, 0.35);
   --tabbar-solid: rgba(255, 255, 255, 0.88);
   --tabbar-edge: rgba(255, 255, 255, 0.6);
@@ -256,6 +281,21 @@ page {
   --glass-shadow: 0 16rpx 64rpx rgba(0,0,0,0.55);
   --glass-highlight: inset 0 2rpx 0 rgba(200, 215, 245, 0.10);
 
+  /* ---- 导航玻璃边缘（深色版）：白色聚光渐变整段关掉 ---- 
+   * `none` 是合法 background 值，`var(--nav-edge-fill)` 取到 none 即等价于「没有背景」。 */
+  --nav-edge-fill: none;
+  --nav-edge-top: rgba(206, 222, 255, 0.14);
+  --nav-edge-bottom: rgba(255, 255, 255, 0.08);
+  --nav-line: rgba(200, 215, 245, 0.14);
+  --nav-solid: rgba(28, 32, 39, 0.96);
+
+  /* 品牌蓝玻璃：深底上降 alpha、边缘换成冷白，白字仍可读 */
+  --brand-glass: rgba(77, 139, 255, 0.48);
+  --brand-glass-edge: rgba(200, 215, 245, 0.22);
+  --brand-glass-shadow: 0 10rpx 26rpx rgba(0, 0, 0, 0.5);
+
+  --tilt-ring: rgba(170, 186, 214, 0.34);
+
   /* ---- #4 中性纯色背光（深色下略亮的冷灰）---- */
   --aura-glow: rgba(176, 184, 202, 0.42);
 
@@ -274,6 +314,7 @@ page {
   --dlg-solid: rgba(26, 30, 39, 0.98);
   --dlg-edge: rgba(200, 215, 245, 0.14);
   --dlg-shadow: 0 20rpx 60rpx rgba(0,0,0,0.55), inset 0 1rpx 0 rgba(200, 215, 245, 0.08);
+  --float-shadow-color: rgba(0, 0, 0, 0.6);
   --tabbar-bg: rgba(28, 33, 43, 0.55);
   --tabbar-solid: rgba(26, 30, 39, 0.94);
   --tabbar-edge: rgba(200, 215, 245, 0.14);
