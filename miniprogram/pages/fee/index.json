@@ -7,6 +7,6 @@
     "skeleton": "/components/skeleton/index",
     "segmented": "/components/segmented/index",
     "class-picker": "/components/class-picker/index",
-    "hold-confirm": "/components/hold-confirm/index"
+    "dialog": "/components/dialog/index"
   }
 }

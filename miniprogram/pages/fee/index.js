@@ -25,6 +25,9 @@ Page({
     loading: true,
     failed: false,
     unbound: false,
+    /** 删除确认框（2026-11-15）：delShow 控制显隐，delId 是待删记录 id */
+    delShow: false,
+    delId: 0,
 
     isCounselor: false,
     feeCanManageClass: false,
@@ -376,12 +379,21 @@ Page({
         util.toast('登记失败，请重试');
       });
   },
-  onFeeDeleteRecord(e) {
+  /** 点「删除」→ 先弹站内确认框（2026-11-15：恢复成弹窗确认，不再用长按圆环） */
+  onFeeDeleteTap(e) {
     const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    this.setData({ delId: id, delShow: true });
+  },
+  onFeeDeleteCancel() { this.setData({ delShow: false, delId: 0 }); },
+  onFeeDeleteConfirm() {
+    const id = Number(this.data.delId);
+    this.setData({ delShow: false });
     if (!id) return;
     api.feeDeleteRecord({ type: this.data.feeType, id })
       .then(() => { util.toast('已删除'); this._loadFee(true); })
       .catch(() => {});
+    this.setData({ delId: 0 });
   },
 
   onReload() { this._loadFee(true); },

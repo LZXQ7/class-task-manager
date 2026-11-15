@@ -94,12 +94,14 @@
               <image class="fee-rec-img-pic" src="{{img}}" mode="aspectFill" />
             </view>
           </view>
-          <!-- 仅管理人可见：追加图片（未满 9 张）/ 删除；view-only 用户完全看不到 -->
+          <!-- 仅管理人可见：追加图片（未满 9 张）/ 删除；view-only 用户完全看不到
+               🔴 2026-11-15 用户口径：「删除按钮改成原来的弹窗确认，不要这个圆」。
+               原来套的 <hold-confirm>（长按 700ms 确认）默认会套一圈**圆形进度壳**，
+               在深色下是一个大红圆 + 一圈暗色光晕。现在恢复成「点一下 → 弹窗确认」，
+               确认框用站内 <dialog>，不用 wx.showModal（原生弹窗在深色下必然是纯白）。 -->
           <view class="fee-rec-ops" wx:if="{{feeCanManage}}">
             <view data-pressable class="fee-rec-append" wx:if="{{item.images.length < 9}}" data-id="{{item.id}}" bindtap="onFeeAppendTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">追加图片</view>
-            <hold-confirm label="删除" duration="{{700}}" data-id="{{item.id}}" bind:confirm="onFeeDeleteRecord">
-              <view class="fee-rec-del" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">删除</view>
-            </hold-confirm>
+            <view data-pressable class="fee-rec-del" data-id="{{item.id}}" data-note="{{item.note}}" bindtap="onFeeDeleteTap" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">删除</view>
           </view>
         </view>
         <view class="fee-rec-empty" wx:if="{{!feeActive.records.length}}">还没有消费记录</view>
@@ -143,5 +145,19 @@
       <view class="page-foot-space"></view>
     </view>
   </block>
+
+  <!-- 删除单条消费的二次确认（2026-11-15：从 hold-confirm 长按圆环改回「点一下弹确认」）。
+       🔴 必须写清「凭证图片会一起删除、且不可恢复」——后端是真删（DELETE + cloud.deleteFile），
+          没有回收站，用户误删过一次（2026-11-15 已按原值手工恢复，但两张图救不回来）。 -->
+  <dialog
+    show="{{delShow}}"
+    title="删除这条消费记录？"
+    content="删除后不可撤回，该记录已上传的凭证图片也会一并删除。"
+    cancel-text="取消"
+    confirm-text="删除"
+    confirm-color="#F53F3F"
+    bind:confirm="onFeeDeleteConfirm"
+    bind:close="onFeeDeleteCancel"
+  />
 
 </view>
