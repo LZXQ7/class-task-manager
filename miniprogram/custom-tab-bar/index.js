@@ -110,6 +110,8 @@ const freshHandoff = (index) => {
 Component({
   options: { addGlobalClass: true },
   data: {
+    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色） */
+    tClass: theme.rootClass(),
     active: 0,
     /* 🔴 主题 class 必须挂在 tabBar 自己身上：自定义 tabBar 是**独立于页面根节点**
        的渲染树，拿不到 `<view class="page {{tClass}}">` 上定义的 CSS 变量 ——

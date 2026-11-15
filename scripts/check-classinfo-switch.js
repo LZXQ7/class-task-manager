@@ -85,7 +85,7 @@ function makeHarness(profile, opts, src) {
     '../../utils/util': util,
     '../../utils/notice': { read: () => null, unackedCount: () => 0 },
     '../../utils/page-anim': { playReady: () => {} },
-    '../../utils/theme': { mount: () => {}, unmount: () => {} },
+    '../../utils/theme': { mount: () => {}, unmount: () => {}, rootClass: () => 't-light' },
     /* 2026-10-28 性能优化：班级信息页引入 utils/mem 做 SWR 缓存。这里给一个**真实**的内存
      * 存储（每个 harness 一把），既能让 require 解析，也能真正跑一遍缓存逻辑：
      * 切回同一班 / 同班二次 onShow 应当命中缓存、少发请求，且不影响下面 12 个用例的断言。 */

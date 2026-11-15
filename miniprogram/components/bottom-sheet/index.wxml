@@ -10,6 +10,14 @@
          **整条声明连同 max-height 一起被丢弃** ⇒ 面板固定高度失效、长列表无法滚动
          （现象：手动排班「添加值日」59 人列表滚不动）。四个传 height 的弹层都踩这条。
          守护门禁：scripts/check-inline-style-join.js -->
+    <!-- 1.0.8.32：容器共享转场的「卡面层」。
+         起点帧要**长得就是源卡本身**（不是一块空白玻璃板），所以调用方通过具名 slot
+         把与源卡完全相同的 WXML 传进来；morphFaceStyle 是 counter-scale 内联样式
+         （见 utils/morph.js faceInline）。opacity 由 .sheet-root.morph / .morph-show 控制。
+         ⚠️ 没有 face slot 的弹层：这里是一个 pointer-events:none 的空层，零影响。
+         ⚠️ 必须是 .sheet-panel 的**直接子节点**且 position:absolute，才能跟着面板的
+            scale(sx,sy) 一起放大，又不被 .sheet-spring 的内容淡出规则误伤。 -->
+    <view class="sheet-face" style="{{morphFaceStyle}}"><slot name="face" /></view>
     <!-- 拖动感应区（约 60px）：grabber + 整条标题栏 -->
     <view
       class="sheet-drag"
@@ -18,7 +26,7 @@
       bindtouchend="onHeadEnd"
       bindtouchcancel="onHeadEnd"
     >
-      <view class="sheet-grab"></view>
+      <view wx:if="{{showGrab}}" class="sheet-grab"></view>
       <view class="sheet-head">
         <text wx:if="{{title}}" class="sheet-title">{{title}}</text>
         <view wx:else class="sheet-title" />

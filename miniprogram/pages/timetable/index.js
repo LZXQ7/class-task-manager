@@ -68,6 +68,8 @@ function weekText(weeks) {
 
 Page({
   data: {
+    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色） */
+    tClass: theme.rootClass(),
     statusBarHeight: 20,
     /** Tab 入场动画序号：0 = 还没进过（播完整版），之后在 1 / 2 之间轮换（轻量版），见 utils/page-anim.js */
     animSeq: 0,

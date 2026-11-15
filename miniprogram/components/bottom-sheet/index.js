@@ -71,6 +71,9 @@ Component({
     height: { type: Number, value: 0 },      // rpx，0=自适应
     maskClose: { type: Boolean, value: true },
     showClose: { type: Boolean, value: true },
+    /* 2026-11-15：成员详情卡改为「点空白处关闭」，顶部不再放 grabber 小横线。
+       默认 true ⇒ 全站其它弹层保持原样；只有明确传 false 的卡片才隐藏。 */
+    showGrab: { type: Boolean, value: true },
     radius: { type: Number, value: 24 },
     // 是否让开底部自定义 tabBar（Tab 页弹层需 true，避免内容被 tabBar 遮挡）
     tabbar: { type: Boolean, value: true },
@@ -124,7 +127,13 @@ Component({
      * 传 `[]`（默认）= 维持原两态行为，关闭阈值仍是面板一半（不动旧弹层手感）。
      * 松手时按「当前位移 + 速度投影」吸附到最近的档（橡皮筋已在拖动期处理）。
      */
-    detents: { type: Array, value: () => [] },    /**
+    /* 🔴 2026-11-15 真机报错修复：`value: () => []` 会让**基础库把函数本身当属性值**
+     *    （小程序 properties 的 value 不支持「工厂函数」写法），拖到松手时
+     *    `_restYs()` 里 `ds.forEach` 直接抛 `ds.forEach is not a function`
+     *    ⇒ 栈：_restYs → _snapTo → onHeadEnd（Windows mp 2.02 / lib 3.18.0 实测）。
+     *    改回字面空数组；本组件只读 detents、从不写它，共享引用无害。 */
+    detents: { type: Array, value: [] },
+    /**
      * 打开时直接停在某个档（而非全开）。值为 detents 里的一个比例，如 0.45。
      * 仅当 detents 非空时有效：面板先滑入到全开，再平滑落到该档（peek 半开）。
      */
@@ -178,7 +187,11 @@ Component({
      * morphCls  ：'morph' = 转场中（内容交叉淡出 + 遮罩与容器同曲线缩放）；'' = 常态。
      * ⚠️ 两者都只在传了 originRect 的弹层上才会被置位 ⇒ 其它弹层完全走原逻辑。 */
     morphStyle: '',
-    morphCls: ''
+    morphCls: '',
+    /* 1.0.8.32：卡面层（与源卡共用同一份 WXML）的 counter-scale 内联样式。
+       面板被 scale(sx,sy) 压缩时，卡面层反向 scale(1/sx,1/sy) ⇒ 起点帧与源卡
+       像素级一致、放大全程内容不形变；见 utils/morph.js 的 faceInline()。 */
+    morphFaceStyle: ''
   },
   observers: {
     /* v1.0.10.7 容器共享元素转场：节点刚挂载（mounted true）时先算几何、把面板
@@ -201,7 +214,8 @@ Component({
         this.setData({
           morphStyle: morph.morphInline(this._morphGeo, true, true,
             morph.MORPH_MS, morph.MORPH_EASE, r[0], r[1]),
-          morphCls: 'morph'
+          morphCls: 'morph',
+          morphFaceStyle: morph.faceInline(this._morphGeo, this.properties.originRect)
         });
       }
       if (!v && (this.data.dragStyle || this.data.maskStyle || this.data.dragging
@@ -225,7 +239,7 @@ Component({
         //   面板先滑入到全开，再平滑落到该档（等入场 transform 走完，避免两段动画打架）。
         //   选档优先级：① 显式 initialDetent ② autoDetent 自动挑「能显示最后一个按钮的最低档」
         //   ③ 都没有 → 全开（维持旧行为）。
-        if (this.properties.detents && this.properties.detents.length) {
+        if (Array.isArray(this.properties.detents) && this.properties.detents.length) {
           const self = this;
           this._initDetentTimer = setTimeout(function () {
             self._initDetentTimer = null;
@@ -380,7 +394,8 @@ Component({
         self._morphRadius = [rStart, rEnd];
         self.setData({
           morphStyle: morph.morphInline(g, true, false, morph.MORPH_MS, morph.MORPH_EASE, rStart, rEnd),
-          morphCls: 'morph'
+          morphCls: 'morph',
+          morphFaceStyle: morph.faceInline(g, from)
         });
         if (self._morphTimer) { clearTimeout(self._morphTimer); self._morphTimer = null; }
         self._morphTimer = setTimeout(function () {
@@ -394,7 +409,7 @@ Component({
           self._morphTimer = setTimeout(function () {
             self._morphTimer = null;
             if (!self.data.mounted || !self.data.active) return;
-            self.setData({ morphStyle: '', morphCls: '' });
+            self.setData({ morphStyle: '', morphCls: '', morphFaceStyle: '' });
           }, morph.MORPH_MS + 40);
         }, 20);
       });
@@ -405,8 +420,8 @@ Component({
       if (this._morphTimer) { clearTimeout(this._morphTimer); this._morphTimer = null; }
       this._morphGeo = null;
       this._morphRadius = null;
-      if (this.data.morphStyle || this.data.morphCls) {
-        this.setData({ morphStyle: '', morphCls: '' });
+      if (this.data.morphStyle || this.data.morphCls || this.data.morphFaceStyle) {
+        this.setData({ morphStyle: '', morphCls: '', morphFaceStyle: '' });
       }
     },
 
@@ -747,7 +762,7 @@ Component({
       // ③ 位移 + 速度共同判定：滑过「关闭阈值」或快速下滑轻扫 → 关闭；否则吸附到最近档。
       // ⚠️ 没有中间档时关闭阈值仍是面板一半（维持旧弹层手感）；有中间档（#3）时放宽到 0.92h，
       //    否则拖到半开 peek（0.45h）会被误判为「过半关闭」，三档吸附就建不起来。
-      const hasDetents = !!(this.properties.detents && this.properties.detents.length);
+      const hasDetents = !!(Array.isArray(this.properties.detents) && this.properties.detents.length);
       const closeRatio = hasDetents ? 0.92 : 0.5;
       // ③ 位移 + 速度双判据：无中间档时滑过面板一半（y > h / 2）即关；有中间档（#3）时
       //    阈值放宽到 0.92h，否则拖到半开 peek（0.45h）会被误判关闭。快速下滑轻扫（v > FLICK_V）无论哪种都关。
@@ -772,7 +787,7 @@ Component({
      */
     _autoDetent(h) {
       const self = this;
-      const ds = (this.properties.detents || []).filter(function (d) {
+      const ds = (Array.isArray(this.properties.detents) ? this.properties.detents : []).filter(function (d) {
         return typeof d === 'number' && d > 0 && d < 1;
       });
       if (!ds.length) return;
@@ -807,7 +822,7 @@ Component({
 
     /** 计算吸附档的像素位置：全开(0) + 各中间档(detents × 面板高)。detents 空则只有 [0]。 */
     _restYs(h) {
-      const ds = this.properties.detents || [];
+      const ds = Array.isArray(this.properties.detents) ? this.properties.detents : [];
       const arr = [0];
       ds.forEach((r) => {
         const rr = Number(r);

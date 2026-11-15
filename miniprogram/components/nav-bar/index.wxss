@@ -212,8 +212,15 @@
   transition: opacity .3s ease;
 }
 .t-dark .nav-edge {
-  border-top-color: rgba(206, 222, 255, 0.55);
-  border-bottom-color: rgba(255, 255, 255, 0.12);
+  /* 🔴 2026-11-15 用户实拍：深色模式状态栏有一整条银白色圆角横条。
+     根因：上面 .nav-edge 的 background 是 `linear-gradient(180deg,
+     rgba(255,255,255,.9) 0rpx → 透明 104rpx)`，而 104rpx ≈ 状态栏高度 ——
+     浅色下它是玻璃顶部的聚光，深色下却成了一块白板（旧版只覆盖了两条 border 色，
+     没覆盖 background）。⇒ 深色整段关掉渐变，顶部亮边也压到几乎看不见。
+     ⚠️ 浅色段那条 `104rpx` 是 check-nav-glass 的变异锚点，必须保留，别删。 */
+  background: none;
+  border-top-color: rgba(206, 222, 255, 0.14);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ② 镜面反射带（.nav-sheen）已整段删除

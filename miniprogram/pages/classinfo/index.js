@@ -23,6 +23,8 @@ const STALE_MS = 20000;
 
 Page({
   data: {
+    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色） */
+    tClass: theme.rootClass(),
     statusBarHeight: 20,
     // 体验模式标记（与登录 demo 同源）：true 时倒数日区展示「体验版常驻」标识（2026-11-12）。
     demo: false,

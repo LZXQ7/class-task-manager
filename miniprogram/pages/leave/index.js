@@ -90,6 +90,8 @@ function periodRangeText(periods) {
 
 Page({
   data: {
+    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色） */
+    tClass: theme.rootClass(),
     statusBarHeight: 20,
     tClass: '',
     tab: 'apply',

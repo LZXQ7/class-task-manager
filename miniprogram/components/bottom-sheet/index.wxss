@@ -104,6 +104,7 @@
   /* v1.0.10.7：JS 侧已经在「减弱动效」时整段不播容器转场，这里是双保险 ——
      万一远程配置/旧基础库让 morph 类漏进来，也不许再跑 240ms 的淡入淡出。 */
   .sheet-root.morph .sheet-mask,
+  .sheet-root.morph .sheet-face,
   .sheet-root.morph .sheet-drag,
   .sheet-root.morph .sheet-spring,
   .sheet-root.morph .sheet-footer { transition: none; }
@@ -249,4 +250,45 @@
 .sheet-root.morph.morph-show .sheet-footer {
   opacity: 1;
   transition: opacity .24s cubic-bezier(.22, .61, .36, 1);
+}
+
+/* ---- 1.0.8.32：起点帧必须是「那张卡」，不是一块空白玻璃板 ----------------
+   1.0.10.7 的翻车点：源卡被 visibility:hidden 藏掉、面板自己从源矩形长开，
+   但面板是近白玻璃底 + 内容全淡出 ⇒ 用户看到「原地冒出个白矩形」。
+   现在面板里多一层 .sheet-face（具名 slot，内容与源卡共用同一份 WXML），
+   由 morphFaceStyle 做 counter-scale 抵消非等比缩放 ⇒ 卡面按源卡尺寸排版、
+   放大全程不形变；材质/圆角都由卡面自己的 .card 提供。 */
+.sheet-face {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  transition: none;
+}
+/* 起点帧：瞬间贴上卡面，**不能淡入**（否则源卡消失后先空一拍）。 */
+.sheet-root.morph .sheet-face {
+  opacity: 1;
+  transition: none;
+}
+/* 终点帧：卡面淡出 / 详情淡入，同一拍、同一 240ms、同一曲线。 */
+.sheet-root.morph.morph-show .sheet-face {
+  opacity: 0;
+  transition: opacity .24s cubic-bezier(.22, .61, .36, 1);
+}
+/* 转场期面板不带白色玻璃底，让卡面的 .card 材质透出来；终点帧长回 sheet 材质。
+   background 已被 morphInline 纳入 240ms 过渡（见 utils/morph.js），不会中途闪白。 */
+.sheet-root.morph .sheet-panel {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+.sheet-root.morph.morph-show .sheet-panel {
+  background: var(--sheet-bg, rgba(255, 255, 255, 0.72));
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
 }

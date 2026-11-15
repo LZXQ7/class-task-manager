@@ -32,6 +32,7 @@ function loadPeek(file, expr) {
         return { init: () => {}, database: () => ({}), DYNAMIC_CURRENT_ENV: 'env', getWXContext: () => ({}) };
       }
       return {
+        rootClass: () => 't-light', mount: () => {}, unmount: () => {},
         toast: () => {}, confirmStrict: () => Promise.resolve(''),
         uploadFile: () => Promise.resolve(''), getTempFileURL: () => Promise.resolve({})
       };

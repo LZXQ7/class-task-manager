@@ -1,0 +1,229 @@
+/* 成员详情卡（组件样式隔离）================================================
+ * 以下类名从 pages/roster/index.wxss 复制并适配：
+ *   · 全部走设计令牌（--text-N / --bg-card / --fill-soft / --brand …），深色模式自动反色；
+ *   · 组件 wxss 里伪元素 / inset box-shadow / 百分比渐变色标 / 多层 background 均不命中
+ *     （见 scripts/check-nav-glass.js 的 4 条渲染铁律），故：
+ *       备注行左侧竖条改用 border-left（不写 ::after）、不写任何渐变与 box-shadow；
+ *   · 只用类选择器（不写标签选择器 / ~ 兄弟选择器），时长不写死（动效由 bottom-sheet 管）。 */
+
+.mb-detail {
+  padding: 40rpx 32rpx 48rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 头像 + 姓名 */
+.md-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.md-av {
+  width: 80rpx;
+  height: 80rpx;
+  flex-shrink: 0;
+}
+.md-name {
+  margin-top: 16rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 44rpx;
+  color: var(--text-1);
+}
+
+/* 学号 / 组别 / 值日 */
+.mb-detail-grid {
+  margin-top: 24rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.md-grid-line {
+  font-size: 26rpx;
+  line-height: 40rpx;
+  color: var(--text-1);
+}
+.md-grid-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.cnt-num {
+  display: inline-block;
+  min-width: 46rpx;
+  text-align: center;
+}
+
+/* 操作按钮 */
+.mb-detail-actions {
+  margin-top: 32rpx;
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.mb-abtn {
+  flex: 0 1 46%;
+  min-width: 0;
+  max-width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  padding: 0 24rpx;
+  margin: 0 8% 16rpx 0;
+  text-align: center;
+  font-size: 28rpx;
+  color: var(--text-1);
+  background: var(--bg-fill);
+  border-radius: 24rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mb-abtn:nth-child(2n) { margin-right: 0; }
+.mb-abtn.block {
+  flex: 0 0 100%;
+  margin-right: 0;
+  height: 96rpx;
+  line-height: 96rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+.mb-abtn:active { background: var(--line-1); }
+/* 已固定到主页：品牌蓝填充 + 白字（白字用 var() 带 fallback，深色蓝底仍可读） */
+.mb-abtn.on {
+  color: var(--on-brand-fg, #FFFFFF);
+  background: var(--brand);
+  font-weight: 500;
+}
+.mb-abtn.on:active { background: var(--brand-press); }
+.mb-abtn.busy { opacity: .6; }
+.mb-super-hint {
+  margin-top: 8rpx;
+  width: 100%;
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--text-3);
+}
+
+/* 备注卡 */
+.mb-notes {
+  margin-top: 24rpx;
+  padding: 24rpx 20rpx 8rpx;
+  background: var(--fill-soft);
+  border-radius: 32rpx;
+}
+.mb-notes-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.mb-notes-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.mb-notes-count {
+  font-size: 24rpx;
+  color: var(--text-3);
+}
+.mb-notes-sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 23rpx;
+  color: var(--text-3);
+}
+.mb-notes-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin: 20rpx 0 8rpx;
+  padding: 28rpx 24rpx;
+  background: var(--bg-card);
+  border-radius: 32rpx;
+}
+.mb-notes-empty-t { font-size: 27rpx; color: var(--text-2); font-weight: 500; }
+.mb-notes-empty-d { font-size: 24rpx; color: var(--text-3); line-height: 1.6; }
+
+/* 备注行：左侧竖条用 border-left 实现（组件 wxss 禁用伪元素） */
+.mb-note {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 16rpx;
+  padding: 22rpx 20rpx;
+  background: var(--bg-card);
+  border-left: 6rpx solid var(--brand-light);
+  border-radius: 32rpx;
+  overflow: hidden;
+}
+.mb-note.mine { border-left-color: var(--brand); }
+.mb-note-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  min-width: 0;
+}
+.mb-note-content {
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.mb-note-foot {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.mb-note-author { font-size: 24rpx; color: var(--text-2); }
+.mb-note-time { font-size: 24rpx; color: var(--text-3); }
+.mb-note-edit {
+  margin-left: auto;
+  font-size: 24rpx;
+  color: var(--brand);
+}
+.mb-note-del {
+  flex: 0 0 auto;
+  margin-left: 18rpx;
+  padding: 6rpx 16rpx;
+  font-size: 24rpx;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-radius: 20rpx;
+}
+
+/* 书写区 */
+.mb-note-form {
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: var(--bg-card);
+  border-radius: 32rpx;
+}
+.mb-note-input {
+  width: 100%;
+  min-height: 160rpx;
+  padding: 20rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: var(--text-1);
+  background: var(--fill-soft);
+  border: 2rpx solid var(--line-1);
+  border-radius: 24rpx;
+  box-sizing: border-box;
+}
+.mb-note-formfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10rpx 0 4rpx;
+}
+.mb-note-counter { font-size: 23rpx; color: var(--text-3); }
+.mb-note-cancel { font-size: 25rpx; color: var(--text-3); padding: 4rpx 8rpx; }
+
+/* 弹层固定底栏（bottom-sheet footer 槽） */
+.mb-footer-bar {
+  width: 100%;
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+}

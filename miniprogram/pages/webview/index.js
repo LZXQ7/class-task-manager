@@ -9,6 +9,8 @@ const theme = require('../../utils/theme');
 
 Page({
   data: {
+    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色） */
+    tClass: theme.rootClass(),
     url: '',
     failed: false
   },

@@ -39,6 +39,12 @@ const STALE_MS = 20000;
 
 Page({
   data: {
+    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色） */
+    tClass: theme.rootClass(),
+    /* 1.0.8.32 首页就地弹成员详情卡（不再跳成员与分组页） */
+    pinDetailShow: false,
+    pinDetailMemberId: 0,
+    pinDetailClassId: 0,
     /* 作业提交播报（2026-10-28）：取代原「远程配置横幅」。
      * show=横条可见；out=收尾淡出；queue=已排好的播报队列（正序，旧的先播）；
      * idx=当前播到第几条（track 据此 translateY 上滚）。 */
@@ -494,22 +500,35 @@ Page({
   },
 
   /**
-   * 点关注的学生 → 进成员页并直接展开他的详情。
-   * ⚠️ 只有**跨班**才带 classId：roster 用 `classId > 0` 判「正在看别班」（otherClass），
-   *    本班也带会把本班误判成别班、把管理权限一并收窄（check-classinfo-switch ⑤ 同口径）。
+   * 1.0.8.32：点关注的学生 → **首页就地**弹出成员详情卡，不再跳「成员与分组」页。
+   * 卡片组件自己按 memberId 拉详情 / 备注 / 固定状态；classId 只在跨班时带，
+   * 与旧深链同口径（本班带 classId 会被 roster 误判成别班、收窄管理权限）。
+   * ⚠️ 不再用 wx.navigateTo —— 用户明确要求「直接在首页弹出」。
    */
   onPinTap(e) {
     const d = e.currentTarget.dataset || {};
     const memberId = Number(d.id) || 0;
     if (!memberId) return;
     const classId = Number(d.classId) || 0;
-    const name = String(d.name || '');
     const myClassId = Number((((getApp() || {}).globalData || {}).profile || {}).classId) || 0;
-    const q = [];
-    if (classId && classId !== myClassId) q.push('classId=' + classId);
-    q.push('openMemberId=' + memberId);
-    q.push('name=' + encodeURIComponent(name));
-    wx.navigateTo({ url: '/pages/roster/index?' + q.join('&') });
+    const app = getApp() || {};
+    if (app.track) app.track.action('pin_open_detail');
+    this.setData({
+      pinDetailShow: true,
+      pinDetailMemberId: memberId,
+      pinDetailClassId: (classId && classId !== myClassId) ? classId : 0
+    });
+  },
+
+  /** 点遮罩空白处 / 卡片内关闭按钮 → 收起（bottom-sheet 自带 240ms 退出动画） */
+  onPinDetailClose() {
+    this.setData({ pinDetailShow: false });
+  },
+
+  /** 卡片里改了分组 / 固定状态 / 备注 → 刷新首页关注列表，避免显示旧数据 */
+  onPinDetailChanged() {
+    this._pinsBusy = false;
+    this._loadPins();
   },
 
   /* ---------------- 首页请假卡（1.0.5 追加，需求①②） ----------------

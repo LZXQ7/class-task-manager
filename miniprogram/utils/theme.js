@@ -130,6 +130,11 @@ function themeClass() {
  * 取不到就只返回主题类 —— 宁多播一次动效，也不要把主题搞坏。
  */
 function rootClass() {
+  /* 2026-11-15 首帧闪浅色修复：现在每个页面的 **data 初始值**会同步调用本函数，
+     比 onLoad 里的 theme.mount() 更早。加载顺序通常是 app.onLaunch → 页面模块，
+     但自定义 tabBar / 分包预热可能更早 ⇒ 这里自己兜底一次 init()，保证任何时机
+     都能拿到正确的首帧主题（init 幂等，重复调用无副作用）。 */
+  if (!inited) { try { init(); } catch (e) { /* ignore */ } }
   let c = themeClass();
   try {
     const m = require('./motion');
@@ -222,6 +227,9 @@ module.exports = {
   getMode: () => currentMode,
   getResolved: () => resolved,
   themeClass,
+  /* 1.0.8.32：各页面 data 初始值同步调用它注入首帧主题 class —— 必须导出，
+     否则 17 个页面在 Page() 定义阶段就会抛 theme.rootClass is not a function。 */
+  rootClass,
   prefersReducedMotion,
   mount,
   unmount,

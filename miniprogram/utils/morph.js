@@ -49,8 +49,12 @@ function captureFromEvent(e) {
  *   flipFromTo(from,to)  只算几何；非法矩形返回 null ⇒ 调用方安全降级到默认升起
  *   morphInline(g,...)   把几何翻成 WXML 内联样式字符串
  *
- * ⚠️ 非等比 scale 会把文字拉伸变形 ⇒ 容器变换期间内容必须**交叉淡出**（.morph-fade），
- *    落定后再淡入。这是 container transform 的标准做法，不是可选项。
+ * ⚠️ 非等比 scale 会把「详情内容」拉伸变形 ⇒ 详情内容在变换期间交叉淡出、落定淡入。
+ * ⚠️ 1.0.8.32 修正：起点帧必须**长得就是源卡本身**。新增 .sheet-face 卡面层
+ *    （与源卡共用同一份 WXML template + 同一套 .card 材质），并用 faceInline() 的
+ *    counter-scale 抵消面板的非等比缩放 ⇒ 卡面内容按源卡尺寸排版、全程不形变。
+ *    1.0.10.7 只做了「面板从源矩形放大 + 内容全淡出」⇒ 起点是一块空白玻璃板，
+ *    用户实拍判为「加了一个矩形，不是从卡片展开」。
  * ============================================================ */
 const MORPH_MS = 240;                                 // 与 popup-anim DURATION / .sheet-mask .24s 严格对齐
 /* 用 EASE.out 而不是 fluid：容器缩放不允许超调（面板会越出终态再回弹 ⇒ 露边/抖动），
@@ -102,16 +106,40 @@ function morphInline(g, atStart, animate, ms, ease, radiusStart, radiusEnd) {
   const ty = atStart ? g.dy.toFixed(2) + 'px' : '0px';
   const sx = atStart ? g.sx.toFixed(4) : '1';
   const sy = atStart ? g.sy.toFixed(4) : '1';
+  const dur = (ms || MORPH_MS) + 'ms ' + (ease || MORPH_EASE);
+  /* 1.0.8.32：把 background 也纳入过渡 —— 卡面层淡出时，面板底色要从「透明」
+     （让卡面自己的 .card 材质露出来）平滑长回 sheet 玻璃底，否则中途会闪一下白。 */
   const tr = animate
-    ? 'transition:transform ' + (ms || MORPH_MS) + 'ms ' + (ease || MORPH_EASE)
-      + ', border-radius ' + (ms || MORPH_MS) + 'ms ' + (ease || MORPH_EASE) + ';'
+    ? 'transition:transform ' + dur + ', border-radius ' + dur + ', background ' + dur + ';'
     : 'transition:none;';
   const r = atStart ? (radiusStart || '32rpx') : (radiusEnd || '24rpx 24rpx 0 0');
   return 'transform-origin:0 0;transform:translate(' + tx + ',' + ty + ') scale(' + sx + ',' + sy + ');'
     + 'border-radius:' + r + ';' + tr;
 }
 
+/**
+ * 1.0.8.32：生成「卡面层」内联样式（counter-scale，容器转场不形变的关键）。
+ * ------------------------------------------------------------
+ * 面板按终态尺寸 W×H 布局，再被 scale(sx,sy) 压回源卡矩形 fw×fh。
+ * 若卡面层也铺满 W×H，里面的标题/数字会被 sx/sy 非等比拉扁 ⇒ 起点帧根本
+ * 不像源卡（用户 1.0.10.7 实拍「加了一个矩形」的技术根因之一）。
+ *
+ * 正解：卡面层按**源卡尺寸** fw×fh 布局，再对自身做 scale(1/sx, 1/sy)：
+ *   自身视觉宽 = fw/sx = W、高 = fh/sy = H ⇒ 刚好铺满面板布局盒；
+ *   再被面板的 scale(sx,sy) 一压 ⇒ W·sx = fw、H·sy = fh，正好等于源卡。
+ *   内容始终按 fw×fh 排版 ⇒ 起点帧与源卡像素级一致，放大全程不形变。
+ */
+function faceInline(g, from) {
+  if (!g || !from) return '';
+  const w = Number(from.width), h = Number(from.height);
+  if (!(w > 0) || !(h > 0) || !(g.sx > 0) || !(g.sy > 0)) return '';
+  const ix = Number((1 / g.sx).toFixed(4)), iy = Number((1 / g.sy).toFixed(4));
+  if (!isFinite(ix) || !isFinite(iy) || !(ix > 0) || !(iy > 0)) return '';
+  return 'width:' + w.toFixed(2) + 'px;height:' + h.toFixed(2) + 'px;'
+    + 'transform-origin:0 0;transform:scale(' + ix.toFixed(4) + ',' + iy.toFixed(4) + ');';
+}
+
 module.exports = {
   setSource, getSource, clearSource, captureFromEvent,
-  flipFromTo, morphInline, sheetTargetRect, MORPH_MS, MORPH_EASE
+  flipFromTo, morphInline, faceInline, sheetTargetRect, MORPH_MS, MORPH_EASE
 };

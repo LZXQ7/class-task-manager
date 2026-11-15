@@ -27,7 +27,7 @@ const apiStub = {
   homeworkDelete: async (p) => { calls.del.push(p); return { ok: true }; }
 };
 const utilStub = { toast: (m) => calls.toast.push(m) };
-const themeStub = { mount() {}, unmount() {} };
+const themeStub = { mount() {}, unmount() {}, rootClass: () => 't-light' };
 let modalCb = null;   // showModal 的 success 回调（测试手动触发）
 
 global.wx = {

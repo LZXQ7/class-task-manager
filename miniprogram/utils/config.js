@@ -312,8 +312,38 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      起点无过渡 / 终点 240ms 无超调）+ 静态契约 + 12 条变异自证。
  *   全量门禁 **124 过 / 14 历史存量红**（基线 123/14 + 新门禁 1 绿），零回归。
  *   纯前端改动，无需重部署云函数。
+ * **`1.0.8.38`** = 版本口径收口 + 五处体验修复（2026-11-15）：用户明确「正式版仍是 **1.0.8.31**，
+ *   版本号不要走太快，**以后只更新后两位，保持 `1.0.8.xx`**」。1.0.8.32~37 / 1.0.9.x / 1.0.10.x
+ *   均为**从未正式发布的开发批次**；本版起回到 `1.0.8.xx` 序列。⚠️ 1.0.8.32~37 的号已被
+ *   11-14 那批开发版占用（各有 git tag 与 `outputs/v*-更新说明.md`，mp 后台也有同名开发版），
+ *   故取 **1.0.8.38** —— 仍只动后两位，但不撞 tag、不覆盖旧文档、mp「版本管理」里唯一一条。
+ *   ① 首页「本班请假」共享元素转场**重做**：1.0.10.7 只在源卡位置放了一个空白玻璃矩形，用户明确指出
+ *      「很明显不是共享元素转场，而是加了一个矩形，并不是从卡片展开的」。现新增 `.sheet-face`
+ *      卡面层，与首页源卡共用同一份 `<template name="lhFace">` 真实内容；`utils/morph.js` 新增
+ *      `faceInline(g, from)` 按源卡尺寸排版并反缩放 `scale(1/sx, 1/sy)`，面板整体 `scale(sx, sy)`
+ *      后精确还原源卡 ⇒ 起点帧看到的就是那张卡本身。转场期面板底色透明、卡面瞬间显形；
+ *      终点帧卡面 .24s 淡出、详情淡入、面板底色长回 `var(--sheet-bg)`。
+ *   ② 深色模式顶部白色横条：`.nav-edge` 的浅色渐变在 `.t-dark` 下仍生效，状态栏区域出现银白圆角块
+ *      ⇒ `.t-dark .nav-edge { background:none; }`；浅色段 `104rpx` 锚点保留供 `check-nav-glass` 变异自证。
+ *   ③ 深色模式无缓存冷启动 / 切新页面首帧闪浅色：页面 `data` 初始未带 `tClass`，`theme.mount(this)`
+ *      在 `onLoad` 才异步 setData，`app.wxss` 的浅色极光兜底先画一帧。现导出 `theme.rootClass()`，
+ *      17 个页面 + `custom-tab-bar` 的 `data` 初始值同步写 `tClass: theme.rootClass()`。
+ *      ⚠️ 主题真源只能是 JS 算出的 class，**不得**用 `@media (prefers-color-scheme)` 做兜底
+ *      （「系统深色 + 用户手动浅色」会错色，`check-dark-mode` 判死）。
+ *   ④ 首页「关注的学生」点击直接弹成员详情：新增 `components/member-detail/`，`onPinTap` 不再
+ *      `wx.navigateTo('/pages/roster/index?openMemberId=...')`，改同批 setData 就地弹卡；
+ *      `bottom-sheet` 用 `variant="float"` + 新增 `showGrab` 属性关掉顶部小横线、关掉叉号，
+ *      点遮罩空白处关闭（`maskClose` 默认 true），保留 .24s 退出动画；roster 页同步去掉横线与叉号。
+ *   ⑤ 真机报错 `TypeError: ds.forEach is not a function`（栈在 `_restYs` / `_snapTo` / `onHeadEnd`）：
+ *      `detents: { type: Array, value: () => [] }` 的工厂函数写法在基础库里会被当成属性值本身 ⇒
+ *      改字面量 `value: []`，四处读取加 `Array.isArray(...)` 守卫。
+ *   ⑥ 产出 `outputs/Gemini-对接手册.md`：自包含接手文档（双仓 / 版本口径 / 门禁 / DevTools 纪律 /
+ *      开发版与体验版上传 / 云函数部署 / 常见坑），严格脱敏，供另一台电脑的 Gemini 直接接手。
+ *   新增门禁 `check-leave-face.js` / `check-dark-first-frame.js` / `check-pin-inline-detail.js`；
+ *   全量门禁 **127 过 / 14 历史存量红**（基线 124/14 + 3 绿），零新增回归。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.10.7';
+const APP_VERSION = '1.0.8.38';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

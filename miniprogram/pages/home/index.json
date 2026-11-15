@@ -14,6 +14,7 @@
     "segmented": "../../components/segmented/index",
     "duty-sheet": "../../components/duty-sheet/index",
     "spring-scroll": "../../components/spring-scroll/index",
-    "tilt-card": "../../components/tilt-card/index"
+    "tilt-card": "../../components/tilt-card/index",
+    "member-detail": "../../components/member-detail/index"
   }
 }

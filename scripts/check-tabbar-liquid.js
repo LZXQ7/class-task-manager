@@ -183,6 +183,7 @@ has(js, /popIndex:\s*index/, 'popIndex 改在落地页实例的 syncActive 里�
      的 theme.themeClass() / theme.mount() 会 ReferenceError，整段自证直接崩。 */
   const themeStub = {
     themeClass: () => 't-light',
+    rootClass: () => 't-light',
     mount: () => {},
     unmount: () => {}
   };

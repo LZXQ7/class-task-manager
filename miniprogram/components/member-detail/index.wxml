@@ -1,0 +1,92 @@
+<!-- 成员详情卡：首页点「固定到主页」的学生时就地弹出。
+     顶部无 grabber 小横线、无关闭叉号；点遮罩空白处关闭（bottom-sheet maskClose 默认 true）。
+     保留 bottom-sheet 自带的 240ms 退出动画（组件只转发 close，不拦截）。 -->
+<bottom-sheet
+  show="{{show}}"
+  title="成员详情"
+  variant="float"
+  tall="{{true}}"
+  footer="{{noteVisible}}"
+  show-grab="{{false}}"
+  show-close="{{false}}"
+  bind:close="onClose"
+>
+  <view wx:if="{{mDetail}}" class="mb-detail">
+    <!-- 头像 + 姓名（姓名作为独立兄弟节点，不被 80rpx 外壳压掉） -->
+    <view class="md-head">
+      <view id="md-av" class="md-av">
+        <avatar-tag name="{{mDetail.name}}" src="{{mDetail.avatarUrl}}" size="{{80}}" />
+      </view>
+      <text class="md-name">{{mDetail.name}}</text>
+    </view>
+
+    <!-- 学号 / 组别 / 值日次数（教职工 X 组显示「教职工」） -->
+    <view class="mb-detail-grid">
+      <text class="md-grid-line">{{mDetail.groupTag === 'X' ? '教职工（不参与分组与值日轮转）' : '学号 ' + mDetail.seq + ' 号'}}</text>
+      <view class="md-grid-row">
+        <text class="md-grid-line">{{mDetail.groupTag === 'X' ? '教职工' : mDetail.groupTag + ' 组'}}</text>
+        <block wx:if="{{mDetail.groupTag !== 'X'}}">
+          <text class="md-grid-line"> · 值日</text>
+          <text class="md-grid-line cnt-num">{{mDetail.dutyCount}}</text>
+          <text class="md-grid-line">次</text>
+        </block>
+      </view>
+    </view>
+
+    <!-- 操作按钮：调组（仅非 X 组且非自己）、固定到主页、停用 / 恢复（仅非自己） -->
+    <view class="mb-detail-actions">
+      <view wx:if="{{mDetail.groupTag !== 'X' && !mDetailIsSelf}}" hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn" bindtap="onToggleGroup">调至 {{mDetail.groupTag === 'A' ? 'B' : 'A'}} 组</view>
+      <view wx:if="{{!mDetailIsSelf}}" hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn {{pinned ? 'on' : ''}} {{pinBusy ? 'busy' : ''}}" bindtap="onTogglePin">{{pinBusy ? '处理中…' : (pinned ? '已固定到主页 · 点此取消' : '固定到主页')}}</view>
+      <view wx:if="{{!mDetailIsSelf}}" hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn" bindtap="onToggleStatus">{{mDetail.status === 'DISABLED' ? '恢复' : '停用'}}</view>
+    </view>
+
+    <view wx:if="{{mDetailIsSelf}}" class="mb-super-hint">这是你自己的账号：不能在此调组或停用，避免把自己锁在外面</view>
+
+    <!-- 备注（仅辅导员使用，恒显示） -->
+    <view wx:if="{{noteVisible}}" class="mb-notes">
+      <view class="mb-notes-head">
+        <text class="mb-notes-title">备注</text>
+        <text class="mb-notes-count">{{noteList.length}} 条</text>
+      </view>
+      <text class="mb-notes-sub">仅教职工与超级管理员可见，学生本人看不到</text>
+
+      <view wx:if="{{!noteList.length}}" class="mb-notes-empty">
+        <text class="mb-notes-empty-t">还没有记录</text>
+        <text class="mb-notes-empty-d">家庭情况、家长沟通、重点关注事项都可以记在这里，方便随时回看</text>
+      </view>
+
+      <view wx:for="{{noteList}}" wx:key="id" class="mb-note {{item.mine ? 'mine' : ''}}">
+        <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-note-main" data-id="{{item.id}}" bindtap="{{item.mine ? 'onNoteEdit' : ''}}">
+          <text class="mb-note-content">{{item.content}}</text>
+          <view class="mb-note-foot">
+            <text class="mb-note-author">{{item.authorName}}</text>
+            <text class="mb-note-time">{{item.createdAtText}}</text>
+            <text wx:if="{{item.mine}}" class="mb-note-edit">点按编辑</text>
+          </view>
+        </view>
+        <view wx:if="{{item.mine}}" hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-note-del" data-id="{{item.id}}" bindtap="onNoteDelete">删除</view>
+      </view>
+
+      <view class="mb-note-form">
+        <textarea
+          class="mb-note-input"
+          value="{{noteDraft}}"
+          placeholder="{{noteEditId ? '正在编辑这条备注…' : '写点什么：学生信息 / 家庭情况 / 重点关注…'}}"
+          placeholder-class="f-ph"
+          maxlength="500"
+          auto-height
+          bindinput="onNoteInput"
+        />
+        <view class="mb-note-formfoot">
+          <text class="mb-note-counter">{{noteDraft.length}}/500</text>
+          <view wx:if="{{noteEditId}}" hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-note-cancel" bindtap="onNoteCancel">取消编辑</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 保存备注固定底栏（bottom-sheet footer 槽），任何列表长度下都可见可点 -->
+  <view slot="footer" wx:if="{{noteVisible}}" class="mb-footer-bar">
+    <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn block {{noteBusy ? 'busy' : ''}}" bindtap="onNoteSave">{{noteBusy ? '保存中…' : (noteEditId ? '保存修改' : '保存备注')}}</view>
+  </view>
+</bottom-sheet>

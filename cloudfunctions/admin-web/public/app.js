@@ -1555,6 +1555,8 @@
      * 缺这条映射统计页会裸奔成 home_feed_tap，门禁 check-admin-web 会判死。 */
     home_feed_tap: '点开作业播报',
     class_open: '打开班级', roster_open: '打开名册', leave_open: '打开请假',
+    /* 1.0.8.32：首页点「关注的学生」就地展开详情（不再跳名册页） */
+    pin_open_detail: '查看关注学生详情',
     about: '关于', switch_account: '切换账号', switch_demo: '切换体验版',
     /* 体验版入口（mine 页「更多」）：进入/退出演示态埋点 */
     switch_demo_exit: '切换正式版', demo_back_login: '退出体验版',

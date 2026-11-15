@@ -99,7 +99,7 @@ const requestStub = {
     return map;
   }
 };
-const themeStub = { mount() {}, unmount() {} };
+const themeStub = { mount() {}, unmount() {}, rootClass: () => 't-light' };
 
 global.wx = {
   showToast: (o) => calls.toast.push(o && o.title),

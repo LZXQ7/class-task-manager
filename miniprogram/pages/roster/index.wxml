@@ -153,7 +153,7 @@
   <!-- #3 三档吸附 + 自动初始档：detents = [0.45, 0.72]（面板下移比例，两档中间档）；
        auto-detent 让它打开时自动停在「能显示最后按钮的最低档」（见 bottom-sheet 的 _autoDetent）。
        ⚠️ 2026-11-14 之前这里只有 detents=[0.45] 且没给 initialDetent ⇒ 每次都全开。 -->
-  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}" variant="float">
+  <bottom-sheet show="{{mDetailShow}}" title="成员详情" bind:close="onMDetailClose" tall="{{true}}" footer="{{noteVisible}}" variant="float" show-grab="{{false}}" show-close="{{false}}">
     <view wx:if="{{mDetail}}" class="mb-detail">
       <flip-detail flipped="{{mDetailFlipped}}" bind:flip="onMDetailFlip">
         <view slot="front">

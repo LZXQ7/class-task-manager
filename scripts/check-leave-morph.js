@@ -150,7 +150,7 @@ function statics(s) {
 
   return {
     // ---- utils/morph.js：几何真源与导出 ----
-    exportsAll: /flipFromTo, morphInline, sheetTargetRect, MORPH_MS, MORPH_EASE/.test(s.morphJs),
+    exportsAll: /flipFromTo, morphInline, faceInline, sheetTargetRect, MORPH_MS, MORPH_EASE/.test(s.morphJs),
     origin00: /return 'transform-origin:0 0;transform:translate\(/.test(s.morphJs),
 
     // ---- bottom-sheet/index.js：可选能力、两帧时序、守卫 ----
@@ -168,7 +168,7 @@ function statics(s) {
     noVisualRect: !/boundingClientRect/.test(prep),
     threeBeats: /morphCls:\s*'morph'/.test(js)
       && /morphCls:\s*'morph morph-show'/.test(js)
-      && /self\.setData\(\{\s*morphStyle:\s*'',\s*morphCls:\s*''\s*\}\);/.test(js),
+      && /self\.setData\(\{\s*morphStyle:\s*'',\s*morphCls:\s*'',\s*morphFaceStyle:\s*''\s*\}\);/.test(js),
     startNoTransition: /morph\.morphInline\(g, true, false,/.test(js),
     endWithTransition: /morph\.morphInline\(g, false, true,/.test(js),
     closeShrink: /if \(!v && this\._morphGeo && !this\.data\.dragStyle\)/.test(js)

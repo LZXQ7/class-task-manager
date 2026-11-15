@@ -162,6 +162,8 @@ function batchRevertible(x) {
 
 Page({
   data: {
+    /* 首帧主题：同步注入，不等 onLoad 的异步 setData（深色模式不闪浅色） */
+    tClass: theme.rootClass(),
     statusBarHeight: 20,
     /** 目标班级 id；0 = 本班（后端按生效身份回退） */
     classId: 0,
