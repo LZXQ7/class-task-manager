@@ -165,7 +165,12 @@ function statics(s) {
     showUntouched: /show:\s*\{[^}]*observer\s*\(\s*nv\s*\)\s*\{\s*this\.animSync\(nv\);\s*\}\s*\}/.test(js),
     prepValid: prep.length > 100 && /_morphTimer/.test(prep) && !/_morphReset\s*\(\)/.test(prep),
     layoutSize: /q\.select\('\.sheet-panel'\)\.fields\(\{\s*size:\s*true\s*\}/.test(prep),
-    noVisualRect: !/boundingClientRect/.test(prep),
+    /* v1.0.8.39：仍严禁量 `.sheet-panel` 的 boundingClientRect（它此刻带 inline
+       transform ⇒ 视觉矩形）；但**允许**量 `.sheet-root` 的（root 从无 transform，
+       用来消除 windowHeight 与 fixed 视口的高度差）。判据按 select 目标收窄，
+       不是把整条铁律删掉 —— 下面两条变异自证继续盯着这条边界。 */
+    noVisualRect: !/q\.select\('\.sheet-panel'\)[^;]{0,120}boundingClientRect/.test(prep)
+      && /q\.select\('\.sheet-root'\)\.boundingClientRect\(/.test(prep),
     threeBeats: /morphCls:\s*'morph'/.test(js)
       && /morphCls:\s*'morph morph-show'/.test(js)
       && /self\.setData\(\{\s*morphStyle:\s*'',\s*morphCls:\s*'',\s*morphFaceStyle:\s*''\s*\}\);/.test(js),
@@ -198,7 +203,7 @@ function statics(s) {
     sameBatch: /setData\(Object\.assign\(\{[\s\S]{0,320}?leaveHomeOriginRect:\s*r,[\s\S]{0,220}?leaveHomeShow:\s*true/.test(hj),
     hiddenOnOpen: /leaveHomeCardHidden:\s*!!r/.test(hj),
     bothEntries: (hj.match(/_openLeaveSheet\(/g) || []).length >= 3,
-    closeRestore: /onLeaveHomeClose\(\)\s*\{[\s\S]{0,320}?leaveHomeCardHidden:\s*false/.test(hj),
+    closeRestore: /onLeaveHomeClose\(\)\s*\{[\s\S]{0,520}?leaveHomeCardHidden:\s*false/.test(hj),
     cardId: /id="leave-home-card"/.test(hw),
     originAttr: /origin-rect="\{\{leaveHomeOriginRect\}\}"/.test(hw),
     wrapper: /class="lh-src-box \{\{leaveHomeCardHidden \? 'lh-src-hidden' : ''\}\}"/.test(hw),
@@ -285,7 +290,9 @@ const MUT = [
   { name: '删掉 morph-show 的遮罩淡入', file: 'bsWxss', probe: 'maskEnd',
     from: '.sheet-root.morph.morph-show .sheet-mask {', to: '.sheet-root.morph.morph-show .sheet-mask-off {' },
   { name: '关闭时不恢复源卡', file: 'homeJs', probe: 'closeRestore',
-    from: 'leaveHomeCardHidden: false\n    });', to: 'leaveHomeCardHidden: true\n    });' },
+    /* v1.0.8.39：close 改成异步重量源卡后 setData 缩进多一层；锚点带上 `});`
+       以免误命中 data 初始值里的 `leaveHomeCardHidden: false,`。 */
+    from: 'leaveHomeCardHidden: false\n      });', to: 'leaveHomeCardHidden: true\n      });' },
   { name: '恢复源卡用 opacity（会被入场动画覆盖）', file: 'homeWxss', probe: 'visibilityCss',
     from: '.lh-src-hidden { visibility: hidden; }', to: '.lh-src-hidden { opacity: 0; }' }
 ];

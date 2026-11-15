@@ -18,6 +18,7 @@ const F = {
   rosterWxml: 'miniprogram/pages/roster/index.wxml',
   mdJs: 'miniprogram/components/member-detail/index.js',
   mdWxml: 'miniprogram/components/member-detail/index.wxml',
+  mdWxss: 'miniprogram/components/member-detail/index.wxss',
   mdJson: 'miniprogram/components/member-detail/index.json',
   bsWxss: 'miniprogram/components/bottom-sheet/index.wxss'
 };
@@ -45,6 +46,7 @@ function statics(s) {
   const rw = strip(s.rosterWxml, 'wxml');
   const mj = strip(s.mdJs, 'js');
   const mw = strip(s.mdWxml, 'wxml');
+  const mc = strip(s.mdWxss, 'css');
   const css = strip(s.bsWxss, 'css');
   const tap = bodyOf(hj, 'onPinTap');
   return {
@@ -70,7 +72,15 @@ function statics(s) {
     loadsData: /api\.memberList\(/.test(mj) && /api\.noteList\(/.test(mj) && /api\.pinList\(/.test(mj),
     compJson: /"component":\s*true/.test(s.mdJson)
       && /"bottom-sheet":\s*"\.\.\/bottom-sheet\/index"/.test(s.mdJson)
-      && /"avatar-tag":\s*"\.\.\/avatar-tag\/index"/.test(s.mdJson)
+      && /"avatar-tag":\s*"\.\.\/avatar-tag\/index"/.test(s.mdJson),
+    // ④ v1.0.8.39：辅导员账号首页弹卡不展示「停用 / 恢复」，roster 管理页权限不变
+    noDisableInCard: !/onToggleStatus|setMemberStatus|停用|恢复/.test(mw)
+      && !/onToggleStatus|setMemberStatus/.test(mj),
+    rosterStillHas: /bindtap="onToggleStatus"/.test(rw),
+    // ⑤ v1.0.8.39：居中悬浮卡不需要 safe-area 让位，保存备注区域上下留白收紧
+    tightFooter: /\.mb-footer-bar\s*\{[^}]*padding-bottom:\s*8rpx;[^}]*\}/.test(mc)
+      && !/\.mb-footer-bar\s*\{[^}]*env\(safe-area-inset-bottom\)/.test(mc),
+    tightContent: /\.mb-detail\s*\{\s*padding:\s*40rpx 32rpx 20rpx;/.test(mc)
   };
 }
 
@@ -92,6 +102,13 @@ console.log('\n── ③ 组件自包含');
 check(S.emits && S.loadsData, '组件自己拉成员/备注/固定态，并向外发 close / changed');
 check(S.compJson, '组件 json 声明 component:true 与两个依赖组件路径');
 
+console.log('\n── ④ 辅导员账号不展示停用按钮（只改首页弹卡）');
+check(S.noDisableInCard, '首页弹卡无停用/恢复按钮与 onToggleStatus 死代码');
+check(S.rosterStillHas, '「成员与分组」管理页仍保留停用能力（既有权限口径不变）');
+
+console.log('\n── ⑤ 保存备注区域留白收紧');
+check(S.tightFooter && S.tightContent, '悬浮卡去掉多余 safe-area 让位，内容区与底栏上下留白收紧');
+
 /* ---------- 变异自证 ---------- */
 const MUT = [
   { name: '又跳回成员与分组页', file: 'homeJs', probe: 'noNavigate',
@@ -110,7 +127,16 @@ const MUT = [
   { name: '首页没声明组件', file: 'homeJson', probe: 'jsonDeclared',
     from: '"member-detail": "../../components/member-detail/index"', to: '' },
   { name: 'roster 详情卡还留着横线叉号', file: 'rosterWxml', probe: 'rosterBare',
-    from: 'show-grab="{{false}}" show-close="{{false}}"', to: '' }
+    from: 'show-grab="{{false}}" show-close="{{false}}"', to: '' },
+  { name: '首页弹卡又把停用按钮放回来', file: 'mdWxml', probe: 'noDisableInCard',
+    from: '<view class="mb-detail-actions">',
+    to: '<view class="mb-detail-actions">\n      <view class="mb-abtn" bindtap="onToggleStatus">停用</view>' },
+  { name: '连 roster 管理页也把停用删掉（越权改口径）', file: 'rosterWxml', probe: 'rosterStillHas',
+    from: 'bindtap="onToggleStatus"', to: 'bindtap="noop"' },
+  { name: '保存备注底栏又加回 safe-area 让位（悬浮卡空白变大）', file: 'mdWxss', probe: 'tightFooter',
+    from: 'padding-bottom: 8rpx;', to: 'padding-bottom: calc(20rpx + env(safe-area-inset-bottom));' },
+  { name: '内容区底部留白退回 48rpx', file: 'mdWxss', probe: 'tightContent',
+    from: 'padding: 40rpx 32rpx 20rpx;', to: 'padding: 40rpx 32rpx 48rpx;' }
 ];
 
 console.log('\n── ④ 变异自证（改坏 → 探针必须翻红）');

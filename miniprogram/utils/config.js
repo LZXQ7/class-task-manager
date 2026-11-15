@@ -342,8 +342,43 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   新增门禁 `check-leave-face.js` / `check-dark-first-frame.js` / `check-pin-inline-detail.js`；
  *   全量门禁 **127 过 / 14 历史存量红**（基线 124/14 + 3 绿），零新增回归。
  *   纯前端改动，无需重部署云函数。
+ * **`1.0.8.39`** = 转场对齐修正 + 成员详情卡口径（2026-11-15）：用户拿另一台电脑
+ *   Gemini 给的方案来问「为什么像凭空多出一张一模一样的卡」，并提两条 UI 需求。
+ *   ⚠️ 逐条核对源码后，Gemini 的 3 个根因里**只有 1 个半成立**：源卡隐身（同批
+ *      `leaveHomeCardHidden` + `visibility:hidden`）、两帧分离（三拍 + 20ms）、
+ *      层级（`.sheet-root` 1000 > tabBar 900）本来就已实现；且方案里的 `opacity:0`
+ *      会被 `.st-item` 入场动画覆盖、`boundingClientRect()` 量带 transform 的面板
+ *      是 1.0.10.4 落点偏移同款坑 ⇒ **两条都不能照抄**。
+ *   ① **真根因（本次修）**：`sheetTargetRect()` 用 `windowHeight`（可用窗口高）推
+ *      `top = H − h`，而 `.sheet-root` 是 `position:fixed` 覆盖自定义导航下的整个
+ *      WebView（含状态栏区）⇒ 两者差一个状态栏，dy 偏大、首帧卡面向下错开。
+ *      现给 `sheetTargetRect` 加**可选第三参 `rootRect`**，由无 transform 的
+ *      `.sheet-root` 实测 rect 用 `root.top + root.height − h` 推 to.top；from 同为
+ *      页面节点 `boundingClientRect` ⇒ 同一视口坐标系，<1px 对齐。不传第三参时
+ *      保持旧算法（安全降级 / 旧门禁兼容）。组件 `_morphPrepare` 一次 query 同时量
+ *      root rect 与面板 `fields({size:true})`，**绝不量面板的 boundingClientRect**。
+ *   ② 关闭反向 FLIP：弹层打开期间页面可能滚动过，旧实现沿用打开时缓存的 `_morphGeo`。
+ *      现保存终态矩形 `_morphTo`；首页 `onLeaveHomeClose` 关闭前重新量源卡、与
+ *      `show:false` 同批下发新 `originRect`，组件 `active(false)` 据此重算 FLIP。
+ *   ③ 卡面淡出与详情淡入原为同步 .24s，中段两套文字半透明重叠 ⇒ 详情加
+ *      `transition-delay:.08s`（**longhand**，不碰 `transition` 简写，否则
+ *      `check-popup-anim` 的「全文件恒 .24s」判死）；减弱动效段用同优先级归零。
+ *   ④ `.sheet-root.morph { z-index:1200 }` 只在转场期抬一档，兜住独立渲染树的
+ *      自定义 tabBar；其它弹层层级不变。
+ *   ⑤ 成员详情卡：按用户口径「辅导员账号不展示停用按钮」，首页就地弹卡删除
+ *      「停用 / 恢复」入口与 `onToggleStatus` 死代码；**roster 管理页权限不变**
+ *      （破坏性操作仍在那里做，有权限校验与二次确认）。
+ *   ⑥ 用户「保存备注往下走」= 收紧该区域上下留白。真因是 `.mb-footer-bar` 从
+ *      roster 的**贴底抽屉**复制来时带着 `env(safe-area-inset-bottom)` 让位，
+ *      但首页卡是 `variant="float"` **居中悬浮卡**，不贴屏幕底 ⇒ 34px 纯多余空白。
+ *      现去掉安全区、底栏 `padding-bottom` 收到 8rpx，内容区底部 48rpx → 20rpx。
+ *   新增门禁 `check-morph-align.js`（vm 真跑 rootRect 几何 + 静态契约 + 11 条变异）；
+ *   `check-leave-morph.js` 的「不许 boundingClientRect」收窄为「不许量面板」；
+ *   `check-pin-inline-detail.js` 补停用权限与留白断言（+4 条变异）。
+ *   全量门禁 **128 过 / 14 历史存量红**（基线 127/14 + 新门禁 1 绿），零新增回归。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.38';
+const APP_VERSION = '1.0.8.39';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

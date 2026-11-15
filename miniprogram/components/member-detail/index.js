@@ -144,21 +144,8 @@ Component({
         });
     },
 
-    onToggleStatus() {
-      const m = this.data.mDetail;
-      if (m == null || this.data.mDetailIsSelf) return;
-      const status = m.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
-      api.setMemberStatus(this._payload({ memberId: m.id, status }), { loading: '处理中' })
-        .then(() => {
-          util.toast(status === 'DISABLED' ? '已停用' : '已恢复');
-          this.triggerEvent('changed');
-          this.triggerEvent('close');
-        })
-        .catch((e) => {
-          console.error('[member-detail] 启停失败', e);
-          util.toast((e && e.errMsg) || '操作失败');
-        });
-    },
+    /* v1.0.8.39：首页就地卡不再提供「停用 / 恢复」入口，对应 onToggleStatus 一并删除
+       （留着就是死代码，且容易被后来者误接回 WXML）。停用只在 pages/roster 做。 */
 
     onNoteInput(e) {
       this.setData({ noteDraft: e.detail.value });

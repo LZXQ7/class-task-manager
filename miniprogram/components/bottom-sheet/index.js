@@ -211,6 +211,13 @@ Component({
          ⚠️ active=false 时节点仍在 DOM（popup-anim 留 240ms 才卸载）⇒ 缩回看得见。 */
       if (!v && this._morphGeo && !this.data.dragStyle) {
         const r = this._morphRadius || [];
+        /* v1.0.8.39：弹层打开期间页面可能滚动过 ⇒ 首页在 close 前会重新量源卡
+           并下发最新 originRect。这里必须用新矩形重算 FLIP，不能沿用打开时缓存的
+           _morphGeo，否则「缩回」落到旧位置；量不到就保持缓存，安全降级。 */
+        if (this._morphTo && this.properties.originRect) {
+          const fresh = morph.flipFromTo(this.properties.originRect, this._morphTo);
+          if (fresh) this._morphGeo = fresh;
+        }
         this.setData({
           morphStyle: morph.morphInline(this._morphGeo, true, true,
             morph.MORPH_MS, morph.MORPH_EASE, r[0], r[1]),
@@ -385,12 +392,24 @@ Component({
       const rStart = radius + 'rpx';
       const rEnd = radius + 'rpx ' + radius + 'rpx 0 0';
       const self = this;
-      q.select('.sheet-panel').fields({ size: true }, function () {}).exec(function (res) {
-        const size = res && res[0];
-        const to = morph.sheetTargetRect(win, size);
+      /* v1.0.8.39：同一次 query 量两个东西 ——
+         ① `.sheet-root` 的布局 rect：root **从不带 transform** ⇒ boundingClientRect
+            在这里是安全的；用它反推面板终态 top，消除 `windowHeight`（可用窗口高）
+            与 `.sheet-root`（fixed 覆盖自定义导航下的整个 WebView）之间的高度差。
+            这个差值正是「首帧卡面相对源卡向下错开、像凭空多出一张卡」的根因。
+         ② `.sheet-panel` 的 `fields({size:true})`：**布局**尺寸，不受 inline transform 污染。
+         ⚠️ 绝不能改成量 `.sheet-panel` 的 boundingClientRect —— 它此刻带入场/FLIP
+            transform，量到的是视觉矩形（1.0.10.4 头像落点偏移同款坑）。 */
+      q.select('.sheet-root').boundingClientRect(function () {});
+      q.select('.sheet-panel').fields({ size: true }, function () {});
+      q.exec(function (res) {
+        const rootRect = res && res[0];
+        const size = res && res[1];
+        const to = morph.sheetTargetRect(win, size, rootRect);
         const g = morph.flipFromTo(from, to);
         if (!g) return;                       // 尺寸为 0 / NaN ⇒ 不播，走默认升起
         self._morphGeo = g;
+        self._morphTo = to;                   // 关闭时按最新 originRect 重算，见 active observer
         self._morphRadius = [rStart, rEnd];
         self.setData({
           morphStyle: morph.morphInline(g, true, false, morph.MORPH_MS, morph.MORPH_EASE, rStart, rEnd),
@@ -419,6 +438,7 @@ Component({
     _morphReset() {
       if (this._morphTimer) { clearTimeout(this._morphTimer); this._morphTimer = null; }
       this._morphGeo = null;
+      this._morphTo = null;
       this._morphRadius = null;
       if (this.data.morphStyle || this.data.morphCls || this.data.morphFaceStyle) {
         this.setData({ morphStyle: '', morphCls: '', morphFaceStyle: '' });

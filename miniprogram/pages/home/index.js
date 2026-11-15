@@ -776,12 +776,24 @@ Page({
 
   onLeaveHomeClose() {
     /* v1.0.10.7：关的同时恢复源卡显示 —— 面板正缩回它的矩形，落点必须看得见，
-       否则会看到「缩到一片空白然后消失」。 */
-    this.setData({
-      leaveHomeShow: false,
-      leaveHomeLoading: false,
-      leaveHomeCardHidden: false
-    });
+       否则会看到「缩到一片空白然后消失」。
+       v1.0.8.39：关闭前**重新量一次**源卡矩形。弹层打开期间页面若滚动过，打开时
+       那份 originRect 已不是源卡当前位置，组件缩回会落到旧点。这里与 show:false
+       同批下发最新的 originRect，bottom-sheet 的 active observer 会据此重算 FLIP。
+       ⚠️ 量不到就沿用缓存（不置空），绝不阻塞关闭；源卡只是 visibility:hidden，
+          布局仍在，矩形依然量得到。 */
+    const q = wx.createSelectorQuery();
+    q.select('#leave-home-card').boundingClientRect((rect) => {
+      const r = (rect && rect.width > 0 && rect.height > 0)
+        ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+        : null;
+      this.setData({
+        leaveHomeOriginRect: r || this.data.leaveHomeOriginRect,
+        leaveHomeShow: false,
+        leaveHomeLoading: false,
+        leaveHomeCardHidden: false
+      });
+    }).exec();
   },
 
   /* ================= 课堂情况弹窗（2026-10-09 需求②） =================

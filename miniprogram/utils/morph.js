@@ -68,13 +68,31 @@ const MORPH_EASE = 'cubic-bezier(.22,.61,.36,1)';
  *    这正是 1.0.10.4 头像转场「落点偏移」踩过的坑。fields({size:true}) 给的是
  *    布局尺寸、与 transform 无关（见 bottom-sheet/_measurePanelH 注释），
  *    而 sheet 变体的面板是 left:0;right:0;bottom:0 ⇒ left=0、top=窗口高−面板高。
+ *
+ * 🔴 v1.0.8.39 修正「起点帧向下错位、像凭空多一张卡」：
+ *    `windowHeight` 是微信的**可用窗口高**（自定义导航下 ≈ screenHeight − 状态栏），
+ *    而 `.sheet-root` 是 position:fixed 覆盖**整个 WebView 视口**（含状态栏区）。
+ *    两者差一个状态栏 ⇒ `top = H − h` 系统性偏高，`dy = from.top − to.top` 偏大
+ *    ⇒ 首帧卡面相对源卡向下错开，肉眼就是「源卡还在 + 下面又冒出一张」。
+ *    正解：量 **`.sheet-root` 自己的 rect**（root 从不带 transform，boundingClientRect
+ *    在这里是安全的），用 `root.bottom − 面板布局高` 推 to.top、`root.left` 推 to.left。
+ *    from 同样来自页面节点的 boundingClientRect ⇒ 两者落在同一视口坐标系，<1px 对齐。
+ *    ⚠️ 第三参数可选：不传时保持旧行为（门禁与未量到 root 时的安全降级都靠它）。
  * @returns {Object|null} { left, top, width, height }；尺寸非法返回 null（调用方降级不播）
  */
-function sheetTargetRect(win, size) {
+function sheetTargetRect(win, size, rootRect) {
   if (!win || !size) return null;
-  const W = Number(win.windowWidth), H = Number(win.windowHeight);
+  const W = Number(win.windowWidth);
   const w = Number(size.width), h = Number(size.height);
-  if (!(W > 0) || !(H > 0) || !(w > 0) || !(h > 0)) return null;
+  if (!(W > 0) || !(w > 0) || !(h > 0)) return null;
+  if (rootRect) {
+    const rl = Number(rootRect.left), rt = Number(rootRect.top), rh = Number(rootRect.height);
+    if (isFinite(rl) && isFinite(rt) && isFinite(rh) && rh > 0) {
+      return { left: rl, top: rt + rh - h, width: w, height: h };
+    }
+  }
+  const H = Number(win.windowHeight);
+  if (!(H > 0)) return null;
   return { left: 0, top: H - h, width: w, height: h };
 }
 

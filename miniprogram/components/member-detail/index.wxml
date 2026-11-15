@@ -33,14 +33,16 @@
       </view>
     </view>
 
-    <!-- 操作按钮：调组（仅非 X 组且非自己）、固定到主页、停用 / 恢复（仅非自己） -->
+    <!-- 操作按钮：调组（仅非 X 组且非自己）、固定到主页。
+         v1.0.8.39：首页就地弹卡**不提供「停用 / 恢复」**（辅导员账号尤其不该看到）。
+         停用属破坏性操作，统一回「成员与分组」管理页做（那里有权限校验与二次确认），
+         首页快速查看 / 写备注时不该有误触入口。roster 页权限口径保持不变。 -->
     <view class="mb-detail-actions">
       <view wx:if="{{mDetail.groupTag !== 'X' && !mDetailIsSelf}}" hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn" bindtap="onToggleGroup">调至 {{mDetail.groupTag === 'A' ? 'B' : 'A'}} 组</view>
       <view wx:if="{{!mDetailIsSelf}}" hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn {{pinned ? 'on' : ''}} {{pinBusy ? 'busy' : ''}}" bindtap="onTogglePin">{{pinBusy ? '处理中…' : (pinned ? '已固定到主页 · 点此取消' : '固定到主页')}}</view>
-      <view wx:if="{{!mDetailIsSelf}}" hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="mb-abtn" bindtap="onToggleStatus">{{mDetail.status === 'DISABLED' ? '恢复' : '停用'}}</view>
     </view>
 
-    <view wx:if="{{mDetailIsSelf}}" class="mb-super-hint">这是你自己的账号：不能在此调组或停用，避免把自己锁在外面</view>
+    <view wx:if="{{mDetailIsSelf}}" class="mb-super-hint">这是你自己的账号：不能在此调组或调整固定状态</view>
 
     <!-- 备注（仅辅导员使用，恒显示） -->
     <view wx:if="{{noteVisible}}" class="mb-notes">

@@ -7,7 +7,9 @@
  *   · 只用类选择器（不写标签选择器 / ~ 兄弟选择器），时长不写死（动效由 bottom-sheet 管）。 */
 
 .mb-detail {
-  padding: 40rpx 32rpx 48rpx;
+  /* v1.0.8.39：底部留白 48rpx → 20rpx —— 保存备注区域上方的距离收紧，
+     备注卡与底部操作条不再隔出一大段空白。 */
+  padding: 40rpx 32rpx 20rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -222,8 +224,14 @@
 .mb-note-counter { font-size: 23rpx; color: var(--text-3); }
 .mb-note-cancel { font-size: 25rpx; color: var(--text-3); padding: 4rpx 8rpx; }
 
-/* 弹层固定底栏（bottom-sheet footer 槽） */
+/* 弹层固定底栏（bottom-sheet footer 槽）
+   🔴 v1.0.8.39：这是从 pages/roster 的**贴底抽屉**复制过来的，原写法带
+      `env(safe-area-inset-bottom)` 让开 Home Indicator。但首页就地卡是
+      `variant="float"` 的**居中悬浮卡**，面板根本不贴屏幕底 ⇒ 那 34px 安全区
+      让位纯属多余空白，正是用户说的「保存备注下方空白太大」。
+      现去掉安全区、底部只留 8rpx，配合 .mb-detail 底部 20rpx，
+      使保存备注区域的上下距离整体收紧。 */
 .mb-footer-bar {
   width: 100%;
-  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  padding-bottom: 8rpx;
 }

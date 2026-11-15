@@ -108,6 +108,11 @@
   .sheet-root.morph .sheet-drag,
   .sheet-root.morph .sheet-spring,
   .sheet-root.morph .sheet-footer { transition: none; }
+  /* v1.0.8.39：上面 v1.0.8.39 那条 delay 用的选择器多了 .morph-show、优先级更高，
+     这里必须用同优先级显式归零，否则「减弱动效」下仍会残留 80ms 延迟。 */
+  .sheet-root.morph.morph-show .sheet-drag,
+  .sheet-root.morph.morph-show .sheet-spring,
+  .sheet-root.morph.morph-show .sheet-footer { transition-delay: 0s; }
 }
 /* v0.7.25：更高面板 —— 内容确实装不进 78vh 的弹层用（如成员详情） */
 .sheet-panel.tall { max-height: 92vh; }
@@ -231,6 +236,14 @@
    ⚠️ 全文件 transition 时长必须都是 .24s：scripts/check-popup-anim.js 会扫
       `transition: …s` 并逐条与 popup-anim.js 的 DURATION=240 比对。
    ==================================================================== */
+
+/* v1.0.8.39：转场期把弹层再抬一档，兜住自定义 tabBar。
+   .sheet-root 常态 z-index:1000 已高于 .tabbar-wrap 的 900，但自定义 tabBar 是
+   **独立渲染树**，真机层叠上下文可能与页面 WebView 不同 —— 展开那一拍被底栏压住，
+   会立刻暴露「这是另一个图层新冒出来的弹窗」，破坏「原卡浮起展开」的连续感。
+   只在 .morph 期间生效；不传 originRect 的全站其它弹层层级完全不变。 */
+.sheet-root.morph { z-index: 1200; }
+
 .sheet-root.morph .sheet-mask {
   opacity: 0;
   transition: opacity .24s cubic-bezier(.22, .61, .36, 1);
@@ -250,6 +263,19 @@
 .sheet-root.morph.morph-show .sheet-footer {
   opacity: 1;
   transition: opacity .24s cubic-bezier(.22, .61, .36, 1);
+}
+
+/* v1.0.8.39：卡面淡出与详情淡入不再**同拍**重叠。
+   两者都是 240ms 时，中段约 120ms 两套文字都半透明叠在一起，看着像糊成一团；
+   让详情晚 80ms 起跑 ⇒ 卡面先退、详情后现，全程只有一个连续的卡轮廓。
+   ⚠️ 只写 longhand `transition-delay`，**不碰 transition 简写** ——
+      check-popup-anim / check-leave-morph 会扫全文件 `transition: …s`，
+      要求时长恒为 .24s；写成 `transition: opacity .12s …` 会直接判死。
+   ⚠️ 关闭方向（去掉 .morph-show）无 delay：详情立即淡出、卡面瞬间显形，本身不重叠。 */
+.sheet-root.morph.morph-show .sheet-drag,
+.sheet-root.morph.morph-show .sheet-spring,
+.sheet-root.morph.morph-show .sheet-footer {
+  transition-delay: .08s;
 }
 
 /* ---- 1.0.8.32：起点帧必须是「那张卡」，不是一块空白玻璃板 ----------------
