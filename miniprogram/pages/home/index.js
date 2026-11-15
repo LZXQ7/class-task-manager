@@ -157,11 +157,6 @@ Page({
     leaveImgUrls: {},
     /** 弹层内「加载中…」（v0.7.32 问题②：点开即弹，名单后台再刷新） */
     leaveHomeLoading: false,
-    /** v1.0.10.7 容器共享转场：源卡片矩形（px，视口坐标）；null = 量不到 ⇒ 降级默认升起 */
-    leaveHomeOriginRect: null,
-    /** 转场期间隐藏源卡（缩回时恢复，才有「回到原框」的落点） */
-    leaveHomeCardHidden: false,
-
   },
 
   onLoad() {
@@ -693,29 +688,10 @@ Page({
       .catch(() => {});
   },
 
-  /**
-   * v1.0.10.7 容器共享元素转场：量出「本班请假」卡的屏幕矩形，与 show **同批**下发。
-   *
-   * ⚠️ 为什么必须同批：bottom-sheet 在 mounted 变 true 的那一刻就播 FLIP；
-   *    若 show 先到、originRect 后到 ⇒ 组件 properties 里读到 null ⇒ 静默降级成
-   *    原来的底部抽屉（不报错、不崩，只是「效果没出现」，最难查的那种）。
-   * ⚠️ 量不到（卡片不在场 / 基础库不支持）⇒ originRect=null、不隐藏源卡，
-   *    组件自动走原升起，功能完全不受影响。
-   * ⚠️ 源矩形取**整张卡**（不是被点的那个数字块），辅导员点班级行也一样：
-   *    「从原本的框展开放大」指的是这张请假卡容器，缩回也回到同一个框。
-   */
+  /** v1.0.8.40：共享元素转场已回退 —— 直接打开标准贴底抽屉（从底部升起）。
+   *  patch 里是标题 / 名单 / 加载态，与 show:true 同批下发，点开即弹不等待。 */
   _openLeaveSheet(patch) {
-    const q = wx.createSelectorQuery();
-    q.select('#leave-home-card').boundingClientRect((rect) => {
-      const r = (rect && rect.width > 0 && rect.height > 0)
-        ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
-        : null;
-      this.setData(Object.assign({
-        leaveHomeOriginRect: r,
-        leaveHomeCardHidden: !!r,
-        leaveHomeShow: true
-      }, patch));
-    }).exec();
+    this.setData(Object.assign({ leaveHomeShow: true }, patch));
   },
 
   /** 班委/超管：点击本班请假卡 → **立即**弹层（用 onShow 已拉到的名单），再后台刷新。
@@ -775,25 +751,10 @@ Page({
   },
 
   onLeaveHomeClose() {
-    /* v1.0.10.7：关的同时恢复源卡显示 —— 面板正缩回它的矩形，落点必须看得见，
-       否则会看到「缩到一片空白然后消失」。
-       v1.0.8.39：关闭前**重新量一次**源卡矩形。弹层打开期间页面若滚动过，打开时
-       那份 originRect 已不是源卡当前位置，组件缩回会落到旧点。这里与 show:false
-       同批下发最新的 originRect，bottom-sheet 的 active observer 会据此重算 FLIP。
-       ⚠️ 量不到就沿用缓存（不置空），绝不阻塞关闭；源卡只是 visibility:hidden，
-          布局仍在，矩形依然量得到。 */
-    const q = wx.createSelectorQuery();
-    q.select('#leave-home-card').boundingClientRect((rect) => {
-      const r = (rect && rect.width > 0 && rect.height > 0)
-        ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
-        : null;
-      this.setData({
-        leaveHomeOriginRect: r || this.data.leaveHomeOriginRect,
-        leaveHomeShow: false,
-        leaveHomeLoading: false,
-        leaveHomeCardHidden: false
-      });
-    }).exec();
+    this.setData({
+      leaveHomeShow: false,
+      leaveHomeLoading: false
+    });
   },
 
   /* ================= 课堂情况弹窗（2026-10-09 需求②） =================

@@ -2,22 +2,14 @@
      详见 components/popup-anim.js。直接写 wx:if="{{show}}" + {{show?'in':''}} 会瞬间打开。
      v0.7.32 拖拽：只有 .sheet-drag（grabber + 标题栏）接 touchmove —— 内容区 scroll-view
      的滚动不会触发拖动；拖动只改 transform / opacity，不碰布局（不闪、不重排）。 -->
-<view wx:if="{{mounted}}" class="sheet-root {{variant === 'float' ? 'float' : ''}} {{morphCls}}">
+<view wx:if="{{mounted}}" class="sheet-root {{variant === 'float' ? 'float' : ''}}">
   <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sheet-mask {{active ? 'in' : ''}}" style="{{maskStyle}}" bindtap="onMask" catchtouchmove="noop"></view>
-  <view class="sheet-panel {{active ? 'up' : ''}} {{dragging ? 'drag' : ''}} {{tall ? 'tall' : ''}} {{resizeCls}}" style="border-radius:{{variant === 'float' ? '32rpx' : (radius + 'rpx ' + radius + 'rpx 0 0')}};{{height ? 'height:' + height + 'rpx' : ''}};{{capStyle}};{{resizeStyle}};{{dragStyle}};{{morphStyle}}">
+  <view class="sheet-panel {{active ? 'up' : ''}} {{dragging ? 'drag' : ''}} {{tall ? 'tall' : ''}} {{resizeCls}}" style="border-radius:{{variant === 'float' ? '32rpx' : (radius + 'rpx ' + radius + 'rpx 0 0')}};{{height ? 'height:' + height + 'rpx' : ''}};{{capStyle}};{{resizeStyle}};{{dragStyle}}">
     <!-- ⚠️ `{{height …}}` 与 `{{capStyle}}` 之间**必须有 `;`**（2026-09-29 修复）：
          漏掉会拼成 `height:1040rpxmax-height:calc(100vh - 68px);` —— 长度值非法 ⇒
          **整条声明连同 max-height 一起被丢弃** ⇒ 面板固定高度失效、长列表无法滚动
          （现象：手动排班「添加值日」59 人列表滚不动）。四个传 height 的弹层都踩这条。
          守护门禁：scripts/check-inline-style-join.js -->
-    <!-- 1.0.8.32：容器共享转场的「卡面层」。
-         起点帧要**长得就是源卡本身**（不是一块空白玻璃板），所以调用方通过具名 slot
-         把与源卡完全相同的 WXML 传进来；morphFaceStyle 是 counter-scale 内联样式
-         （见 utils/morph.js faceInline）。opacity 由 .sheet-root.morph / .morph-show 控制。
-         ⚠️ 没有 face slot 的弹层：这里是一个 pointer-events:none 的空层，零影响。
-         ⚠️ 必须是 .sheet-panel 的**直接子节点**且 position:absolute，才能跟着面板的
-            scale(sx,sy) 一起放大，又不被 .sheet-spring 的内容淡出规则误伤。 -->
-    <view class="sheet-face" style="{{morphFaceStyle}}"><slot name="face" /></view>
     <!-- 拖动感应区（约 60px）：grabber + 整条标题栏 -->
     <view
       class="sheet-drag"

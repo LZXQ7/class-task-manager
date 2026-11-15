@@ -377,8 +377,29 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   `check-pin-inline-detail.js` 补停用权限与留白断言（+4 条变异）。
  *   全量门禁 **128 过 / 14 历史存量红**（基线 127/14 + 新门禁 1 绿），零新增回归。
  *   纯前端改动，无需重部署云函数。
+ * ---------------------------------------------------------------------------
+ * v1.0.8.40（2026-11-15）· 撤销共享元素转场，恢复「从底部出来」
+ *   用户真机复测后明确：「还是这样啊，改了这么多次还是没改好。要不改回去吧，
+ *   还是原来的从底部出来。」⇒ 1.0.10.7 / 1.0.8.38 / 1.0.8.39 三版共享元素转场
+ *   （含 .sheet-face 卡面层 / rootRect 对齐 / 关闭反向 FLIP / 层级抬升）**整体删除**，
+ *   不留可选开关、不留死代码；上方这些版本段落仅作历史记录，不再是当前实现。
+ *   ① 首页请假卡恢复内联 WXML：删掉 `.lh-src-box` 隐藏容器、`<template name="lhFace">`
+ *      与 `leaveHomeOriginRect` / `leaveHomeCardHidden`；`_openLeaveSheet` 与
+ *      `onLeaveHomeClose` 各一步 setData，不再用 selector query 量矩形。
+ *   ② 请假弹层去掉 `origin-rect` 与 `slot="face"`，回到默认 `variant='sheet'`
+ *      贴底抽屉：.24s 从底部升起、点遮罩关闭，拖拽 / 高度过渡 / 安全区让位照旧。
+ *   ③ `bottom-sheet` 组件移除 `originRect` property、morph 数据字段与 observers、
+ *      三拍定时器、拖拽守卫；WXSS 删除全部 `.sheet-root.morph*` 规则；
+ *      `utils/morph.js` 收回到 dialog 的「胶囊 → 对话框」单例（4 个 API）。
+ *   ④ 删除 `check-leave-morph.js` / `check-leave-face.js` / `check-morph-align.js`
+ *      三个专守转场的门禁，新增 `check-leave-no-morph.js` **反向守卫**
+ *      （16 条静态契约 + 15 条变异自证）：不许再把任何转场零件接回来。
+ *   ⑤ 1.0.8.38 / 39 的其它修复全部保留：深色顶部白块、深色首帧主题、首页就地弹
+ *      成员详情卡、detents 崩溃、停用权限口径与保存备注留白。
+ *   全量门禁 **126 过 / 14 历史存量红**（门禁数 142 → 140：删 3 加 1），零新增回归。
+ *   纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.39';
+const APP_VERSION = '1.0.8.40';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。
