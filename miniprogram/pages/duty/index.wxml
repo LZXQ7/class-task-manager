@@ -682,7 +682,7 @@
         </view>
       </block>
     </view>
-    <view class="f-actions">
+    <view class="f-actions sp-ai-actions">
       <view class="btn btn-ghost f-cancel" bindtap="onSpAiClose">取消</view>
       <view class="btn ghost" bindtap="onSpAiParse">{{spAiBusy ? '理解中…' : '解析预览'}}</view>
       <view class="btn f-save {{!spAiRows.length ? 'off' : ''}}" bindtap="onSpAiApply">确认排班</view>

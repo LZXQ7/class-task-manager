@@ -130,6 +130,32 @@ function audit(wxmlRaw, wxssRaw) {
   if (!/wx:if="\{\{viewMode === 'duty'\}\}"/.test(wxml)) out.push('值日分支 wx:if 丢失');
   if (!/wx:else>/.test(wxml)) out.push('演讲分支 wx:else 丢失');
 
+  /* ---- ④ 智能排班弹窗：内容左右留白 + 按钮玻璃化（中间按钮不许彩色渐变） ---- */
+  /* 2026-11-17 用户口径：截图里「用一句话描述排班」几乎贴左边、按钮还是 .btn 自带的
+     紫→蓝→粉渐变。现在要求：内容左右留白拉到 ≥24rpx，三个按钮统一底栏同款液态玻璃，
+     中间「解析预览」只是玻璃 + 文字色，不得再叠任何 linear-gradient。
+     ⚠️ `.sp-form` 是本页两个弹层共用的表单容器，留白改一处两边都对齐。 */
+  const form = rule(base, '.sp-form')[0] || '';
+  const pad = /padding\s*:\s*([\d.]+)rpx\s+([\d.]+)rpx/.exec(form);
+  if (!pad) out.push('.sp-form 未声明 padding，弹窗内容会贴边');
+  else if (Number(pad[2]) < 24) out.push('.sp-form 左右留白只有 ' + pad[2] + 'rpx（<24rpx，内容贴边）');
+
+  if (wxml.indexOf('class="f-actions sp-ai-actions"') < 0) {
+    out.push('智能排班操作条缺 sp-ai-actions（玻璃样式落不上）');
+  }
+  const aiBtn = rule(base, '.sp-ai-actions .btn')[0] || '';
+  if (!/var\(--tabbar-bg/.test(aiBtn)) out.push('.sp-ai-actions .btn 底色未走 var(--tabbar-bg)');
+  if (!/backdrop-filter\s*:/.test(aiBtn)) out.push('.sp-ai-actions .btn 缺 backdrop-filter（不是玻璃）');
+  if (!/var\(--tabbar-edge/.test(aiBtn)) out.push('.sp-ai-actions .btn 缺亮边 var(--tabbar-edge)');
+  const aiPrimary = rule(base, '.sp-ai-actions .btn.f-save')[0] || '';
+  if (!/var\(--brand/.test(aiPrimary)) out.push('确认排班未用 var(--brand) 文字色区分主操作');
+  /* 整段 `.sp-ai-actions` 作用域里不许出现渐变 —— 中间按钮原来的彩色渐变就来自
+     `.btn` 的 linear-gradient，覆盖时没写死底就会被它透上来。 */
+  const aiScope = (base.match(/\.sp-ai-actions[^{}]*\{[^{}]*\}/g) || []).join(' ');
+  if (/linear-gradient/.test(aiScope)) out.push('智能排班按钮仍叠彩色渐变（应纯玻璃）');
+  const aiFallback = (atBlock(wxss, '@supports not') || '') + (atBlock(wxss, 'prefers-reduced-transparency') || '');
+  if (aiFallback.indexOf('.sp-ai-actions') < 0) out.push('弹窗按钮缺两条降级路径（不支持模糊 / 降低透明度）');
+
   /* ---- ③ 点击反馈 ---- */
   const tabLines = wxml.split('\n').filter((l) => /class="dt-view-tab(?: |\{\{)/.test(l));
   if (tabLines.length < 2) out.push('分段控件标签不足 2 个');
@@ -179,6 +205,32 @@ mutant('变异5：删掉操作按钮的 backdrop-filter', wxmlGood,
 mutant('变异6：@supports 降级漏掉按钮', wxmlGood,
   wxssGood.replace(/(\.dt-admin-btn\s*\{[^}]*var\(--tabbar-solid[^}]*\})/, ''),
   '@supports not 降级未覆盖 .dt-admin-btn');
+mutant('变异7：弹窗内容留白退回 8rpx', wxmlGood,
+  wxssGood.replace(/\.sp-form\s*\{[^}]*\}/, '.sp-form { padding: 8rpx 8rpx 20rpx; }'),
+  '.sp-form 左右留白只有');
+mutant('变异8：删掉弹窗按钮的 backdrop-filter', wxmlGood,
+  (() => {
+    /* ⚠️ 必须 lastIndexOf：文件顶部 `@supports not` 降级块里也有 `.sp-ai-actions .btn {`，
+       用 indexOf 会改到降级块（那一段本来就被 stripAtRules 剥掉）→ 变异不生效、假通过。 */
+    const i = wxssGood.lastIndexOf('.sp-ai-actions .btn {');
+    if (i < 0) return wxssGood;
+    const s = wxssGood.slice(0, i);
+    const tail = wxssGood.slice(i).replace(/-?webkit-?backdrop-filter\s*:[^;]*;\s*/g, '').replace(/backdrop-filter\s*:[^;]*;\s*/, '');
+    return s + tail;
+  })(),
+  '.sp-ai-actions .btn 缺 backdrop-filter');
+mutant('变异9：弹窗按钮叠回彩色渐变', wxmlGood,
+  (() => {
+    const i = wxssGood.lastIndexOf('.sp-ai-actions .btn {');
+    if (i < 0) return wxssGood;
+    const at = wxssGood.indexOf('{', i) + 1;
+    return wxssGood.slice(0, at) + '\n  background: linear-gradient(135deg, #7C5CFF 0%, #3370FF 100%);'
+      + wxssGood.slice(at);
+  })(),
+  '仍叠彩色渐变');
+mutant('变异10：弹窗操作条丢掉 sp-ai-actions 类',
+  wxmlGood.replace('class="f-actions sp-ai-actions"', 'class="f-actions"'), wxssGood,
+  '缺 sp-ai-actions');
 
 console.log('\n' + (failed ? `✗ ${failed} 项未通过` : '✓ 值日页玻璃按钮与视图动画体检全部通过'));
 process.exit(failed ? 1 : 0);
