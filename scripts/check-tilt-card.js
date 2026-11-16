@@ -191,6 +191,31 @@ function behaviorProbes(wxsSrc) {
        「WXS 不得再 selectComponent」由 glareCssOwned 守住。 */
   }
 
+  /* 🔴 2026-11-16 真机复报：手指在首页卡片上滚动页面时，卡片四周描边/光晕
+     一闪一闪。根因 = onMove 不区分「把玩」与「滚动」：滚动时 tilt 仍逐帧写
+     3D transform，与 spring-scroll 的 translate3d+scaleY 叠加 ⇒ 合成层反复
+     重建、描边亚像素重采样抖动（11-15 只去掉了呼吸动画，没治这条）。
+     修法 = 纵向位移超阈值的滚动手势让 tilt 归零退出，把滚动让给 spring-scroll。
+     ⚠️ 11-15 那条静态 glare 契约仍要保留（两层成因不同，别互相替代）。 */
+  {
+    const h = harness();
+    api.onStart(ev(h, 20, 100), h.owner);            // 角落按下，先倾斜（instant 反馈）
+    api.onMove(ev(h, 20, 320), h.owner);             // 纵向大幅移动 = 滚动手势
+    const last = rotate(h.styles[h.styles.length - 1]);
+    out.scrollYields = !!last && Math.abs(last.rx) < 0.01 && Math.abs(last.ry) < 0.01;
+    const n = h.styles.length;
+    api.onMove(ev(h, 40, 420), h.owner);             // 继续滚：不再逐帧写 transform
+    out.scrollYields = out.scrollYields && h.styles.length === n;
+  }
+  /* 反例守卫：横向小幅把玩不能被当成滚动误杀（否则 3D 倾斜手感全丢） */
+  {
+    const h = harness();
+    api.onStart(ev(h, 180, 190), h.owner);           // 正中按下
+    api.onMove(ev(h, 300, 192), h.owner);            // 横向移动，dy≈0
+    const last = rotate(h.styles[h.styles.length - 1]);
+    out.playStillTilts = !!last && last.ry > 4;
+  }
+
   return out;
 }
 
@@ -212,16 +237,16 @@ function staticProbes(wxml, wxss, wxs) {
        所以这里同时要求 **wxss 有规则** 且 **wxml 有对应节点**。
        ⚠️ 3D 变换必须落在**没有圆角、没有 overflow** 的 .tg-wrap 上：
           变换加在带圆角+overflow 的节点上，真机按住再松手时 WebView 重新光栅化 ⇒ 圆角退化成方角。 */
-    /* 🔴 2026-11-14 二次翻车后收敛的契约：
-       描边必须是 **outline**（跟随 border-radius、不占布局、**不裁**卡片自带的 --glass-shadow）；
-       ❌ 绝不能再用「纯色片 + overflow:hidden 裁剪」—— 真机上裁不干净，
-          那层灰从卡片下方漏出一条灰色横板（用户实锤「阴影全部出错」），
-          而且 overflow:hidden 顺手把卡片自己的投影也裁掉了。
-       同时要求 wxml 里确实有 .tg-surface / .tg-glare 节点（CSS 有规则 ≠ 节点存在）。 */
-    auraRing: /class="tg-surface"/.test(wxml) && /class="tg-glare"/.test(wxml) &&
-              /\.tg-surface\s*\{[^}]*outline:\s*[^;}]+solid/.test(wxss) &&
-              !/\.tg-cone\s*\{/.test(wxss) && !/\.tg-edge\s*\{/.test(wxss) &&
-              !/\.tg-surface\s*\{[^}]*overflow:\s*hidden/.test(wxss),
+    /* 🔴 2026-11-16 去光反转：原来要求「描边 outline + 流光节点必须在」，
+       真机仍闪 ⇒ 用户要求去掉光。现在反向守：.tg-surface 必须还在（结构层），
+       但 .tg-glare 节点 / outline 描边 / radial-gradient 柔光 / 纯色片裁剪壳
+       一律不得出现，任何一个回来都判死。 */
+    noLight: /class="tg-surface"/.test(wxml) &&
+             !/class="tg-glare"/.test(wxml) &&
+             !/radial-gradient/.test(wxss) &&
+             !/\.tg-surface\s*\{[^}]*outline\s*:/.test(wxss) &&
+             !/\.tg-cone\s*\{/.test(wxss) && !/\.tg-edge\s*\{/.test(wxss) &&
+             !/\.tg-surface\s*\{[^}]*overflow:\s*hidden/.test(wxss),
     tiltOnWrapper: /class="tg-wrap(?: [^"]*)?"[\s\S]{0,320}bindtouchstart/.test(wxml) &&
                    /\.tg-wrap\s*\{[^}]*transform:/.test(wxss) &&
                    !/\.tg-surface\s*\{[^}]*transform:\s*perspective/.test(wxss)
@@ -244,15 +269,17 @@ check(/<wxs module="tilt" src="\.\/index\.wxs"><\/wxs>/.test(WXML), 'wxml 引入
 check(!/bindtouch\w+="on[A-Z]/.test(WXML), '没有退化成逻辑层裸 handler 名');
 check(/data-max="\{\{maxTilt\}\}"/.test(WXML) && /data-enabled=/.test(WXML),
       'maxTilt / enabled 通过 dataset 传给 WXS');
-check(/<view class="tg-glare"><\/view>/.test(WXML), '流光层在 slot 之前（靠 z-index 盖住内容）');
+/* 🔴 2026-11-16 用户真机复报滑动时边缘描边光仍闪 → 明确「去掉光吧」。
+   光源整体移除：不再有 .tg-glare 节点 / radial-gradient / outline 描边。
+   原「流光必须在」的断言全部反转为「光源必须不在」，防回潮。 */
+check(!/class="tg-glare"/.test(WXML), '流光节点已删除（真机滑动闪光，用户要求去光）');
 check(/<slot><\/slot>/.test(WXML), '卡片内容走默认 slot，本体结构不变');
 check(/"component"\s*:\s*true/.test(JSON_SRC), 'index.json 声明 component');
 check(/onTiltWarn/.test(JS) && /console\.error/.test(JS), '降级上报走 console.error（不静默）');
 check(!/setData/.test(JS), '组件 JS 全程零 setData（手势不跨线程）');
-check(/radial-gradient/.test(WXSS), '流光是径向渐变');
-check(/pointer-events:\s*none/.test(WXSS), '流光层不吃点击');
+check(!/radial-gradient/.test(WXSS), '径向柔光渐变已删除');
+check(!/outline\s*:/.test(WXSS), '描边 outline 已删除（描边光来自它）');
 check(!/transition:\s*all/.test(WXSS), '没有 transition: all');
-check(/@media \(prefers-reduced-transparency: reduce\)/.test(WXSS), '降低透明度系统设置下隐藏流光');
 /* 🔴 2026-11-14 真编译事故：门禁用 Node vm 全绿，miniprogram-ci 上传却报
  *    `index.wxs:41:37 Unexpected token '('`（-80054）—— WXS 是受限 JS 子集，
  *    不认 Number()/String() 这些全局构造器。离线门禁补一条语法黑名单。 */
@@ -296,8 +323,10 @@ const MUTATIONS = [
   {
     name: 'onStart 不再立即 applyPoint（反馈要等第一次 move）',
     scope: 'wxs', expect: 'instant',
-    from: '    state.vy = 0;\n    applyPoint(event, inst, state);\n  },',
-    to: '    state.vy = 0;\n  },'
+    /* 2026-11-16：onStart 里插入了起点记录，锚点跟着后移到 applyPoint 本身，
+       只删这一句才精确表达「按下不即时反馈」，避免整块替换误伤别的探针。 */
+    from: '    applyPoint(event, inst, state);\n  },\n\n  onMove:',
+    to: '    /* instant feedback removed */\n  },\n\n  onMove:'
   },
   {
     name: '弹簧换成指数衰减（等价 cubic-bezier 假弹簧，无过冲）',
@@ -344,16 +373,24 @@ const MUTATIONS = [
     to: '  .tg-wrap { will-change: auto; }'
   },
   {
-    name: 'wxml 删掉描边节点（CSS 有规则但节点不存在 ⇒ 描边从未渲染）',
-    scope: 'wxml', expect: 'auraRing',
+    name: 'wxml 删掉 .tg-surface（卡片本体容器丢失）',
+    scope: 'wxml', expect: 'noLight',
     from: '<view class="tg-surface">',
     to: '<view class="tg-surface-removed">'
   },
   {
-    name: '描边退回「纯色片 + overflow 裁剪」（真机上漏出灰色横板）',
-    scope: 'wxss', expect: 'auraRing',
-    from: '  outline: 2.5rpx solid rgba(154, 163, 178, 0.5);',
-    to: '  outline: none;'
+    /* 2026-11-16 去光反转：把描边光 outline 加回来 ⇒ noLight 必须翻红。 */
+    name: '描边光 outline 回潮（真机滑动又闪）',
+    scope: 'wxss', expect: 'noLight',
+    from: '.tg-surface {\n  position: relative;\n  border-radius: var(--r-md, 24rpx);\n}',
+    to: '.tg-surface {\n  position: relative;\n  border-radius: var(--r-md, 24rpx);\n  outline: 2.5rpx solid rgba(154, 163, 178, 0.5);\n}'
+  },
+  {
+    /* 流光节点回潮也要被抓（noLight 的 glare 节点维度）。 */
+    name: '流光节点 .tg-glare 回潮',
+    scope: 'wxml', expect: 'noLight',
+    from: '  <view class="tg-surface">\n    <slot></slot>',
+    to: '  <view class="tg-surface">\n    <view class="tg-glare"></view>\n    <slot></slot>'
   },
   {
     name: '3D 变换挪回 .tg-surface（真机按住松手后圆角退化成方角）',
@@ -366,6 +403,20 @@ const MUTATIONS = [
     scope: 'wxs', expect: 'wxsSyntax',
     from: 'function num(v, d) { var n = +v; return n !== n ? d : n; }',
     to: 'function num(v, d) { var n = Number(v); return n !== n ? d : n; }'
+  },
+  {
+    /* 2026-11-16：滚动让位阈值被调到不可能触发 ⇒ 滚动时 tilt 仍逐帧跟随 ⇒ 描边闪回归。 */
+    name: '滚动让位阈值调成失效（滑动页面时 tilt 仍在逐帧跟）',
+    scope: 'wxs', expect: 'scrollYields',
+    from: 'var SCROLL_SLOP = 14;',
+    to: 'var SCROLL_SLOP = 99999;'
+  },
+  {
+    /* 2026-11-16：漏掉「纵向主导」方向判定 ⇒ 横向小幅把玩也被归零 ⇒ 3D 手感全丢。 */
+    name: '滚动让位漏掉方向判定（横向把玩也被当成滚动误杀）',
+    scope: 'wxs', expect: 'playStillTilts',
+    from: 'if (dy > SCROLL_SLOP && dy > dx * 1.2) {',
+    to: 'if (dy > 0) {'
   }
 ];
 

@@ -804,3 +804,11 @@
   line-height: 1.6;
   color: var(--text-3, #86909C);
 }
+
+/* 课前演讲入口（2026-11-16）：独立类，不占 st-item 档位 */
+.dt-speech-entry { display: flex; align-items: center; gap: 18rpx; margin: 16rpx 24rpx 4rpx; padding: 18rpx 22rpx; border-radius: 18rpx; background: var(--bg-card, rgba(255,255,255,.7)); border: 2rpx solid var(--nav-line, rgba(0,0,0,.06)); }
+.dt-speech-ico { flex: 0 0 64rpx; height: 64rpx; line-height: 64rpx; text-align: center; border-radius: 16rpx; background: var(--brand-light, rgba(51,112,255,.12)); color: var(--brand, #3370FF); font-size: 30rpx; font-weight: 700; }
+.dt-speech-txt { flex: 1; }
+.dt-speech-title { font-size: 28rpx; font-weight: 600; color: var(--text-1, #1D2129); }
+.dt-speech-sub { font-size: 22rpx; color: var(--text-3, #86909C); margin-top: 4rpx; }
+.dt-speech-arrow { font-size: 40rpx; color: var(--text-3, #86909C); }

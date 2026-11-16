@@ -47,6 +47,70 @@ const VIEWS = [
 
 const ALL_VIEWS = VIEWS.map((v) => v.key);
 
+/**
+ * 成员页的**操作级**权限位（2026-11-16 用户要求）。
+ * ============================================================
+ * 原状态：`members` 是一个开关 —— 能进成员页就等于能改资料、能停用、能设超管、能删人。
+ *   实际使用中这些人往往不是同一个人：辅导员需要看名单，副班长需要改分组，
+ *   但「设超管 / 删成员」是不该顺手给的。
+ *
+ * 设计（沿用 `common/fee-perms.js` 的先例：**窄字段 + 白名单 + 逗号串**）：
+ *   · 存在 admin_user.perms 里，与页签 key 同一个字段（少一列、少一套审计）；
+ *   · 前端把「成员」显示成一个分组，下面 6 个复选框；
+ *   · 存储只写被勾的项，父级 `members` 由 resolve() 按下面的规则补齐。
+ *
+ * 兼容规则（改之前先读，写错会让老账号突然失权或突然全权）：
+ *   ① perms 里**只有** `members`、没有任何子项 ⇒ 老数据，视为**拥有全部 6 项**（行为不变）。
+ *   ② perms 里有任一子项 ⇒ 自动补 `members`（能进页面）+ `members.view`（看是操作的前提），
+ *      **不**补其余子项 —— 用户勾了什么就是什么。
+ *   ③ 职位模板（POSITION_PERMS）都只写 `members` ⇒ 模板等同「成员页全权」，与改造前一致。
+ *
+ * ⚠️ `members` 本身从此只表示「能进成员页 / 能读名单」，不再代表能做任何写操作。
+ *    后端所有写接口必须挂具体子项（members.edit / members.remove / members.super / …），
+ *    scripts/check-admin-member-ops.js 逐条守。
+ */
+const MEMBER_OPS = [
+  { key: 'members.view',   label: '查看成员名单',   desc: '进成员页、看列表与详情、搜索筛选' },
+  { key: 'members.add',    label: '新增成员',       desc: '手工添加单个成员（含初始分组/职位）' },
+  { key: 'members.edit',   label: '编辑资料 / 停用恢复', desc: '改姓名学号分组职位状态、班费额外权限' },
+  { key: 'members.import', label: '导入成员名单',   desc: '批量导入 xlsx/csv/文本（后台特有）' },
+  { key: 'members.remove', label: '删除成员',       desc: '硬删无历史记录的人（不可撤回）' },
+  { key: 'members.super',  label: '设为 / 取消超管', desc: '把成员提为超级管理员（极高权限）' }
+];
+const MEMBER_OP_KEYS = MEMBER_OPS.map((o) => o.key);
+
+/** 全部合法权限 key（页签 + 成员操作位）—— 存储层白名单的唯一真源 */
+const ALL_PERM_KEYS = ALL_VIEWS.concat(MEMBER_OP_KEYS);
+
+/** key 是否合法（页签或成员操作位） */
+function isValidPermKey(key) {
+  return ALL_PERM_KEYS.indexOf(String(key || '').trim()) >= 0;
+}
+
+/**
+ * 成员权限的父子上卷/下发展开（规则见 MEMBER_OPS 注释 ①②③）。
+ * 幂等：重复调用不会重复追加。
+ */
+function expandMembers(list) {
+  const out = (list || []).slice();
+  const has = (k) => out.indexOf(k) >= 0;
+  const kids = MEMBER_OP_KEYS.filter(has);
+  if (has('members')) {
+    if (!kids.length) {
+      // ① 老数据 / 职位模板：只有父级 ⇒ 全权（保持改造前行为）
+      MEMBER_OP_KEYS.forEach((k) => out.push(k));
+    } else {
+      // ② 显式配了子项：看是操作的前提，缺了就补上（但不放开其余操作）
+      if (!has('members.view')) out.push('members.view');
+    }
+  } else if (kids.length) {
+    // ③ 只勾了子项：补父级，否则连页签都进不去
+    out.push('members');
+    if (!has('members.view')) out.push('members.view');
+  }
+  return out;
+}
+
 /** 超管专属：任何情况下都不随 perms 下发 */
 const SUPER_ONLY = ['audit', 'accounts'];
 
@@ -84,40 +148,40 @@ function isSuper(member) {
   return !!member && Number(member.is_super) === 1;
 }
 
-/** 把 admin_user.perms 字符串解析成数组，并去掉非法值 */
+/** 把 admin_user.perms 字符串解析成数组，并去掉非法值（页签 + 成员操作位都收） */
 function parsePerms(raw) {
   return String(raw || '')
     .split(',')
     .map((s) => s.trim())
-    .filter((s) => s && ALL_VIEWS.indexOf(s) >= 0);
+    .filter((s) => s && ALL_PERM_KEYS.indexOf(s) >= 0);
 }
 
 /**
  * 解析某人的后台权限。
  * @param {object} member  member 行，至少含 is_super / position / group_tag / role
  * @param {string} rawPerms admin_user.perms 原始字符串（'' 表示按模板推导）
- * @returns {string[]} 有权访问的页签 key
+ * @returns {string[]} 有权访问的页签 key + 成员操作位（已按 MEMBER_OPS 规则展开）
  */
 function resolve(member, rawPerms) {
   if (!member) return [];
-  // 超管：全量，且不受 perms 字段影响（也就不存在「超管被自己配窄」的风险）
-  if (isSuper(member)) return ALL_VIEWS.slice();
+  // 超管：全量（含成员页全部操作位），且不受 perms 字段影响
+  if (isSuper(member)) return expandMembers(ALL_VIEWS.slice());
 
   const custom = parsePerms(rawPerms);
   if (custom.length) {
     // 例外授权：仍需挡掉超管专属，防止越权写入
-    return custom.filter((k) => SUPER_ONLY.indexOf(k) < 0);
+    return expandMembers(custom.filter((k) => SUPER_ONLY.indexOf(k) < 0));
   }
 
   // 辅导员用 group_tag='X' 标识（position 可能就是「辅导员」，但历史数据有空值的情况）
   if (member.group_tag === 'X') {
-    return POSITION_PERMS['辅导员'].slice();
+    return expandMembers(POSITION_PERMS['辅导员'].slice());
   }
   const pos = String(member.position || '').trim();
-  if (pos && POSITION_PERMS[pos]) return POSITION_PERMS[pos].slice();
+  if (pos && POSITION_PERMS[pos]) return expandMembers(POSITION_PERMS[pos].slice());
 
   // 职位为空但角色是 ADMIN：给最小可用集合（否则这类账号登录后白屏）
-  if (member.role === 'ADMIN' || member.role === 'MONITOR') return FALLBACK_ADMIN.slice();
+  if (member.role === 'ADMIN' || member.role === 'MONITOR') return expandMembers(FALLBACK_ADMIN.slice());
   return [];
 }
 
@@ -140,5 +204,6 @@ function navFor(perms) {
 
 module.exports = {
   VIEWS, ALL_VIEWS, SUPER_ONLY, POSITION_PERMS, FALLBACK_ADMIN,
+  MEMBER_OPS, MEMBER_OP_KEYS, ALL_PERM_KEYS, expandMembers, isValidPermKey,
   isSuper, parsePerms, resolve, has, canSeeDemo, navFor
 };

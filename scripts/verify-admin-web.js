@@ -85,10 +85,15 @@ function hashFor(plain) {
 }
 
 const TABLES = {
+  /* ⚠️ `is_demo` 必须显式给 0（2026-11-16 补）：
+   *   mod-config.overview() 的合计口径是 `Number(c.is_demo) === 0` 才算真实班，
+   *   夹具缺这个字段 ⇒ Number(undefined) = NaN ≠ 0 ⇒ 每个班都被当成演示班剔掉
+   *   ⇒ 概览「班级 0 / 成员 0」，而列表照旧有数据，症状极像真 bug。
+   *   （线上表该列 NOT NULL DEFAULT 0，只有 mock 会缺。） */
   class: [
-    { id: 1, name: '示例专业B1班', join_token: '123456', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: PERIOD_TIME_5, cnt: 52 },
-    { id: 2, name: '示例专业A2班', join_token: '234567', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: PERIOD_TIME_5, cnt: 50 },
-    { id: 3, name: '示例专业A1班', join_token: '345678', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, period_time: PERIOD_TIME_6, cnt: 58 }
+    { id: 1, name: '示例专业B1班', join_token: '123456', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, is_demo: 0, period_time: PERIOD_TIME_5, cnt: 52 },
+    { id: 2, name: '示例专业A2班', join_token: '234567', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, is_demo: 0, period_time: PERIOD_TIME_5, cnt: 50 },
+    { id: 3, name: '示例专业A1班', join_token: '345678', invite_code: '<INVITE_CODE>', term_start: '2026-09-14', total_weeks: 16, bind_open: 1, is_active: 1, is_demo: 0, period_time: PERIOD_TIME_6, cnt: 58 }
   ],
   member: [
     { id: 13, class_id: 3, name: '示例成员01', student_no: '2099010101', group_tag: 'A', role: 'ADMIN', is_super: 1, position: '生活委员', status: 'ACTIVE', openid: 'o1', duty_count: 5, duty_off: 0, remind_block: 0, last_duty_at: '2026-10-08' },
@@ -200,20 +205,53 @@ function topWhereAt(s) {
   return at;
 }
 
+/**
+ * 找**顶层**的 ORDER BY / GROUP BY / LIMIT / HAVING 位置（从 from 开始扫），没有则 -1。
+ *
+ * ⚠️ 为什么必须截：`rowMatches` 原来把 WHERE 之后**整段**都拿去解析条件，
+ * 而账号页 SQL 的排序是 `ORDER BY (a.id IS NULL) ASC, m.role = 'MEMBER' ASC, …`——
+ * 那个 `m.role = 'MEMBER'` 被当成 AND 条件 ⇒ 只剩 role=MEMBER 的人能通过，
+ * 表现为「后台账号页 0 个账号、开通弹层只有 1 个候选人」（2026-11-16 实锤，
+ * 第一眼看极像后端查库写错）。
+ */
+function topTailAt(s, from) {
+  let depth = 0;
+  for (let i = from; i < s.length; i++) {
+    const c = s[i];
+    if (c === '(') { depth++; continue; }
+    if (c === ')') { depth--; continue; }
+    if (depth !== 0) continue;
+    if (/^(ORDER\s+BY|GROUP\s+BY|LIMIT|HAVING)\b/i.test(s.slice(i, i + 10))) return i;
+  }
+  return -1;
+}
+
 function rowMatches(row, sql, args) {
   const whereAt = topWhereAt(sql);
   if (whereAt < 0) return true;
+  // WHERE 本体只到 ORDER BY / GROUP BY / LIMIT 之前（见 topTailAt 的注释，2026-11-16 实锤）
+  const tailAt = topTailAt(sql, whereAt);
+  const whereBody = tailAt > whereAt ? sql.slice(whereAt, tailAt) : sql.slice(whereAt);
   // ⚠️ 必须先摘掉 `(s.group_scope = ? OR s.group_scope IS NULL)` 这类复合片段：
   //   它由 applyWhere 专门按组求值。若留在原地，rowMatches 会把里面的
   //   `group_scope = ?` 单独拎出来跟 'A' 比 —— 全体课（group_scope 为 NULL）
   //   直接被判否，于是「A 组视图」只剩本组课、全体课凭空消失。
   //   这就是 MEMORY 里记的「两条兜底路径互掩盖 ⇒ 变异抓不到」的同款陷阱。
-  const cond0 = sql.slice(whereAt).replace(/\(\s*\w+\.group_scope\s*=\s*\?\s+OR\s+\w+\.group_scope\s+IS NULL\s*\)/gi, ' ');
+  const cond0 = whereBody.replace(/\(\s*\w+\.group_scope\s*=\s*\?\s+OR\s+\w+\.group_scope\s+IS NULL\s*\)/gi, ' ');
   /* 成员搜索是 `(m.name LIKE ? OR m.student_no LIKE ?)`。
    * rowMatches 的逐条件求值天然是 AND，留着它会要求姓名和学号**同时**命中
    * ⇒ 任何关键词都筛出 0 人（假空）。这里摘出片段，循环后按 OR 语义单独判一次。 */
   const hasKwOr = /\(\s*m\.name LIKE \?\s+OR\s+m\.student_no LIKE \?\s*\)/i.test(cond0);
-  const cond = cond0.replace(/\(\s*m\.name LIKE \?\s+OR\s+m\.student_no LIKE \?\s*\)/gi, ' ');
+  /* 辅导员是全校账号，SQL 写的是 `(m.class_id = ? OR m.group_tag = 'X')`（2026-11-16 新增账号页）。
+   * 同样是 OR，留在这里会被当 AND ⇒ 班里 group_tag≠'X' 的人全被筛掉，
+   * 表现为「后台账号页一个人都没有、开通弹层说没有可开通的人员」——看着极像后端查库坏了。
+   * 摘出片段后只补一次「占位符消费」，真正的 OR 语义在 applyWhere 里按行判。 */
+  const CLASS_OR_STAFF_RE = /\(\s*\w+\.class_id\s*=\s*\?\s+OR\s+\w+\.group_tag\s*=\s*'X'\s*\)/gi;
+  const hasClassOrStaff = CLASS_OR_STAFF_RE.test(cond0);
+  CLASS_OR_STAFF_RE.lastIndex = 0;
+  const cond = cond0
+    .replace(/\(\s*m\.name LIKE \?\s+OR\s+m\.student_no LIKE \?\s*\)/gi, ' ')
+    .replace(CLASS_OR_STAFF_RE, ' ');
   // 逐个条件： <col> <op> <val>  ；val 可能是 ? 或 '字面量'
   // ⚠️ 列名**可能带表前缀也可能不带**：`session s ... WHERE s.class_id = ?` 有前缀，
   //    而 `SELECT period_time FROM \`class\` WHERE id = ? LIMIT 1` 没有。
@@ -225,6 +263,9 @@ function rowMatches(row, sql, args) {
   let m;
   while ((m = re.exec(cond))) conds.push({ col: m[1], op: m[2].toUpperCase(), val: m[3] });
   let ai = 0;
+  // 被摘掉的 `(m.class_id = ? OR m.group_tag = 'X')` 里也有一个占位符，
+  // 且它在 WHERE 里排最前 ⇒ 先按顺序消费掉，否则后面所有 ? 都会错位一格。
+  if (hasClassOrStaff) ai += 1;
   for (const c of conds) {
     let expect;
     if (c.val === '?') { expect = args[ai++]; }
@@ -347,6 +388,12 @@ function applyWhere(rows, sql, args) {
   if (/\(\s*\w+\.group_scope\s*=\s*\?\s+OR\s+\w+\.group_scope\s+IS NULL\s*\)/i.test(sql)) {
     const g = (args || []).filter((a) => a === 'A' || a === 'B')[0];
     if (g) out = out.filter((r) => r.group_scope === g || r.group_scope === null);
+  }
+  /* 账号页的 `(m.class_id = ? OR m.group_tag = 'X')`：行内 OR，rowMatches 不会算，
+   * 在这里补一次。占位符固定是 args[0]（这是账号查询唯一的班级参数）。 */
+  if (/\(\s*\w+\.class_id\s*=\s*\?\s+OR\s+\w+\.group_tag\s*=\s*'X'\s*\)/i.test(sql)) {
+    const cid = (args || [])[0];
+    out = out.filter((r) => String(r.class_id) === String(cid) || r.group_tag === 'X');
   }
   return out;
 }
@@ -566,14 +613,35 @@ const POOL = {
       const leftIsJoin = lAlias === joinAlias;
       const fromKey = leftIsJoin ? rCol : lCol;
       const joinKey = leftIsJoin ? lCol : rCol;
+      /* LEFT JOIN 必须保留「关联不上」的主表行（2026-11-16 账号页实锤）：
+       * `member m LEFT JOIN admin_user a` 里没有后台账号的成员本来就该出现在候选里，
+       * 按内连接丢掉 ⇒ 开通弹层永远是「没有可开通的人员」。 */
+      const isLeftJoin = /LEFT\s+(?:OUTER\s+)?JOIN/i.test(s);
       if (process.env.SQLDEBUG) {
         console.error('[join]', fromTable, fromKey, '<->', joinTable, joinKey);
       }
+      /* SELECT 里的 `a.id AS admin_id` 这类别名必须显式映射：
+       * 合并两表时 `id` 已被主表占用（out[k] === undefined 才覆盖），
+       * 不映射 ⇒ 后端读 r.admin_id 恒 undefined ⇒ 账号页把「已开通」全当成候选人。
+       * 2026-11-16 实锤：accounts 恒为空数组，看着像后端查询写错。 */
+      const aliases = [];
+      {
+        const are = /(\w+)\.(\w+)\s+AS\s+`?(\w+)`?/gi;
+        let am;
+        while ((am = are.exec(s))) {
+          aliases.push({ alias: am[3], col: am[2], fromJoin: am[1] === joinAlias });
+        }
+      }
       const merged = (TABLES[fromTable] || []).map((row) => {
         const link = right.find((r) => String(row[fromKey]) === String(r[joinKey]));
-        if (!link) return null;
+        if (!link) {
+          const onlyFrom = Object.assign({}, row);
+          aliases.forEach((a) => { if (!a.fromJoin) onlyFrom[a.alias] = row[a.col]; });
+          return isLeftJoin ? onlyFrom : null;
+        }
         const out = Object.assign({}, row);
         Object.keys(link).forEach((k) => { if (out[k] === undefined) out[k] = link[k]; });
+        aliases.forEach((a) => { out[a.alias] = a.fromJoin ? link[a.col] : row[a.col]; });
         return out;
       }).filter(Boolean);
       return [applyScalarSubqueries(applyWhere(merged, s, args), s), []];
@@ -743,7 +811,12 @@ function ok(name, cond, extra) {
     await page.waitForTimeout(900);
     closeExpect();
     const notSuperMsg = (await page.textContent('#login-err')) || '';
-    ok('非超管被拒绝登录', /超级管理员|不正确/.test(notSuperMsg), notSuperMsg);
+    /* 文案口径（2026-11-16 更新）：登录闸从「必须 is_super=1」放宽成
+     *   「按职位推导出的页签权限非空即可登录」（2026-11-15 权限细化时改的）。
+     *   夹具里的 notsuper 绑的是李四（position 空、role=MEMBER）⇒ 推导结果为空
+     *   ⇒ 拒绝文案变成「该账号没有后台管理权限，请联系管理员开通」。
+     *   断言要认这个新文案，否则门禁红得莫名其妙（旧文案「超级管理员」已不存在）。 */
+    ok('非超管被拒绝登录', /没有后台管理权限|超级管理员|不正确/.test(notSuperMsg), notSuperMsg);
     ok('非超管未进入主界面', !(await page.isVisible('#main-view')));
 
     /* --- 4. 正常登录 --- */
@@ -1119,6 +1192,47 @@ function ok(name, cond, extra) {
     // 兜底清理弹层，避免挡住后续 [8] 班级配置页的点击
     await page.evaluate(() => { const d = document.querySelector('.dlg-mask'); if (d) d.remove(); });
 
+    /* --- 7.65 名单导入（2026-11-16 新增能力） ---
+     * 用户原话：「和小程序上传成员名单规则一样甚至适配更多格式……学号在前/在后都要认」。
+     * 解析器按**单元格内容**判列，不看列下标（源码判据在 check-admin-roster-import.js）；
+     * 这里在真浏览器里把三种写法粘进真弹层、打真接口，证明识别结果与「预览前置」都成立。 */
+    console.log('\n[7.65] 名单导入自适应识别');
+    ok('成员页有「新增成员」入口', await page.isVisible('#btn-add'));
+    ok('成员页有「导入名单」入口', await page.isVisible('#btn-import'));
+
+    await page.click('#btn-import');
+    await page.waitForSelector('#r-text', { timeout: 8000 });
+    ok('导入弹层同时提供文件与粘贴两种方式',
+      await page.isVisible('#r-file') && await page.isVisible('#r-text'));
+    ok('未预览时「确认导入」不可点（防盲导）', await page.isDisabled('#r-commit'));
+
+    await page.fill('#r-text', [
+      '学号\t姓名',            // 表头行：必须被当表头丢掉，不能变成一个人
+      '2603010191\t赵一',      // 学号在前 + Tab
+      '钱二 2603010192',       // 姓名在前 + 空格
+      '2603010193孙三'         // 学号姓名连写
+    ].join('\n'));
+    ok('改输入后旧预览被清空（不会拿上次结果去导）', await page.isDisabled('#r-commit'));
+    await page.click('#r-check');
+    await page.waitForSelector('.roster-sum', { timeout: 8000 });
+    await page.waitForTimeout(200);
+    const rpText = await page.textContent('#r-preview');
+    ok('表头行未被当成员（共识别 3 人）', /共识别\s*3\s*人/.test(rpText),
+      rpText.replace(/\s+/g, ' ').slice(0, 140));
+    ok('三种写法都识别出学号',
+      rpText.indexOf('2603010191') >= 0 && rpText.indexOf('2603010192') >= 0 &&
+      rpText.indexOf('2603010193') >= 0);
+    ok('姓名没被串进学号（赵一 / 钱二 / 孙三 各自成行）',
+      rpText.indexOf('赵一') >= 0 && rpText.indexOf('钱二') >= 0 && rpText.indexOf('孙三') >= 0);
+    ok('预览给出「新增 3」的计数', /新增\s*3/.test(rpText),
+      rpText.replace(/\s+/g, ' ').slice(0, 160));
+    ok('预览后「确认导入」才可点', !(await page.isDisabled('#r-commit')));
+    await page.screenshot({ path: path.join(SHOTS, '06k-roster-preview.png') });
+    await page.click('#r-cancel');
+    await page.waitForTimeout(200);
+    ok('关闭导入弹层后不残留遮罩',
+      await page.evaluate(() => !document.querySelector('.dlg-mask')));
+
     /* --- 7.7 成员列表：页大小 10/30/50/全部 + 四选一筛选（2026-11-08） ---
        源码级判据在 check-member-filters.js；这里在真实浏览器里证明控件真发请求、
        真改表格，且「全部」真的不分页、搜索与筛选真的叠加。 */
@@ -1489,6 +1603,29 @@ function ok(name, cond, extra) {
     const cls = await page.textContent('#view');
     ok('列出 3 个班', (cls.match(/260[123]班/g) || []).length >= 3);
     ok('显示班级口令', cls.indexOf('345678') >= 0);
+
+    /* --- 8.1 建班 + 名单导入入口（2026-11-16 新增能力）
+     * 建班口径（用户选定）：**只填班级名，其余自动生成** —— 学期取本周周一、
+     * 总周数 16、口令/邀请码自动不重复、大节时间套现有模板。
+     * 这里只验入口与弹层结构（mock DB 不做 INSERT，点创建会落到不支持的 SQL，
+     * 真事务由部署后的线上核验覆盖）。 */
+    ok('班级页有「新增班级」入口', await page.isVisible('#c-add'));
+    const importBtns = await page.$$eval('[data-c-import]', (els) => els.length);
+    ok('每个班都有「导入名单」入口', importBtns >= 3, '实际 ' + importBtns + ' 个');
+    await page.click('#c-add');
+    await page.waitForSelector('#nc-name', { timeout: 8000 });
+    // 弹层有 0.24s 入场动画：不等一下就截图会拍到 opacity<1 的灰蒙版（误看成配色坏了）
+    await page.waitForTimeout(500);
+    const ncText = await page.textContent('.dlg');
+    ok('新建班级只要求填名称', await page.isVisible('#nc-name') && !(await page.$('#nc-weeks')));
+    ok('提示说明其余字段自动生成（本周周一 / 16 周）',
+      /本周周一/.test(ncText) && /16/.test(ncText), ncText.replace(/\s+/g, ' ').slice(0, 160));
+    await page.screenshot({ path: path.join(SHOTS, '07b-class-create.png') });
+    await page.click('#nc-cancel');
+    await page.waitForTimeout(200);
+    ok('取消新建班级后不残留遮罩',
+      await page.evaluate(() => !document.querySelector('.dlg-mask')));
+
     await page.screenshot({ path: path.join(SHOTS, '07-classes.png'), fullPage: true });
 
     // 打开配置弹层
@@ -1500,6 +1637,107 @@ function ok(name, cond, extra) {
     ok('弹层显示课程课次统计', /课程课次/.test(dlgText));
     await page.screenshot({ path: path.join(SHOTS, '08-class-dialog.png') });
     await page.click('#dlg-cancel');
+
+    /* --- 8.3 软删除班级（2026-11-16 用户诉求：可新增也要可删除）
+     * 口径：is_active=0 + 从后台列表/班级选择器隐藏，数据保留；
+     * 删除是 L3 危险操作，必须勾选「我已知晓影响」才允许确认。 */
+    console.log('\n[8.3] 删除班级（软删除）');
+    const delBtns = await page.$$eval('[data-c-del]', (els) => els.length);
+    ok('每个班都有「删除」入口', delBtns >= 3, '实际 ' + delBtns + ' 个');
+    await page.click('[data-c-del="2"]');
+    await page.waitForSelector('#dlg-cf-ack', { timeout: 8000 });
+    ok('删除需 L3 勾选确认（确认按钮初始禁用）',
+      await page.$eval('#dlg-cf-ok', (el) => el.disabled === true));
+    await page.click('#dlg-cf-cancel');
+    await page.waitForTimeout(200);
+    ok('取消删除后班级仍在', (await page.textContent('#view')).indexOf('示例班级B') >= 0);
+    await page.click('[data-c-del="2"]');
+    await page.waitForSelector('#dlg-cf-ack', { timeout: 8000 });
+    await page.click('#dlg-cf-ack');
+    ok('勾选后确认按钮解冻', await page.$eval('#dlg-cf-ok', (el) => el.disabled === false));
+    await page.click('#dlg-cf-ok');
+    await page.waitForTimeout(600);
+    const afterDelText = await page.textContent('#view');
+    ok('确认后班级从账号班级列表消失', afterDelText.indexOf('示例班级B') < 0,
+      afterDelText.replace(/\s+/g, ' ').slice(0, 120));
+    const pickerAfterDel = await page.$$eval('#class-picker option', (els) => els.map((e) => e.textContent).join('|'));
+    ok('顶部班级选择器也不再有该班', pickerAfterDel.indexOf('示例班级B') < 0, pickerAfterDel);
+    // 夹具复原：后续用例仍按 3 个班跑，避免把「删除测试」的副作用带到别的断言里
+    const deletedClass = TABLES.class.find((c) => c.id === 2);
+    if (deletedClass) deletedClass.is_active = 1;
+
+    /* --- 8.2 成员页操作位：后端下发的权限清单（2026-11-16 用户诉求 ①）
+     * 「修改其他账号权限时，可对成员页增加更具体的设置」——
+     * 6 个操作位由 `lib/perms.js` 的 MEMBER_OPS 定义，随 /api/accounts 下发给前端渲染，
+     * 前端**不写死枚举**。这里验下发契约（前端分组渲染由 check-admin-member-ops 守源码）。 */
+    console.log('\n[8.2] 成员页操作位权限清单');
+    const accApi = await page.evaluate(async (b) => {
+      const r = await fetch(b + '/api/accounts?classId=3', { credentials: 'same-origin' });
+      return { status: r.status, body: await r.json().catch(() => null) };
+    }, BASE);
+    const accData = (accApi.body && accApi.body.data) || {};
+    const opKeys = (accData.memberOps || []).map((o) => o.key);
+    ok('/api/accounts 正常返回（权限清单的载体）',
+      accApi.status === 200 && !!(accApi.body && accApi.body.ok),
+      JSON.stringify(accApi).slice(0, 200));
+    ok('后端下发 6 个成员操作位', opKeys.length === 6, JSON.stringify(opKeys));
+    ok('操作位 key 统一以 members. 前缀',
+      opKeys.length > 0 && opKeys.every((k) => /^members\./.test(k)), JSON.stringify(opKeys));
+    ok('含「导入名单」与「设为超管」两项',
+      opKeys.indexOf('members.import') >= 0 && opKeys.indexOf('members.super') >= 0,
+      JSON.stringify(opKeys));
+
+    /* --- 8.3 「勾选成员后才出现细分权限」（2026-11-16 用户追加口径）
+     * 用户原话：「勾选成员后出现成员的细分权限」——
+     *   父项是**普通复选框**，细项默认收起，勾了才展开；取消到一项不剩时父项也回退。
+     * 源码判据在 check-admin-member-ops ④/⑤；这里在真浏览器里点一遍，证明联动真接了。 */
+    console.log('\n[8.3] 成员权限：勾上父项才展开细分项');
+    await page.click('.nav-item[data-view="accounts"]');
+    await page.waitForSelector('#acc-open', { timeout: 8000 });
+    await page.click('#acc-open');
+    await page.waitForSelector('.pick-item', { timeout: 8000 });
+    // 用「示例成员42（班长兼团支书）」当样本：该职位模板含 members ⇒ 打开就是「勾着父项 + 6 项全勾」
+    const pickBtn = (await page.$('[data-pick-member="54"]')) || (await page.$('.pick-item'));
+    await pickBtn.click();
+    await page.waitForSelector('.perm-grid', { timeout: 8000 });
+    await page.waitForTimeout(200);
+
+    const PARENT = '[data-perm-parent="members"]';
+    const subChecked = () => page.$$eval('.perm-sub input', (els) => els.filter((e) => e.checked).length);
+    ok('「成员」是可勾的父项复选框', (await page.$$(PARENT)).length === 1);
+    ok('职位模板含成员页 ⇒ 默认勾着「成员」', await page.isChecked(PARENT));
+    ok('默认就展开细项（已授权的人看得见现状）', await page.isVisible('.perm-group'));
+    ok('默认 6 项全勾（父项勾着 = 全套）', (await subChecked()) === 6, '实际 ' + (await subChecked()));
+    await page.screenshot({ path: path.join(SHOTS, '09b-account-perms.png') });
+
+    await page.uncheck(PARENT);
+    await page.waitForTimeout(150);
+    ok('取消父项 → 细项整块收起', !(await page.isVisible('.perm-group')));
+    ok('取消父项 → 细项一起清空（隐藏的勾不会被偷偷提交）',
+      (await subChecked()) === 0, '实际 ' + (await subChecked()));
+    await page.screenshot({ path: path.join(SHOTS, '09c-account-perms-off.png') });
+
+    await page.check(PARENT);
+    await page.waitForTimeout(150);
+    ok('重新勾父项 → 重新展开且 6 项全勾',
+      (await page.isVisible('.perm-group')) && (await subChecked()) === 6);
+
+    // 逐个取消，最后一项取消时父项必须跟着回退（否则裸 members 会被后端当「全给」）
+    const subVals = await page.$$eval('.perm-sub input', (els) => els.map((e) => e.value));
+    for (let i = 0; i < subVals.length - 1; i += 1) {
+      await page.uncheck('.perm-sub input[value="' + subVals[i] + '"]');
+    }
+    ok('取消到只剩一项时父项仍勾着', await page.isChecked(PARENT));
+    await page.uncheck('.perm-sub input[value="' + subVals[subVals.length - 1] + '"]');
+    await page.waitForTimeout(150);
+    ok('最后一项也取消 → 父项自动取消（不留「勾着父项却一项不给」的提权口）',
+      !(await page.isChecked(PARENT)));
+    ok('最后一项也取消 → 细项再次收起', !(await page.isVisible('.perm-group')));
+
+    await page.click('#ac-cancel');
+    await page.waitForTimeout(200);
+    ok('关闭权限弹层后不残留遮罩',
+      await page.evaluate(() => !document.querySelector('.dlg-mask')));
 
     /* --- 9. 系统配置：后台账号有效态 --- */
     console.log('\n[9] 系统配置');
@@ -1596,9 +1834,41 @@ function ok(name, cond, extra) {
       }
     }
 
-    // ① 把超管降权 → 会话应立即失效
+    /* ① 把超管降权 → **超管专属页签必须立刻收回**（操作审计 / 后台账号）。
+     *
+     * 为什么不再断言「整个会话被踢」（2026-11-16 改）：
+     *   登录闸早已不是「只认 is_super」，而是「按职位推导出的页签权限非空即可登录」。
+     *   夹具里的 target 是示例成员01（position='生活委员'）⇒ 降权后仍推导出
+     *   概览/班费/值日/排班规则/换班 ⇒ 会话继续有效**是设计如此**，不是漏判。
+     *   真正的提权风险在于「降权后还能翻审计流水、还能给自己开后台账号」，
+     *   所以判据钉死在那两个页签上 —— 变异体（loadSession 不回查 member.is_super）
+     *   会让 perms 快照仍含 audit/accounts，这两条照样翻红，敏感度没丢。 */
     target.is_super = 0;
-    ok('超管被降权后会话立即失效', await sessionKicked());
+    // 这几条 403 是**故意造的负例**，进「预期失败窗口」，否则 [14] 会把它们
+    // 当成前端运行时错误（采集器对非 2xx 的 /api/ 响应一律记一条）。
+    openExpect();
+    const demoted = await page.evaluate(async (b) => {
+      const code = (u) => fetch(b + u, { credentials: 'same-origin' })
+        .then((r) => r.status).catch(() => 0);
+      const me = await fetch(b + '/api/me', { credentials: 'same-origin' })
+        .then((r) => r.json()).catch(() => null);
+      return {
+        audit: await code('/api/audit?page=1'),
+        accounts: await code('/api/accounts'),
+        meStatus: await code('/api/me'),
+        perms: (me && me.perms) || []
+      };
+    }, BASE);
+    closeExpect();
+    ok('超管降权后操作审计接口立即 403', demoted.audit === 403, '实际 ' + demoted.audit);
+    ok('超管降权后后台账号接口立即 403', demoted.accounts === 403, '实际 ' + demoted.accounts);
+    ok('超管降权后 /api/me 的 perms 不再含 audit / accounts',
+      demoted.meStatus === 200 &&
+      demoted.perms.indexOf('audit') < 0 && demoted.perms.indexOf('accounts') < 0,
+      'status=' + demoted.meStatus + ' perms=' + JSON.stringify(demoted.perms).slice(0, 140));
+    ok('超管降权后按职位保留可用页签（会话未整踢，符合预期）',
+      demoted.perms.indexOf('overview') >= 0,
+      JSON.stringify(demoted.perms).slice(0, 140));
     target.is_super = savedSuper;
     // ② 恢复超管但停用 → 同样应失效（member.status 也是真源的一部分）
     target.status = 'DISABLED';

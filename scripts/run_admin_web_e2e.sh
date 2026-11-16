@@ -13,6 +13,15 @@ export PATH="/c/Program Files/Git/usr/bin:/c/Program Files/Git/bin:$PATH"
 export USERPROFILE="C:\Users\PC"
 cd "$(dirname "$0")/.." || exit 1
 
+# 临时目录改到工作区内：Chromium 启动时会 mkdtemp 放 playwright-artifacts，
+# 默认落到 C:\WINDOWS\temp ⇒ 无写权限直接 EPERM 起不来浏览器（不是业务红）。
+# 注意必须传 Windows 形式路径（pwd -W），Git Bash 的 /c/... 形式 Windows 版 node 不认。
+mkdir -p .wb_tmp
+WB_TMP_WIN="$(pwd -W)/.wb_tmp"
+export TMPDIR="$WB_TMP_WIN"
+export TMP="$WB_TMP_WIN"
+export TEMP="$WB_TMP_WIN"
+
 node --check scripts/verify-admin-web.js || exit 1
 node scripts/verify-admin-web.js
 rc=$?

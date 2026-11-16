@@ -94,7 +94,10 @@ async function listAccounts(q, session) {
     candidates,
     // 前端「新增账号」弹层要展示「这个职位默认给什么权限」
     positionTemplates: permsMod.POSITION_PERMS,
-    views: permsMod.VIEWS
+    views: permsMod.VIEWS,
+    // 成员页的 6 个操作位（细粒度勾选，2026-11-16）：key/label/desc 由后端下发，
+    // 前端不写死枚举 —— 以后加一项只改 lib/perms.js 的 MEMBER_OPS。
+    memberOps: permsMod.MEMBER_OPS
   };
 }
 
@@ -130,7 +133,8 @@ async function createAccount(p, session, req) {
   if (Array.isArray(p.perms)) {
     perms = p.perms
       .map((x) => String(x).trim())
-      .filter((x) => permsMod.ALL_VIEWS.indexOf(x) >= 0)
+      // 合法 key = 页签 key + 成员页操作位（members.view / members.edit / …）
+      .filter((x) => permsMod.isValidPermKey(x))
       // 超管专属页签不允许通过「显式授权」下发，否则等于开后门
       .filter((x) => permsMod.SUPER_ONLY.indexOf(x) < 0);
   }
@@ -186,14 +190,17 @@ async function updateAccount(p, session, req) {
   if (p.perms !== undefined) {
     let arr = Array.isArray(p.perms) ? p.perms : String(p.perms || '').split(',');
     arr = arr.map((x) => String(x).trim())
-      .filter((x) => x && permsMod.ALL_VIEWS.indexOf(x) >= 0)
+      .filter((x) => x && permsMod.isValidPermKey(x))
       .filter((x) => permsMod.SUPER_ONLY.indexOf(x) < 0);
     // 空数组 = 回到「按职位模板实时推导」，不是「没有任何权限」
     const raw = arr.join(',');
     const finalPerms = permsMod.resolve(m, raw);
     if (!finalPerms.length) throw new BizError(40001, '至少要给一个页签权限');
     sets.push('perms = ?'); args.push(raw);
-    changes.push('权限 → ' + finalPerms.join('/'));
+    // 审计里把「成员页具体开到哪几项」单独写出来，否则事后看不出「能看」还是「能删」
+    const ops = finalPerms.filter((k) => k.indexOf('members.') === 0);
+    changes.push('权限 → ' + finalPerms.filter((k) => k.indexOf('members.') !== 0).join('/') +
+      (ops.length ? '（成员页：' + ops.map((k) => k.replace('members.', '')).join('/') + '）' : ''));
   }
 
   // ---- 启停 ----

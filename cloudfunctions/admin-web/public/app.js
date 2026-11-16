@@ -327,6 +327,15 @@
   }
 
   /**
+   * 细粒度操作权限（2026-11-16）：`members.view` / `members.edit` / …
+   * state.perms 由 /api/me 下发，后端已按「子项上卷」展开过，所以这里精确匹配即可。
+   * ⚠️ 前端隐藏按钮只是体验，真正的边界在 index.js 的 requirePerm —— 两处用的是同一批 key。
+   */
+  function canPerm(key) {
+    return !!(state.perms && state.perms.indexOf(key) >= 0);
+  }
+
+  /**
    * 导航分组（2026-11-16 焕新 · 体验规范 §1.4）
    * 目的：超管看到 14 个页签、辅导员 11 个、副班长 7 个 —— 数量差异很大，
    * 扁平一列时既难扫读又显得拥挤。分组标题是**纯视觉叠加层**，页签相对顺序一位不动。
@@ -531,8 +540,10 @@
     return api('/api/me').then(function (me) {
       if (me && me.ok && me.classes) {
         state.classes = me.classes;
-        // 选中的班可能已被停用/删除 ⇒ 兜底选第一个可用班
+        // 选中的班可能已被软删除 ⇒ 兜底选第一个可用班
         if (!currentClass()) state.classId = state.classes.length ? state.classes[0].id : null;
+        // 建班 / 删班后同步下拉，避免「列表变了但选择器没变」
+        renderClassPicker();
       }
       return state.classes;
     }).catch(function () { /* 拉不到就保持原状，不阻断保存 */ });
@@ -1907,14 +1918,77 @@
 
   /* ---------------- 后台账号（仅超管） ---------------- */
 
-  /** 权限勾选网格。selected 为已勾选的 view key 数组 */
+  /**
+   * 权限勾选网格。selected 为已勾选的权限 key 数组。
+   *
+   * 2026-11-16：`members` 是**可勾的父项**，勾上才展开 6 个操作位
+   *   （查看名单 / 新增 / 编辑 / 导入 / 删除 / 设超管）——
+   *   用户口径：「勾选成员后出现成员的细分权限」。不勾就只发 `members` 之外的页签。
+   *   key 与 label 全部由 /api/accounts 下发（state.memberOps），前端不写死枚举。
+   */
   function permChecks(selected) {
     var list = state.accountViews || [];
-    return '<div class="perm-grid">' + list.map(function (v) {
-      var on = selected.indexOf(v.key) >= 0;
-      return '<label class="perm-item"><input type="checkbox" value="' + esc(v.key) + '"' +
+    var ops = state.memberOps || [];
+    var sel = selected || [];
+    // 老账号可能只存了父级 members（没有子项）→ 后端 expandMembers 视为「全部 6 项」，前端照此显示
+    var hasSub = ops.some(function (o) { return sel.indexOf(o.key) >= 0; });
+    var memberOn = sel.indexOf('members') >= 0 || hasSub;
+    var html = '';
+    list.forEach(function (v) {
+      if (v.key === 'members') {
+        html += '<label class="perm-item perm-parent" title="勾选后才展开细项">' +
+          '<input type="checkbox" value="members" data-perm-parent="members"' +
+          (memberOn ? ' checked' : '') + '><span>' + esc(v.label) + '</span></label>' +
+          '<div class="perm-group"' + (memberOn ? '' : ' hidden') + '>' +
+          '<div class="perm-group-hd"><span class="muted-note">可进成员页 · 下面逐项决定能做什么</span></div>' +
+          '<div class="perm-sub">' +
+          (ops.length ? ops.map(function (o) {
+            var on = hasSub ? sel.indexOf(o.key) >= 0 : memberOn;
+            return '<label class="perm-item" title="' + esc(o.desc || '') + '">' +
+              '<input type="checkbox" value="' + esc(o.key) + '"' + (on ? ' checked' : '') + '>' +
+              '<span>' + esc(o.label) + '</span></label>';
+          }).join('') : '<span class="muted-note">（后端未下发成员操作位）</span>') +
+          '</div></div>';
+        return;
+      }
+      var on = sel.indexOf(v.key) >= 0;
+      html += '<label class="perm-item"><input type="checkbox" value="' + esc(v.key) + '"' +
         (on ? ' checked' : '') + '><span>' + esc(v.label) + '</span></label>';
-    }).join('') + '</div>';
+    });
+    return '<div class="perm-grid">' + html + '</div>';
+  }
+
+  /**
+   * 「成员」父项 ↔ 6 个操作位联动（2026-11-16 用户追加口径）。
+   *   · 勾父项 → 展开并把 6 项全勾（等于一个开关给全套，跟改前的直觉一致）；
+   *   · 取消父项 → 收起并清空，pickedPerms 不会带出隐藏的勾；
+   *   · 子项被逐个取消到一项不剩 → 父项跟着取消。
+   *     这条必须有：后端把「裸 members」解释成全部 6 项（老数据兼容），
+   *     留着勾父项却一项不给 = 静默提权。
+   * 必须在 innerHTML 落地之后调用（先 appendChild 再 bind）。
+   */
+  function bindPermGroup(dlg) {
+    var root = dlg || document;
+    var parent = root.querySelector('[data-perm-parent="members"]');
+    if (!parent) return;
+    var group = root.querySelector('.perm-group');
+    var subs = $$('.perm-sub input[type="checkbox"]', group || root);
+    parent.onchange = function () {
+      var on = !!parent.checked;
+      if (group) group.hidden = !on;
+      subs.forEach(function (c) { c.checked = on; });
+    };
+    subs.forEach(function (c) {
+      c.onchange = function () {
+        if (c.checked) {
+          parent.checked = true;
+          if (group) group.hidden = false;
+        } else if (!subs.some(function (x) { return x.checked; })) {
+          parent.checked = false;
+          if (group) group.hidden = true;
+        }
+      };
+    });
   }
 
   function pickedPerms(dlg) {
@@ -1927,17 +2001,31 @@
     function load() {
       api('/api/accounts?classId=' + state.classId).then(function (d) {
         if (!d.ok) { host.innerHTML = errHtml(d); return; }
-        // 页签清单与职位模板只在第一次拿到时缓存（后续弹层要用）
+        // 页签清单、成员操作位与职位模板只在第一次拿到时缓存（后续弹层要用）
         if (d.data.views) state.accountViews = d.data.views;
+        if (d.data.memberOps) state.memberOps = d.data.memberOps;
         if (!state.accountViews) state.accountViews = [];
+        if (!state.memberOps) state.memberOps = [];
         var accs = d.data.accounts || [];
         var cands = d.data.candidates || [];
 
+        var ops = state.memberOps || [];
         var accBody = accs.length ? accs.map(function (a) {
-          var permTxt = (a.perms || []).map(function (k) {
-            var v = (state.accountViews || []).filter(function (x) { return x.key === k; })[0];
-            return v ? v.label : k;
-          }).join(' / ') || '<span class="muted-note">无</span>';
+          /* 权限展示：成员页细项合并成一格「成员（全部 / 3·共 6 项）」，
+             否则一行会摊出「成员 / 查看成员名单 / 新增成员 / …」把列撑爆。 */
+          var ap = a.perms || [];
+          var subN = ap.filter(function (k) { return k.indexOf('members.') === 0; }).length;
+          var permTxt = ap.filter(function (k) { return k !== 'members' && k.indexOf('members.') !== 0; })
+            .map(function (k) {
+              var v = (state.accountViews || []).filter(function (x) { return x.key === k; })[0];
+              return v ? v.label : k;
+            });
+          if (subN || ap.indexOf('members') >= 0) {
+            var mt = (subN >= ops.length && subN > 0) ? '成员（全部）'
+              : (subN ? '成员（' + subN + '/共 ' + ops.length + ' 项）' : '成员');
+            permTxt.unshift(mt);
+          }
+          permTxt = permTxt.join(' / ') || '<span class="muted-note">无</span>';
           return '<tr>' +
             '<td>' + esc(a.memberName) + (a.studentNo ? '<span class="muted-note"> · ' + esc(a.studentNo) + '</span>' : '') + '</td>' +
             /* 超管 = 危险权限 → 用 tag-super(红) 而非 tag-ok(绿)：
@@ -2141,6 +2229,7 @@
         '<button class="btn btn-primary" id="ac-save">开通</button>' +
         '</div></div>';
       document.body.appendChild(dlg);
+      bindPermGroup(dlg);
       $('#ac-cancel', dlg).onclick = function () { dlg.remove(); };
       $('#ac-save', dlg).onclick = function () {
         var btn = $('#ac-save', dlg);
@@ -2181,6 +2270,7 @@
           '<button class="btn btn-primary" id="ap-save">保存</button>' +
           '</div></div>';
         document.body.appendChild(dlg);
+        bindPermGroup(dlg);
         $('#ap-cancel', dlg).onclick = function () { dlg.remove(); };
         $('#ap-save', dlg).onclick = function () {
           var btn = $('#ap-save', dlg);
@@ -2550,6 +2640,13 @@
 
   function renderMember(host) {
     if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+    /* 操作级权限（2026-11-16）：没这项权限的人连按钮都看不到，
+       而不是「点了才 403」—— 后者会被当成功能坏了。 */
+    var canAdd = canPerm('members.add');
+    var canEdit = canPerm('members.edit');
+    var canSuper = canPerm('members.super');
+    var canDel = canPerm('members.remove');
+    var canImport = canPerm('members.import');
     var qs = '?classId=' + state.classId + '&page=' + state.memberPage +
       '&pageSize=' + state.memberPageSize + '&scope=' + encodeURIComponent(state.memberScope) +
       (state.memberKw ? '&keyword=' + encodeURIComponent(state.memberKw) : '');
@@ -2574,7 +2671,8 @@
         '<div class="toolbar">' +
         '<input type="search" id="m-kw" class="input-search" placeholder="搜索姓名或学号（回车）" value="' + esc(state.memberKw) + '">' +
         '<div class="toolbar-right">' +
-        '<button class="btn btn-primary" id="btn-add">新增成员</button>' +
+        (canImport ? '<button class="btn" id="btn-import">导入名单</button>' : '') +
+        (canAdd ? '<button class="btn btn-primary" id="btn-add">新增成员</button>' : '') +
         '</div></div>' +
         '<div class="toolbar member-toolbar">' +
         '<div class="seg member-scope" role="group" aria-label="成员筛选">' + scopeBtns + '</div>' +
@@ -2605,10 +2703,11 @@
             // 「这个人不参与排班」只藏在编辑弹层里的话，管理员在排班视图根本看不出来。
             '<td>' + m.dutyCount + (m.dutyOff ? ' <span class="tag tag-warn">不排值日</span>' : '') + '</td>' +
             '<td class="td-ops">' +
-            '<button class="link" data-m-edit="' + m.id + '">编辑</button>' +
-            '<button class="link" data-m-super="' + m.id + '" data-v="' + (m.isSuper ? 0 : 1) + '">' +
-              (m.isSuper ? '取消超管' : '设为超管') + '</button>' +
-            '<button class="link link-danger" data-m-del="' + m.id + '">删除</button>' +
+            (canEdit ? '<button class="link" data-m-edit="' + m.id + '">编辑</button>' : '') +
+            (canSuper ? '<button class="link" data-m-super="' + m.id + '" data-v="' + (m.isSuper ? 0 : 1) + '">' +
+              (m.isSuper ? '取消超管' : '设为超管') + '</button>' : '') +
+            (canDel ? '<button class="link link-danger" data-m-del="' + m.id + '">删除</button>' : '') +
+            (!canEdit && !canSuper && !canDel ? '<span class="muted-note">只读</span>' : '') +
             '</td></tr>';
         }).join('') : '<tr><td colspan="9">' +
           /* 空态三分（E1）：筛选后为空 ≠ 该班没人。
@@ -2630,7 +2729,15 @@
         (state.memberPageSize === 0 ? '' :
           pager(r.total, r.page, r.pageSize, function (p) { state.memberPage = p; softReload(); }));
 
-      $('#btn-add', host).onclick = function () { openMemberDialog(null); };
+      // 按钮按权限渲染，元素可能不存在 → 绑定时必须判空（直接 .onclick 会 TypeError，
+      // 而它是 bind 的第一行，抛错会让后面所有 onclick 全部绑不上、页面看着正常点不动）
+      var btnAdd = $('#btn-add', host);
+      if (btnAdd) btnAdd.onclick = function () { openMemberDialog(null); };
+      var btnImport = $('#btn-import', host);
+      if (btnImport) btnImport.onclick = function () {
+        var c = currentClass();
+        openRosterDialog(state.classId, c ? c.name : '本班', reload);
+      };
       var kw = $('#m-kw', host);
       // 搜索是筛选的一部分：真正重渲染列表（原来只弹「找到 N 人」却不改表格）。
       // 与作用域 / 关键词叠加，且回车后回第 1 页；不用 input 即时刷，避免打字被 reload 打断焦点。
@@ -2678,7 +2785,7 @@
             body: on ? '该成员将立即拥有后台登录资格。' : '取消后该成员将失去后台页签权限。'
           });
           if (!ok) return;
-          api('/api/members/' + b.dataset.mSuper, { method: 'POST', body: { __action: 'setSuper', isSuper: on } })
+          api('/api/members/' + b.dataset.mSuper + '/super', { method: 'POST', body: { isSuper: on } })
             .then(function (r) { toast(r.ok ? '已更新' : r.errMsg, r.ok ? 'ok' : 'err'); if (r.ok) reload(); });
         };
       });
@@ -2690,7 +2797,7 @@
             body: '有值日或请假历史的成员不可删除，系统会改为提示停用。'
           });
           if (!ok) return;
-          api('/api/members/' + b.dataset.mDel, { method: 'POST', body: { __action: 'remove' } })
+          api('/api/members/' + b.dataset.mDel + '/delete', { method: 'POST' })
             .then(function (r) {
               if (!r.ok) { toast(r.errMsg, 'err'); return; }
               if (r.data.blocked) { toast(r.data.suggestion, 'err'); return; }
@@ -2699,6 +2806,184 @@
         };
       });
     });
+  }
+
+  /* ---------------- 导入成员名单（2026-11-16） ----------------
+   * 文件以 base64 发给后端解析：xlsx 是二进制，前端解不了，也不值得为它引一个 xlsx 库；
+   * 后端的解析器与小程序是同一套规则（common/roster-parse.js），命令行里测过 15 种写法。
+   *
+   * 🔴 预览与提交**用同一份 payload**：输入一变就重置预览按钮，逼用户重新预览一次。
+   *    理由：commit 在后端会重新解析（不信前端回传的行），但用户界面必须先看到
+   *    「会新增几人 / 会改名几人 / 哪些冲突」，否则一次误导入能凭空造出一个班。
+   */
+  var ROSTER_OP = {
+    create: { text: '新增', cls: 'tag-ok' },
+    update: { text: '改名', cls: 'tag-warn' },
+    same: { text: '已存在', cls: 'tag-off' },
+    conflict: { text: '跨班冲突', cls: 'tag-super' },
+    dup: { text: '文件内重复', cls: 'tag-warn' },
+    need_no: { text: '缺学号', cls: 'tag-super' }
+  };
+
+  function openRosterDialog(classId, className, done) {
+    var payload = null;
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    dlg.innerHTML =
+      '<div class="dlg dlg-wide"><div class="dlg-hd">导入成员名单 · ' + esc(className) + '</div>' +
+      '<div class="dlg-bd">' +
+      '<div class="field"><span class="field-label">方式一：选择文件（.xlsx / .csv / .txt，上限 4MB）</span>' +
+      '<input type="file" id="r-file" accept=".xlsx,.xlsm,.csv,.txt"></div>' +
+      '<div class="field"><span class="field-label">方式二：直接粘贴（一行一个人，学号与姓名顺序不限）</span>' +
+      '<textarea id="r-text" rows="5" class="ta" placeholder="000000000301,张三&#10;李四 000000000302"></textarea></div>' +
+      '<div class="hint">智能识别：学号在前或在后、逗号 / 空格 / 制表符分隔、学号与姓名连写、Excel 多工作表都能识别；' +
+      '只有序号没有学号的名册，会按本班已有学号前缀自动补全。已存在的学号只更新姓名，不改分组与职位。</div>' +
+      '<div id="r-preview"></div>' +
+      '</div>' +
+      '<div class="dlg-ft">' +
+      '<button class="btn" id="r-cancel">取消</button>' +
+      '<button class="btn" id="r-check">预览</button>' +
+      '<button class="btn btn-primary" id="r-commit" disabled>确认导入</button>' +
+      '</div></div>';
+    document.body.appendChild(dlg);
+
+    function resetPreview() {
+      payload = null;
+      var btn = $('#r-commit', dlg);
+      if (btn) { btn.disabled = true; btn.textContent = '确认导入'; }
+      var box = $('#r-preview', dlg);
+      if (box) box.innerHTML = '';
+    }
+
+    /** 取当前输入：粘贴优先于文件（粘贴更即时，且文件框可能选过一次还留着） */
+    function collectPayload(cb) {
+      var text = $('#r-text', dlg).value.trim();
+      if (text) { cb({ text: text }); return; }
+      var fi = $('#r-file', dlg);
+      var f = fi && fi.files && fi.files[0];
+      if (!f) { cb(null); return; }
+      if (f.size > 4 * 1024 * 1024) { toast('文件超过 4MB，请拆分后导入', 'err'); cb(null); return; }
+      var fr = new FileReader();
+      fr.onload = function () { cb({ base64: String(fr.result), filename: f.name }); };
+      fr.onerror = function () { toast('读取文件失败，请重试', 'err'); cb(null); };
+      fr.readAsDataURL(f);
+    }
+
+    function renderPreviewInto(box, d) {
+      var s = d.summary || {};
+      var chips = [
+        ['新增', s.create || 0, 'tag-ok'],
+        ['改名', s.update || 0, 'tag-warn'],
+        ['已存在', s.same || 0, 'tag-off'],
+        ['跨班冲突', s.conflict || 0, 'tag-super'],
+        ['文件内重复', s.dup || 0, 'tag-warn'],
+        ['缺学号', s.need_no || 0, 'tag-super']
+      ].map(function (x) {
+        return '<span class="tag ' + x[2] + '">' + x[0] + ' ' + x[1] + '</span>';
+      }).join(' ');
+
+      var rows = (d.items || []).slice(0, 200).map(function (it) {
+        var op = ROSTER_OP[it.op] || { text: it.op, cls: 'tag-off' };
+        return '<tr><td class="td-no">' + esc(it.studentNo || '（待补）') + '</td>' +
+          '<td>' + esc(it.name) + '</td>' +
+          '<td><span class="tag ' + op.cls + '">' + op.text + '</span></td>' +
+          '<td class="muted-note">' + esc(it.reason || '') + '</td></tr>';
+      }).join('');
+
+      var failed = (d.failed || []).slice(0, 30).map(function (f) {
+        return '<li>第 ' + f.line + ' 行：' + esc(f.reason) + '　<code>' + esc(f.raw || '') + '</code></li>';
+      }).join('');
+
+      box.innerHTML =
+        '<div class="roster-sum">' + chips +
+        '<span class="muted-note">共识别 ' + (d.total || 0) + ' 人' +
+        (d.seqPrefix ? ' · 本班学号前缀 ' + esc(d.seqPrefix) : '') +
+        (d.sheets > 1 ? ' · 合并 ' + d.sheets + ' 个工作表' : '') + '</span></div>' +
+        (d.hint ? '<div class="hint">' + esc(d.hint) + '</div>' : '') +
+        (rows ? '<div class="tbl-wrap roster-tbl"><table class="tbl"><thead><tr>' +
+          '<th>学号</th><th>姓名</th><th>处理</th><th>说明</th></tr></thead><tbody>' +
+          rows + '</tbody></table></div>' +
+          ((d.items || []).length > 200 ? '<div class="muted-note">仅显示前 200 行，实际会处理全部 ' + d.items.length + ' 行</div>' : '')
+          : '') +
+        (failed ? '<div class="field"><span class="field-label">无法识别的行（不会被导入）</span><ul class="roster-fail">' + failed + '</ul></div>' : '');
+    }
+
+    $('#r-cancel', dlg).onclick = function () { dlg.remove(); };
+    $('#r-text', dlg).oninput = resetPreview;
+    $('#r-file', dlg).onchange = resetPreview;
+
+    $('#r-check', dlg).onclick = function () {
+      collectPayload(function (p) {
+        if (!p) { toast('请选择文件或粘贴名单', 'err'); return; }
+        payload = p;
+        var box = $('#r-preview', dlg);
+        var btn = $('#r-commit', dlg);
+        box.innerHTML = '<div class="loading">解析中…</div>';
+        btn.disabled = true;
+        api('/api/classes/' + classId + '/roster/preview', { method: 'POST', body: p }).then(function (r) {
+          if (!r.ok) {
+            box.innerHTML = errHtml(r);
+            toast(r.errMsg || '预览失败', 'err');
+            return;
+          }
+          renderPreviewInto(box, r.data);
+          var actionable = (r.data.summary.create || 0) + (r.data.summary.update || 0);
+          btn.disabled = !actionable;
+          btn.title = actionable ? '' : '没有需要写入的成员（全部已存在或存在冲突）';
+        });
+      });
+    };
+
+    $('#r-commit', dlg).onclick = function () {
+      if (!payload) { toast('请先点「预览」确认会导入哪些人', 'err'); return; }
+      var btn = $('#r-commit', dlg);
+      btn.disabled = true;
+      btn.textContent = '导入中…';
+      api('/api/classes/' + classId + '/roster', { method: 'POST', body: payload }).then(function (r) {
+        btn.textContent = '确认导入';
+        if (!r.ok) { btn.disabled = false; toast(r.errMsg || '导入失败', 'err'); return; }
+        dlg.remove();
+        toast('导入完成：新增 ' + r.data.created + ' 人、改名 ' + r.data.updated + ' 人' +
+          (r.data.skipped ? '、跳过 ' + r.data.skipped + ' 行' : ''), 'ok');
+        if (done) done();
+      });
+    };
+  }
+
+  /** 新增班级（2026-11-16）：只填班级名，其余后端自动生成，建完可在「配置」里改 */
+  function openCreateClassDialog(done) {
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    dlg.innerHTML =
+      '<div class="dlg"><div class="dlg-hd">新增班级</div><div class="dlg-bd">' +
+      fld('班级名称', '<input type="text" id="nc-name" maxlength="64" placeholder="如：示例专业2604班">') +
+      '<div class="hint">其余字段自动生成：学期第一周取<b>本周周一</b>、总周数 16、绑定入口开启、' +
+      '加入口令与邀请码自动分配（不重复）、大节时间套用现有班级配置。' +
+      '建好后可直接「导入名单」，或在「配置」里改任一字段。</div>' +
+      '</div><div class="dlg-ft">' +
+      '<button class="btn" id="nc-cancel">取消</button>' +
+      '<button class="btn btn-primary" id="nc-ok">创建</button>' +
+      '</div></div>';
+    document.body.appendChild(dlg);
+    $('#nc-cancel', dlg).onclick = function () { dlg.remove(); };
+    $('#nc-name', dlg).onkeydown = function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); $('#nc-ok', dlg).click(); }
+    };
+    $('#nc-ok', dlg).onclick = function () {
+      var name = $('#nc-name', dlg).value.trim();
+      if (!name) { toast('请填写班级名称', 'err'); return; }
+      var btn = $('#nc-ok', dlg);
+      btn.disabled = true; btn.textContent = '创建中…';
+      api('/api/classes', { method: 'POST', body: { name: name } }).then(function (r) {
+        btn.disabled = false; btn.textContent = '创建';
+        if (!r.ok) { toast(r.errMsg || '创建失败', 'err'); return; }
+        dlg.remove();
+        toast('已创建「' + name + '」，可继续导入名单', 'ok');
+        if (done) done(r.data);
+      });
+    };
+    var inp = $('#nc-name', dlg);
+    if (inp) inp.focus();
   }
 
   // 单独授予的班费权限标签（字面量与真源 FEE_PERM_KEYS 一致，由 check-fee-perms 看守）
@@ -2824,7 +3109,15 @@
     api('/api/classes').then(function (d) {
       if (!d.ok) { host.innerHTML = errHtml(d); return; }
       var rows = d.data;
-      host.innerHTML = '<div class="card">' +
+      var canCreate = canPerm('class');
+      var canImport = canPerm('members.import');
+      host.innerHTML =
+        '<div class="toolbar"><div class="toolbar-left"><span class="muted-note">' +
+        '新增班级只需填名称，学期 / 口令 / 邀请码 / 大节时间自动生成；建好可直接导入成员名单。</span></div>' +
+        '<div class="toolbar-right">' +
+        (canCreate ? '<button class="btn btn-primary" id="c-add">新增班级</button>' : '') +
+        '</div></div>' +
+        '<div class="card">' +
         '<div class="card-hd">全部班级（后台可跨班查看与配置）</div>' +
         '<table class="tbl"><thead><tr>' +
         '<th>班级</th><th>成员</th><th>主教室</th><th>学期起始</th><th>周数</th><th>口令</th><th>邀请码</th><th>绑定入口</th><th>状态</th><th>操作</th>' +
@@ -2840,13 +3133,52 @@
             '<td class="td-no">' + esc(c.inviteCode) + '</td>' +
             '<td>' + (c.bindOpen ? '<span class="tag tag-ok">开</span>' : '<span class="tag tag-off">关</span>') + '</td>' +
             '<td>' + classStatusTag(c, true) + '</td>' +
-            '<td><button class="link" data-c-edit="' + c.id + '">配置</button></td>' +
+            '<td class="td-ops">' +
+            '<button class="link" data-c-edit="' + c.id + '">配置</button>' +
+            (canImport ? '<button class="link" data-c-import="' + c.id + '" data-c-name="' + esc(c.name) + '">导入名单</button>' : '') +
+            /* 软删除：需要 class 权限；演示班是审核入口，不给删 */
+            (canCreate && !c.isDemo ? '<button class="link" data-c-del="' + c.id + '" data-c-name="' + esc(c.name) + '">删除</button>' : '') +
+            '</td>' +
             '</tr>';
         }).join('') + '</tbody></table></div>' +
         '<div class="card muted-note">敏感字段（学期、周数、绑定开关、大节时间）仅超级管理员可改 —— 后台使用者本就限定为超管。</div>';
       $$('[data-c-edit]', host).forEach(function (b) {
         b.onclick = function () { openClassDialog(Number(b.dataset.cEdit)); };
       });
+      $$('[data-c-import]', host).forEach(function (b) {
+        b.onclick = function () { openRosterDialog(Number(b.dataset.cImport), b.dataset.cName, reload); };
+      });
+      $$('[data-c-del]', host).forEach(function (b) {
+        b.onclick = function () { deleteClass(Number(b.dataset.cDel), b.dataset.cName); };
+      });
+      var add = $('#c-add', host);
+      if (add) add.onclick = function () {
+        openCreateClassDialog(function () { refreshClasses().then(reload); });
+      };
+    });
+  }
+
+  /**
+   * 软删除班级（2026-11-16）：只停用班级，不删任何业务数据。
+   * 为什么是 L3：班级一消失，小程序端所有成员都看不到入口、口令/邀请码立即失效，
+   * 影响面远大于删一条消费记录；恢复需要人工改库，所以必须勾选「我已知晓影响」。
+   */
+  async function deleteClass(id, name) {
+    var ok = await confirmDialog({
+      title: '确认删除班级「' + name + '」？',
+      okText: '确认删除',
+      level: 'L3',
+      body: '· 该班会从账号班级列表和顶部班级选择器消失，小程序端也不可见<br>' +
+        '· 成员、课表、值日、班费、通知等数据<b>全部保留</b>，不会清除<br>' +
+        '· 加入口令 / 邀请码立即失效；如需恢复需人工改数据库重新启用<br><br>' +
+        '如果只是暂时不想显示，确认后可以达到同样效果。'
+    });
+    if (!ok) return;
+    api('/api/classes/' + id + '/delete', { method: 'POST' }).then(function (res) {
+      if (!res.ok) { toast(res.errMsg || '删除失败', 'err'); return; }
+      toast('已删除班级', 'ok');
+      // 当前选中的班可能就是刚删的班：refreshClasses() 会兜底切到第一个可用班
+      refreshClasses().then(reload);
     });
   }
 
@@ -4167,20 +4499,14 @@
     $('#login-password').value = '';
   }
 
-  function showMain(me) {
-    state.user = me.user;
-    state.classes = me.classes || [];
-    // 权限必须在渲染任何页面之前写入：renderNav/go 都依赖它
-    state.perms = me.perms || [];
-    // 刷新后恢复上次选中的班级；该班已不在可选列表（换账号 / 班级停用）则回退第 1 个
-    var savedClass = Number(lsGet(LS_CLASS));
-    if (savedClass && state.classes.some(function (c) { return c.id === savedClass; })) {
-      state.classId = savedClass;
-    }
-    if (!state.classId || !currentClass()) {
-      state.classId = state.classes.length ? state.classes[0].id : null;
-    }
+  /**
+   * 顶部班级选择器重绘（2026-11-16 抽离）。
+   * 🔴 不能只在 showMain() 里画一次：建班 / 软删除班级都会改 state.classes，
+   *    如果不同步重绘，会出现「列表已经没了、下拉里还在」——点了就报班级不存在。
+   */
+  function renderClassPicker() {
     var sel = $('#class-picker');
+    if (!sel) return;
     sel.innerHTML = state.classes.map(function (c) {
       // 演示班标注「（演示）」而不是「（停用）」：库里的 is_active=0 是刻意为之，
       // 直接显示「（停用）」会让人以为这个班被误停、进而去「修」它（反而破坏演示隔离）。
@@ -4212,6 +4538,23 @@
         toast('已切换到「' + cls.name + '」');
       }
     };
+  }
+
+  function showMain(me) {
+    state.user = me.user;
+    state.classes = me.classes || [];
+    // 权限必须在渲染任何页面之前写入：renderNav/go 都依赖它
+    state.perms = me.perms || [];
+    // 刷新后恢复上次选中的班级；该班已不在可选列表（换账号 / 班级停用）则回退第 1 个
+    var savedClass = Number(lsGet(LS_CLASS));
+    if (savedClass && state.classes.some(function (c) { return c.id === savedClass; })) {
+      state.classId = savedClass;
+    }
+    if (!state.classId || !currentClass()) {
+      state.classId = state.classes.length ? state.classes[0].id : null;
+    }
+    // 顶部班级选择器：登录 / 刷新走这里；建班、删班后由 refreshClasses() 再调一次
+    renderClassPicker();
     // 顶栏显示「姓名 · 职位」：后台多人共用时，一眼能确认自己是谁、什么权限
     $('#who').textContent = me.user.memberName +
       (me.user.position ? ' · ' + me.user.position : '') +

@@ -226,9 +226,17 @@
             否则靠下的菜单项会掉到 tabBar 底下被遮住。
          ⚠️ 外层 .fab-menu 的 wx:if 守卫是 check-timetable-local 逐入口点名的
             （辅导员不得进调课/编辑入口），改结构时**别动这个守卫**。
-         ⚠️ fm* 是「按钮菜单」的独立状态，与「长按格子」那条弧形菜单（rm*）完全分开。 -->
+         ⚠️ fm* 是「按钮菜单」的独立状态，与「长按格子」那条弧形菜单（rm*）完全分开。
+         🔴 2026-11-16 真机复报：长按展开菜单后拖动，后面的课程表跟着上下滑。
+        根因 = 本页无 spring-scroll、是原生 page 滚动，touchmove 用 bind 会冒泡给 page；
+        且长按手势的 target 在 touchstart 就锁定为这个按钮，radial-menu 后渲染的
+        mask（catchtouchmove）拦不住**这次正在进行的手势**。
+    ⇒ touchmove 必须用 catch 在源头掐断冒泡；handler 内部照常转发给 radial-menu
+       做高亮/选中（catch 只拦冒泡，不影响本节点 handler 执行）。
+       微信官方文档明确 catchtouchmove 可阻止页面滚动，本页 page-meta 的 overflow:hidden
+       只覆盖 fmShow 之外的弹层，管不到这条手势，故必须在此根治。 -->
     <view data-pressable class="fab-menu-btn" hover-class="press-dim" hover-start-time="0" hover-stay-time="60"
-      bindtouchstart="onFabTouchStart" bindtouchmove="onFabTouchMove"
+      bindtouchstart="onFabTouchStart" catchtouchmove="onFabTouchMove"
       bindtouchend="onFabTouchEnd" bindtouchcancel="onFabTouchEnd"
       bindlongpress="onFabRadial">
       <app-icon name="grid" variant="brand" size="{{34}}" />

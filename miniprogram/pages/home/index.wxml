@@ -147,7 +147,10 @@
            🔴 2026-11-14 3D 触摸倾斜试点扩到首页全部 5 张 st-item 卡：包一层 tilt-card，仅叠深度+流光，
            本体不变、可整层摘掉归零。 -->
       <tilt-card wx:if="{{!isCounselor}}">
-      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
+      <!-- 🔴 2026-11-16：值日卡是**展示卡不是按钮**，用户要求去掉按住效果。
+           移除 hover-class/data-pressable（全局按压机制），保留 bindtap=onHero：
+           有值日时点击仍可打开值日详情（onHero 内部有 myDuty 判空，无值日时点击无副作用）。 -->
+      <view class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
         <block wx:if="{{myDuty}}">
           <view class="hero-top">
             <view class="hero-chip">{{periodText}}</view>

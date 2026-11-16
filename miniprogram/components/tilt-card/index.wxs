@@ -39,6 +39,19 @@ var PERSP = 600;          /* perspective(px)：800 太远，9° 的旋转在 340
 var GLARE_FADE = 0.86;    /* 流光每帧衰减 */
 var GLARE_ON = 0.62;      /* 按下时的流光亮度 */
 var VEL_HANDOFF = 0.35;   /* 手指角速度交接给弹簧的比例（避免甩太狠） */
+/* 🔴 2026-11-16 真机复报「手指滑动卡片时四周描边光一闪一闪」。
+ * 根因：首页卡片在 spring-scroll 里（.ss-content 每帧 translate3d+scaleY），
+ *   tilt 又在 .tg-wrap 上每帧写 perspective+rotateX/rotateY。手指**滚动页面**
+ *   划过卡片时，本组件把这些 move 也当「把玩」逐帧倾斜 ⇒ 两套逐帧 3D 变换
+ *   叠加，描边/柔光的边缘在亚像素重采样下反复抖动 = 肉眼可见的闪烁。
+ *   （11-15 只去掉了 .tg-glare 的呼吸动画，那条是「静止时闪」，这条是
+ *   「滑动时闪」，成因不同，两个修复都要保留。）
+ * 修法：按下记起点，move 时判「纵向位移超阈值且明显大于横向」⇒ 判定为
+ *   滚动手势，立即把 transform 归零并退出 active，把这段手势完全让给
+ *   spring-scroll；后续 move/onEnd 不再写任何 transform。
+ * 阈值 14px：大于 tap 的抖动幅度、又远小于一屏滚动量；横向把玩（dy 小）
+ *   不受影响，由 playStillTilts 探针守住。 */
+var SCROLL_SLOP = 14;
 
 function f2(v) { return Math.round(v * 100) / 100; }
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
@@ -178,6 +191,11 @@ module.exports = {
     state.hasLast = false;
     state.vx = 0;
     state.vy = 0;
+    /* 记按下视口坐标：滚动意图判定要的是「相对起点的位移」，不是卡片内相对位置 */
+    if (event.touches && event.touches.length) {
+      state.startX = num(event.touches[0].clientX, 0);
+      state.startY = num(event.touches[0].clientY, 0);
+    }
     applyPoint(event, inst, state);
   },
 
@@ -185,6 +203,20 @@ module.exports = {
     var inst = event.instance;
     var state = inst.getState();
     if (!state.active || !state.rect) return;
+    /* 滚动让位：纵向位移超阈值且明显大于横向 ⇒ 用户在滚页面，不是把玩卡片。
+       立即归零并退出，把这段手势整个让给 spring-scroll，杜绝两套 3D 变换叠加。
+       ⚠️ 归零只写一次 transform（不是逐帧），这一帧之后不再碰它 ⇒ 合成层稳定。 */
+    if (!event.touches || !event.touches.length) return;
+    var t = event.touches[0];
+    var dy = Math.abs(num(t.clientY, 0) - state.startY);
+    var dx = Math.abs(num(t.clientX, 0) - state.startX);
+    if (dy > SCROLL_SLOP && dy > dx * 1.2) {
+      state.active = false;
+      stopSpring(state);
+      state.rx = 0; state.ry = 0; state.light = 0; state.gx = 0; state.gy = 0;
+      paint(inst, state);
+      return;
+    }
     applyPoint(event, inst, state);
   },
 

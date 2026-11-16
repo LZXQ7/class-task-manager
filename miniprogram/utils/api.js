@@ -136,6 +136,14 @@ module.exports = {
   scheduleGetSlots: C('schedule', 'getSlots'),
   scheduleSetSlots: C('schedule', 'setSlots'),
 
+  /* ---------- 课前演讲排班（2026-11-16，独立游标/发布态） ---------- */
+  speechList: C('schedule', 'speechList'),
+  speechGenerate: C('schedule', 'speechGenerate'),
+  speechReassign: C('schedule', 'speechReassign'),
+  speechClear: C('schedule', 'speechClear'),
+  speechPublish: C('schedule', 'speechPublish'),
+  speechSetSettings: C('schedule', 'speechSetSettings'),
+
   /* ---------- 一键生成 · AI（DeepSeek） ---------- */
   scheduleAiPrompt: C('schedule', 'aiPrompt'),
   scheduleAiPlan: C('schedule', 'aiPlan'),

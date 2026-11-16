@@ -26,6 +26,7 @@ const modDuty = require('./lib/mod-duty');
 const modSwap = require('./lib/mod-swap');
 const modCountdown = require('./lib/mod-countdown');
 const modAccounts = require('./lib/mod-accounts');
+const modRoster = require('./lib/mod-roster');
 const modUsage = require('./lib/mod-usage');
 const modScheduleRules = require('./lib/mod-schedule-rules');
 const perms = require('./lib/perms');
@@ -114,7 +115,8 @@ app.get('/api/me', async (req, res) => {
   const all = await modClass.listClasses();
   // 演示班（class 104）只给超管看：辅导员进后台时，下拉里不该出现一个假的演示班，
   // 否则很容易点错——演示班的数据是虚构的，改了也没意义。
-  const classes = s.canSeeDemo ? all : all.filter((c) => !c.isDemo);
+  // 软删除的班（is_active=0 且非演示）一并过滤，两个入口共用同一函数避免漂移。
+  const classes = modClass.filterAdminVisible(all, !!s.canSeeDemo);
   res.json({
     ok: true,
     user: {
@@ -232,7 +234,7 @@ app.post('/api/admin-users/:id', requirePerm('accounts'), (req, res) => handle(r
 app.get('/api/classes', (req, res) => handle(res, async () => {
   const all = await modClass.listClasses();
   const s = req.session2;
-  return s && s.canSeeDemo ? all : all.filter((c) => !c.isDemo);
+  return modClass.filterAdminVisible(all, !!(s && s.canSeeDemo));
 }));
 
 app.get('/api/classes/:id', requirePerm('class'), (req, res) => handle(res, () => modClass.classDetail(Number(req.params.id))));
@@ -241,26 +243,53 @@ app.post('/api/classes/:id', requirePerm('class'), (req, res) => handle(res, () 
   modClass.updateClass(Number(req.params.id), req.body || {}, req.session2, req)
 ));
 
+/** 新建班级（2026-11-16）：只要求班级名，其余学期/周数/口令/邀请码/大节时间自动生成 */
+app.post('/api/classes', requirePerm('class'), (req, res) => handle(res, () =>
+  modClass.createClass(req.body || {}, req.session2, req)
+));
+
+/** 软删除班级（2026-11-16）：只置 is_active=0，成员/课表/值日/班费等数据全部保留 */
+app.post('/api/classes/:id/delete', requirePerm('class'), (req, res) => handle(res, () =>
+  modClass.softDeleteClass(Number(req.params.id), req.session2, req)
+));
+
+/* 名单导入（2026-11-16）：预览与写入都要求 members.import ——
+ * 它比「看名单」危险得多（一次能凭空造出一整个班的成员），所以不跟着 members 走。 */
+app.post('/api/classes/:id/roster/preview', requirePerm('members.import'), (req, res) => handle(res, () =>
+  modRoster.previewRoster(Object.assign({ classId: Number(req.params.id) }, req.body || {}))
+));
+
+app.post('/api/classes/:id/roster', requirePerm('members.import'), (req, res) => handle(res, () =>
+  modRoster.commitRoster(Object.assign({ classId: Number(req.params.id) }, req.body || {}), req.session2, req)
+));
+
 /* ---------------- 成员 ---------------- */
 
 app.get('/api/members', requireAnyPerm(['members', 'leave', 'fee', 'duty', 'swap', 'countdown']), (req, res) => handle(res, () => modMember.listMembers(req.query)));
 
 app.get('/api/members/:id', requireAnyPerm(['members', 'leave', 'duty', 'swap']), (req, res) => handle(res, () => modMember.memberDetail(Number(req.params.id))));
 
-app.post('/api/members', requirePerm('members'), (req, res) => handle(res, () =>
+/* 成员写操作按「操作级权限」分路由（2026-11-16）：
+ * 原来全部挂 `members` —— 能进成员页就等于能改资料、能设超管、能删人。
+ * 现在拆成 members.add / members.edit / members.super / members.remove，
+ * 前端按同一套 key 显隐按钮，后端这里才是真正的安全边界（前端过滤只是体验）。
+ * ⚠️ 顺序：`/:id/super`、`/:id/delete` 必须写在 `/:id` 之前，否则被 :id 吃掉。
+ */
+app.post('/api/members', requirePerm('members.add'), (req, res) => handle(res, () =>
   modMember.addMember(req.body || {}, req.session2, req)
 ));
 
-app.post('/api/members/:id', requirePerm('members'), (req, res) => handle(res, () => {
-  const body = req.body || {};
-  if (body.__action === 'setSuper') {
-    return modMember.setSuper(Number(req.params.id), !!body.isSuper, req.session2, req);
-  }
-  if (body.__action === 'remove') {
-    return modMember.removeMember(Number(req.params.id), req.session2, req);
-  }
-  return modMember.updateMember(Number(req.params.id), body, req.session2, req);
-}));
+app.post('/api/members/:id/super', requirePerm('members.super'), (req, res) => handle(res, () =>
+  modMember.setSuper(Number(req.params.id), !!(req.body || {}).isSuper, req.session2, req)
+));
+
+app.post('/api/members/:id/delete', requirePerm('members.remove'), (req, res) => handle(res, () =>
+  modMember.removeMember(Number(req.params.id), req.session2, req)
+));
+
+app.post('/api/members/:id', requirePerm('members.edit'), (req, res) => handle(res, () =>
+  modMember.updateMember(Number(req.params.id), req.body || {}, req.session2, req)
+));
 
 /* ---------------- 课程表 ---------------- */
 

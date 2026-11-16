@@ -571,6 +571,11 @@ Page({
     swipe.shift(this, delta, (w) => this._applyWeek(w));
   },
 
+  /** 课前演讲入口（2026-11-16）：跳转到独立演讲排班页 */
+  onGoSpeech() {
+    wx.navigateTo({ url: '/pages/speech/index' });
+  },
+
   /** 真正换周（动画 out 段结束后才被回调） */
   _applyWeek(wk) {
     this._weekManual = true;   // 用户主动切周：此后 onShow 不再强行把 week 拉回当前周

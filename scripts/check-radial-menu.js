@@ -194,11 +194,20 @@ function staticProbes() {
     // 只有长按触发：按钮上**不能**再有 bindtap
     longPressOnly: /bindlongpress="onFabRadial"/.test(TT_WXML_RAW) &&
       !/bindtap="onFabRadial"/.test(TT_WXML_RAW),
-    // 页面要转发触摸给组件（组件收不到 touchend）
-    touchForward: /bindtouchmove="onFabTouchMove"/.test(TT_WXML_RAW) &&
+    // 页面要转发触摸给组件（组件收不到 touchend）。touchmove 用 catch 只是
+    // 额外拦冒泡给 page，不影响 handler 内部转发给组件，故 bind|catch 都认。
+    touchForward: /(?:bind|catch)touchmove="onFabTouchMove"/.test(TT_WXML_RAW) &&
       /bindtouchend="onFabTouchEnd"/.test(TT_WXML_RAW) &&
       /selectComponent\('#rm-fab'\)/.test(TT_JS_RAW) &&
       /comp\.moveTo/.test(TT_JS_RAW) && /comp\.release/.test(TT_JS_RAW),
+    /* 🔴 2026-11-16 真机复报：长按 FAB 展开菜单后拖动，后面的课程表跟着上下滑。
+       根因：课表页无 spring-scroll 是原生 page 滚动，FAB 的 touchmove 用 bind
+       ⇒ 冒泡给 page。长按手势的 target 在 touchstart 就锁定为 FAB，radial-menu
+       后渲染的 mask（catchtouchmove）拦不住**这次正在进行的手势**。
+       修法：FAB 的 touchmove 必须 catch，杜绝冒泡；转发给组件由 handler 内部做，
+       与 catch 不冲突（catch 只拦冒泡，不影响自身 handler 执行）。 */
+    noScrollBubble: /catchtouchmove="onFabTouchMove"/.test(TT_WXML_RAW) &&
+      !/bindtouchmove="onFabTouchMove"/.test(TT_WXML_RAW),
     // 组件要有 id（页面 selectComponent 要按 id 找）
     compId: /id="rm-fab"/.test(TT_WXML_RAW),
     // 组件方法齐
@@ -287,6 +296,16 @@ const mutants = [
     }
   },
   {
+    /* 2026-11-16：touchmove 退回 bind（冒泡给原生 page 滚动）⇒ 长按拖动菜单
+       会带着课程表一起上下滑。noScrollBubble 必须翻红。 */
+    name: 'FAB touchmove 退回 bind（长按拖动穿透滚动课程表）',
+    scope: 'ttwxml', expect: 'noScrollBubble',
+    build: () => {
+      const m = mutate(TT_WXML_RAW, 'catchtouchmove="onFabTouchMove"', 'bindtouchmove="onFabTouchMove"');
+      return m === null ? null : { ttwxml: m };
+    }
+  },
+  {
     name: '默认态删掉 transition（又变回「生硬扩大 / 生硬缩回」）',
     scope: 'wxss', expect: 'hotSpring',
     build: () => {
@@ -326,9 +345,11 @@ function runWith(over) {
     /\.rm-btn\s*\{[^}]*width:\s*\d+rpx/.test(wxss) &&
     /\.rm-btn\s*\{[^}]*height:\s*\d+rpx/.test(wxss) && /var\(--brand/.test(wxss);
   res.longPressOnly = /bindlongpress="onFabRadial"/.test(ttwxml) && !/bindtap="onFabRadial"/.test(ttwxml);
-  res.touchForward = /bindtouchmove="onFabTouchMove"/.test(ttwxml) &&
+  res.touchForward = /(?:bind|catch)touchmove="onFabTouchMove"/.test(ttwxml) &&
     /bindtouchend="onFabTouchEnd"/.test(ttwxml) &&
     /selectComponent\('#rm-fab'\)/.test(ttjs) && /comp\.moveTo/.test(ttjs) && /comp\.release/.test(ttjs);
+  res.noScrollBubble = /catchtouchmove="onFabTouchMove"/.test(ttwxml) &&
+    !/bindtouchmove="onFabTouchMove"/.test(ttwxml);
   const sp = springProbes(wxss);
   res.hotSpring = sp.hotSpring;
   res.reducedNoBounce = sp.reducedNoBounce;

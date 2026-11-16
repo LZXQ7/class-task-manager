@@ -95,8 +95,12 @@ check(custom.indexOf('audit') < 0 && custom.indexOf('accounts') < 0,
   '显式 perms 里写 audit/accounts 会被过滤（防自我提权）');
 check(custom.indexOf('nonexistent') < 0, '非法页签名被过滤');
 
-check(P.resolve({ is_super: 1, position: '', role: 'ADMIN' }, '').length === P.ALL_VIEWS.length,
-  '超管恒为全量（不因 perms 字段被配窄）');
+check(P.ALL_VIEWS.every(function (k) { return P.resolve({ is_super: 1, position: '', role: 'ADMIN' }, '').indexOf(k) >= 0; }),
+  '超管恒含全部页签（不因 perms 字段被配窄）');
+// 超管还额外持有成员页的 6 个操作位（2026-11-16 细粒度权限）：
+// 页签数不再等于 resolve() 的长度，所以上面按「包含」判，这里单独钉操作位。
+check(P.MEMBER_OP_KEYS.every(function (k) { return P.resolve({ is_super: 1 }, '').indexOf(k) >= 0; }),
+  '超管恒含成员页全部操作位（members.view / add / edit / import / remove / super）');
 check(P.resolve({ is_super: 0, position: '', group_tag: 'A', role: 'MEMBER' }, '').length === 0,
   '普通成员没有任何后台权限（开通后台后降职会立刻失权）');
 check(P.resolve({ is_super: 0, position: '', group_tag: 'X', role: 'ADMIN' }, '').indexOf('leave') >= 0,
@@ -112,13 +116,15 @@ section('③ 后端每个接口都挂了权限（漏一个就是越权口）');
 
 const IDX_CODE = stripJs(IDX);
 const routeRe = /app\.(get|post|put|delete)\(\s*'(\/api\/[^']*)'\s*,\s*([^)]*)/g;
-/* 这三个不挂权限中间件，各自的理由必须写清楚，不许再加白名单：
- *   · /api/auth/login  —— 还没登录，挂权限就永远进不来
- *   · /api/auth/logout —— 登出必须人人可用
- *   · /api/me          —— 登录态自身，要返回 perms 给前端渲染导航
- *   · GET /api/classes —— 顶部班级选择器，**每个页签都要用**（含只读页签），
- *     挂 class 权限会让生活委员连班级都选不了；数据侧已按 canSeeDemo 过滤演示班。 */
-const NO_PERM_OK = ['/api/auth/login', '/api/auth/logout', '/api/me', '/api/classes'];
+/* 这几个不挂权限中间件，各自的理由必须写清楚，不许再加白名单：
+ *   · POST /api/auth/login  —— 还没登录，挂权限就永远进不来
+ *   · POST /api/auth/logout —— 登出必须人人可用
+ *   · GET  /api/me          —— 登录态自身，要返回 perms 给前端渲染导航
+ *   · GET  /api/classes     —— 顶部班级选择器，**每个页签都要用**（含只读页签），
+ *     挂 class 权限会让生活委员连班级都选不了；数据侧已按 canSeeDemo 过滤演示班。
+ *   ⚠️ 一律写成「方法 + 路径」：2026-11-16 新增 POST /api/classes（建班，**必须**要 class 权限）
+ *      之后，只按路径判会把这条新接口当成「多挂了权限」而误报。 */
+const NO_PERM_OK = ['POST /api/auth/login', 'POST /api/auth/logout', 'GET /api/me', 'GET /api/classes'];
 let routes = 0, unguarded = [];
 let m;
 while ((m = routeRe.exec(IDX_CODE))) {
@@ -127,8 +133,8 @@ while ((m = routeRe.exec(IDX_CODE))) {
   // m[3] 是路由声明的**第三个参数开头**：有权限中间件时必然以 requirePerm(/requireAnyPerm( 开头。
   // 不用「往后 N 个字符里搜」——那样会把下一个路由的中间件算成这一个的（假通过）。
   const guarded = /^requirePerm\(|^requireAnyPerm\(/.test(m[3].trim());
-  if (NO_PERM_OK.indexOf(p) >= 0) {
-    if (guarded) unguarded.push(p + '（该接口不应挂权限中间件）');
+  if (NO_PERM_OK.indexOf(method + ' ' + p) >= 0) {
+    if (guarded) unguarded.push(method + ' ' + p + '（该接口不应挂权限中间件）');
     continue;
   }
   routes++;
@@ -219,7 +225,7 @@ function scanUnguarded(code) {
   let mm;
   while ((mm = re.exec(code))) {
     const p = mm[2];
-    if (NO_PERM_OK.indexOf(p) >= 0) continue;
+    if (NO_PERM_OK.indexOf(mm[1].toUpperCase() + ' ' + p) >= 0) continue;
     // 与主判据同一套逻辑：只看第三个参数开头
     if (!/^requirePerm\(|^requireAnyPerm\(/.test(mm[3].trim())) bad.push(p);
   }

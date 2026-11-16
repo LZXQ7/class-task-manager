@@ -84,8 +84,10 @@ console.log('\n── ② 排班域（排班域路由必须声明 scheduleAuth�
 //    本门禁就是为此而存在的（2026-09-27 加 AI 设置 4 条时它确实翻红提醒了）。
 /* 21 → 23（2026-10-28）：新增排班岗位槽 getSlots / setSlots 两个排班域路由。
  * 二者都是 `auth: { scheduleAuth: true }`（超管 | 本班生活委员），
- * 与 setRules 同域 —— 谁能排班，谁就能定自己班的制度。 */
-eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 23, 'schedule 排班域路由数');
+ * 与 setRules 同域 —— 谁能排班，谁就能定自己班的制度。
+ * 23 → 28（2026-11-16）：新增课前演讲 5 个写路由（speechGenerate/Reassign/
+ * Clear/Publish/SetSettings），同属排班域；speechList 只读走 needBind 不计入。 */
+eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 28, 'schedule 排班域路由数');
 eq(count(ADJ, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 2, 'adjust 排班域路由数');
 
 /** 派发器接线（源码入 → 失败码出） */

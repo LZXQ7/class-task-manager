@@ -483,7 +483,13 @@ function stillPasses(file, tmpPath) {
     // 判据四（2026-10-25）：埋点事件中文映射必须全覆盖，删掉任一映射（如 homework_open）
     //   必须翻脸 —— 否则统计页会漏翻成英文 key（反复翻车的根因）
     const labelOk = eventLabelCoversMiniProgram(src);
-    return pickerOk && evOk && sortOk && labelOk;
+    // 判据五（2026-11-16）：班级软删除必须有入口 + L3 勾选确认 + 走新接口，
+    //    少任何一条都会让「删除」退化成无确认/无落库。
+    const delOk = /data-c-del/.test(src)
+      && /api\/classes\/' \+ id \+ '\/delete/.test(src)
+      && /level: 'L3',\s*\n\s*body: '· 该班会从账号班级列表/.test(src)
+      && /renderClassPicker\(\)/.test(src);
+    return pickerOk && evOk && sortOk && labelOk && delOk;
   }
   if (file === 'lib/mod-usage.js') {
     const src = fs.readFileSync(tmpPath, 'utf8');
@@ -494,6 +500,23 @@ function stillPasses(file, tmpPath) {
     return /GROUP BY e\.openid, e\.event, e\.ref/.test(src)
       && /COUNT\(\*\) AS cnt/.test(src)
       && /eventsBreakdown/.test(src);
+  }
+  if (file === 'lib/mod-class.js') {
+    const src = fs.readFileSync(tmpPath, 'utf8');
+    const at = src.indexOf('async function softDeleteClass');
+    const body = at >= 0 ? src.slice(at) : '';
+    return /async function softDeleteClass/.test(src)
+      && /UPDATE `class` SET is_active = \? WHERE id = \?/.test(body)
+      && /action: 'class\.delete'/.test(body)
+      && /演示班不可删除/.test(body)
+      && /function filterAdminVisible/.test(src)
+      && /Number\(c\.isActive\) !== 0 \|\| !!c\.isDemo/.test(src);
+  }
+  if (file === 'index.js') {
+    const src = fs.readFileSync(tmpPath, 'utf8');
+    // 两个入口必须都过滤，漏一个就会出现「列表没了下拉还在」或反过来
+    return (src.match(/modClass\.filterAdminVisible\(/g) || []).length >= 2
+      && /app\.post\('\/api\/classes\/:id\/delete', requirePerm\('class'\)/.test(src);
   }
   return true;
 }
@@ -925,6 +948,47 @@ mutateAndExpectFail(
   'public/app.js',
   "    homework_open: '打开作业',\n",
   "    /* 变异：漏翻 */\n"
+);
+
+/* ---------------- 班级软删除（2026-11-16 用户新增需求）---------------- */
+t('班级软删除：接口 / 列表与下拉共用过滤 / 前端 L3 确认齐全', () => {
+  const idx = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
+  const cls = fs.readFileSync(path.join(ROOT, 'lib', 'mod-class.js'), 'utf8');
+  const js = readPub('app.js');
+  assert.ok(/app\.post\('\/api\/classes\/:id\/delete', requirePerm\('class'\)/.test(idx),
+    '删除接口必须挂 class 权限');
+  assert.ok((idx.match(/modClass\.filterAdminVisible\(/g) || []).length >= 2,
+    '/api/me 与 /api/classes 必须共用可见班级过滤，漏一个就会列表/下拉漂移');
+  assert.ok(/async function softDeleteClass/.test(cls), '后端缺 softDeleteClass');
+  assert.ok(/UPDATE `class` SET is_active = \? WHERE id = \?/.test(cls),
+    '软删除必须按占位符写 is_active（字面量会让 mock 假绿）');
+  assert.ok(/演示班不可删除/.test(cls), '演示班是审核入口，必须拒绝删除');
+  assert.ok(/action: 'class\.delete'/.test(cls), '删除必须留审计');
+  assert.ok(/data-c-del/.test(js) && /api\/classes\/' \+ id \+ '\/delete/.test(js),
+    '前端缺删除入口或未调用删除接口');
+  assert.ok(/level: 'L3'/.test(js) && /该班会从账号班级列表/.test(js),
+    '删除必须 L3 勾选确认，后果文案要说清数据保留');
+  assert.ok(/renderClassPicker\(\)/.test(js),
+    '建班/删班后必须重绘顶部选择器，否则会停在已删除班级上');
+});
+
+mutateAndExpectFail(
+  '软删除漏掉两个入口中的一个（列表没了但下拉还在）',
+  'index.js',
+  'return modClass.filterAdminVisible(all, !!(s && s.canSeeDemo));',
+  'return s && s.canSeeDemo ? all : all.filter((c) => !c.isDemo);'
+);
+mutateAndExpectFail(
+  '软删除 SQL 写成字面量 0（mock 空转 / 测试假绿）',
+  'lib/mod-class.js',
+  'UPDATE `class` SET is_active = ? WHERE id = ?',
+  'UPDATE `class` SET is_active = 0 WHERE id = ?'
+);
+mutateAndExpectFail(
+  '删除弹层降级成 L2（漏掉勾选确认）',
+  'public/app.js',
+  "      level: 'L3',\n      body: '· 该班会从账号班级列表",
+  "      level: 'L2',\n      body: '· 该班会从账号班级列表"
 );
 
 /* ================= 汇总 ================= */

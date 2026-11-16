@@ -1,17 +1,15 @@
-/* components/tilt-card/index.wxss（2026-11-14 试点 + #4 描边背光）
+/* components/tilt-card/index.wxss（2026-11-14 试点 + 2026-11-16 去光）
  * ============================================================
- * 结构（两次真机翻车后收敛到极简）：
+ * 结构（三次真机反馈后收敛到极简）：
  *   .tg-wrap     3D 变换目标（无圆角、无 overflow ⇒ 变换不会把子节点圆角裁成方角）
- *     .tg-surface 卡片容器：只负责「圆角 + 描边 outline」，**不加 overflow:hidden**
- *       .tg-glare 常驻呼吸柔光（absolute inset:0，pointer-events:none）
+ *     .tg-surface  卡片容器：只负责圆角，本体材质由 slot 里的 .card 承担
  *
- * ⚠️ 为什么不用「放大纯色片 + overflow 裁剪」做描边：
- *    真机上裁不干净 —— 那层 50% 灰从卡片下方漏出一条灰色横板（用户实锤「阴影全部出错」），
- *    而且 overflow:hidden 顺手把卡片自带的 --glass-shadow 投影也裁掉了（卡片发平）。
- *    outline 跟随 border-radius、不占布局、不裁投影 ⇒ 三样都不出问题。
- * ⚠️ 描边是**静态纯色**（用户口径：「光不要彩色，要简单平淡的。纯色」），不转圈。
- * ⚠️ 所有多行值一律写成**单行**：WXSS 里以 `,` 续行会被 check-wxss 的
- *    「漏分号」启发式误判（app.wxss / aura-card / nav-bar 都栽过）。
+ * 🔴 2026-11-16 用户真机复报「滑动卡片时边缘描边光还是闪」，明确要求「去掉光吧」。
+ *    11-15 去掉了呼吸动画、11-16 加了滚动让位，都没根治 ⇒ 不再调手势，直接**移除光源**：
+ *      · `.tg-surface` 的 outline 描边光 —— 删除
+ *      · `.tg-glare` 径向柔光（节点 + 样式）—— 删除
+ *    3D 倾斜手感与 WXS 滚动让位逻辑保留（用户 grill 确认「只去光效、保留倾斜」）。
+ * ⚠️ 多行值一律写成单行：WXSS 里以 `,` 续行会被 check-wxss 的「漏分号」误判。
  */
 .tg-wrap {
   position: relative;
@@ -26,43 +24,10 @@
 .tg-surface {
   position: relative;
   border-radius: var(--r-md, 24rpx);
-  /* #4 纯色描边：中性灰细圈（用户口径：不要彩色、简单平淡）。
-     outline 跟着 border-radius 走，且**不占布局**（不把卡片挤大）。 */
-  outline: 2.5rpx solid rgba(154, 163, 178, 0.5);
-  outline-offset: 0;
-  /* 🔴 2026-11-15：深色描边改走令牌 —— 组件内 `.t-dark .tg-surface` 是跨组件边界的
-     后代选择器，**永远不命中**（.t-dark 在页面根节点）。令牌会继承进组件。 */
-  outline-color: var(--tilt-ring, rgba(154, 163, 178, 0.5));
-}
-
-/* ---------- 径向柔光（静态，不呼吸）----------
-   🔴 2026-11-15 用户实机反馈：「按住卡片滑动时，卡片周围的白色光是闪烁的、闪来闪去，
-      首页几个卡片边缘都在闪」。
-   根因：这张卡是**每张 st-item 都包一层**的（首页 5 张），原先 `.tg-glare` 上挂着
-      `animation: tgGlareBreath 4.2s infinite` —— 5 个独立合成层同时逐帧改 opacity，
-      再加上 `.tg-wrap` 的 `will-change: transform` + 3D 变换，触摸倾斜时合成层被反复
-      重建/提升 ⇒ 白光的亮度抖动肉眼可见（=「闪来闪去」）。
-   ⇒ 现在只保留**静态**柔光：没有动画就没有抖动，倾斜时仍能看出卡面有层次。
-   ⚠️ 必须写 `border-radius: inherit`：这一层是 inset:0 的矩形，而 `.tg-surface` 有圆角
-      但**刻意没有 overflow:hidden**（会裁掉卡片投影）—— 不继承圆角的话，
-      白光的四个直角会从卡片的圆角外侧漏出来，那就是「卡片周围一圈白光」。
-   ⚠️ 别把 animation 加回来；reduced-motion 段里也没有它了。 */
-.tg-glare {
-  position: absolute;
-  left: 0; right: 0; top: 0; bottom: 0;
-  z-index: 9;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: .12;
-  background: radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.46) 0%, rgba(255, 255, 255, 0.16) 36%, transparent 66%);
 }
 
 /* 🔴 无障碍：reduced-motion 用 !important 压过 WXS 写的内联 transform
- *    （内联非 important 的优先级低于作者 !important），视觉上完全静止、保留材质。 */
+ *    （内联非 important 的优先级低于作者 !important），视觉上完全静止。 */
 @media (prefers-reduced-motion: reduce) {
   .tg-wrap { transform: none !important; will-change: auto; }
-  .tg-glare { opacity: 0 !important; }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .tg-glare { display: none; }
 }

@@ -40,7 +40,15 @@ const ROOT = path.resolve(__dirname, '..');
 const SRC_CSS = path.join(ROOT, 'cloudfunctions/admin-web/public/admin.css');
 const SRC_GATE = path.join(ROOT, 'scripts/check-admin-css-tokens.js');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cssgate-'));
+/* 临时目录建在**工作区内**（.wb_tmp/，已 gitignore），不用 os.tmpdir()。
+   🔴 2026-11-16 实测：原来用 os.tmpdir()（= %TEMP%），单跑必绿，但经
+   scripts/run_all_gates.sh 连续 spawn 大量 node 后 mkdtempSync 会拿不到可写目录
+   （沙箱对临时目录的授权与普通调用不同）⇒ 本门禁**稳定报红**，
+   13 次嵌套调用全废、A 类全「未跑成」，把真实回归淹掉。
+   与项目里「Git Bash 的 /tmp 不可写，临时目录建在工作区」是同一条经验。 */
+const tmpRoot = path.join(ROOT, '.wb_tmp');
+fs.mkdirSync(tmpRoot, { recursive: true });
+const tmp = fs.mkdtempSync(path.join(tmpRoot, 'cssgate-'));
 const tmpPublic = path.join(tmp, 'cloudfunctions/admin-web/public');
 const tmpScripts = path.join(tmp, 'scripts');
 fs.mkdirSync(tmpPublic, { recursive: true });

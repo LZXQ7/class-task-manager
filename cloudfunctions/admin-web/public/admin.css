@@ -732,11 +732,17 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
    ⚠️ .view 是**滚动容器**（overflow:auto），给 max-width + margin:auto 居中后，
       滚动条会跑到容器右边（不再是浏览器最右缘）——这是「滚动容器居中」的固有副作用。
       规范已判定：接受（换来超宽屏下 1200~1600px 的舒适行长）。
-   .view 自身的 padding 不动（左右 24px 是既有对齐口径）。 */
+   .view 自身的 padding 不动（左右 24px 是既有对齐口径）。
+   🔴 width:100% **必须保留**（2026-11-16 用户反馈「内容太居中、边距太大」）：
+      .view 是 .content（column flex）的 flex item；只写 flex:1 + max-width + margin-inline:auto
+      而**不写宽度**时，auto 外边距会让它按 **fit-content（内容宽度）** 定型再居中，
+      表格/统计卡有多少内容就只占多宽，左右被空出一大片（实测 1326px 窗口下内容仅 ~570px）。
+      显式 width:100% 让它先铺满父容器，再由 max-width 封顶到 1440px 居中。 */
 .view {
   padding: 20px 24px 40px;
   overflow: auto;
   flex: 1;
+  width: 100%;
   max-width: 1440px;
   margin-inline: auto;
 }
@@ -2082,6 +2088,65 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 
 /* 开通后台 · 搜索选人弹层（2026-11-15：替代底部大表格） */
 .dlg-pick { width: 560px; max-width: 96vw; }
+
+/* ── 成员页细粒度权限（2026-11-16）─────────────────────────
+   父项「成员」是**可勾的普通复选框**（.perm-parent），勾上才展开下面 6 个操作位。
+   取消勾选时整块收起（[hidden]），pickedPerms 也就带不出隐藏的勾。
+   grid-column: 1/-1 必须写：.perm-grid 是 auto-fit 多列，不跨行会把这个分组塞进一格，
+   6 个复选框被挤成 150px 宽的一条，看不清勾了什么。 */
+.perm-parent {
+  grid-column: 1 / -1;
+  font-weight: 600;
+}
+.perm-group {
+  grid-column: 1 / -1;
+  margin: 8px 0 2px;
+  padding: 8px 10px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.perm-group[hidden] { display: none; }
+.perm-group-hd {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.perm-sub {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0 12px;
+  margin-top: 4px;
+}
+
+/* ── 名单导入预览（2026-11-16）──────────────────────────── */
+.dlg-wide { width: 760px; max-width: 96vw; }
+.roster-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+}
+.roster-tbl {
+  max-height: 40vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.roster-tbl .tbl { min-width: 0; }
+.roster-fail {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+.roster-fail code { font-size: 12px; color: var(--text-3); }
 .pick-filter { margin: 12px 0 0; }
 .pick-list {
   margin-top: 12px;

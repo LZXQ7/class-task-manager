@@ -12,7 +12,11 @@
           靠裁剪裁成「只沿边框一圈」）—— 真机上 **裁不干净**：那层灰从卡片下方漏出一条
           灰色横板（用户实锤「阴影全部出错」），而且 overflow:hidden 还把卡片自带的
           --glass-shadow 投影一起裁掉了（卡片看着发平）。
-          现在：描边改用 **outline**（跟随圆角、不占布局、不裁投影），纯色片整个删掉。 -->
+          现在：描边改用 **outline**（跟随圆角、不占布局、不裁投影），纯色片整个删掉。
+
+     🔴 2026-11-16 用户真机仍报滑动闪光，要求「去掉光吧」→ 光源整体删除：
+       .tg-surface 的 outline 描边 + .tg-glare 径向柔光**节点一并删除**；
+       只剩 .tg-wrap(3D 倾斜) > .tg-surface(圆角) > slot，倾斜手感保留。 -->
 <wxs module="tilt" src="./index.wxs"></wxs>
 <view class="tg-wrap {{enabled ? '' : 'tg-off'}}"
       data-max="{{maxTilt}}"
@@ -22,7 +26,6 @@
       bindtouchend="{{tilt.onEnd}}"
       bindtouchcancel="{{tilt.onEnd}}">
   <view class="tg-surface">
-    <view class="tg-glare"></view>
     <slot></slot>
   </view>
 </view>

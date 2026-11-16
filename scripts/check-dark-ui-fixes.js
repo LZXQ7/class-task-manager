@@ -12,10 +12,10 @@
  * ② **下拉刷新的小圆环** —— spring-scroll 的 `.ss-indicator / .ss-ring`，深色下是一个
  *    很扎眼的蓝白圆点，用户要求「去掉」。刷新行为保留，只是不再画指示物。
  *
- * ③ **卡片白光闪烁** —— tilt-card 的 `.tg-glare` 原来挂 `animation: tgGlareBreath 4.2s infinite`，
- *    首页 5 张卡各一个合成层同时逐帧改 opacity；触摸倾斜时合成层反复重建 ⇒ 白光抖动。
- *    ⇒ 只允许**静态**柔光（无 animation），且必须 `border-radius: inherit`
- *      （否则白光的直角从卡片圆角外侧漏出来，就是「卡片周围一圈白光」）。
+ * ③ **卡片白光闪烁** —— 2026-11-15 先去掉呼吸动画（静态化）仍闪；
+ *    2026-11-16 用户真机复报后明确「去掉光吧」⇒ 直接**移除光源**：
+ *    `.tg-glare` 节点 + radial-gradient + outline 描边全部删除，3D 倾斜保留。
+ *    本门禁反向守「光源不得回潮」（节点/渐变/动画/关键帧都不许再出现）。
  *
  * ④ **圆形浮层按钮统一玻璃** —— 课表「＋」与弧形菜单四个圆形项共用
  *    底栏那套 `--tabbar-bg / -edge / -shadow / -highlight` 令牌（用户 1.0.8.43 口径：
@@ -88,9 +88,9 @@ function evalAll(s) {
     // ② 下拉圆环已删
     noRingNode: !/ss-indicator/.test(ssW) && !/ss-ring/.test(ssW),
     noRingCss: !/\.ss-ring/.test(ssC) && !/ss-spin/.test(ssC) && !/\.ss-indicator/.test(ssC),
-    // ③ 卡片白光静态
-    glareStatic: glare.length > 0 && !/animation\s*:/.test(glare),
-    glareRounded: /border-radius\s*:\s*inherit/.test(glare),
+    // ③ 卡片光源整体移除（2026-11-16 用户「去掉光吧」）
+    noGlareRule: glare.length === 0 && !/\.tg-glare/.test(stripCss(s.tiltWxss)),
+    noRadialGlow: !/radial-gradient/.test(stripCss(s.tiltWxss)) && !/outline\s*:/.test(stripCss(s.tiltWxss)),
     noGlareKeyframes: !/tgGlareBreath/.test(stripCss(s.tiltWxss)),
     // ④ 圆形浮层按钮 = 与底栏同一套玻璃（1.0.8.43 用户口径）
     /* ⚠️ 必须锚到 `background:` 上：`--tabbar-bg` 与 `--tabbar-edge` / `--tabbar-shadow` 同前缀，
@@ -122,10 +122,10 @@ console.log('\n── ② 下拉刷新的小圆环已整段删除');
 check(S.noRingNode, 'spring-scroll wxml 没有 .ss-indicator / .ss-ring 节点');
 check(S.noRingCss, 'spring-scroll wxss 没有 .ss-indicator / .ss-ring / ss-spin 关键帧');
 
-console.log('\n── ③ 卡片柔光改成静态（闪烁根因是无限 opacity 动画）');
-check(S.glareStatic, '.tg-glare 不带 animation');
-check(S.glareRounded, '.tg-glare 写了 border-radius: inherit（否则直角从圆角外漏出白光）');
-check(S.noGlareKeyframes, 'tgGlareBreath 关键帧已删除');
+console.log('\n── ③ 卡片光源整体移除（真机仍闪 → 用户要求去掉光）');
+check(S.noGlareRule, '.tg-glare 规则与节点已删除');
+check(S.noRadialGlow, 'radial-gradient 柔光与 outline 描边已删除');
+check(S.noGlareKeyframes, 'tgGlareBreath 关键帧不存在');
 
 console.log('\n── ④ 圆形浮层按钮 = 与底栏同一套玻璃');
 check(S.rmGlass, '弧形菜单 .rm-btn 用 var(--tabbar-bg)（不再是实心渐变 / 品牌玻璃）');
@@ -147,9 +147,12 @@ const MUT = [
     from: ' || accSheetShow || demoConfirmShow || bindConfirmShow', to: '' },
   { name: '把下拉刷新圆环加回来（wxml）', file: 'ssWxml', probe: 'noRingNode',
     from: 'class="ss-content"', to: 'class="ss-ring"' },
-  { name: '给柔光加回呼吸动画（白光又开始闪）', file: 'tiltWxss', probe: 'glareStatic',
-    from: '  border-radius: inherit;\n  pointer-events: none;',
-    to: '  border-radius: inherit;\n  pointer-events: none;\n  animation: tgGlareBreath 4.2s ease-in-out infinite;' },
+  { name: '柔光规则回潮（白光又开始闪）', file: 'tiltWxss', probe: 'noGlareRule',
+    from: '.tg-surface {\n  position: relative;\n  border-radius: var(--r-md, 24rpx);\n}',
+    to: '.tg-surface {\n  position: relative;\n  border-radius: var(--r-md, 24rpx);\n}\n.tg-glare { background: radial-gradient(circle, #fff, transparent); }' },
+  { name: '描边/渐变回潮', file: 'tiltWxss', probe: 'noRadialGlow',
+    from: '  border-radius: var(--r-md, 24rpx);\n}',
+    to: '  border-radius: var(--r-md, 24rpx);\n  outline: 2rpx solid #fff;\n}' },
   { name: '弧形菜单按钮改回实心蓝渐变', file: 'rmWxss', probe: 'rmGlass',
     from: '  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));',
     to: '  background: linear-gradient(140deg, #5A97FF 0%, #3370FF 100%);' },

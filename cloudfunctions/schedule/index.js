@@ -19,6 +19,9 @@ const {
   bumpCursorForManual, resolveNeed, loadSlots, slotOf, fillByRotation,
   parseSubMap, parseStartSeqs, parseAvoidPairs, applyStartFrom, validatePlan
 } = require('./common/schedule-core');
+/* 课前演讲排班内核（2026-11-16）：唯一实现在 common/speech-core.js，
+ * 与 check-speech-schedule.js 门禁共用同一份源码。游标独立于值日体系。 */
+const speechCore = require('./common/speech-core');
 /* 测试账号唯一真源（见 common/test-account.js）。铁律：所有人员列表一律不展示，
  * 唯一例外是「超管手动排班」三处（名册 / 手动加人 / 换人）—— 需求④：把测试账号
  * 手动排进课次后登进去换班，验证主账号能否收到换班通知。
@@ -2543,6 +2546,269 @@ const routes = {
       if (wk < week.currentWeek(cfg)) throw new BizError(40008, '本周已开始，不能撤回');
       await pool.query("UPDATE schedule_publish SET status = 'DRAFT', published_at = NULL WHERE class_id = ? AND week = ?", [classId, wk]);
       return {};
+    }
+  },
+
+  /* ============================================================
+   * 课前演讲排班（2026-11-16）—— 独立表 / 独立游标 / 独立发布态，与值日体系完全隔离。
+   *   演讲时段固定：AM=上午第1节前 8:00-8:10，PM=下午第3节前 14:30-14:40。
+   *   场次判定：当天课表有第1节/第3节集体课才排（选修课不进 session，天然排除）。
+   *   选人口径与轮转内核见 common/speech-core.js（门禁 check-speech-schedule.js 真跑同源码）。
+   * ============================================================ */
+
+  /** 读取设置（管理员配置页用）+ 本周演讲表（学生/管理员共用，草稿态对非管理员隐藏） */
+  speechList: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const wk = Number(payload.week);
+      if (!wk) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = await guard.resolveClassId(pool, ctx, payload);
+      const admin = guard.isAdmin(ctx.member);
+      const [pubRows] = await pool.query(
+        "SELECT status FROM speech_publish WHERE class_id = ? AND week = ?", [classId, wk]
+      );
+      const published = !!(pubRows[0] && pubRows[0].status === 'PUBLISHED');
+        const [settingRows] = await pool.query(
+        'SELECT need_n, start_weekday, start_slot, start_seq, init_done FROM speech_setting WHERE class_id = ?', [classId]
+      );
+      const setting = settingRows[0] || { need_n: 2, start_weekday: null, start_slot: 'AM', start_seq: null, init_done: 0 };
+      /* 管理员换人用的候选名册（只在有排班权时回，学生看不到多余数据） */
+      let roster = [];
+      if (guard.isSuper(ctx.member) || guard.isDutyAdmin(ctx.member)) {
+        const [rm] = await pool.query(
+          "SELECT id, name, student_no FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' AND duty_off = 0 ORDER BY student_no",
+          [classId]
+        );
+        roster = rm.map(m => ({ id: m.id, name: m.name, studentNo: m.student_no, seq: week.seqOf(m.student_no) }));
+      }
+      if (!admin && !published) {
+        return { status: 'DRAFT', unpublished: true, days: [], setting, canSchedule: false, roster: [] };
+      }
+      const [rows] = await pool.query(
+        `SELECT sp.id, sp.class_date, sp.slot, sp.member_id, sp.scope, sp.source, sp.status,
+                m.name, m.student_no
+           FROM speech sp LEFT JOIN member m ON m.id = sp.member_id
+          WHERE sp.class_id = ? AND sp.week = ? AND sp.status <> 'SWAPPED_OUT'
+          ORDER BY sp.class_date, sp.slot, m.student_no`, [classId, wk]
+      );
+      const dayMap = {};
+      rows.forEach(r => {
+        const date = String(r.class_date).slice(0, 10);
+        if (!dayMap[date]) dayMap[date] = { date, weekday: week.weekdayOf(date), am: [], pm: [] };
+        const item = {
+          id: r.id, memberId: r.member_id, name: r.name, studentNo: r.student_no,
+          scope: r.scope, source: r.source, time: r.slot === 'AM' ? '08:00-08:10' : '14:30-14:40'
+        };
+        dayMap[date][r.slot === 'AM' ? 'am' : 'pm'].push(item);
+      });
+      const days = Object.keys(dayMap).sort().map(k => dayMap[k]);
+      return {
+        status: published ? 'PUBLISHED' : 'DRAFT',
+        unpublished: false,
+        days,
+        setting,
+        canSchedule: guard.isSuper(ctx.member) || guard.isDutyAdmin(ctx.member),
+        roster
+      };
+    }
+  },
+
+  /** 生成一周演讲（按序号轮转，消费一次起始设置；重排同周幂等） */
+  speechGenerate: {
+    auth: { scheduleAuth: true },
+    handler: async (payload, ctx) => {
+      const wk = Number(payload.week);
+      if (!wk) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const cfg = await week.getConfig(pool, classId);
+      const cal = await week.loadCalendar(pool);
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        /* ① 取本周集体课次（只认 COURSE；CLEAN 不是课，选修不进表）。
+         *    调课：本周 OFF 的课不算、MOVE 的课用调课后的星期/节次。 */
+        const [sessionRows] = await conn.query(
+          'SELECT id, day_of_week, period, group_scope, weeks, week_rule, kind FROM session WHERE class_id = ? AND kind = ?',
+          [classId, 'COURSE']
+        );
+        const shifts = await week.loadSessionShifts(conn);
+        const sessions = [];
+        sessionRows.forEach(s => {
+          const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
+          if (!slot) return;
+          const classDate = week.classDateOf(cfg, wk, slot.day, cal);
+          if (!classDate) return;
+          sessions.push(Object.assign({}, s, { day_of_week: slot.day, period: slot.period, class_date: classDate }));
+        });
+        if (!sessions.length) throw new BizError(41002, '本班尚未录入课程表，无法生成演讲安排');
+
+        /* ② 取名册（排除教职工/测试/不值日），按序号升序 */
+        const [memRows] = await conn.query(
+          "SELECT id, student_no, group_tag FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' AND duty_off = 0",
+          [classId]
+        );
+        const roster = memRows.map(m => ({ id: m.id, seq: week.seqOf(m.student_no), group: m.group_tag }))
+          .filter(m => m.seq > 0).sort((a, b) => a.seq - b.seq || a.id - b.id);
+        if (!roster.length) throw new BizError(41003, '本班没有可排演讲的同学');
+
+        /* ③ 读设置与游标 */
+        const [setRows] = await conn.query('SELECT * FROM speech_setting WHERE class_id = ?', [classId]);
+        const setting = setRows[0] || { need_n: 2, start_weekday: null, start_slot: 'AM', start_seq: null, init_done: 0 };
+        const [curRows] = await conn.query('SELECT grp, cursor_val FROM speech_cursor WHERE class_id = ?', [classId]);
+        const cursors = { A: 0, B: 0 };
+        curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') cursors[c.grp] = Number(c.cursor_val) || 0; });
+
+        /* ④ 筛场次骨架 + 轮转选人 */
+        const slots = speechCore.buildSlots(sessions, wk, setting, week);
+        if (!slots.length) throw new BizError(41004, '本周第1节/第3节没有集体课，无需排演讲');
+        const plan = speechCore.assign(slots, roster, cursors, setting);
+
+        /* ⑤ 清掉本周 AUTO 行（保留 MANUAL 换人），重写 */
+        await conn.query("DELETE FROM speech WHERE class_id = ? AND week = ? AND source = 'AUTO'", [classId, wk]);
+        for (const r of plan.rows) {
+          await conn.query(
+            `INSERT IGNORE INTO speech (class_id, week, class_date, slot, member_id, scope, source, status)
+             VALUES (?, ?, ?, ?, ?, ?, 'AUTO', 'PENDING')`,
+            [classId, wk, r.date, r.slot, r.memberId, r.scope]
+          );
+        }
+        /* ⑥ 回写游标（A/B 各自独立）；首次生成把 init_done 置 1，起始设置消费掉 */
+        for (const g of ['A', 'B']) {
+          await conn.query(
+            `INSERT INTO speech_cursor (class_id, grp, cursor_val) VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE cursor_val = VALUES(cursor_val)`,
+            [classId, g, plan.cursors[g]]
+          );
+        }
+        await conn.query(
+          `INSERT INTO speech_setting (class_id, need_n, start_weekday, start_slot, start_seq, init_done)
+           VALUES (?, ?, ?, ?, ?, 1)
+           ON DUPLICATE KEY UPDATE init_done = 1`,
+          [classId, setting.need_n, setting.start_weekday, setting.start_slot, setting.start_seq]
+        );
+        /* ⑦ 重新生成 → 本周回到草稿（要重新发布才对学生可见） */
+        await conn.query(
+          `INSERT INTO speech_publish (class_id, week, status) VALUES (?, ?, 'DRAFT')
+           ON DUPLICATE KEY UPDATE status = 'DRAFT', published_at = NULL, published_by = NULL`,
+          [classId, wk]
+        );
+        await conn.commit();
+        console.log(JSON.stringify({ fn: 'schedule', action: 'speechGenerate', member: ctx.member.id, classId, week: wk, sessions: slots.length, rows: plan.rows.length, short: plan.short }));
+        return { created: plan.rows.length, slots: slots.length, short: plan.short };
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
+      }
+    }
+  },
+
+  /** 单场换人：完全自由（可从全班任选，无视序号/是否已排），不动游标 */
+  speechReassign: {
+    auth: { scheduleAuth: true },
+    handler: async (payload, ctx) => {
+      const id = Number(payload.id);
+      const memberId = Number(payload.memberId);
+      if (!id || !memberId) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        const [old] = await conn.query('SELECT * FROM speech WHERE id = ? AND class_id = ?', [id, classId]);
+        if (!old.length) throw new BizError(41005, '演讲安排不存在');
+        const o = old[0];
+        /* 目标人必须在本班可演讲名册内（排除教职工/测试/不值日） */
+        const [m] = await conn.query(
+          "SELECT id, group_tag FROM member WHERE id = ? AND class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' AND duty_off = 0",
+          [memberId, classId]
+        );
+        if (!m.length) throw new BizError(41006, '所选同学不可排演讲');
+        /* 原行标记换出（唯一键冲突：先把原行状态改掉，再插 MANUAL 行） */
+        await conn.query("UPDATE speech SET status = 'SWAPPED_OUT' WHERE id = ?", [id]);
+        await conn.query(
+          `INSERT INTO speech (class_id, week, class_date, slot, member_id, scope, source, status)
+           VALUES (?, ?, ?, ?, ?, ?, 'MANUAL', 'PENDING')`,
+          [classId, o.week, o.class_date, o.slot, memberId, o.scope]
+        );
+        await conn.commit();
+        console.log(JSON.stringify({ fn: 'schedule', action: 'speechReassign', member: ctx.member.id, classId, from: o.member_id, to: memberId }));
+        return {};
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
+      }
+    }
+  },
+
+  /** 清空本周演讲（不动游标与设置——下次生成接着续排） */
+  speechClear: {
+    auth: { scheduleAuth: true },
+    handler: async (payload, ctx) => {
+      const wk = Number(payload.week);
+      if (!wk) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      await pool.query('DELETE FROM speech WHERE class_id = ? AND week = ?', [classId, wk]);
+      await pool.query(
+        `INSERT INTO speech_publish (class_id, week, status) VALUES (?, ?, 'DRAFT')
+         ON DUPLICATE KEY UPDATE status = 'DRAFT', published_at = NULL, published_by = NULL`,
+        [classId, wk]
+      );
+      console.log(JSON.stringify({ fn: 'schedule', action: 'speechClear', member: ctx.member.id, classId, week: wk }));
+      return {};
+    }
+  },
+
+  /** 发布/撤回（一个路由，status='PUBLISHED'|'DRAFT'） */
+  speechPublish: {
+    auth: { scheduleAuth: true },
+    handler: async (payload, ctx) => {
+      const wk = Number(payload.week);
+      const status = payload.status === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
+      if (!wk) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const [count] = await pool.query('SELECT COUNT(*) AS n FROM speech WHERE class_id = ? AND week = ? AND status <> ?', [classId, wk, 'SWAPPED_OUT']);
+      if (!count[0].n) throw new BizError(41001, '本周还没有演讲安排，请先生成');
+      if (status === 'PUBLISHED') {
+        await pool.query(
+          `INSERT INTO speech_publish (class_id, week, status, published_at, published_by) VALUES (?, ?, 'PUBLISHED', ?, ?)
+           ON DUPLICATE KEY UPDATE status = 'PUBLISHED', published_at = VALUES(published_at), published_by = VALUES(published_by)`,
+          [classId, wk, week.nowStamp(), ctx.member.id]
+        );
+      } else {
+        await pool.query("UPDATE speech_publish SET status = 'DRAFT', published_at = NULL WHERE class_id = ? AND week = ?", [classId, wk]);
+      }
+      console.log(JSON.stringify({ fn: 'schedule', action: 'speechPublish', member: ctx.member.id, classId, week: wk, status }));
+      return {};
+    }
+  },
+
+  /** 读写设置（管理员）：need_n 1/2、起始周几+时段、起始学号 */
+  speechSetSettings: {
+    auth: { scheduleAuth: true },
+    handler: async (payload, ctx) => {
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      let need = Number(payload.need_n);
+      if (!(need === 1 || need === 2)) need = 2;
+      const sd = payload.start_weekday == null || payload.start_weekday === '' ? null : Number(payload.start_weekday);
+      const ss = payload.start_slot === 'PM' ? 'PM' : 'AM';
+      const sq = payload.start_seq == null || payload.start_seq === '' ? null : Number(payload.start_seq);
+      await pool.query(
+        `INSERT INTO speech_setting (class_id, need_n, start_weekday, start_slot, start_seq, init_done)
+         VALUES (?, ?, ?, ?, ?, 0)
+         ON DUPLICATE KEY UPDATE need_n = VALUES(need_n), start_weekday = VALUES(start_weekday),
+           start_slot = VALUES(start_slot), start_seq = VALUES(start_seq)`,
+        [classId, need, sd, ss, sq]
+      );
+      return { need_n: need, start_weekday: sd, start_slot: ss, start_seq: sq };
     }
   },
 

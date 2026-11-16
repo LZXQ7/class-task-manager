@@ -13,7 +13,34 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('C:/Users/PC/.dsh/skills/dashi-ppt/project/node_modules/playwright-core');
 
-const CHROME = 'C:/Users/PC/AppData/Local/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-win64/chrome-headless-shell.exe';
+/* Chromium 路径自动探测（2026-11-16）：原来写死 chromium_headless_shell-1223，
+ * playwright 一升级就「executable doesn't exist」，核验直接跑不起来。
+ * 与 verify-admin-web.js 用同一套探测逻辑（扫 ms-playwright 下最新一份）。 */
+const CHROME = (function () {
+  const root = 'C:/Users/PC/AppData/Local/ms-playwright';
+  const cands = [];
+  try {
+    fs.readdirSync(root).sort().reverse().forEach(function (d) {
+      const shell = path.join(root, d, 'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
+      const full = path.join(root, d, 'chrome-win', 'chrome.exe');
+      if (fs.existsSync(shell)) cands.push(shell);
+      if (fs.existsSync(full)) cands.push(full);
+    });
+  } catch (e) { /* 目录不存在则落到下面的兜底 */ }
+  return cands[0] || path.join(root, 'chromium_headless_shell-1223',
+    'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
+})();
+/* Chromium 启动要 mkdtemp 放 playwright-artifacts，默认落 C:\WINDOWS\temp
+ * ⇒ 无写权限直接 EPERM。改到工作区内（必须 Windows 形式路径）。 */
+(function redirectTemp() {
+  const tmp = path.join(__dirname, '..', '.wb_tmp');
+  try {
+    fs.mkdirSync(tmp, { recursive: true });
+    process.env.TEMP = tmp;
+    process.env.TMP = tmp;
+    process.env.TMPDIR = tmp;
+  } catch (e) { /* 建不了就按系统默认走，让错误原样暴露 */ }
+})();
 const URL_BASE = 'https://<YOUR_ENV_ID>-1306168169.ap-shanghai.app.tcloudbase.com/admin';
 const SHOTS = path.join(__dirname, '..', 'outputs', 'admin-web-online');
 

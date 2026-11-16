@@ -1,0 +1,127 @@
+<!-- 课前演讲排班（2026-11-16） -->
+<page-meta page-style="{{(settingShow || swapShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<view class="page sp {{tClass}}">
+  <nav-bar title="课前演讲" show-back="{{true}}" />
+
+  <spring-scroll style="display:block;flex:1;min-height:0" class="sp-scroll">
+    <week-switcher
+      week="{{week}}"
+      total="{{totalWeeks}}"
+      current="{{current}}"
+      term-start="{{termStart}}"
+      status-text="{{status === 'PUBLISHED' ? '已发布' : '草稿'}}"
+      status-type="{{status === 'PUBLISHED' ? 'published' : 'draft'}}"
+      bind:change="onWeekChange"
+    />
+
+    <!-- 管理员操作区 -->
+    <view wx:if="{{canSchedule}}" class="sp-admin">
+      <view class="sp-btn ghost" bindtap="onSettingOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">安排设置</view>
+      <view class="sp-btn ghost" bindtap="onGenerate" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">一键生成</view>
+      <view wx:if="{{status === 'PUBLISHED'}}" class="sp-btn ghost" bindtap="onUnpublish" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">撤回发布</view>
+      <view wx:else class="sp-btn primary" bindtap="onPublish" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">发布给全班</view>
+      <view class="sp-btn danger" bindtap="onClear" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">清空</view>
+    </view>
+    <view wx:if="{{canSchedule && status !== 'PUBLISHED'}}" class="sp-tip">当前为草稿，发布后全班可见</view>
+
+    <!-- 时段说明 -->
+    <view class="sp-legend">
+      <text class="sp-leg">上午 · 第1节前 08:00-08:10</text>
+      <text class="sp-leg">下午 · 第3节前 14:30-14:40</text>
+    </view>
+
+    <!-- 学生草稿态 -->
+    <view wx:if="{{unpublished}}" class="sp-empty">
+      <view class="sp-empty-title">本周演讲尚未发布</view>
+      <view class="sp-empty-sub">发布后这里会显示每天的演讲安排</view>
+    </view>
+
+    <!-- 加载骨架 -->
+    <view wx:elif="{{loading}}" class="sp-skeleton">
+      <view class="sp-sk-row" wx:for="{{[1,2,3,4]}}" wx:key="*this"></view>
+    </view>
+
+    <!-- 本周安排（按日） -->
+    <view wx:else class="sp-days">
+      <view wx:if="{{!days.length}}" class="sp-empty">
+        <view class="sp-empty-title">本周暂无演讲安排</view>
+        <view wx:if="{{canSchedule}}" class="sp-empty-sub">点「一键生成」按课表排一周</view>
+      </view>
+      <view wx:for="{{days}}" wx:key="date" class="sp-day card">
+        <view class="sp-day-head">
+          <text class="sp-date">{{item.date}}</text>
+          <text class="sp-wd">{{item.weekdayText}}</text>
+        </view>
+        <!-- 上午场 -->
+        <view class="sp-slot">
+          <view class="sp-slot-tag am">上午</view>
+          <view wx:if="{{item.am.length}}" class="sp-persons">
+            <view wx:for="{{item.am}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-date="{{item.date}}" data-slot="AM" data-scope="{{p.scope}}" data-name="{{p.name}}" bindtap="onSwapTap">
+              <text class="sp-name">{{p.name}}</text>
+              <text wx:if="{{p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
+              <text wx:else class="sp-scope all">全体</text>
+            </view>
+          </view>
+          <view wx:else class="sp-none">—</view>
+        </view>
+        <!-- 下午场 -->
+        <view class="sp-slot">
+          <view class="sp-slot-tag pm">下午</view>
+          <view wx:if="{{item.pm.length}}" class="sp-persons">
+            <view wx:for="{{item.pm}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-date="{{item.date}}" data-slot="PM" data-scope="{{p.scope}}" data-name="{{p.name}}" bindtap="onSwapTap">
+              <text class="sp-name">{{p.name}}</text>
+              <text wx:if="{{p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
+              <text wx:else class="sp-scope all">全体</text>
+            </view>
+          </view>
+          <view wx:else class="sp-none">—</view>
+        </view>
+      </view>
+      <view class="sp-foot">点姓名可换人（管理员）</view>
+    </view>
+  </spring-scroll>
+
+  <!-- 设置弹层 -->
+  <bottom-sheet show="{{settingShow}}" title="演讲安排设置" bind:close="onSettingClose">
+    <view class="sp-form">
+      <view class="sp-fld">
+        <view class="sp-label">每场人数</view>
+        <view class="sp-opts">
+          <view wx:for="{{needOpts}}" wx:key="key" class="sp-opt {{setNeedN === item.key ? 'on' : ''}}" data-key="{{item.key}}" bindtap="onNeedPick">{{item.label}}</view>
+        </view>
+      </view>
+      <view class="sp-fld">
+        <view class="sp-label">起始日（首次生效）</view>
+        <view class="sp-opts wrap">
+          <view wx:for="{{weekdayOpts}}" wx:key="key" class="sp-opt {{setStartWeekday === item.key ? 'on' : ''}}" data-key="{{item.key}}" bindtap="onWeekdayPick">{{item.label}}</view>
+        </view>
+      </view>
+      <view class="sp-fld">
+        <view class="sp-label">起始时段</view>
+        <view class="sp-opts">
+          <view wx:for="{{slotOpts}}" wx:key="key" class="sp-opt {{setStartSlot === item.key ? 'on' : ''}}" data-key="{{item.key}}" bindtap="onSlotPick">{{item.label}}</view>
+        </view>
+      </view>
+      <view class="sp-fld">
+        <view class="sp-label">起始学号序号（首次下限）</view>
+        <input class="sp-input" type="number" placeholder="留空=不设" value="{{setStartSeq}}" bindinput="onStartSeqInput" />
+      </view>
+      <view class="sp-form-note">首次生成时按这些设置排；之后自动接着上次进度往下轮。</view>
+    </view>
+    <view class="f-actions">
+      <view class="btn btn-ghost f-cancel" bindtap="onSettingClose">取消</view>
+      <view class="btn f-save" bindtap="onSettingSave">保存</view>
+    </view>
+  </bottom-sheet>
+
+  <!-- 换人弹层 -->
+  <bottom-sheet show="{{swapShow}}" title="{{swapTarget ? '换演讲人 · ' + swapTarget.name : '换演讲人'}}" bind:close="onSwapClose">
+    <view wx:if="{{!swapMembers.length}}" class="sp-empty-sub">名册为空，无法换人</view>
+    <view wx:else class="sp-swap-list">
+      <view wx:for="{{swapMembers}}" wx:for-item="m" wx:key="id" class="sp-swap-row" data-mid="{{m.id}}" bindtap="onSwapPick">
+        <text class="sp-swap-name">{{m.name}}</text>
+        <text class="sp-swap-seq">{{m.studentNo}}</text>
+      </view>
+    </view>
+  </bottom-sheet>
+</view>

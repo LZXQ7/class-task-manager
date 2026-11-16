@@ -44,6 +44,17 @@
     bind:change="onWeekChange"
   />
 
+  <!-- 课前演讲入口（2026-11-16）：演讲排班独立成页，从值日页一步进入。
+       刻意不套 st-item 档位（避开 check-tab-enter 的 1→2→3 连续约束），用独立类。 -->
+  <view class="dt-speech-entry" bindtap="onGoSpeech" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
+    <view class="dt-speech-ico">讲</view>
+    <view class="dt-speech-txt">
+      <view class="dt-speech-title">课前演讲</view>
+      <view class="dt-speech-sub">每天第1节 / 第3节课前 10 分钟</view>
+    </view>
+    <view class="dt-speech-arrow">›</view>
+  </view>
+
   <!-- 顶部工具行（2026-11-14 用户要求②）：班级下拉 + 「历史」合并成一行。
        原来「历史」挂在下方 .dt-admin 按钮行里 —— 辅导员没有排班权（canSchedule=false），
        那一行就只剩它一个，占掉整行的同时也把排版撑开，用户反馈「不要单独一行」。
