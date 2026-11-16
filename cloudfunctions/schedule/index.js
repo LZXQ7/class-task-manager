@@ -2564,7 +2564,10 @@ const routes = {
       if (!wk) throw new BizError(41001, '参数错误');
       const pool = getPool();
       const classId = await guard.resolveClassId(pool, ctx, payload);
-      const admin = guard.isAdmin(ctx.member);
+      /* 草稿态可见性：班委（role=ADMIN）本来就看得见；
+         ⚠️ 2026-11-17：后台「单独授予」的普通成员 role 仍是 MEMBER，必须按 canSpeech
+            也算进来 —— 否则他生成完只看到「本周尚未发布」，等于排了看不见。 */
+      const admin = guard.isAdmin(ctx.member) || guard.canSpeech(ctx.member);
       const [pubRows] = await pool.query(
         "SELECT status FROM speech_publish WHERE class_id = ? AND week = ?", [classId, wk]
       );
@@ -2573,9 +2576,11 @@ const routes = {
       const [curRows] = await pool.query('SELECT grp, cursor_val FROM speech_cursor WHERE class_id = ?', [classId]);
       const setting = { cursorA: 0, cursorB: 0 };
       curRows.forEach(c => { if (c.grp === 'A') setting.cursorA = Number(c.cursor_val) || 0; if (c.grp === 'B') setting.cursorB = Number(c.cursor_val) || 0; });
-      /* 管理员换人用的候选名册（只在有排班权时回，学生看不到多余数据） */
+      /* 管理员换人用的候选名册（只在有排班权时回，学生看不到多余数据）
+         ⚠️ 2026-11-17：改用 canSpeech —— 学习委员能排演讲就必须能换人，
+            否则「能生成但点不动姓名」是个半残入口。 */
       let roster = [];
-      if (guard.isSuper(ctx.member) || guard.isDutyAdmin(ctx.member)) {
+      if (guard.canSpeech(ctx.member)) {
         const [rm] = await pool.query(
           "SELECT id, name, student_no FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' AND duty_off = 0 ORDER BY student_no",
           [classId]
@@ -2583,7 +2588,7 @@ const routes = {
         roster = rm.map(m => ({ id: m.id, name: m.name, studentNo: m.student_no, seq: week.seqOf(m.student_no) }));
       }
       if (!admin && !published) {
-        return { status: 'DRAFT', unpublished: true, days: [], setting, canSchedule: false, roster: [] };
+        return { status: 'DRAFT', unpublished: true, days: [], setting, canSpeech: false, roster: [] };
       }
       const [rows] = await pool.query(
         `SELECT sp.id, sp.class_date, sp.slot, sp.member_id, sp.scope, sp.source, sp.status,
@@ -2609,6 +2614,7 @@ const routes = {
         days,
         setting,
         canSchedule: guard.isSuper(ctx.member) || guard.isDutyAdmin(ctx.member),
+        canSpeech: guard.canSpeech(ctx.member),
         roster
       };
     }
@@ -2616,7 +2622,7 @@ const routes = {
 
   /** 生成一周演讲（按序号轮转，消费一次起始设置；重排同周幂等） */
   speechGenerate: {
-    auth: { scheduleAuth: true },
+    auth: { speechAuth: true },
     handler: async (payload, ctx) => {
       const wk = Number(payload.week);
       if (!wk) throw new BizError(41001, '参数错误');
@@ -2695,7 +2701,7 @@ const routes = {
 
   /** 单场换人：完全自由（可从全班任选，无视序号/是否已排），不动游标 */
   speechReassign: {
-    auth: { scheduleAuth: true },
+    auth: { speechAuth: true },
     handler: async (payload, ctx) => {
       const id = Number(payload.id);
       const memberId = Number(payload.memberId);
@@ -2735,7 +2741,7 @@ const routes = {
 
   /** 清空本周演讲（不动游标与设置——下次生成接着续排） */
   speechClear: {
-    auth: { scheduleAuth: true },
+    auth: { speechAuth: true },
     handler: async (payload, ctx) => {
       const wk = Number(payload.week);
       if (!wk) throw new BizError(41001, '参数错误');
@@ -2755,7 +2761,7 @@ const routes = {
 
   /** 发布/撤回（一个路由，status='PUBLISHED'|'DRAFT'） */
   speechPublish: {
-    auth: { scheduleAuth: true },
+    auth: { speechAuth: true },
     handler: async (payload, ctx) => {
       const wk = Number(payload.week);
       const status = payload.status === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
@@ -2827,7 +2833,7 @@ const routes = {
 
   /** 设置起点（v2）：管理员直接设「A组/B组已排到号」——两个游标写进 speech_cursor。 */
   speechSetSettings: {
-    auth: { scheduleAuth: true },
+    auth: { speechAuth: true },
     handler: async (payload, ctx) => {
       const pool = getPool();
       const classId = guard.classIdOf(ctx);
@@ -2859,7 +2865,7 @@ const routes = {
    * speechAiParse 只预览不落库；speechAiApply 才把预览 rows 写成草稿。
    * ============================================================ */
   speechAiParse: {
-    auth: { scheduleAuth: true },
+    auth: { speechAuth: true },
     handler: async (payload, ctx) => {
       const wk = Number(payload.week);
       const text = String(payload.text || '').trim();
@@ -2983,7 +2989,7 @@ const routes = {
 
   /** 确认 AI 预览：把 rows 写成草稿（与 generate 同口径：只写 speech + pending_cursors，不落真实游标） */
   speechAiApply: {
-    auth: { scheduleAuth: true },
+    auth: { speechAuth: true },
     handler: async (payload, ctx) => {
       const wk = Number(payload.week);
       const rows = Array.isArray(payload.rows) ? payload.rows : [];
@@ -3335,6 +3341,9 @@ exports.main = async (event) => {
     if (route.auth && route.auth.needSuper) guard.requireSuper(ctx);
     // 排班域（需求 D）：超管（可跨班）/ 生活委员（仅本班，班级来自 classIdOf）
     if (route.auth && route.auth.scheduleAuth) guard.requireScheduleAuth(ctx);
+    // 课前演讲排班（2026-11-17）：超管 / 生活委员 / 学习委员 / 后台单独授予。
+    // ⚠️ 演讲与值日**必须分开**：合并守卫等于把值日排班权一并给学习委员。
+    if (route.auth && route.auth.speechAuth) guard.requireSpeechAuth(ctx);
     if (ctx.impersonated && AI_ACTIONS.has(action)) {
       throw new BizError(40003, '模拟态下不可调用 AI 排班，请先「恢复本人」');
     }

@@ -111,6 +111,49 @@ function isViceMonitor(member) {
     && String(member.position || '') === POSITION_VICE_MONITOR;
 }
 
+/* ---------------- 课前演讲排班（2026-11-17 用户要求） ----------------
+ *
+ * 用户口径：①「课前演讲权限也放到后台管理页面」（后台成员编辑里加开关）；
+ *          ②「直接给学习委员加上权限，让学习委员可以直接排班」；
+ *          ③ **值日仍归生活委员** —— 所以演讲不能继续挂在 requireScheduleAuth 上，
+ *             否则放宽一处等于把值日排班也给了学习委员。
+ *
+ * 三段授权：
+ *   · 职位自带：学习委员（本班、非教职工）；
+ *   · 后台单独授予：member.speech_perm = 1（只额外给，不撤销职位自带权限，
+ *     与 common/fee-perms.js 的 fee_perms 同一套口径）；
+ *   · 兜底：超管（可跨班）、生活委员（本就管整个排班域）。
+ */
+const POSITION_STUDY = '学习委员';
+
+/** 学习委员：position='学习委员' 且非教职工 */
+function isStudyAdmin(member) {
+  return !!member && member.group_tag !== 'X'
+    && String(member.position || '').trim() === POSITION_STUDY;
+}
+
+/** 后台单独授予的课前演讲排班权（member.speech_perm=1） */
+function hasSpeechPerm(member) {
+  return !!member && Number(member.speech_perm) === 1;
+}
+
+/** 课前演讲排班权：超管 | 生活委员 | 学习委员 | 后台单独授予 */
+function canSpeech(member) {
+  if (!member) return false;
+  return isSuper(member) || isDutyAdmin(member) || isStudyAdmin(member) || hasSpeechPerm(member);
+}
+
+/**
+ * 课前演讲排班守卫（独立于 requireScheduleAuth）。
+ * ⚠️ 只用于 speech* 写路由；值日路由必须继续用 requireScheduleAuth，
+ *    别把两条线合并 —— 合并即等于把值日权一起放宽。
+ */
+function requireSpeechAuth(ctx) {
+  const m = requireBind(ctx);
+  if (canSpeech(m)) return m;
+  throw new BizError(40003, '仅超级管理员、生活委员或学习委员可排课前演讲');
+}
+
 /**
  * 课表「发布到全班」守卫：超管 / 班长 / 副班长（**仅本班**）。
  *
@@ -320,4 +363,4 @@ async function resolveClassId(pool, ctx, payload) {
   return own;
 }
 
-module.exports = { getContext, requireBind, requireAdmin, isAdmin, isSuper, requireSuper, classIdOf, isCounselor, staffClassIds, resolveClassId, isDemoMember, demoClassIds, ADMIN_ROLES, isDutyAdmin, isMonitor, isViceMonitor, requireTimetablePublish, requireScheduleAuth, requireRosterEdit, requirePositionGrant, isGrantedPosition, POSITION_DUTY_ADMIN, POSITION_MONITOR, POSITION_VICE_MONITOR, isCommittee, requireCommittee, requireLeaveRegister, requireLeaveView, isLeaveApprover };
+module.exports = { getContext, requireBind, requireAdmin, isAdmin, isSuper, requireSuper, classIdOf, isCounselor, staffClassIds, resolveClassId, isDemoMember, demoClassIds, ADMIN_ROLES, isDutyAdmin, isMonitor, isViceMonitor, requireTimetablePublish, requireScheduleAuth, requireRosterEdit, requirePositionGrant, isGrantedPosition, POSITION_DUTY_ADMIN, POSITION_MONITOR, POSITION_VICE_MONITOR, isCommittee, requireCommittee, requireLeaveRegister, requireLeaveView, isLeaveApprover, POSITION_STUDY, isStudyAdmin, hasSpeechPerm, canSpeech, requireSpeechAuth };

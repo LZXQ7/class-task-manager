@@ -37,6 +37,8 @@ function maskMember(r) {
     remindBlock: Number(r.remind_block) === 1,
     // 后台单独授予的班费消费登记权限（只额外授予，职位权限不在这里体现）
     feePerms: normalizeFeePerms(r.fee_perms),
+    // 后台单独授予的课前演讲排班权（2026-11-17）：只额外授予；学习委员/生活委员/超管本就自带
+    speechPerm: Number(r.speech_perm) === 1,
     bound: !!r.openid,
     lastDutyAt: typeof r.last_duty_at === 'string' ? r.last_duty_at.slice(0, 10) : r.last_duty_at
   };
@@ -177,6 +179,10 @@ function validate(patch) {
     });
     patch.feePerms = normalizeFeePerms(patch.feePerms);
   }
+  /* 课前演讲排班权（2026-11-17）：布尔开关，防止前端传 "1"/"true" 之类写脏库 */
+  if (patch.speechPerm !== undefined) {
+    if (typeof patch.speechPerm !== 'boolean') throw new BizError(40001, '权限格式不合法');
+  }
   return patch;
 }
 
@@ -208,6 +214,7 @@ async function updateMember(id, patch, session, req) {
   if (patch.position !== undefined) put('position', patch.position);
   if (patch.dutyOff !== undefined) put('duty_off', patch.dutyOff ? 1 : 0);
   if (patch.feePerms !== undefined) put('fee_perms', stringifyFeePerms(patch.feePerms));
+  if (patch.speechPerm !== undefined) put('speech_perm', patch.speechPerm ? 1 : 0);
 
   // is_super 一律走单独的 grant 接口，不在通用 patch 里顺手改 ——
   // 超级管理员是整个后台的权限根，不能当普通字段随手保存。
@@ -269,7 +276,7 @@ async function addMember(data, session, req) {
   if (dup.length) throw new BizError(40001, '学号已存在');
 
   const [r] = await pool.query(
-    'INSERT INTO member (class_id, name, student_no, group_tag, role, position, status, fee_perms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO member (class_id, name, student_no, group_tag, role, position, status, fee_perms, speech_perm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       classId,
       data.name,
@@ -278,7 +285,8 @@ async function addMember(data, session, req) {
       data.role || 'MEMBER',
       data.position || '',
       data.status || 'ACTIVE',
-      stringifyFeePerms(data.feePerms)
+      stringifyFeePerms(data.feePerms),
+      data.speechPerm ? 1 : 0
     ]
   );
   await logAction(session, {

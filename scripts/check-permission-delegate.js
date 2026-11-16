@@ -86,8 +86,12 @@ console.log('\n── ② 排班域（排班域路由必须声明 scheduleAuth�
  * 二者都是 `auth: { scheduleAuth: true }`（超管 | 本班生活委员），
  * 与 setRules 同域 —— 谁能排班，谁就能定自己班的制度。
  * 23 → 28（2026-11-16）：新增课前演讲 5 个写路由（speechGenerate/Reassign/
- * Clear/Publish/SetSettings），同属排班域；speechList 只读走 needBind 不计入。 */
-eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 30, 'schedule 排班域路由数（含 speechAiParse/speechAiApply）');
+ * Clear/Publish/SetSettings），同属排班域；speechList 只读走 needBind 不计入。
+ * 30 → **23**（2026-11-17 用户要求）：课前演讲 7 条写路由改用**独立** `speechAuth`
+ *   （超管 | 生活委员 | **学习委员** | 后台单独授予），从 scheduleAuth 里移出。
+ *   只给学习委员演讲权、值日仍归生活委员 ⇒ 两条线必须分开，合并即越权。
+ *   演讲那一侧的覆盖由 check-speech-perms.js 逐条守。 */
+eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 23, '值日排班域路由数（演讲 7 条已移出，见 check-speech-perms）');
 eq(count(ADJ, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 2, 'adjust 排班域路由数');
 
 /** 派发器接线（源码入 → 失败码出） */
@@ -145,7 +149,9 @@ else bad('越界分组被静默丢弃（用户会以为导入成功）');
  * ④ 前端入口按能力位显隐（不是 isSuper）
  * ============================================================ */
 console.log('\n── ④ 前端入口按能力位显隐');
-has(DUTY_W, /wx:if="\{\{canSchedule(?: \|\| pastDays\.length)?\}\}" class="dt-admin /, '值日页排班操作区按 canSchedule 显示');
+/* 2026-11-17：容器放宽到 `canSchedule || canSpeech || pastDays.length` ——
+   学习委员没有值日权，只看 canSchedule 会把「课前演讲」整排按钮吃掉。 */
+has(DUTY_W, /wx:if="\{\{canSchedule(?: \|\| canSpeech)?(?: \|\| pastDays\.length)?\}\}" class="dt-admin /, '值日页排班操作区按 canSchedule / canSpeech 显示');
 has(DUTY_W, /btn-text="\{\{canSchedule \? '去发布' : ''\}\}"/, '未发布提示的「去发布」按 canSchedule');
 /**
  * ⚠️ 口径更新（2026-10-14）：原先硬数 `wx:if="{{canSchedule}}"` 出现 **6** 次。
@@ -165,21 +171,35 @@ has(DUTY_W, /btn-text="\{\{canSchedule \? '去发布' : ''\}\}"/, '未发布提�
  *      🔒 但光数总数会漏掉「容器放宽后某个按钮忘加 canSchedule」这种真泄漏，
  *         所以下面新增 ④b 逐按钮钉死 —— 比数总数更靠得住。
  */
-/* 2026-11-17：v2 把课前演讲并进值日页，按钮排按视图切两套动作（值日5 + 演讲5 都受 canSchedule）。
- * 期望从 6 → 10：原值日 2 纯 + 1 showAdd + 3 三元 = 6；现演讲新增 3 纯（清空/一键/智能）+ 2 带
- * speechStatus 条件 + busy 三元减少 2 → 精确总数 10。逐按钮保护见下方 ④b（已扩展到演讲 handler）。 */
-eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 10,
-  '值日页排班入口全部改按 canSchedule（10 处：值日+演讲两套动作，逐按钮见 ④b）');
+/* 2026-11-17：v2 把课前演讲并进值日页，但**权限不再共用** —— 用户要求「只给学习委员
+ * 课前演讲，值日仍归生活委员」，于是按钮分两套能力位：
+ *   值日按钮（清空/一键/撤回/发布/调整›/去发布）= canSchedule；
+ *   演讲按钮（清空/一键/智能排班/撤回/发布）= canSpeech。
+ * 条数只钉「值日侧」= 6（2 纯 + 1 showAddDutyBtn + 1 三元 + 2 「调整›」），
+ * 演讲侧的覆盖见下方 ④c 逐按钮 + check-speech-perms.js。 */
+eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 6,
+  '值日页值日侧入口仍全部按 canSchedule（6 处；演讲侧已切到 canSpeech）');
+eq(count(DUTY_W, /wx:if="\{\{canSpeech\}\}" class="dt-admin-btn/g), 3,
+  '课前演讲三个纯权限按钮（清空 / 一键生成 / 智能排班）按 canSpeech');
 /**
  * ④b 权限下沉后的逐个校验（2026-10-31）：容器已放宽给普通成员看「历史」，
- *     因此**每个排班动作按钮自身**必须带 canSchedule，否则无权限者会看到能点的按钮。
+ *     因此**每个排班动作按钮自身**必须带能力位，否则无权限者会看到能点的按钮。
+ * ④c（2026-11-17）：值日与演讲分开校验 —— 值日必须 canSchedule，演讲必须 canSpeech；
+ *     两边串了就是越权（给学习委员值日权 / 或学习委员反而排不了演讲）。
  */
-['onClear', 'onAiOpen', 'onUnpublish', 'onPublish',
- 'onSpClear', 'onSpGenerate', 'onSpAiOpen', 'onSpUnpublish', 'onSpPublish'].forEach((h) => {
+[['onClear', 'canSchedule'], ['onAiOpen', 'canSchedule'],
+ ['onUnpublish', 'canSchedule'], ['onPublish', 'canSchedule']].forEach(([h, perm]) => {
   const tag = new RegExp('<view[^>]*bindtap="' + h + '"[^>]*>').exec(DUTY_W);
-  const pass = !!tag && /wx:if="\{\{[^"]*canSchedule[^"]*\}\}"/.test(tag[0]);
-  if (pass) ok('排班动作按钮 ' + h + ' 自身受 canSchedule 保护（容器已放宽，权限必须落在按钮上）');
-  else bad('排班动作按钮 ' + h + ' 没带 canSchedule —— 容器放宽后无权限者会看到可点按钮');
+  const pass = !!tag && new RegExp('wx:if="\\{\\{[^"]*' + perm + '[^"]*\\}\\}"').test(tag[0]);
+  if (pass) ok('值日动作按钮 ' + h + ' 自身受 ' + perm + ' 保护');
+  else bad('值日动作按钮 ' + h + ' 没带 ' + perm + ' —— 无权限者会看到可点按钮');
+});
+[['onSpClear', 'canSpeech'], ['onSpGenerate', 'canSpeech'], ['onSpAiOpen', 'canSpeech'],
+ ['onSpUnpublish', 'canSpeech'], ['onSpPublish', 'canSpeech']].forEach(([h, perm]) => {
+  const tag = new RegExp('<view[^>]*bindtap="' + h + '"[^>]*>').exec(DUTY_W);
+  const pass = !!tag && new RegExp('wx:if="\\{\\{[^"]*' + perm + '[^"]*\\}\\}"').test(tag[0]);
+  if (pass) ok('演讲动作按钮 ' + h + ' 自身受 ' + perm + ' 保护（学习委员可排、值日不动）');
+  else bad('演讲动作按钮 ' + h + ' 没带 ' + perm + ' —— 要么学习委员排不了，要么把值日权串过去了');
 });
 /** 开关本身必须在：它是「暂时隐藏入口」的唯一恢复手段，删了就只能翻 git。 */
 ok('「+ 加值日生」用开关式隐藏（data.showAddDutyBtn 存在且当前为 false）',

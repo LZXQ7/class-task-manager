@@ -2693,7 +2693,9 @@
             '<td>' + esc(m.name) + (m.isSuper ? ' <span class="tag tag-super">超管</span>' : '') + '</td>' +
             '<td>' + (m.groupTag === 'X' ? '—' : m.groupTag + ' 组') + '</td>' +
             '<td>' + roleText(m.role) + '</td>' +
-            '<td>' + esc(m.position || '—') + permTags(m.feePerms) + '</td>' +
+            '<td>' + esc(m.position || '—') + permTags(m.feePerms) +
+              (m.speechPerm ? ' <span class="tag tag-all" title="单独授予：可排课前演讲">+课前演讲</span>' : '') +
+            '</td>' +
             '<td>' + statusTag(m.status) + '</td>' +
             // 绑定状态来自 /api/members 的 bound 字段（openid 是否为空），与小程序登录态同源。
             '<td>' + (m.bound
@@ -3084,7 +3086,15 @@
       '<label class="chk"><input type="checkbox" id="f-perm-league"' +
         (hasPerm(m.feePerms, 'league') ? ' checked' : '') + '> 可登记团费消费</label>' +
       '<div class="hint">在职位权限之外额外授予，不会撤销任何职位自带权限；「设置总额」仍按职位。' +
-      '登记权限同时允许补充凭证与删除记录。</div></div>';
+      '登记权限同时允许补充凭证与删除记录。</div></div>' +
+      // 课前演讲排班权（2026-11-17 用户要求）：与班费同一套「只额外授予」口径。
+      // 学习委员/生活委员/超管本就自带，这里给「额外某个成员」用。
+      '<div class="field"><span class="field-label">单独授予权限（课前演讲）</span>' +
+      '<label class="chk"><input type="checkbox" id="f-perm-speech"' +
+        (m.speechPerm ? ' checked' : '') + '> 可排课前演讲</label>' +
+      '<div class="hint">学习委员、生活委员、超管本就自带该权限，无需勾选；' +
+      '勾上等于额外授予某人，不撤销任何职位权限。值日排班仍归生活委员，此项只影响课前演讲。' +
+      '</div></div>';
   }
   function readMemberForm(dlg) {
     return {
@@ -3095,6 +3105,10 @@
       position: $('#f-position', dlg).value.trim(),
       status: $('#f-status', dlg).value,
       dutyOff: $('#f-dutyoff', dlg).value === '1',
+      speechPerm: (function () {
+        var c = $('#f-perm-speech', dlg);
+        return !!(c && c.checked);
+      })(),
       feePerms: (function () {
         var out = [];
         var a = $('#f-perm-class', dlg); if (a && a.checked) out.push('class');

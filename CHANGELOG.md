@@ -36,6 +36,28 @@
 
 ---
 
+## 1.0.8.52 · 2026-11-17 · 课前演讲排班权下放给学习委员
+
+**主题：课前演讲排班从「超管 / 生活委员」扩到「学习委员」与后台单独授予；后台成员编辑新增「可排课前演讲」开关；值日排班权不动**
+
+### 新增
+- 后台「成员」编辑弹层新增「单独授予权限（课前演讲）→ 可排课前演讲」勾选项：可给任意成员额外授予演讲排班权（像班费权限一样只额外给、不撤销职位自带权限）；成员列表在职位列显示「+课前演讲」标签。
+- 数据库 `member` 表新增 `speech_perm`（0/1，默认 0），迁移脚本 `scripts/migrate-speech-perm.sql`；生产库已执行并复核（243 行存量全为 0）。
+- 首课前演讲权限独立成域：`guard.canSpeech` / `guard.requireSpeechAuth` / `isStudyAdmin` / `hasSpeechPerm`。
+
+### 调整
+- **学习委员**获得课前演讲排班权：生成、单场换人、发布 / 撤回、清空、设进度、智能排班全部可用。
+- 课前演讲 7 条写路由从 `scheduleAuth` 改为独立的 `speechAuth`（超管 / 生活委员 / 学习委员 / 后台单独授予）；**值日 23 条路由仍是 `scheduleAuth`**，学习委员不获得值日排班权。
+- `auth.login` 新增下发 `canSpeech`，小程序值日页演讲按钮改按 `canSpeech` 显隐，值日按钮仍按 `canSchedule`；演讲视图的按钮容器放宽为 `canSchedule || canSpeech || pastDays.length`，否则只有演讲权的学习委员会看到空按钮排。
+- 演讲草稿态可见性把「后台单独授予的普通成员」也算进来，避免他排完只看到「本周尚未发布」。
+
+### 门禁
+- 新增 `scripts/check-speech-perms.js`：守卫 / 路由 / 能力位 / 入口 / 后台开关 / common 副本六段成对校验 + 7 组变异自证。
+- 同步 `check-permission-delegate`（排班域 30→23、演讲按钮改按 canSpeech 逐条校验）、`check-speech-schedule`（speechAuth）、`check-fee-perms`（INSERT 列清单）、`check-schedule-generate-runtime`（guard 桩补 canSpeech）。
+- 全量 143 过 / 17 红，红项与基线逐项一致，零新增回归。
+
+---
+
 ## 1.0.8.51 · 2026-11-17 · 智能排班弹窗：内容留白 + 按钮玻璃化
 
 **主题：弹窗内容不再贴边，三个操作按钮换成底栏同款液态玻璃，「解析预览」去掉彩色渐变**

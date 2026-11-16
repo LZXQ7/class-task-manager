@@ -107,6 +107,16 @@ const STUB_GUARD = {
    */
   isDutyAdmin: (m) => !!m && m.group_tag !== 'X' && String(m.position || '') === '生活委员',
   isMonitor: (m) => !!m && m.group_tag !== 'X' && String(m.position || '') === '班长兼团支书',
+  /* 课前演讲（2026-11-17）：学习委员 + 后台单独授予（member.speech_perm=1）。
+     与 canSchedule 分开，桩也必须分开 —— 合并会掩盖「演讲权串到值日」的回归。 */
+  isStudyAdmin: (m) => !!m && m.group_tag !== 'X' && String(m.position || '').trim() === '学习委员',
+  hasSpeechPerm: (m) => !!m && Number(m.speech_perm) === 1,
+  canSpeech: (m) => !!m && (m.role === 'ADMIN' && m.is_super === 1
+    || (m.group_tag !== 'X' && String(m.position || '') === '生活委员')
+    || (m.group_tag !== 'X' && String(m.position || '').trim() === '学习委员')
+    || Number(m.speech_perm) === 1),
+  requireSpeechAuth: (ctx) => ctx.member,
+  POSITION_STUDY: '学习委员',
   requireScheduleAuth: (ctx) => ctx.member,
   requireRosterEdit: (ctx) => ctx.member,
   requirePositionGrant: (ctx) => ctx.member,

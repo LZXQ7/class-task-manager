@@ -659,6 +659,16 @@ App({
     return !!(p && p.canSchedule);
   },
 
+  /**
+   * 课前演讲排班（2026-11-17 用户要求）：超管 / 生活委员 / **学习委员** / 后台单独授予。
+   * 与 canSchedule **刻意分开**：学习委员只排演讲，值日仍归生活委员。
+   * 与 canSchedule 一样只决定入口显隐，真正拦截在 schedule 云函数侧。
+   */
+  canSpeech() {
+    const p = this.globalData.profile;
+    return !!(p && p.canSpeech);
+  },
+
   /** 名册录入（增改不含删）：超管 / 辅导员 / 本班班长 */
   canRosterEdit() {
     const p = this.globalData.profile;

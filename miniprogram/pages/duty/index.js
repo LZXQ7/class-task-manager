@@ -227,6 +227,9 @@ Page({
         // 需求 D：排班域入口（清空 / 一键生成 / 发布 / 调整 / 加人）改为
         // 「超管或本班生活委员」—— 判定来自后端 guard，前端不自己比 position
         canSchedule: !!(app && app.canSchedule && app.canSchedule()),
+        // 课前演讲排班（2026-11-17）：学习委员 / 后台单独授予的人也能排 ——
+        // 与 canSchedule 分开，值日按钮仍只认 canSchedule。
+        canSpeech: !!(app && app.canSpeech && app.canSpeech()),
         // 「+ 加值日生」按钮的显隐开关（2026-10-14 用户要求隐藏）。
         // 功能代码（onAddOpen / 弹层 / scheduleAddManual 接口）**全部保留**，只挡入口 ⇒ 想恢复把这里改回 true 即可。
         // ⚠️ 为什么用开关而不是直接删 wxml 的 wx:if：删了以后想恢复得重新翻 git，

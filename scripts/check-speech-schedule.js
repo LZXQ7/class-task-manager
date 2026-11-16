@@ -140,8 +140,10 @@ console.log('── ⓐ 云函数接线与权限（静态）');
 check(/require\('\.\/common\/speech-core'\)/.test(SCH_SRC), 'schedule 引入 speech-core 真源码');
 ['speechGenerate', 'speechReassign', 'speechClear', 'speechPublish', 'speechSetSettings',
  'speechAiParse', 'speechAiApply'].forEach(a => {
-  const re = new RegExp(a + ':\\s*\\{[\\s\\S]{0,80}auth:\\s*\\{\\s*scheduleAuth:\\s*true');
-  check(re.test(SCH_SRC), a + ' 挂 scheduleAuth（超管|生活委员）');
+  /* 2026-11-17：演讲写路由改为独立 speechAuth（超管 | 生活委员 | 学习委员 | 后台单独授予）；
+     值日仍走 scheduleAuth —— 两者合并等于把值日权一并给学习委员，见 check-speech-perms.js。 */
+  const re = new RegExp(a + ':\\s*\\{[\\s\\S]{0,80}auth:\\s*\\{\\s*speechAuth:\\s*true');
+  check(re.test(SCH_SRC), a + ' 挂 speechAuth（超管|生活委员|学习委员|单独授予）');
 });
 check(/auth:\s*\{\s*needBind:\s*true\s*\}/.test(SCH_SRC.slice(SCH_SRC.indexOf('speechList:'), SCH_SRC.indexOf('speechGenerate:'))), 'speechList 只读走 needBind');
 check(/INSERT IGNORE INTO speech\b/.test(SCH_SRC) && /speech_cursor/.test(SCH_SRC) && /speech_publish/.test(SCH_SRC),

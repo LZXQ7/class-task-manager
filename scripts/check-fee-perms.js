@@ -106,7 +106,9 @@ function audit(X) {
   need(has(X.mod, 'feePerms: normalizeFeePerms(r.fee_perms)'), 'modMask');
   need(has(X.mod, 'if (patch.feePerms !== undefined)') && has(X.mod, 'FEE_PERM_KEYS.indexOf(k) < 0'), 'modValidate');
   need(has(X.mod, "put('fee_perms', stringifyFeePerms(patch.feePerms))"), 'modPut');
-  need(has(X.mod, 'fee_perms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+  /* 2026-11-17：member 新增 speech_perm（课前演讲单独授予），列清单随之变化；
+     本条只钉「fee_perms 仍在 INSERT 里且值走 stringifyFeePerms」。 */
+  need(has(X.mod, 'fee_perms, speech_perm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
     && has(X.mod, 'stringifyFeePerms(data.feePerms)'), 'modInsert');
   need(has(X.app, 'id="f-perm-class"') && has(X.app, 'id="f-perm-league"'), 'appCheckbox');
   need(has(X.app, "out.push('class')") && has(X.app, "out.push('league')"), 'appCollect');

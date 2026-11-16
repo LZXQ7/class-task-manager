@@ -249,6 +249,13 @@ const routes = {
            * 注意：这三个是**入口可见性**依据，真正拦截一律在云函数侧（前端可伪造）。
            */
           canSchedule: !!(guard.isSuper(m) || guard.isDutyAdmin(m)),
+          /*
+           * canSpeech   课前演讲排班（2026-11-17 用户要求）：超管 / 生活委员 / 学习委员 /
+           *             后台单独授予（member.speech_perm=1）。
+           *             与 canSchedule **刻意分开**：学习委员只排演讲，值日仍归生活委员。
+           *             入口可见性依据；真正拦截在 schedule 的 guard.requireSpeechAuth。
+           */
+          canSpeech: !!guard.canSpeech(m),
           canRosterEdit: !!(guard.isSuper(m) || guard.isCounselor(m) || guard.isMonitor(m)),
           canGrantPosition: !!guard.isSuper(m),
           canLeave: !!(guard.isSuper(m) || guard.isCommittee(m)),
