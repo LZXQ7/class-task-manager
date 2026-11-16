@@ -61,15 +61,15 @@ function probes(C) {
       slots[0].slot === 'AM' && slots[1].slot === 'PM' && slots[2].slot === 'PM' &&
       slots.every(s => s.period !== 2);
   }
-  // ①b 起始落点：从周三 PM 起 → 周一/周二都不排
+  // ①b 起始落点（AI 本次指令）：从周三 PM 起 → 周一/周二都不排
   {
-    const slots = C.buildSlots(sessions, 1, { start_weekday: 3, start_slot: 'PM', init_done: 0 }, weekStub);
+    const slots = C.buildSlots(sessions, 1, { start_weekday: 3, start_slot: 'PM' }, weekStub);
     out.startSlot = slots.length === 1 && slots[0].day === 3 && slots[0].slot === 'PM';
   }
-  // ①c init_done=1 时起始设置不再生效
+  // ①c 不传起始指令时全排（v2 撤掉固定起始设置；AI 指令才带落点）
   {
-    const slots = C.buildSlots(sessions, 1, { start_weekday: 3, start_slot: 'PM', init_done: 1 }, weekStub);
-    out.startConsumed = slots.length === 3;
+    const slots = C.buildSlots(sessions, 1, {}, weekStub);
+    out.noFixedStart = slots.length === 3;
   }
 
   // ② 组别绑定：A组场的演讲人都在A组，B组场都在B组
@@ -97,26 +97,37 @@ function probes(C) {
     const slots = [
       { date: 'd1', slot: 'AM', scope: 'A' }, { date: 'd1', slot: 'PM', scope: 'B' }
     ];
-    const r1 = C.assign(slots, roster(), { A: 0, B: 0 }, { need_n: 2 });
+    const r1 = C.assign(slots, roster(), { A: 0, B: 0 }, {});
     // A组取最小的2人(1,3)→游标3；B组取(2,4)→游标4
     out.advances = r1.cursors.A === 3 && r1.cursors.B === 4;
     // 第二周续排：A从3后取(5,7)→游标7；B从4后取(6,8)→游标8
-    const r2 = C.assign(slots, roster(), r1.cursors, { need_n: 2, init_done: 1 });
+    const r2 = C.assign(slots, roster(), r1.cursors, {});
     out.wraps = r2.rows.some(x => x.seq === 5 || x.seq === 7 || x.seq === 6 || x.seq === 8);
     // 第三周：A已到7→回绕取小号；B已到8→回绕
-    const r3 = C.assign(slots, roster(), r2.cursors, { need_n: 2, init_done: 1 });
+    const r3 = C.assign(slots, roster(), r2.cursors, {});
     out.wraps = out.wraps && r3.rows.some(x => x.seq === 1 || x.seq === 2 || x.seq === 3);
   }
 
-  // ④ need_n 非法回落 2；起始学号只在首次生效
+  // ④ need_n 非法回落 2；**起点=传入的双游标**（v2：无起始学号，管理员直接设 A/B 已排到号）
   {
     const slots = [{ date: 'd1', slot: 'AM', scope: 'A' }];
     const r = C.assign(slots, roster(), { A: 0, B: 0 }, { need_n: 9 });
     out.needClamp = r.rows.length === 2;
-    const rFirst = C.assign(slots, roster(), { A: 0, B: 0 }, { need_n: 1, start_seq: 5, init_done: 0 });
-    out.startSeq = rFirst.rows.length === 1 && rFirst.rows[0].seq >= 5;
-    const rAgain = C.assign(slots, roster(), { A: 7, B: 8 }, { need_n: 1, start_seq: 5, init_done: 1 });
-    out.startSeqConsumed = rAgain.rows[0].seq < 5; // init_done=1 时忽略 start_seq，从游标7后回绕
+    // 管理员设「A组已排到5」→ 从 7 起（不再有 start_seq 下限）
+    const rFrom = C.assign(slots, roster(), { A: 5, B: 0 }, {});
+    out.cursorStart = rFrom.rows.length === 2 && rFrom.rows[0].seq === 7;
+  }
+
+  // ④b 单场人数覆盖（v2：智能排班「儿童文学仅1人」→ 指定 slot.need=1）
+  {
+    const slots = [
+      { date: 'd1', slot: 'AM', scope: 'A' },
+      { date: 'd2', slot: 'AM', scope: 'A', need: 1 }
+    ];
+    const r = C.assign(slots, roster(), { A: 0, B: 0 }, {});
+    const day1 = r.rows.filter(x => x.date === 'd1');
+    const day2 = r.rows.filter(x => x.date === 'd2');
+    out.perSlotNeed = day1.length === 2 && day2.length === 1;
   }
 
   return out;
@@ -127,7 +138,8 @@ const SCH_SRC = fs.readFileSync(path.join(ROOT, 'cloudfunctions', 'schedule', 'i
 const SQL_SRC = fs.readFileSync(path.join(ROOT, 'scripts', 'migrate-speech.sql'), 'utf8');
 console.log('── ⓐ 云函数接线与权限（静态）');
 check(/require\('\.\/common\/speech-core'\)/.test(SCH_SRC), 'schedule 引入 speech-core 真源码');
-['speechGenerate', 'speechReassign', 'speechClear', 'speechPublish', 'speechSetSettings'].forEach(a => {
+['speechGenerate', 'speechReassign', 'speechClear', 'speechPublish', 'speechSetSettings',
+ 'speechAiParse', 'speechAiApply'].forEach(a => {
   const re = new RegExp(a + ':\\s*\\{[\\s\\S]{0,80}auth:\\s*\\{\\s*scheduleAuth:\\s*true');
   check(re.test(SCH_SRC), a + ' 挂 scheduleAuth（超管|生活委员）');
 });
@@ -137,21 +149,35 @@ check(/INSERT IGNORE INTO speech\b/.test(SCH_SRC) && /speech_cursor/.test(SCH_SR
 check(/CREATE TABLE IF NOT EXISTS speech_cursor/.test(SQL_SRC) && /PRIMARY KEY \(class_id, grp\)/.test(SQL_SRC),
       'speech_cursor 每班每组一条游标');
 
+/* v2 游标契约（静态）：generate 不写游标、publish 落游标、unpublish 回滚、AI 集成 */
+const genBody = SCH_SRC.slice(SCH_SRC.indexOf('speechGenerate:'), SCH_SRC.indexOf('speechReassign:'));
+const pubBody = SCH_SRC.slice(SCH_SRC.indexOf('speechPublish:'), SCH_SRC.indexOf('speechSetSettings:'));
+/* 只看真实 SQL 写语句：忽略注释里的 speech_cursor 字样 */
+const genSql = genBody.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+check(!/(INSERT\s+INTO|UPDATE)\s+speech_cursor/i.test(genSql),
+      'speechGenerate 只预演不写 speech_cursor（清空后重排不跳过）');
+check(/(UPDATE|INSERT)[^;]{0,160}speech_cursor/.test(pubBody) && /cursor_snapshot/.test(pubBody),
+      'speechPublish 发布落游标 + 写发布前快照 cursor_snapshot');
+check(/speechAiParse[\s\S]{0,4000}callAi|callAi[\s\S]{0,6000}speechAiParse/.test(SCH_SRC),
+      'AI 智能排班解析走 callAi（ai-proxy）');
+check(/单双号|奇数.*A|奇数.*偶数|seq\s*%\s*2/.test(SCH_SRC),
+      '组别校验按学号单双号（单=A / 双=B）');
+
 const P = probes(core);
 console.log('── ① 节次筛选与起始落点');
 check(P.slotFilter, '只排第1节(AM)/第3节(PM)，第2节不排');
-check(P.startSlot, '起始设置之前的时段不排');
-check(P.startConsumed, 'init_done 后起始落点不再生效');
+check(P.startSlot, 'AI 起始落点之前的时段不排');
+check(P.noFixedStart, '无起始指令时全排（已撤固定起始设置）');
 console.log('── ② 组别绑定');
 check(P.scopeBind, 'A组场选A组人、B组场选B组人');
 check(P.allScope, '全体课从全班选');
 console.log('── ③ 游标续排与回绕');
 check(P.advances, '游标按选中序号前进');
 check(P.wraps, '到本组末尾后回绕取小号');
-console.log('── ④ 人数与起始学号');
+console.log('── ④ 人数与起点');
 check(P.needClamp, 'need_n 非法值回落 2');
-check(P.startSeq, '首次起始学号作为下限');
-check(P.startSeqConsumed, '起始学号只在首次消费');
+check(P.cursorStart, '起点=管理员设的双游标（A已排到5 → 从7起）');
+check(P.perSlotNeed, '单场人数覆盖（智能排班指定某场1人）');
 
 /* ============================================================
  * 变异自证：把口径改坏，对应探针必须翻红
@@ -164,20 +190,26 @@ const MUT = [
   },
   {
     name: '去掉起始落点过滤（之前时段也排）', expect: 'startSlot',
-    from: '    if (consumeStart) {', to: '    if (false) {'
+    from: '  if (useStart) {', to: '  if (false) {'
   },
   {
     name: '组别绑定失效（所有场都当全体课）', expect: 'scopeBind',
     from: "    const scope = s.scope === 'A' ? 'A' : (s.scope === 'B' ? 'B' : null); // ALL→null 走全体混排",
-    to: "    const scope = null;"
+    to: "      const scope = null;"
   },
   {
     name: 'need_n clamp 失效（非法值照单全收）', expect: 'needClamp',
     from: '  if (!(need === 1 || need === 2)) need = 2;', to: '  /* clamp removed */'
   },
   {
-    name: '起始学号消费失效（init_done 后仍回起点）', expect: 'startSeqConsumed',
-    from: '  if (!st.init_done && Number(st.start_seq) > 0) {', to: '  if (Number(st.start_seq) > 0) {'
+    name: '起点双游标失效（忽略传入游标，从0起）', expect: 'cursorStart',
+    from: '  const cur = Object.assign({ A: 0, B: 0 }, cursors || {});',
+    to: '  const cur = { A: 0, B: 0 };'
+  },
+  {
+    name: '单场人数覆盖失效（指定1人仍按默认2人）', expect: 'perSlotNeed',
+    from: '    const needThis = Number(s.need) === 1 || Number(s.need) === 2 ? Number(s.need) : need;',
+    to: '    const needThis = need;'
   }
 ];
 

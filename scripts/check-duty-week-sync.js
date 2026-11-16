@@ -149,6 +149,25 @@ const corrected3 = page._syncWeek();
 ok(corrected3 === false, '_syncWeek 返回 false（week 已=current，无需强刷）');
 ok(page.data.week === 4, 'week 保持稳定为 4');
 
+/* 场景⑤（2026-11-17 用户要求）：周日默认展示下一周；注入 weekday=7  deterministic 验证 */
+console.log('── 场景⑤：周日默认显示下一周');
+appStub.globalData.config = { termStart: '2026-09-14', totalWeeks: 18, currentWeek: 4 };
+page.data = Object.assign({}, page.data || {}, { week: 4, current: 4, totalWeeks: 18 });
+page._weekManual = false;
+const sundayFixed = page._syncWeek(7);
+ok(sundayFixed === true, '周日且停在默认周时，_syncWeek 返回 true（强刷到下周）');
+ok(page.data.week === 5, '周日 week 落到下一周（4→5），current 仍为真实当前周 4');
+ok(page.data.current === 4, 'current 保持真实当前周 4（折叠判定不受影响）');
+// 非周日不切下周
+page.data = Object.assign({}, page.data || {}, { week: 4, current: 4, totalWeeks: 18 });
+page._syncWeek(2);
+ok(page.data.week === 4, '周二不切下周，仍停当前周 4');
+// 最后一周转到头不越界
+appStub.globalData.config = { termStart: '2026-09-14', totalWeeks: 18, currentWeek: 18 };
+page.data = Object.assign({}, page.data || {}, { week: 18, current: 18, totalWeeks: 18 });
+page._syncWeek(7);
+ok(page.data.week === 18, '第18周（末周）周日不越界，仍为 18');
+
 /* 场景④：静态断言 onShow 内含 this._syncWeek() 调用（防集成回归） */
 console.log('── 场景④：onShow 必须调用 _syncWeek（防有人把修复从 onShow 删掉）');
 const src = fs.readFileSync(dutyFile, 'utf8');

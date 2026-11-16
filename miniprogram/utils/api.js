@@ -143,6 +143,8 @@ module.exports = {
   speechClear: C('schedule', 'speechClear'),
   speechPublish: C('schedule', 'speechPublish'),
   speechSetSettings: C('schedule', 'speechSetSettings'),
+  speechAiParse: C('schedule', 'speechAiParse'),
+  speechAiApply: C('schedule', 'speechAiApply'),
 
   /* ---------- 一键生成 · AI（DeepSeek） ---------- */
   scheduleAiPrompt: C('schedule', 'aiPrompt'),

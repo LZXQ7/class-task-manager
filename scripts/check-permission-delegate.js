@@ -87,7 +87,7 @@ console.log('\n── ② 排班域（排班域路由必须声明 scheduleAuth�
  * 与 setRules 同域 —— 谁能排班，谁就能定自己班的制度。
  * 23 → 28（2026-11-16）：新增课前演讲 5 个写路由（speechGenerate/Reassign/
  * Clear/Publish/SetSettings），同属排班域；speechList 只读走 needBind 不计入。 */
-eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 28, 'schedule 排班域路由数');
+eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 30, 'schedule 排班域路由数（含 speechAiParse/speechAiApply）');
 eq(count(ADJ, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 2, 'adjust 排班域路由数');
 
 /** 派发器接线（源码入 → 失败码出） */
@@ -165,13 +165,17 @@ has(DUTY_W, /btn-text="\{\{canSchedule \? '去发布' : ''\}\}"/, '未发布提�
  *      🔒 但光数总数会漏掉「容器放宽后某个按钮忘加 canSchedule」这种真泄漏，
  *         所以下面新增 ④b 逐按钮钉死 —— 比数总数更靠得住。
  */
-eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 6,
-  '值日页排班入口全部改按 canSchedule（6 处：清空 + 一键 2 处纯 canSchedule、1 处开关式隐藏「+加值日生」、3 处 canSchedule 三元）');
+/* 2026-11-17：v2 把课前演讲并进值日页，按钮排按视图切两套动作（值日5 + 演讲5 都受 canSchedule）。
+ * 期望从 6 → 10：原值日 2 纯 + 1 showAdd + 3 三元 = 6；现演讲新增 3 纯（清空/一键/智能）+ 2 带
+ * speechStatus 条件 + busy 三元减少 2 → 精确总数 10。逐按钮保护见下方 ④b（已扩展到演讲 handler）。 */
+eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 10,
+  '值日页排班入口全部改按 canSchedule（10 处：值日+演讲两套动作，逐按钮见 ④b）');
 /**
  * ④b 权限下沉后的逐个校验（2026-10-31）：容器已放宽给普通成员看「历史」，
  *     因此**每个排班动作按钮自身**必须带 canSchedule，否则无权限者会看到能点的按钮。
  */
-['onClear', 'onAiOpen', 'onUnpublish', 'onPublish'].forEach((h) => {
+['onClear', 'onAiOpen', 'onUnpublish', 'onPublish',
+ 'onSpClear', 'onSpGenerate', 'onSpAiOpen', 'onSpUnpublish', 'onSpPublish'].forEach((h) => {
   const tag = new RegExp('<view[^>]*bindtap="' + h + '"[^>]*>').exec(DUTY_W);
   const pass = !!tag && /wx:if="\{\{[^"]*canSchedule[^"]*\}\}"/.test(tag[0]);
   if (pass) ok('排班动作按钮 ' + h + ' 自身受 canSchedule 保护（容器已放宽，权限必须落在按钮上）');

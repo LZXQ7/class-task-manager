@@ -15,8 +15,7 @@
     "pages/classes/index",
     "pages/homework/index",
     "pages/homework/detail",
-    "pages/leave/index",
-    "pages/speech/index"
+    "pages/leave/index"
   ],
   "window": {
     "navigationStyle": "custom",

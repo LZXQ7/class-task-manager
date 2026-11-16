@@ -155,7 +155,32 @@ Page({
     aiCleaningPlan: [],      // 保洁不进 AI 计划，单独回传用于预览展示
     aiWarnings: [],
     aiNotes: '',
-    aiSkipSeqs: []
+    aiSkipSeqs: [],
+
+    /* ===== 课前演讲（v2 2026-11-17，并入本页分段控件）===== */
+    viewMode: 'duty',          // duty | speech（日期切换器共用，不随此重建）
+    speechStatus: 'DRAFT',
+    speechUnpublished: false,
+    speechLoading: false,
+    speechDays: [],
+    speechSetting: { cursorA: 0, cursorB: 0 },
+    speechRoster: [],          // 换人候选（speechList 下发）
+    /* 演讲设置弹层：当前进度双游标 */
+    spSettingShow: false,
+    spCursorA: '',
+    spCursorB: '',
+    /* 智能排班：输入 + 预览确认 + 红字错误 */
+    spAiShow: false,
+    spAiText: '',
+    spAiBusy: false,
+    spAiError: '',
+    spAiNotes: '',
+    spAiRows: [],
+    spAiPending: null,
+    spAiShort: 0,
+    /* 演讲换人弹层 */
+    spSwapShow: false,
+    spSwapTarget: null
   },
 
   onLoad() {
@@ -387,7 +412,7 @@ Page({
    * 仅当本页还停在「初始默认周」（用户没手动切过周）时，把 week 也纠正为真实当前周。
    * @returns {boolean} week 是否被纠正（纠正了调用方就走 load(true) 强刷当前周）
    */
-  _syncWeek() {
+  _syncWeek(weekdayOverride) {
     const app = getApp();
     const cfg = (app.globalData && app.globalData.config) || {};
     const cur = cfg.currentWeek || this.data.current || 1;
@@ -395,12 +420,14 @@ Page({
     if (Number(this.data.current) !== Number(cur)) this.setData({ current: cur });
     // 用户手动切过周：只同步 current、不动 week，保留用户选择
     if (this._weekManual) return false;
-    // 还在初始默认周：纠正为真实当前周；与现有值不同才强刷
-    if (Number(this.data.week) !== Number(cur)) {
-      this.setData({
-        week: cur,
-        totalWeeks: cfg.totalWeeks || this.data.totalWeeks
-      });
+    /* 周日默认展示下一周（2026-11-17 用户要求）：周日 = 一周收尾，此时进来直接看下周安排。
+     * weekday 用注入参数（1=周一…7=周日），缺省取真实今天；校验门禁可传固定值。 */
+    const wd = (typeof weekdayOverride === 'number') ? weekdayOverride : util.todayWeekday();
+    const total = Number(cfg.totalWeeks) || this.data.totalWeeks;
+    const target = (wd === 7 && cur < total) ? (cur + 1) : cur;
+    // 还在初始默认周：纠正为 target（周日=下周，其余=当前周）；与现有值不同才强刷
+    if (Number(this.data.week) !== Number(target)) {
+      this.setData({ week: target, totalWeeks: total });
       return true;
     }
     return false;
@@ -571,9 +598,143 @@ Page({
     swipe.shift(this, delta, (w) => this._applyWeek(w));
   },
 
-  /** 课前演讲入口（2026-11-16）：跳转到独立演讲排班页 */
-  onGoSpeech() {
-    wx.navigateTo({ url: '/pages/speech/index' });
+  /* ==================== 课前演讲（v2：并入本页分段控件） ==================== */
+  /** 值日 / 课前演讲 视图切换（日期切换器共用，不重建） */
+  onViewMode(e) {
+    const mode = (e.currentTarget.dataset.mode === 'speech') ? 'speech' : 'duty';
+    if (mode === this.data.viewMode) return;
+    this.setData({ viewMode: mode });
+    if (mode === 'speech') this.loadSpeech();
+  },
+
+  /** 演讲数据加载（与值日共用 week；草稿对非管理员隐藏） */
+  loadSpeech() {
+    const cid = Number(getApp().globalData.viewClassId) || 0;
+    this.setData({ speechLoading: true });
+    return api.speechList({ week: this.data.week, classId: cid || undefined }, { toast: false })
+      .then((r) => {
+        const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
+        const days = ((r && r.days) || []).map(d => Object.assign({}, d, { weekdayText: '周' + (WEEKDAY[d.weekday] || '') }));
+        this.setData({
+          speechLoading: false,
+          speechStatus: (r && r.status) || 'DRAFT',
+          speechUnpublished: !!(r && r.unpublished),
+          speechDays: days,
+          speechSetting: (r && r.setting) || this.data.speechSetting,
+          speechRoster: (r && r.roster) || []
+        });
+      })
+      .catch((e) => { this.setData({ speechLoading: false }); util.toast((e && e.errMsg) || '加载演讲安排失败'); });
+  },
+
+  /* ---- 演讲：设置当前进度双游标 ---- */
+  onSpSettingOpen() {
+    const s = this.data.speechSetting || {};
+    this.setData({ spSettingShow: true, spCursorA: String(s.cursorA || 0), spCursorB: String(s.cursorB || 0) });
+  },
+  onSpSettingClose() { this.setData({ spSettingShow: false }); },
+  onSpCursorA(e) { this.setData({ spCursorA: e.detail.value }); },
+  onSpCursorB(e) { this.setData({ spCursorB: e.detail.value }); },
+  onSpSettingSave() {
+    const a = String(this.data.spCursorA || '').trim();
+    const b = String(this.data.spCursorB || '').trim();
+    if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) { util.toast('两组已排到号都要填数字'); return; }
+    if (this._spBusy) return;
+    this._spBusy = true;
+    api.speechSetSettings({ cursorA: Number(a), cursorB: Number(b) }, { toast: false }).then(() => {
+      this._spBusy = false;
+      this.setData({ spSettingShow: false });
+      util.toast('进度已保存'); this.loadSpeech();
+    }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '保存失败'); });
+  },
+
+  /* ---- 演讲：一键生成 / 清空 / 发布 / 撤回 ---- */
+  onSpGenerate() {
+    if (this._spBusy) return;
+    this._spBusy = true;
+    wx.showLoading({ title: '正在生成…', mask: true });
+    api.speechGenerate({ week: this.data.week }, { toast: false }).then((r) => {
+      this._spBusy = false; wx.hideLoading();
+      util.toast(r && r.created ? ('已排 ' + r.created + ' 人次' + (r.short ? '（有缺口）' : '')) : '本周无需排演讲');
+      this.loadSpeech();
+    }).catch((e) => { this._spBusy = false; wx.hideLoading(); util.toast((e && e.errMsg) || '生成失败'); });
+  },
+  onSpClear() {
+    if (this._spBusy) return;
+    wx.showModal({
+      title: '清空本周演讲', content: '确定清空本周全部演讲安排？（不推进轮转进度，重新生成还是同一批人）',
+      confirmColor: '#E34D59', success: (res) => {
+        if (!res.confirm) return;
+        this._spBusy = true;
+        api.speechClear({ week: this.data.week }, { toast: false }).then(() => {
+          this._spBusy = false; util.toast('已清空'); this.loadSpeech();
+        }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '清空失败'); });
+      }
+    });
+  },
+  onSpPublish() {
+    if (this._spBusy) return;
+    this._spBusy = true;
+    api.speechPublish({ week: this.data.week, status: 'PUBLISHED' }, { toast: false }).then(() => {
+      this._spBusy = false; util.toast('已发布给全班'); this.loadSpeech();
+    }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '发布失败'); });
+  },
+  onSpUnpublish() {
+    if (this._spBusy) return;
+    this._spBusy = true;
+    api.speechPublish({ week: this.data.week, status: 'DRAFT' }, { toast: false }).then(() => {
+      this._spBusy = false; util.toast('已撤回，进度已回滚'); this.loadSpeech();
+    }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '撤回失败'); });
+  },
+
+  /* ---- 演讲：智能排班（自然语言 → 预览确认） ---- */
+  onSpAiOpen() { this.setData({ spAiShow: true, spAiText: '', spAiError: '', spAiRows: [], spAiNotes: '' }); },
+  onSpAiClose() { this.setData({ spAiShow: false }); },
+  onSpAiInput(e) { this.setData({ spAiText: e.detail.value }); },
+  onSpAiParse() {
+    const text = String(this.data.spAiText || '').trim();
+    if (!text) { util.toast('请先描述你的安排'); return; }
+    if (this.data.spAiBusy) return;
+    this.setData({ spAiBusy: true, spAiError: '', spAiRows: [] });
+    wx.showLoading({ title: '正在理解…', mask: true });
+    api.speechAiParse({ week: this.data.week, text }, { toast: false }).then((r) => {
+      this.setData({
+        spAiBusy: false, spAiError: (r && r.redError) || '',
+        spAiRows: (r && r.rows) || [], spAiPending: (r && r.pending) || null,
+        spAiShort: (r && r.short) || 0,
+        spAiNotes: ((r && r.notes) || []).join('；')
+      });
+      wx.hideLoading();
+    }).catch((e) => {
+      this.setData({ spAiBusy: false, spAiError: (e && e.errMsg) || '解析失败，请换个说法再试' });
+      wx.hideLoading();
+    });
+  },
+  onSpAiApply() {
+    if (!this.data.spAiRows.length) { util.toast('没有可确认的安排'); return; }
+    if (this._spBusy) return;
+    this._spBusy = true;
+    api.speechAiApply({ week: this.data.week, rows: this.data.spAiRows, pending: this.data.spAiPending }, { toast: false })
+      .then(() => {
+        this._spBusy = false;
+        this.setData({ spAiShow: false });
+        util.toast('已生成草稿，确认无误后发布给全班'); this.loadSpeech();
+      }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '应用失败'); });
+  },
+
+  /* ---- 演讲：单场换人（完全自由） ---- */
+  onSpSwapTap(e) {
+    const d = e.currentTarget.dataset;
+    this.setData({ spSwapShow: true, spSwapTarget: { id: d.id, name: d.name } });
+  },
+  onSpSwapClose() { this.setData({ spSwapShow: false }); },
+  onSpSwapPick(e) {
+    const mid = Number(e.currentTarget.dataset.mid);
+    const t = this.data.spSwapTarget;
+    if (!mid || !t) return;
+    api.speechReassign({ id: t.id, memberId: mid }, { toast: false }).then(() => {
+      this.setData({ spSwapShow: false }); util.toast('已换人'); this.loadSpeech();
+    }).catch((e) => util.toast((e && e.errMsg) || '换人失败'));
   },
 
   /** 真正换周（动画 out 段结束后才被回调） */

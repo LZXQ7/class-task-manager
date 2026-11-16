@@ -805,10 +805,55 @@
   color: var(--text-3, #86909C);
 }
 
-/* 课前演讲入口（2026-11-16）：独立类，不占 st-item 档位 */
-.dt-speech-entry { display: flex; align-items: center; gap: 18rpx; margin: 16rpx 24rpx 4rpx; padding: 18rpx 22rpx; border-radius: 18rpx; background: var(--bg-card, rgba(255,255,255,.7)); border: 2rpx solid var(--nav-line, rgba(0,0,0,.06)); }
-.dt-speech-ico { flex: 0 0 64rpx; height: 64rpx; line-height: 64rpx; text-align: center; border-radius: 16rpx; background: var(--brand-light, rgba(51,112,255,.12)); color: var(--brand, #3370FF); font-size: 30rpx; font-weight: 700; }
-.dt-speech-txt { flex: 1; }
-.dt-speech-title { font-size: 28rpx; font-weight: 600; color: var(--text-1, #1D2129); }
-.dt-speech-sub { font-size: 22rpx; color: var(--text-3, #86909C); margin-top: 4rpx; }
-.dt-speech-arrow { font-size: 40rpx; color: var(--text-3, #86909C); }
+/* 值日 / 课前演讲 分段控件（v2 2026-11-17）：替换原独立页入口卡；不占 st-item 档位 */
+.dt-view-tabs { display: flex; gap: 8rpx; margin: 16rpx 24rpx 4rpx; padding: 6rpx; border-radius: 16rpx; background: var(--bg-fill); }
+.dt-view-tab { flex: 1; text-align: center; padding: 16rpx 0; border-radius: 12rpx; font-size: 27rpx; font-weight: 600; color: var(--text-2); }
+.dt-view-tab.on { background: var(--brand); color: #FFFFFF; }
+
+/* ===== 课前演讲视图（v2，从独立页搬入，令牌走 var(--x,兜底)） ===== */
+.sp-legend { display: flex; justify-content: space-between; padding: 12rpx 28rpx; }
+.sp-leg { font-size: 22rpx; color: var(--text-3); }
+.sp-tip { padding: 4rpx 24rpx 12rpx; font-size: 22rpx; color: var(--text-3); }
+.sp-days { padding: 8rpx 24rpx 40rpx; }
+.sp-day { margin-bottom: 20rpx; padding: 20rpx 24rpx; }
+.sp-day-head { display: flex; align-items: baseline; gap: 14rpx; margin-bottom: 14rpx; }
+.sp-date { font-size: 28rpx; font-weight: 700; color: var(--text-1); }
+.sp-wd { font-size: 22rpx; color: var(--text-3); }
+.sp-slot { display: flex; align-items: center; gap: 16rpx; padding: 10rpx 0; }
+.sp-slot-tag { flex: 0 0 76rpx; text-align: center; font-size: 22rpx; font-weight: 600; padding: 6rpx 0; border-radius: 10rpx; }
+.sp-slot-tag.am { background: var(--brand-light); color: var(--brand); }
+.sp-slot-tag.pm { background: var(--warning-bg); color: var(--warning); }
+.sp-persons { display: flex; flex-wrap: wrap; gap: 12rpx; flex: 1; }
+.sp-person { display: flex; align-items: center; gap: 8rpx; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--fill-soft); }
+.sp-name { font-size: 26rpx; color: var(--text-1); font-weight: 500; }
+.sp-scope { font-size: 20rpx; color: var(--text-3); }
+.sp-scope.all { color: var(--brand); }
+.sp-none { color: var(--text-4, #C9CDD4); font-size: 24rpx; }
+.sp-foot { text-align: center; font-size: 22rpx; color: var(--text-3); padding: 12rpx 0; }
+.sp-empty { padding: 80rpx 40rpx; text-align: center; }
+.sp-empty-title { font-size: 30rpx; color: var(--text-2); font-weight: 600; }
+.sp-empty-sub { font-size: 24rpx; color: var(--text-3); margin-top: 12rpx; }
+.sp-skeleton { padding: 16rpx 24rpx; }
+.sp-sk-row { height: 160rpx; border-radius: 20rpx; background: var(--fill-soft); margin-bottom: 20rpx; }
+.sp-form { padding: 8rpx 8rpx 20rpx; }
+.sp-fld { margin-bottom: 24rpx; }
+.sp-label { font-size: 26rpx; color: var(--text-2); margin-bottom: 12rpx; }
+.sp-input { width: 100%; box-sizing: border-box; padding: 16rpx 20rpx; border-radius: 12rpx; background: var(--fill-soft); color: var(--text-1); font-size: 26rpx; }
+.sp-form-note { font-size: 22rpx; color: var(--text-3); line-height: 1.6; }
+.sp-ai-input { width: 100%; box-sizing: border-box; min-height: 140rpx; padding: 16rpx 20rpx; border-radius: 12rpx; background: var(--fill-soft); color: var(--text-1); font-size: 26rpx; }
+.sp-ai-error { margin-top: 16rpx; padding: 16rpx 20rpx; border-radius: 12rpx; background: var(--danger-bg); color: var(--danger); font-size: 24rpx; line-height: 1.5; }
+.sp-ai-preview-title { margin: 24rpx 0 12rpx; font-size: 26rpx; font-weight: 600; color: var(--text-1); }
+.sp-ai-notes { font-size: 22rpx; color: var(--text-3); margin-bottom: 12rpx; }
+.sp-ai-preview { max-height: 40vh; overflow-y: auto; }
+.sp-ai-row { display: flex; align-items: center; gap: 12rpx; padding: 12rpx 8rpx; border-bottom: 2rpx solid var(--nav-line); }
+.sp-ai-date { font-size: 24rpx; color: var(--text-2); }
+.sp-ai-slot { font-size: 22rpx; color: var(--text-3); }
+.sp-ai-name { flex: 1; font-size: 24rpx; color: var(--text-1); }
+.sp-swap-list { max-height: 60vh; overflow-y: auto; }
+.sp-swap-row { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 8rpx; border-bottom: 2rpx solid var(--nav-line); }
+.sp-swap-name { font-size: 28rpx; color: var(--text-1); }
+.sp-swap-seq { font-size: 24rpx; color: var(--text-3); }
+/* 弹层底部操作条（miniprogram-page-conventions 第 6 条：flex 两按钮等宽） */
+.f-actions { display: flex; gap: 20rpx; align-items: stretch; margin-top: 24rpx; }
+.f-cancel, .f-save { flex: 1; }
+.f-save.off { opacity: .5; }

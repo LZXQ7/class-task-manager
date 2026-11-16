@@ -3,7 +3,7 @@
      表现就是「在值日详情里选择替补，滑到底后后面的『本周值日』跟着一起滑」。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(sheetShow || aiShow || groupShow || addShow || endedSheetShow || slotShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(sheetShow || aiShow || groupShow || addShow || endedSheetShow || slotShow || spSettingShow || spAiShow || spSwapShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <!-- 左右滑动切周：手势挂在页面根节点（覆盖整页），见 utils/swipe.js。
      弹层打开时在 onSwipeEnd 里挡掉（弹层 DOM 就在这个根节点里，touch 会冒泡上来）。 -->
@@ -44,15 +44,11 @@
     bind:change="onWeekChange"
   />
 
-  <!-- 课前演讲入口（2026-11-16）：演讲排班独立成页，从值日页一步进入。
+  <!-- 值日 / 课前演讲 分段控件（v2 2026-11-17）：替换原独立页入口卡；日期切换器（上方 week-switcher）共用不动。
        刻意不套 st-item 档位（避开 check-tab-enter 的 1→2→3 连续约束），用独立类。 -->
-  <view class="dt-speech-entry" bindtap="onGoSpeech" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">
-    <view class="dt-speech-ico">讲</view>
-    <view class="dt-speech-txt">
-      <view class="dt-speech-title">课前演讲</view>
-      <view class="dt-speech-sub">每天第1节 / 第3节课前 10 分钟</view>
-    </view>
-    <view class="dt-speech-arrow">›</view>
+  <view class="dt-view-tabs">
+    <view class="dt-view-tab {{viewMode === 'duty' ? 'on' : ''}}" data-mode="duty" bindtap="onViewMode">值日</view>
+    <view class="dt-view-tab {{viewMode === 'speech' ? 'on' : ''}}" data-mode="speech" bindtap="onViewMode">课前演讲</view>
   </view>
 
   <!-- 顶部工具行（2026-11-14 用户要求②）：班级下拉 + 「历史」合并成一行。
@@ -69,15 +65,6 @@
         bind:change="onDutyClass"
       />
     </view>
-    <!-- 「已结束」弹层入口：只在有已结束日子时出现（check-duty-ended B2 断言此 wx:if） -->
-    <view data-pressable
-      wx:if="{{pastDays.length}}"
-      class="dt-hist"
-      bindtap="onEndedOpen"
-      hover-class="press-dim"
-      hover-start-time="0"
-      hover-stay-time="60"
-    >历史</view>
   </view>
 
   <!-- 排班域操作区（超管 / 本班生活委员，需求 D）：放在最上面，不随列表滚动 —— 本周已有 24 条值日时排到页面底部会看不见。
@@ -85,11 +72,30 @@
        ⚠️ 容器条件从 canSchedule 放宽为 canSchedule || pastDays.length —— 普通成员没有排班权限，
           但同样要能翻看过去的日子，否则「历史」会对他消失。 -->
   <view wx:if="{{canSchedule || pastDays.length}}" class="dt-admin st-item st-3">
-    <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn danger" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onClear">清空值日表</view>
-    <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onAiOpen">{{busy ? '处理中' : '一键生成'}}</view>
-    <view data-pressable wx:if="{{canSchedule && status === 'PUBLISHED'}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onUnpublish">撤回发布</view>
-    <view data-pressable wx:if="{{canSchedule && status !== 'PUBLISHED'}}" class="dt-admin-btn primary" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onPublish">发布给全班</view>
-    <!-- 「历史」2026-11-14 已移到顶部工具行（与班级下拉同一行），此处不再重复 -->
+    <!-- 值日视图按钮 -->
+    <block wx:if="{{viewMode === 'duty'}}">
+      <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn danger" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onClear">清空</view>
+      <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onAiOpen">{{busy ? '处理中' : '一键生成'}}</view>
+      <view data-pressable wx:if="{{canSchedule && status === 'PUBLISHED'}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onUnpublish">撤回发布</view>
+      <view data-pressable wx:if="{{canSchedule && status !== 'PUBLISHED'}}" class="dt-admin-btn primary" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onPublish">发布给全班</view>
+    </block>
+    <!-- 课前演讲视图按钮（v2：随视图切换） -->
+    <block wx:else>
+      <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn danger" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpClear">清空</view>
+      <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpGenerate">一键生成</view>
+      <view data-pressable wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpAiOpen">智能排班</view>
+      <view data-pressable wx:if="{{canSchedule && speechStatus === 'PUBLISHED'}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpUnpublish">撤回发布</view>
+      <view data-pressable wx:if="{{canSchedule && speechStatus !== 'PUBLISHED'}}" class="dt-admin-btn primary" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpPublish">发布给全班</view>
+    </block>
+    <!-- 「历史」按钮并入本排最右（2026-11-17 用户要求）；只在有已结束日子时出现（check-duty-ended 断言此 wx:if） -->
+    <view data-pressable
+      wx:if="{{pastDays.length && viewMode === 'duty'}}"
+      class="dt-admin-btn dt-hist"
+      bindtap="onEndedOpen"
+      hover-class="press-dim"
+      hover-start-time="0"
+      hover-stay-time="60"
+    >历史</view>
   </view>
   <!-- 手动排班的入口只在「我的」页（goManual → P5），此处不再重复 -->
   <view wx:if="{{isAdmin && !canSchedule}}" class="dt-admin-tip st-item st-4">值日表的生成、发布与调整由超级管理员或本班生活委员负责</view>
@@ -102,6 +108,8 @@
   <!-- 入场动画单独套一层：wk-swipe 是切周动画的容器，两层分开才不会共用同一个 animation 属性
        ⚠️ 档位封顶 st-7：这是第 6 块，标 st-6（第 7 块起才与第 7 块同拍） -->
   <view class="st-item st-5">
+  <!-- ===== 值日视图（viewMode=duty）===== -->
+  <block wx:if="{{viewMode === 'duty'}}">
   <!-- 切周骨架：必须与「按日」真实版式同构（日期卡 + 2 行头像行）。
        旧写法 type="card" rows=3 height=400 会先糊上 3 块 400rpx 的大白块 ——
        真机上就是「切下一页闪过三个很明显的框」，高度还和真内容差一大截。 -->
@@ -204,6 +212,60 @@
 
 
     <view class="dt-foot"></view>
+  </block>
+  </block><!-- /值日视图 -->
+
+  <!-- ===== 课前演讲视图（viewMode=speech，v2 2026-11-17）=====
+       不套独立 st-item（避开档位连续约束），与值日共用 week-switcher / 日期切换。 -->
+  <block wx:else>
+    <view class="sp-legend">
+      <text class="sp-leg">上午 · 第1节前 08:00-08:10</text>
+      <text class="sp-leg">下午 · 第3节前 14:30-14:40</text>
+    </view>
+    <view wx:if="{{canSchedule && speechStatus !== 'PUBLISHED'}}" class="sp-tip">当前为草稿，发布后全班可见</view>
+
+    <view wx:if="{{speechUnpublished}}" class="sp-empty">
+      <view class="sp-empty-title">本周演讲尚未发布</view>
+      <view class="sp-empty-sub">发布后这里会显示每天的演讲安排</view>
+    </view>
+    <view wx:elif="{{speechLoading}}" class="sp-skeleton">
+      <view class="sp-sk-row" wx:for="{{[1,2,3,4]}}" wx:key="*this"></view>
+    </view>
+    <view wx:else class="sp-days">
+      <view wx:if="{{!speechDays.length}}" class="sp-empty">
+        <view class="sp-empty-title">本周暂无演讲安排</view>
+        <view wx:if="{{canSchedule}}" class="sp-empty-sub">点「一键生成」或「智能排班」按课表排一周</view>
+      </view>
+      <view wx:for="{{speechDays}}" wx:key="date" class="sp-day card">
+        <view class="sp-day-head">
+          <text class="sp-date">{{item.date}}</text>
+          <text class="sp-wd">{{item.weekdayText}}</text>
+        </view>
+        <view class="sp-slot">
+          <view class="sp-slot-tag am">上午</view>
+          <view wx:if="{{item.am.length}}" class="sp-persons">
+            <view wx:for="{{item.am}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
+              <text class="sp-name">{{p.name}}</text>
+              <text wx:if="{{p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
+              <text wx:else class="sp-scope all">全体</text>
+            </view>
+          </view>
+          <view wx:else class="sp-none">—</view>
+        </view>
+        <view class="sp-slot">
+          <view class="sp-slot-tag pm">下午</view>
+          <view wx:if="{{item.pm.length}}" class="sp-persons">
+            <view wx:for="{{item.pm}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
+              <text class="sp-name">{{p.name}}</text>
+              <text wx:if="{{p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
+              <text wx:else class="sp-scope all">全体</text>
+            </view>
+          </view>
+          <view wx:else class="sp-none">—</view>
+        </view>
+      </view>
+      <view class="sp-foot">点姓名可换人（管理员）</view>
+    </view>
   </block>
   </view>
   </view>
@@ -570,6 +632,64 @@
       <view class="f-actions">
         <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn btn-ghost f-cancel" bindtap="onSlotClose">取消</view>
         <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="btn f-save {{slotBusy ? 'off' : ''}}" bindtap="onSlotSave">{{slotBusy ? '保存中…' : '保存'}}</view>
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- ===== 演讲：设置当前进度双游标（v2） ===== -->
+  <bottom-sheet show="{{spSettingShow}}" title="演讲进度设置" bind:close="onSpSettingClose">
+    <view class="sp-form">
+      <view class="sp-fld">
+        <view class="sp-label">A组已排到学号序号</view>
+        <input class="sp-input" type="number" placeholder="例如 33" value="{{spCursorA}}" bindinput="onSpCursorA" />
+      </view>
+      <view class="sp-fld">
+        <view class="sp-label">B组已排到学号序号</view>
+        <input class="sp-input" type="number" placeholder="例如 28" value="{{spCursorB}}" bindinput="onSpCursorB" />
+      </view>
+      <view class="sp-form-note">只设一次，之后每次发布都接着这个进度往后轮。单号为A组、双号为B组；留 0 表示从头开始。</view>
+    </view>
+    <view class="f-actions">
+      <view class="btn btn-ghost f-cancel" bindtap="onSpSettingClose">取消</view>
+      <view class="btn f-save" bindtap="onSpSettingSave">保存</view>
+    </view>
+  </bottom-sheet>
+
+  <!-- ===== 演讲：智能排班（自然语言 → 预览确认） ===== -->
+  <bottom-sheet show="{{spAiShow}}" title="智能排班" height="{{1280}}" bind:close="onSpAiClose">
+    <view class="sp-form">
+      <view class="sp-label">用一句话描述排班</view>
+      <textarea class="sp-ai-input" placeholder="例如：从周二上午开始，从第13号开始，儿童文学只安排一个人" value="{{spAiText}}" bindinput="onSpAiInput" maxlength="200" auto-height />
+      <view class="sp-form-note">支持：从周X上午/下午开始、从第N号开始、某门课只安排1人/2人。可连起来说。</view>
+      <view wx:if="{{spAiError}}" class="sp-ai-error">{{spAiError}}</view>
+      <block wx:if="{{spAiRows.length}}">
+        <view class="sp-ai-preview-title">预览（{{spAiRows.length}} 人次{{spAiShort ? ' · 有缺口' : ''}}）</view>
+        <view wx:if="{{spAiNotes}}" class="sp-ai-notes">{{spAiNotes}}</view>
+        <view class="sp-ai-preview">
+          <view wx:for="{{spAiRows}}" wx:key="index" class="sp-ai-row">
+            <text class="sp-ai-date">{{item.date}}</text>
+            <text class="sp-ai-slot">{{item.time}}</text>
+            <text class="sp-ai-name">{{item.name}}（{{item.studentNo}}）</text>
+            <text wx:if="{{item.scope !== 'ALL'}}" class="sp-scope">{{item.scope === 'A' ? 'A组' : 'B组'}}</text>
+            <text wx:else class="sp-scope all">全体</text>
+          </view>
+        </view>
+      </block>
+    </view>
+    <view class="f-actions">
+      <view class="btn btn-ghost f-cancel" bindtap="onSpAiClose">取消</view>
+      <view class="btn ghost" bindtap="onSpAiParse">{{spAiBusy ? '理解中…' : '解析预览'}}</view>
+      <view class="btn f-save {{!spAiRows.length ? 'off' : ''}}" bindtap="onSpAiApply">确认排班</view>
+    </view>
+  </bottom-sheet>
+
+  <!-- ===== 演讲：单场换人 ===== -->
+  <bottom-sheet show="{{spSwapShow}}" title="{{spSwapTarget ? '换演讲人 · ' + spSwapTarget.name : '换演讲人'}}" bind:close="onSpSwapClose">
+    <view wx:if="{{!speechRoster.length}}" class="sp-empty-sub">名册为空，无法换人</view>
+    <view wx:else class="sp-swap-list">
+      <view wx:for="{{speechRoster}}" wx:for-item="m" wx:key="id" class="sp-swap-row" data-mid="{{m.id}}" bindtap="onSpSwapPick">
+        <text class="sp-swap-name">{{m.name}}</text>
+        <text class="sp-swap-seq">{{m.studentNo}}</text>
       </view>
     </view>
   </bottom-sheet>
