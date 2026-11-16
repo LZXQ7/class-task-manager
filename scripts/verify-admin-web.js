@@ -759,6 +759,17 @@ function ok(name, cond, extra) {
     ok('Cookie 是 HttpOnly', !!(sid && sid.httpOnly));
     ok('Cookie 有 SameSite', !!(sid && /Lax/.test(String(sid.sameSite))));
     await page.waitForSelector('.tbl', { timeout: 8000 });
+    // 2026-11-16 焕新：概览页卡片有错峰入场动画（card-enter + --enter-delay），
+    // 截图必须等动画播完再拍，否则拍到的是半透明的中间帧。
+    // 顺带验证动画**确实会结束**（不会永久卡在 opacity:0 —— 那会让页面看着是空的）。
+    await page.waitForFunction(() => {
+      const cards = Array.from(document.querySelectorAll('#view > .card, #view > .stat-row'));
+      if (!cards.length) return false;
+      return cards.every((el) => {
+        const s = getComputedStyle(el);
+        return parseFloat(s.opacity || '1') > 0.98;
+      });
+    }, { timeout: 5000 }).catch(() => ok('入场动画未在 5s 内结束（卡片未达全不透明）', false));
     await page.screenshot({ path: path.join(SHOTS, '03-overview.png'), fullPage: true });
 
     /* --- 5. 概览数字 --- */
@@ -939,10 +950,17 @@ function ok(name, cond, extra) {
     console.log('\n[6.5] 删课次');
     const beforeRows = await page.$$eval('#view tbody tr', (els) => els.length);
     const beforeSessions = TABLES.session.length;
-    // Playwright 默认把 confirm 全 dismiss ⇒ 不 accept 的话删除永远不会发生，
-    // 断言「课次少了 1」就会假红，看起来像删除功能坏了
+    /* 2026-11-16：危险操作确认已从浏览器原生 confirm() 升级为站内 .dlg-confirm
+     * （三级危险度 L1/L2/L3，见 app.js 的 confirmDialog）⇒ 原生 dialog 事件不再触发，
+     * 必须点弹层里的 #dlg-cf-ok。删课次是 L2（无「我已知晓」勾选框，确认键初始可点）。 */
     page.once('dialog', (d) => d.accept());
     await page.click('[data-del-session="101"]');
+    await page.waitForSelector('#dlg-cf-ok', { timeout: 5000 });
+    ok('删课次弹的是站内确认层（原生 confirm 已全站下线）', await page.isVisible('.dlg-confirm'));
+    ok('确认层列出了「所有周共用」的影响说明',
+      (await page.textContent('.dlg-cf-body')).indexOf('所有周共用') >= 0);
+    await page.click('#dlg-cf-ok');
+    await page.waitForSelector('.dlg-confirm', { state: 'detached', timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(800);
     /* 夹具 示例班级A 有 5 条 session（101/102/104/106 课程 + 103 保洁 CLEAN），
      * 而课表页**按设计过滤掉 CLEAN**（见 [6.2c]）⇒ 页面上只有 4 行。
@@ -1144,8 +1162,16 @@ function ok(name, cond, extra) {
 
     await page.selectOption('#m-size', '50');
     await waitHd('每页 50 人');
+    /* 2026-11-16：切筛选走 softReload（不清空整页、不闪 spinner）。
+       旧实现 reload()=go() 会先把 #view 换成 `<div class="loading">加载中…</div>`，
+       即使 mock 返回快，也常在切换瞬间留下 spinner 或被 e2e 的 waitForSelector 捕获。
+       这里断言切换完成后没有残留 loading，且容器上不再挂着进度条 class。 */
     await page.click('[data-scope="COMMITTEE"]');
     await waitHd('仅班委');
+    ok('切筛选不残留整页 loading spinner',
+      (await page.$$('#view > .loading')).length === 0);
+    ok('切筛选完成后进度条已收起',
+      !(await page.evaluate(() => document.getElementById('view').classList.contains('is-refreshing'))));
     let viewText = await page.textContent('#view');
     ok('仅班委：只剩 2 人', (await rowsOf()) === 2, '实际 ' + (await rowsOf()));
     ok('仅班委：含示例成员01/示例成员42', viewText.indexOf('示例成员01') >= 0 && viewText.indexOf('示例成员42') >= 0);
@@ -1508,6 +1534,27 @@ function ok(name, cond, extra) {
     await page.waitForTimeout(700);
     ok('审计视图可达', (await page.$('#view')) !== null);
     await page.screenshot({ path: path.join(SHOTS, '12-audit.png'), fullPage: true });
+
+    /* --- 11.5 值日页加载（2026-11-16 回归：漏分号吞掉 API 调用） ---
+     * 曾因 renderDuty 里 qs 拼接漏分号，api('/api/duty?'+qs) 被 `+` 吞进表达式，
+     * 请求发成 /api/duty?undefined ⇒ 后端报「缺少班级」⇒ 页面「加载失败」。
+     * node --check 与所有旧门禁/旧 e2e 全绿（没人访问过 duty 页），一路带病上线。
+     * 这里真访问一次，断言：不报错 + classId 真进了 SQL。 */
+    console.log('\n[11.5] 值日页加载（缺班级回归）');
+    const dutySqlAt = POOL.calls.length;
+    await page.click('.nav-item[data-view="duty"]');
+    await page.waitForTimeout(700);
+    const dutyView = await page.textContent('#view');
+    ok('值日页不报「缺少班级」', dutyView.indexOf('缺少班级') < 0, dutyView.slice(0, 80));
+    ok('值日页不显示「加载失败」', dutyView.indexOf('加载失败') < 0);
+    ok('值日页有明细卡片', dutyView.indexOf('值日明细') >= 0);
+    const dutySqls = POOL.calls.slice(dutySqlAt).filter((c) => /admin_duty|duty\b/i.test(c.sql));
+    ok('值日查询真的发出了 SQL（API 调用没被漏分号吞掉）', dutySqls.length > 0,
+      'duty SQL 条数 ' + dutySqls.length);
+    ok('值日 SQL 的 classId 参数不是 undefined',
+      dutySqls.length > 0 && dutySqls.some((c) =>
+        (c.args || []).some((a) => a === 3 || a === '3')),
+      JSON.stringify(dutySqls.slice(0, 2)).slice(0, 200));
 
     /* --- 12. 刷新不掉登录（Cookie 会话） --- */
     console.log('\n[12] 刷新保持登录');

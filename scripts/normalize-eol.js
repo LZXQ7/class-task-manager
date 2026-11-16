@@ -9,12 +9,22 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const EXTS = ['.js', '.wxs', '.json', '.wxml', '.wxss', '.md', '.sql', '.sh', '.mjs', '.cjs', '.yml', '.yaml'];
+/* ⚠️ .css 必须包含（2026-11-16 补）：网页后台的 admin.css 有 1700+ 行，
+   多行正则锚点极多；一旦被写成 CRLF，check-admin-css-tokens 的变异/匹配
+   会静默失配 ⇒ 门禁假绿。设计顾问实测踩过这个坑。 */
+const EXTS = ['.js', '.wxs', '.json', '.wxml', '.wxss', '.md', '.sql', '.sh', '.mjs', '.cjs', '.yml', '.yaml', '.css', '.html'];
 
-const files = execSync('git ls-files', { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  .split('\n')
-  .map(s => s.trim())
-  .filter(Boolean)
+/* ⚠️ 必须同时吃下**未跟踪**文件（2026-11-16 补）：
+   git ls-files 只看已入库文件，而本轮焕新新建的 scripts/check-admin-css-tokens.js、
+   outputs/*.md 在被 git add 之前完全没有 EOL 保护 —— 门禁还没入库就先被 CRLF 弄假绿。
+   --others --exclude-standard 只列未被 .gitignore 忽略的新文件，安全。 */
+function listFiles(args) {
+  return execSync('git ls-files ' + args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+const files = Array.from(new Set(listFiles('').concat(listFiles('--others --exclude-standard'))))
   .filter(f => EXTS.includes(path.extname(f).toLowerCase()))
   .filter(f => !f.startsWith('node_modules/') && !f.includes('/node_modules/') && !f.startsWith('_online/'));
 

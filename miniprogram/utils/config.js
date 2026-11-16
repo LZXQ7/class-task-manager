@@ -515,8 +515,27 @@ const NOTICE_PAGE = 'pages/notice/index';
  *      「点删除只开弹窗」「feeDeleteRecord 只出现在确认回调里」「页面不许再有 hold-confirm」。
  *   全量门禁 **131 过 / 14 历史存量红**（基线 130/14 + 新门禁 1 绿），零新增回归。
  *   纯前端改动，无需重部署云函数。
+ * ---------------------------------------------------------------------------
+ * v1.0.8.46（2026-11-16）· 体验版里真实班级不再被判「演示班级」，写操作恢复
+ *   用户报障：「为什么不是演示班级，修改值日也显示演示班级无法修改。bug 了，手动排班也排不了」。
+ *   根因：`util.isReadonly() = isDemo() || isTrial()` —— 把**整个微信体验版环境**当成只读。
+ *     · 生产库核实：用户真实身份 class_id=3（3 班）、is_review_demo=0；`class` 表只有 104 是
+ *       `is_demo=1`；`usage_event` 显示 09:29 实际在 duty 页（class 3）操作 ⇒ **不是演示身份**；
+ *       后端 gateDemoWrite 也拦不到他 ⇒ 拦截只可能来自前端 isTrial()，即当时跑的是**体验版**。
+ *     · 副作用范围：体验版是未过审代码**唯一**能真机验收的环境。超管在体验版里操作自己真实班级时，
+ *       每个写操作（改值日 / 换人 / 添加值日 / 手动排班 / 请假 / 班费…）都被静默拦掉；
+ *       且 request.js 的 toast 文案**写死**「演示班级仅预览」，用户只会以为身份错乱。
+ *   修法：① `isReadonly()` 只认 `isDemo()`（演示班身份）；trial 环境不再参与只读判定
+ *          （`isTrial()` 保留给「我的 → 返回登录页」显示条件与冷启动清演示态）。
+ *        ② 新增 `util.readonlyHint()` 作为全站唯一文案口径，`readonlyBlocked` 与 request 层共用，
+ *          禁止再在调用处写死「演示班级」。
+ *        ③ 演示班保护不减弱：前端仍拦 demo 身份，后端 `review-demo.gateDemoWrite` 硬闸照旧。
+ *   门禁：`check-demo-readonly.js` 判据改为钉「isReadonly 只认 isDemo、不含 isTrial」
+ *     + 「request 文案走 readonlyHint」，新增 2 组变异自证（把 trial 兜底加回来 / 把文案写死回来），
+ *     9 组自证全抓；等价验证 `_verify_demo_readonly.js` 三场景（demo 拦 / real 放行 / trial 放行）。
+ *   全量门禁 **141 过 / 14 历史存量红**，零新增回归。纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.45';
+const APP_VERSION = '1.0.8.46';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

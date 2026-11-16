@@ -6,10 +6,12 @@
  *   node scripts/_verify_demo_readonly.js real   正式版真实身份（demo=false, release）
  *                                                → 上传/写/读 全部放行（正式使用零影响）
  *   node scripts/_verify_demo_readonly.js trial  体验版环境但未进演示班（demo=false, trial）
- *                                                → 上传/写 被拦（环境兜底）
+ *                                                → 上传/写/读 **全部放行**（2026-11-16 起 trial 不再兜底拦写：
+ *                                                  体验版是未过审代码唯一能真机验收的环境，拦了等于禁掉验收）
  *
  * demo 场景刻意把 envVersion 设为 release：只有 isDemo()（globalData.demo）真正生效
- * 才拦得住 —— 若有人把判定退回「只看 trial」，这条会立刻 FAIL。
+ * 才拦得住 —— 若有人把判定退回「只看 trial」，这条会立刻 FAIL；反过来 trial 场景全放行，
+ * 若有人把 isTrial() 环境兜底加回来，这条同样 FAIL。
  * 退出码 0 = 该模式符合预期。
  */
 const mode = process.argv[2] || 'demo';
@@ -52,14 +54,14 @@ const request = require('../miniprogram/utils/request');
   console.log('mode=' + mode + ' env=' + ENV_VERSION + ' demo=' + DEMO
     + '  uploadBlocked=' + uploadBlocked + '  writeBlocked=' + writeBlocked + '  readOk=' + readOk);
 
-  const expectBlocked = (mode === 'demo' || mode === 'trial');
+  const expectBlocked = (mode === 'demo');
   if (expectBlocked) {
     const ok = uploadBlocked && writeBlocked && readOk;
     console.log(ok ? '[PASS] ' + mode + '：上传/写被拦、读放行' : '[FAIL] ' + mode + ' 守卫不符预期');
     process.exitCode = ok ? 0 : 1;
   } else {
     const ok = !uploadBlocked && !writeBlocked && readOk;
-    console.log(ok ? '[PASS] real：上传/写/读 全部放行（正式使用零影响）' : '[FAIL] real 放行不符预期');
+    console.log(ok ? '[PASS] ' + mode + '：上传/写/读 全部放行（真实身份零影响）' : '[FAIL] ' + mode + ' 放行不符预期');
     process.exitCode = ok ? 0 : 1;
   }
 })();

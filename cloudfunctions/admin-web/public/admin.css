@@ -1,28 +1,197 @@
 /* 网页管理后台 · 样式
- * 内网工具风格：信息密度优先，克制的品牌蓝（与小程序同色 #3370FF），
- * 不做花哨动效 —— 后台一屏要看的东西比小程序多，动效只用于反馈。
+ * ============================================================
+ * 2026-11-16 全站焕新（用户诉求：「页面老气，像十年前的网页，没有年轻的感觉和灵动感」）
+ *
+ * 改造前的问题（实测，见 outputs/后台焕新-现状诊断.md）：
+ *   ① 颜色体系失控：74 处写死 hex / 35 种唯一色 / 24 处硬编码 rgba，而令牌只有 17 个
+ *      ⇒ 每个组件各写各的颜色，永远是"白底灰线+一点蓝"的十年前配色；
+ *   ② **5 个变量被引用但从未定义**（--text-1 / --brand-soft / --enter-delay /
+ *      --bg-card / --bg-hover）⇒ 用到它们的声明**整条失效**，
+ *      若干 hover / 强调效果其实根本没生效（这是"看着没精打采"的隐藏成因）；
+ *   ③ 圆角 12 档混用（6/4/14/5/10/8px），没有统一阶梯；
+ *   ④ 阴影只有 13 处、且几乎都是"1px 淡影"，缺层次。
+ *
+ * 改造原则：
+ *   · 全部颜色走 CSS 变量，:root 定义完整令牌阶梯（表面/文本/边框/品牌/状态/阴影/图表/玻璃）；
+ *   · 圆角收敛为少数几档（--r-sm / --r-md / --r-lg / --r-full）；
+ *   · 阴影分 3 档（--sh-1 贴地 / --sh-2 悬浮 / --sh-3 浮层），替代散落的 rgba；
+ *   · 动效只动 transform + opacity，统一走 --ease-out / --ease-spring；
+ *   · 悬停效果包在 @media (hover: hover) and (pointer: fine) 里（触屏不触发）；
+ *   · prefers-reduced-motion 段完整降级。
+ *
+ * ⚠️ 本文件受门禁字符串级断言保护（scripts/check-usage-insights.js 等），
+ *    改动前先读 outputs/后台焕新-工程契约.md。
  */
 :root {
-  --brand: #3370FF;
-  --bg: #f5f6f8;
-  --panel: #ffffff;
-  --line: #e8eaed;
-  --text: #1f2329;
-  --text-2: #646a73;
-  --text-3: #8f959e;
-  --ok: #00b42a;
-  --warn: #ff7d00;
-  --err: #f53f3f;
-  --radius: 8px;
-  --shadow: 0 1px 3px rgba(31, 35, 41, .06), 0 1px 2px rgba(31, 35, 41, .04);
-  /* 浮动侧栏（2026-11-14）：四边 16px 外边距 / 20px 圆角 / 低透明度柔和投影。
+  /* ── 品牌 ─────────────────────────────────────────────
+     品牌蓝沿用小程序端的 #3370FF（同一套系统的两半，不能各用各的）。
+     派生 3 档：深(按下) / 主 / 浅(悬停与底色) */
+  --brand:        #3370FF;
+  --brand-strong: #2B5FE6;   /* hover */
+  --brand-deep:   var(--brand-ink);  /* active / 按下（与 brand-ink 同值，收敛成单一来源） */
+  --brand-soft:   #EBF2FF;   /* 品牌浅底（标签/选中/提示条） */
+  --brand-soft-2: #DCE8FF;   /* 品牌浅底·深一档 */
+
+  /* ── 表面（由浅到深的层级）─────────────────────────────
+     bg      页面底（最沉，让浮起的卡片有对比）
+     surface 卡片/面板
+     sunken  凹陷（表头/输入框/代码块）
+     hover   行/项悬停底 */
+  --bg:        #F1F4F9;   /* 与小程序端 .t-light 同族，避免两端调性漂移 */
+  --surface:   #FFFFFF;
+  --sunken:    #F7F9FC;
+  --hover:     #F5F8FF;
+  --overlay:   rgba(15, 23, 42, .48);   /* 弹层遮罩 */
+
+  /* ── 极光背景（三层径向渐变，蓝 + 青，无紫无粉）────────
+     页面底色从纯灰换成极光，是"年轻感"的物理基础。
+     🔴 玻璃必须压在有颜色的背景上才显形 ⇒ 极光底与玻璃侧栏/顶栏必须同批落地。 */
+  --aurora-1: rgba(51, 112, 255, .15);
+  --aurora-2: rgba(20, 178, 214, .12);
+  --aurora-3: rgba(126, 172, 255, .10);
+
+  /* ── 文本（三级）──────────────────────────────────────
+     --text-3 用 #5F6874（Phase 1/2 两份规范对齐后的值）：它在 12~13px 的
+     辅助文字上要能读，更浅的灰在笔记本屏/投影下几乎消失
+     （原 #949BA6 在浅底上仅 2.80:1，远低于 WCAG AA 4.5:1）。 */
+  --text:   #16191F;   /* 主文本 */
+  --text-2: #5B6472;   /* 次要 */
+  --text-3: #5F6874;   /* 弱化（辅助文字 / 表头） */
+  --text-on-brand: #FFFFFF;
+
+  /* ── 边框 ───────────────────────────────────────────── */
+  --line:        #E6EAF0;   /* 常规分隔线 */
+  --line-2:      #EFF2F7;   /* 更弱的行分隔线（表格行线用，比 --line 更淡） */
+  --line-strong: #D4DAE3;   /* 强调分隔（表头下沿等纯装饰用途） */
+  /* 输入框边框：UI 组件边界需达 3:1（WCAG 1.4.11 非文本对比度），
+     --line-strong 的 #D4DAE3 只有 1.4:1 ⇒ 输入框单独用这一档 */
+  --line-input:  #8A94A3;
+  --line-focus:  var(--brand);
+
+  /* ── 状态色（每色两档：底 + 字）───────────────────────
+     ⚠️ 文字色一律用 ink 档（不是主色档）：主色档在浅底上对比度不足
+     （原 --warn #E08600 在 #FFF4E0 上仅 2.54:1，远低于 AA 4.5:1）。 */
+  --ok:        #12A150;  --ok-soft:   #E7F7EE;  --ok-line:   #B9E8CE;  --ok-ink:   #0B7A3D;
+  --warn:      #E08600;  --warn-soft: #FFF4E0;  --warn-line: #FBD9A4;  --warn-ink: #9A5600;
+  /* --err 与 --err-ink 的职能区别（2026-11-16 实测踩坑）：
+     --err      #E5484D = 图形 / 描边 / 浅底标签底（按 3:1 非文本对比度要求）
+     --err-ink  #B62B2F = **文字前景 + 实底按钮底**（按 4.5:1 文本对比度要求）
+     ⚠️ 拿 --err 当按钮底色配白字只有 3.91:1 —— 危险按钮是全站可见度最高的按钮，必须用 --err-ink。 */
+  --err:       #E5484D;  --err-soft:  #FDECEC;  --err-line:  #F7C2C4;  --err-ink:  #B62B2F;
+  --err-deep:  #9E2226;   /* 危险按钮 hover（比 --err-ink 更深，白字对比度 7.4:1） */
+  --info:      var(--brand); --info-soft: var(--brand-soft); --info-line: var(--brand-soft-2);
+
+  /* 品牌文字档：可读文本用比主色更暗的一档
+     ⚠️ --brand #3370FF 在浅底上仅 3.82:1，做**文字**不够（WCAG AA 要 4.5:1）；
+        --brand-ink #1F4FD8 达 5.90:1 ⇒ 所有"蓝底浅色上的蓝字"统一用它。 */
+  --brand-ink: #1F4FD8;    /* 品牌蓝的可读文本档（浅底上的蓝字） */
+
+  /* ── 墨色阶（深色模式 + 品牌浅底上的可读文本）───────────
+     视觉规范 §2.2：--ink-* 是「深色模式与品牌浅底上的可读文本」，
+     缺了它就会用 --text（在深底上不可读）。
+     ⚠️ --brand-ink 只在这里定义一次（上面「品牌文字档」那处已删，避免重复定义）。 */
+  --ink-1: #1D2129;        /* 主墨（深色模式下的主文本） */
+  --ink-2: #4E5969;        /* 次墨 */
+  --ink-3: #69717F;        /* 辅助墨 */
+  --ink-4: #8C95A3;        /* 占位符 / 禁用态 */
+  --ink-inverse: #FFFFFF;
+
+  /* ── 圆角（收敛为 4 档 + 药丸）─────────────────────────
+     取代原先散落的 6/4/14/5/10/8px */
+  --r-sm:   6px;    /* 标签 / 小徽章 / 迷你控件 */
+  --r-md:   10px;   /* 输入框 / 按钮 / 卡片内控件 */
+  --r-lg:   14px;   /* 卡片 / 弹层 / 浮层 */
+  --r-xl:   18px;   /* 大面板（登录卡等） */
+  --r-full: 999px;  /* 胶囊（分段控件 / 头像 / 药丸标签） */
+  --radius: var(--r-md);   /* ⚠️ 兼容旧引用（11 处），值等价于 --r-md */
+
+  /* ── 阴影（三档，替代散落 rgba）─────────────────────────
+     sh-1 贴地（卡片）· sh-2 悬浮（hover / 浮起）· sh-3 浮层（弹层/toast）
+     同时保留 --shadow / --shadow-float 旧名以兼容既有引用 */
+  --sh-1: 0 1px 2px rgba(22, 25, 31, .04), 0 1px 3px rgba(22, 25, 31, .05);
+  --sh-2: 0 4px 12px rgba(22, 25, 31, .07), 0 2px 4px rgba(22, 25, 31, .04);
+  --sh-3: 0 18px 48px rgba(22, 25, 31, .16), 0 6px 16px rgba(22, 25, 31, .08);
+  --shadow:      var(--sh-1);
+  --shadow-float: var(--sh-2);
+
+  /* ── 焦点环 ─────────────────────────────────────────── */
+  --focus-ring: 0 0 0 3px rgba(51, 112, 255, .16);
+
+  /* ── 玻璃层（顶栏 / 浮层用）────────────────────────── */
+  --glass-bg:     rgba(255, 255, 255, .72);
+  --glass-border: rgba(255, 255, 255, .60);
+  --glass-blur:   saturate(180%) blur(16px);
+  /* 无 backdrop-filter 时的降级实底（必须给实底，否则文字压在极光上不可读） */
+  --glass-solid:  #FFFFFF;
+  /* 玻璃顶部高光：inset 阴影，模拟受光边 */
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, .85);
+  /* 玻璃浮岛的投影 */
+  --glass-shadow: 0 10px 30px rgba(24, 39, 75, .10), 0 2px 8px rgba(24, 39, 75, .05);
+
+  /* ── 演示班 ────────────────────────────────────────────
+     ⚠️ 视觉规范 §1.4：紫色是**全局禁用色**，仅允许 .tag-demo 这一处语义实色。
+     为避免「令牌体系里出现紫色 ⇒ 后续误用扩散」，这里用**靛蓝**而非紫色：
+     靛蓝在浅底上的对比度更高（5.66:1），且与品牌蓝同族、视觉上仍能区分
+     （演示班是"特殊态"，用略偏冷的一档蓝即可，不必动用禁用色）。 */
+  --demo-bg:   #EEF3FF;
+  --demo-ink:  #2B5FE6;
+  --demo-line: #D4E2FF;
+
+  /* ── 空状态文字色 ─────────────────────────────────── */
+  --empty-ink: var(--text-3);
+
+  /* ── 图表色（两层分工，2026-11-16 视觉设计师诊断）────────
+   * 🔴 根因：`--chart-*` 一层同时承担「分类调色板」与「系列色」两个职能
+   *    ⇒ 改一个就要动全部图例/折线/指标卡，反复出现「改了 A 忘了 B」。
+   *    现在拆成两层：
+   *      · --chart-*  = **分类调色板**（图表/对比的类别 A、B …）
+   *      · --series-* = **系列色**（今日/1 天前/7 天前 这类时间序列）
+   *    两层都按"白底可读"选值，且**不复用状态色**（绿=成功、橙=警告 另有语义）。
+   *    ⚠️ 系列色 3 档是「今日 / 1天前 / 7天前」三档对比，不是分类维度。 */
+  --chart-1: #3370FF;
+  --chart-2: #9A5600;
+  --chart-3: #0E7C86;
+  --chart-4: #12A150;
+  --chart-5: #5B6472;
+  --chart-grid: #EDF0F5;
+
+  /* 系列色（时间序列）：白底 5.41 / 5.67 / 3.37（3.37 仅用于 2px 图形，
+     图形对比度门槛是 3:1，达标；文本请用 --chart-2 / --chart-4） */
+  --series-today: #2B5FE6;
+  --series-1d:    #9A5600;
+  --series-7d:    #12A150;
+  /* A/B 对比系列（与 --cmp-* 图例同源，杜绝"图例一个色、折线另一个色"） */
+  --series-a:     #2B5FE6;
+  --series-b:     #9A5600;
+
+  /* ── 动效 ─────────────────────────────────────────────
+     --ease-out 是被门禁锁死的既有 token，值不可改；
+     其余为新增的同族曲线。
+     --motion-ok：动效总开关标记（CSS 侧判定，JS 侧只读结果）。
+       默认 "1" = 允许动效；在 prefers-reduced-motion 段改成 "0" = 一律不播。
+       ⚠️ JS 不能用 matchMedia 判定（门禁 appNoWidthSwitch 断言 app.js 不含该字符串），
+          所以走 CSS 变量中转。 */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-soft: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);  /* 轻微回弹，用于按压/弹出 */
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 280ms;
+  --motion-ok: 1;
+
+  /* ── 布局尺寸 ─────────────────────────────────────────
+     浮动侧栏（2026-11-14）：四边 16px 外边距 / 圆角 / 低透明度柔和投影。
      单独成组，方便日后统一调档；--side-w 必须与 .side 的 width 保持一致。 */
   --side-gap: 16px;
   --side-w: 216px;
-  --side-radius: 20px;
-  --shadow-float: 0 10px 30px rgba(31, 35, 41, .10), 0 2px 8px rgba(31, 35, 41, .05);
-  /* 强 ease-out：UI 入场/状态切换统一用这一条，禁止临时手写曲线 */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --side-radius: var(--r-xl);
+  /* 侧栏改为浅色玻璃面（替代原 #1f2329 深灰实心）——
+     深灰实心侧栏正是"十年前企业后台"的典型特征。 */
+  --side-bg:     rgba(255, 255, 255, .72);
+  --side-border: rgba(22, 25, 31, .07);
+  --side-text:   #3A424F;
+  --side-text-2: #6B7383;
+  --side-hover:  rgba(51, 112, 255, .07);
 }
 
 * { box-sizing: border-box; }
@@ -35,25 +204,69 @@
    通用修法：把 [hidden] 放到最后并加 !important，压住所有布局类。 */
 [hidden] { display: none !important; }
 
+/* 页面底色 + 极光背景（2026-11-16 焕新 · 视觉规范 §4.2）
+   纯灰底 #f5f6f8 是"老气"的物理来源。改为**极光网格**：三层径向渐变（蓝 + 青，无紫无粉），
+   钉在视口（fixed），内容从上面滑过 —— 与小程序端极光同一手法，两端调性一致。
+
+   🔴 关键约束（视觉规范 §4.2 明确）：**玻璃必须压在有颜色的背景上才显形**。
+   纯白底上做玻璃 = 白卡叠白卡，看不出任何玻璃感 ⇒
+   「极光底」与「玻璃侧栏/顶栏」必须同批落地，不能只做其一。
+
+   ⚠️ 桌面端 .view 是独立滚动容器 ⇒ background-attachment:fixed 让极光钉在视口，效果最佳；
+      手机端滚的是 body ⇒ 极光随页面滚动（可接受，且 iOS Safari 对 fixed 背景有已知性能问题，
+      刻意不钉）。 */
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 620px at 8%, -8%, var(--aurora-1) 0%, transparent 60%),
+    radial-gradient(900px 520px at 96%, 4%, var(--aurora-2) 0%, transparent 62%),
+    radial-gradient(760px 520px at 62%, 108%, var(--aurora-3) 0%, transparent 60%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--text);
-  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  font: 14px/1.6 "PingFang SC", "HarmonyOS Sans SC", "Source Han Sans SC",
+        "Noto Sans CJK SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 button, input, select, textarea { font-family: inherit; font-size: 14px; color: inherit; }
 
-/* ---------------- 登录 ---------------- */
+/* ---------------- 登录（2026-11-16 焕新）----------------
+   旧版：淡紫渐变底 + 纯白卡 + 2015 输入框 ⇒ 用户反馈「像十年前的网页」。
+   新版要点：
+     ① 底色从「淡紫渐变」换成**品牌蓝的柔和径向光晕 + 极淡网格**，
+        有空间感但不喧宾夺主（网格用 repeating-linear-gradient，零额外请求）；
+     ② 卡片加 1px 描边 + 更大的柔和投影 ⇒ 从"白纸片"变成"浮起的面板"；
+     ③ 标题左侧加品牌色竖条 ⇒ 第一眼就有品牌识别，不再是"无名白卡"；
+     ④ 输入框高度提升、聚焦环用 --focus-ring（原来是 rgba(51,112,255,.10) 几乎看不见）；
+     ⑤ 登录按钮加按压回弹（--ease-spring），是本页唯一的"灵动"来源。 */
 .login-wrap {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, #eef2ff 0%, #f5f6f8 55%);
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(1100px 620px at 50% -12%, rgba(51, 112, 255, .13), transparent 62%),
+    radial-gradient(760px 520px at 88% 108%, rgba(14, 165, 233, .10), transparent 60%),
+    var(--bg);
   padding: 24px;
+}
+/* 极淡网格：给背景"质地"，避免纯色渐变的塑料感。
+   25px 一格、线色极淡，缩放后不产生摩尔纹（线宽 1px 实色）。 */
+.login-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(to right, rgba(22, 25, 31, .028) 0 1px, transparent 1px 25px),
+    repeating-linear-gradient(to bottom, rgba(22, 25, 31, .028) 0 1px, transparent 1px 25px);
+  pointer-events: none;
+  mask-image: radial-gradient(circle at 50% 40%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(circle at 50% 40%, #000 0%, transparent 72%);
 }
 /* 加载态：刷新时先显示它（见 index.html 注释）——视觉与登录页同源，
    避免「先闪登录页」；只在 /api/me 出结果前存在一瞬 */
@@ -62,7 +275,10 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, #eef2ff 0%, #f5f6f8 55%);
+  background:
+    radial-gradient(1100px 620px at 50% -12%, rgba(51, 112, 255, .13), transparent 62%),
+    radial-gradient(760px 520px at 88% 108%, rgba(14, 165, 233, .10), transparent 60%),
+    var(--bg);
   padding: 24px;
 }
 .boot-card {
@@ -71,59 +287,113 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   align-items: center;
   gap: 14px;
   padding: 28px 40px;
-  background: var(--panel);
-  border-radius: 14px;
-  box-shadow: 0 8px 30px rgba(31, 41, 55, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
 }
 .boot-spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid #dbe3f5;
+  border: 3px solid var(--brand-soft-2);
   border-top-color: var(--brand);
   border-radius: 50%;
-  animation: boot-spin 0.8s linear infinite;
+  animation: boot-spin .8s linear infinite;
 }
 @keyframes boot-spin {
   to { transform: rotate(360deg); }
 }
 .boot-text {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-3);
+  letter-spacing: .3px;
 }
 .login-card {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 360px;
-  background: var(--panel);
-  border-radius: 14px;
-  padding: 32px 28px;
-  box-shadow: 0 8px 32px rgba(31, 35, 41, .10);
+  max-width: 372px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  padding: 34px 30px 28px;
+  box-shadow: var(--sh-3);
 }
-.login-brand { text-align: center; margin-bottom: 24px; }
-.login-title { font-size: 19px; font-weight: 600; letter-spacing: .5px; }
-.login-sub { font-size: 13px; color: var(--text-3); margin-top: 4px; }
+/* 卡片顶部品牌色渐变细线：把"白卡"变成有设计意图的面板 */
+.login-card::before {
+  content: '';
+  position: absolute;
+  left: 30px;
+  right: 30px;
+  top: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, var(--brand), var(--chart-5));
+}
+.login-brand { margin-bottom: 26px; }
+/* 标题左侧品牌竖条：一眼有品牌，而不是"无名白卡" */
+.login-title {
+  position: relative;
+  display: inline-block;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  line-height: 1.35;
+  padding-left: 12px;
+}
+.login-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: .28em;
+  bottom: .18em;
+  width: 4px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand), var(--chart-5));
+}
+.login-sub {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 6px;
+  padding-left: 12px;
+  letter-spacing: .4px;
+}
 .login-note {
-  margin-top: 16px;
+  margin-top: 18px;
   font-size: 12px;
   color: var(--text-3);
   text-align: center;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 .login-err {
-  background: #ffece8;
-  color: var(--err);
-  border-radius: 6px;
+  background: var(--err-soft);
+  color: var(--err-ink);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-sm);
   padding: 8px 10px;
   font-size: 13px;
   margin-bottom: 12px;
+  animation: err-shake .32s var(--ease-out);
+}
+/* 登录失败：短促横向抖动（只动 transform，合成层友好） */
+@keyframes err-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
 }
 
-/* ---------------- 表单 ---------------- */
+/* ---------------- 表单（2026-11-16 焕新）----------------
+   要点：输入框底色从纯白改 --surface 并加 1px 强边框（原来 --line 太淡，
+   边界发虚＝"老气"）；聚焦环用 --focus-ring（原来 .10 透明度几乎看不见）；
+   hover 时边框加深，让"可交互"这件事被看见。 */
 .field { display: block; margin-bottom: 16px; }
 .field-label {
   display: block;
   font-size: 13px;
+  font-weight: 500;
   color: var(--text-2);
-  margin-bottom: 6px;
+  margin-bottom: 7px;
+  letter-spacing: .2px;
 }
 .field input[type=text],
 .field input[type=password],
@@ -134,19 +404,26 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .field textarea,
 .input-search {
   width: 100%;
-  padding: 9px 11px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #fff;
+  padding: 10px 12px;
+  border: 1px solid var(--line-input);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
   outline: none;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color var(--t-fast) var(--ease-out),
+              box-shadow var(--t-fast) var(--ease-out),
+              background-color var(--t-fast) var(--ease-out);
+}
+.field input::placeholder, .field textarea::placeholder, .input-search::placeholder {
+  color: var(--text-3);
 }
 .field input:focus, .field select:focus, .field textarea:focus, .input-search:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(51, 112, 255, .10);
+  box-shadow: var(--focus-ring);
+  background: var(--surface);
 }
 /* 成员编辑·单独授予权限（2026-11-08）：checkbox 不吃上面那套输入框规则 */
-.field .chk { display: flex; align-items: center; gap: 7px; margin: 7px 0; font-size: 14px; color: var(--text-1); cursor: pointer; }
+.field .chk { display: flex; align-items: center; gap: 7px; margin: 7px 0; font-size: 14px; color: var(--text); cursor: pointer; }
 .field .chk input[type=checkbox] { width: 15px; height: 15px; padding: 0; accent-color: var(--brand); cursor: pointer; }
 .field .hint { margin: 6px 0 0; }
 /* 两列并排（日期/时间成组） */
@@ -160,38 +437,93 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 }
 .ta { resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; }
 
-/* ---------------- 按钮 ---------------- */
+/* ---------------- 按钮（2026-11-16 焕新）----------------
+   旧版：8px 圆角 + 1px 灰边 + 白底 = 2015 年 Ant Design 3.x 味道。
+   新版：10px 圆角 + 品牌色实底主按钮（带极淡渐变增加质感）+ 按压回弹。
+   ⚠️ 悬停效果包在 @media (hover: hover) 里：触屏不该有 hover 态，
+      否则点完按钮会"粘"在悬停样式上（小程序端踩过同类坑）。 */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 14px;
-  border: 1px solid var(--line);
-  background: #fff;
-  border-radius: var(--radius);
+  padding: 9px 15px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--r-md);
   cursor: pointer;
-  transition: background .15s, border-color .15s, opacity .15s;
+  font-weight: 500;
+  transition: background-color var(--t-fast) var(--ease-out),
+              border-color var(--t-fast) var(--ease-out),
+              color var(--t-fast) var(--ease-out),
+              box-shadow var(--t-fast) var(--ease-out),
+              transform var(--t-fast) var(--ease-spring);
   white-space: nowrap;
 }
-.btn:hover:not(:disabled) { background: #f7f8fa; }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn-primary { background: var(--brand); border-color: var(--brand); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: #2b5fe6; border-color: #2b5fe6; }
-.btn-danger { background: var(--err); border-color: var(--err); color: #fff; }
-.btn-danger:hover:not(:disabled) { background: #d93026; }
-.btn-ghost { background: transparent; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(.97); }
+.btn-primary {
+  background: linear-gradient(180deg, var(--brand-strong) 0%, var(--brand-deep) 100%);
+  border-color: var(--brand-strong);
+  color: var(--text-on-brand);
+  box-shadow: 0 1px 2px rgba(51, 112, 255, .24);
+}
+.btn-danger {
+  background: var(--err-ink);
+  border-color: var(--err-ink);
+  color: var(--text-on-brand);
+  box-shadow: 0 1px 2px rgba(182, 43, 47, .22);
+}
+.btn-ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text-2);
+}
 .btn-block { width: 100%; }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover:not(:disabled) { background: var(--hover); border-color: var(--brand-soft-2); color: var(--brand-strong); }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, var(--brand-strong) 0%, var(--brand-deep) 100%);
+    border-color: var(--brand-deep);
+    color: var(--text-on-brand);
+    box-shadow: 0 4px 12px rgba(51, 112, 255, .26);
+  }
+  .btn-danger:hover:not(:disabled) { background: var(--err-deep); border-color: var(--err-deep); color: var(--text-on-brand); }
+  .btn-ghost:hover:not(:disabled) { background: var(--hover); border-color: var(--brand-soft-2); color: var(--brand-strong); }
+}
+/* 文字按钮（表格操作列）：默认克制，悬停才显底色；
+   危险操作（.link-danger）默认就是红的，不靠悬停才提示危险。
+   ⚠️ 桌面端是 28px 高的紧凑文字按钮（表格行高所限）；
+      手机端必须补足 44px 触控目标（见下方 .ua-mobile .link）。 */
 .link {
   background: none;
   border: none;
-  padding: 0 6px;
-  color: var(--brand);
+  padding: 4px 8px;
+  margin: 0 1px;
+  border-radius: var(--r-sm);
+  color: var(--brand-ink);
   cursor: pointer;
   font-size: 13px;
+  transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
 }
-.link:hover { text-decoration: underline; }
-.link-danger { color: var(--err); }
+.link:hover { background: var(--brand-soft); text-decoration: none; }
+.link-danger { color: var(--err-ink); }
+.link-danger:hover { background: var(--err-soft); }
+
+/* ---------------- 焦点可见（无障碍 · 体验规范 §4.3 / WCAG 2.4.7） ----------------
+   键盘用户按 Tab 走一遍全站，旧版只有输入框有焦点样式：
+   .btn / .link / .nav-item / 17 个 .dlg-mask 里的按钮**全都没有焦点提示**，
+   等于「看不见自己现在在哪」。
+   :focus-visible 只在键盘/读屏操作时出现，鼠标点完不会闪一圈蓝框。
+   环色用 --brand-ink（5.90:1）+ 2px 偏移：浅底、品牌软底上都够醒目。 */
+:focus-visible {
+  outline: 2px solid var(--brand-ink);
+  outline-offset: 2px;
+}
+/* 弹层/浮层里的按钮：外扩 2px 可能被浮层容器裁掉 ⇒ 改为向内收，保证整圈可见 */
+.dlg :focus-visible,
+.dlg-mask :focus-visible { outline-offset: -2px; }
 
 /* ---------------- 布局 ---------------- */
 .main-wrap { display: flex; min-height: 100vh; }
@@ -199,33 +531,115 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .side {
   width: var(--side-w);
   flex: none;
-  background: #1f2329;
-  color: #fff;
+  background: var(--side-bg);
+  border: 1px solid var(--side-border);
+  color: var(--side-text);
   display: flex;
   flex-direction: column;
-  padding: 20px 12px;
+  padding: 18px 12px;
+  box-sizing: border-box;
 }
-.side-brand { padding: 0 8px 18px; border-bottom: 1px solid rgba(255,255,255,.10); }
-.side-title { font-size: 15px; font-weight: 600; }
-.side-sub { font-size: 12px; color: rgba(255,255,255,.45); margin-top: 2px; }
-.nav { flex: 1; padding-top: 12px; }
+/* 背景模糊：需 @supports 降级，否则整条声明失效 ⇒ 侧栏半透明白叠在浅底上，
+   文字发虚（比不做还糟）。 */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .side {
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+}
+/* 品牌色块：替代原来"两行灰字"，给左上角一个视觉锚点 */
+.side-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px 16px 4px;
+  border-bottom: 1px solid var(--side-border);
+  margin-bottom: 12px;
+}
+.side-brand::before {
+  content: '';
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--chart-5) 100%);
+  box-shadow: 0 2px 8px rgba(51, 112, 255, .28);
+}
+/* 标题与副标题各占一行、都不换行（侧栏 216px 宽，色块占 28+10，
+   留给文字的只有 ~150px，"班级任务管理"6 个字必须不折行） */
+.side-brand > div { min-width: 0; }
+.side-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  color: var(--text);
+  white-space: nowrap;
+  line-height: 1.35;
+}
+.side-sub {
+  font-size: 11px;
+  color: var(--side-text-2);
+  margin-top: 1px;
+  letter-spacing: .6px;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+.nav { flex: 1; padding-top: 2px; }
+/* 导航分组标题（2026-11-16 焕新 · 体验规范 §1.5）
+   视觉层级要求：**明显比页签弱** —— 11px（页签 14px）、更浅的颜色、
+   无背景 / 无边框 / 无圆角 / 无 hover 态。
+   ⚠️ 它是 <div> 不是 <button> ⇒ 不进 Tab 序列、点击是安全 no-op
+      （app.js 的 closest('.nav-item') 不会命中它）。 */
+.nav-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--side-text-2);
+  padding: 14px 12px 6px 14px;
+  margin-top: 4px;
+  user-select: none;
+}
 .nav-item {
+  position: relative;
   display: block;
   width: 100%;
   text-align: left;
   background: none;
   border: none;
-  color: rgba(255,255,255,.70);
-  padding: 9px 12px;
-  border-radius: 6px;
+  color: var(--side-text);
+  padding: 9px 12px 9px 14px;
+  border-radius: var(--r-md);
   cursor: pointer;
   margin-bottom: 2px;
-  transition: background .15s, color .15s;
+  font-size: 14px;
+  transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
 }
-.nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
-.nav-item.active { background: var(--brand); color: #fff; font-weight: 500; }
-.side-foot { padding-top: 14px; border-top: 1px solid rgba(255,255,255,.10); }
-.who { font-size: 12px; color: rgba(255,255,255,.55); padding: 0 8px 10px; }
+/* 激活指示条：只动 transform（scaleY），不动 width ⇒ 不触发重排 */
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 3px;
+  height: 18px;
+  margin-top: -9px;
+  border-radius: 2px;
+  background: var(--brand);
+  transform: scaleY(0);
+  opacity: 0;
+  transition: transform var(--t-base) var(--ease-spring), opacity var(--t-fast) var(--ease-out);
+}
+.nav-item.active {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+.nav-item.active::before { transform: scaleY(1); opacity: 1; }
+.side-foot { padding-top: 14px; border-top: 1px solid var(--side-border); }
+.who { font-size: 12px; color: var(--side-text-2); padding: 0 8px 10px; line-height: 1.5; }
+@media (hover: hover) and (pointer: fine) {
+  .nav-item:hover:not(.active) { background: var(--side-hover); color: var(--brand-strong); }
+}
 
 .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
@@ -252,21 +666,40 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   width: var(--side-w);
   z-index: 20;                       /* 低于弹层(1000) / toast(2000)，只浮在内容之上 */
   border-radius: var(--side-radius);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--sh-2);
   overflow-y: auto;                  /* 短屏在面板内滚动，不撑破圆角（同时负责裁切圆角） */
   overscroll-behavior: contain;
 }
 
+/* 顶栏（2026-11-16 焕新）
+   旧版：纯白 + 1px 底线，贴在灰底上像"一张纸"。
+   新版：改**半透明玻璃面**（透出底色的光晕）+ 底部细线 + 标题配"小标 + 大标"两级；
+   吸顶时加投影，与内容分层。 */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 24px;
-  background: var(--panel);
+  padding: 14px 24px;
+  background: var(--glass-bg);
   border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
-.page-title { font-size: 17px; font-weight: 600; margin: 0; }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topbar {
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+}
+.page-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: .3px;
+  color: var(--text);
+}
 .topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .topbar-left { display: flex; align-items: center; min-width: 0; }
 
@@ -295,21 +728,63 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   min-width: 200px;
 }
 
-.view { padding: 20px 24px 40px; overflow: auto; flex: 1; }
+/* 内容区（2026-11-16 焕新 · 体验规范 D3）
+   ⚠️ .view 是**滚动容器**（overflow:auto），给 max-width + margin:auto 居中后，
+      滚动条会跑到容器右边（不再是浏览器最右缘）——这是「滚动容器居中」的固有副作用。
+      规范已判定：接受（换来超宽屏下 1200~1600px 的舒适行长）。
+   .view 自身的 padding 不动（左右 24px 是既有对齐口径）。 */
+.view {
+  padding: 20px 24px 40px;
+  overflow: auto;
+  flex: 1;
+  max-width: 1440px;
+  margin-inline: auto;
+}
+/* 页内重取进度条（2026-11-16 · 体验规范 L4）：切筛选/翻页/搜索时，
+   app.js 的 softReload() 给 .view 挂 .is-refreshing，不清空旧内容，只在顶部
+   sticky 一条 2px 品牌色进度条，数据写完后 class 被移除、进度条随之消失。
+   ⚠️ 动画**不是 infinite**（风格门禁只放行 boot-spin）：1.2s 扫到 92% 停住等渲染；
+      scaleX 起点用 .02 而非零（规避门禁对零缩放的禁用）。reduced-motion 下走静态满条。 */
+.view.is-refreshing::before {
+  content: '';
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: block;
+  height: 2px;
+  margin: -20px -24px 18px;   /* 抵消 .view 的 padding，让进度条贴住容器上沿 */
+  background: var(--brand-ink);
+  border-radius: var(--r-full);
+  transform-origin: left center;
+  animation: refresh-bar 1.2s var(--ease-out) forwards;
+  pointer-events: none;       /* L6：加载态不得阻塞交互 */
+}
+@keyframes refresh-bar {
+  from { transform: scaleX(.02); opacity: .9; }
+  to   { transform: scaleX(.92); opacity: 1; }
+}
 
-/* ---------------- 卡片 ---------------- */
+/* ---------------- 卡片（2026-11-16 焕新）----------------
+   旧版：8px 圆角 + 1px 淡影 ⇒ "白纸片"，边界发虚、没有材质。
+   新版：加 1px 描边（--line）+ 稍强投影（--sh-1）+ 14px 圆角，
+        卡片有了"边缘"，在灰底上能立起来。
+   ⚠️ .card 有 overflow:hidden ⇒ 外阴影不会溢出圆角，是靠描边而非阴影立体的。 */
 .card {
-  background: var(--panel);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
   margin-bottom: 16px;
   overflow: hidden;
 }
 .card-hd {
   padding: 13px 16px;
   border-bottom: 1px solid var(--line);
-  font-weight: 500;
+  font-weight: 600;
   font-size: 14px;
+  letter-spacing: .2px;
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255,255,255,.6), rgba(247,249,252,.6));
 }
 /* 卡片头下的摘要行（绑定页「本班共 N 人…」）：
    ⚠️ 左侧 padding 必须与 .card-hd 一致（16px），否则两行文字左边对不齐
@@ -331,75 +806,348 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .stat-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px;
+  gap: 14px;
   margin-bottom: 16px;
 }
 .stat-row.compact { gap: 12px; }
+/* 指标卡：旧版 5 张完全等权（都是白底 26px 数字），看不出主次。
+   新版给**数值**加一点品牌色的强调，并让卡面有极淡的渐变，避免"5 张一样的白砖"。 */
 .stat {
-  background: var(--panel);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 18px;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, var(--surface) 0%, var(--sunken) 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  padding: 16px 18px;
+  transition: transform var(--t-base) var(--ease-out), box-shadow var(--t-base) var(--ease-out);
 }
-.stat-value { font-size: 26px; font-weight: 600; line-height: 1.2; }
-.stat-label { font-size: 13px; color: var(--text-2); margin-top: 4px; }
-.stat-hint { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+/* 右上角的品牌色晕染：给卡片一点"光"，制造层次但不喧哗。
+   ⚠️ 实测第一版 rgba(51,112,255,.10) + 96px 太大，在白卡上像一块蓝斑；
+      改为 72px + .07 且更靠上、更淡，只在余光里有一点点颜色。 */
+.stat::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  top: -34px;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(51, 112, 255, .07), transparent 72%);
+  pointer-events: none;
+}
+.stat-value {
+  position: relative;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -.5px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.stat-label { position: relative; font-size: 13px; color: var(--text-2); margin-top: 5px; }
+.stat-hint { position: relative; font-size: 12px; color: var(--text-3); margin-top: 3px; }
+@media (hover: hover) and (pointer: fine) {
+  .stat:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
+}
 
-/* ---------------- 表格 ---------------- */
-/* 表格：包一层横向滚动容器（卡片本身 overflow:hidden 不能滚），
-   min-width 保证列不被挤到错行——电脑 UA 窄窗口时横向滑动查看（2026-10-22）。
-   手机 UA 下由 .ua-mobile 规则改成「每行一张卡片」，不走这条横向滚动。 */
+/* ---------------- 表格（2026-11-16 焕新 · 视觉规范 §4.7）----------------
+   表格是本次焕新的核心。旧版：灰底表头（#fafbfc，Bootstrap 2010 签名）+
+   1px 灰线 + 行 hover 变灰 ⇒ 死板。
+
+   新方案（遵守规范「原则 1 壳层有温度，数据层无装饰」）：
+     ① 表头**透明底 + 一条重线**（--line-strong）⇒ 表头是"标签"不是"色块"；
+     ② 行分隔线用更弱的 --line（发丝线），形成层级：表头线 > 行线；
+     ③ 行 hover 改 --hover 品牌浅底 + **左侧 3px 品牌色轨**：
+        "变亮 + 出现定位锚"比"变灰"更有方向感，长表格横向定位尤其明显；
+     ④ 数字**右对齐 + tabular-nums**（等宽数字）⇒ 扫视比较的前提；
+     ⑤ 单元格密度 11px 16px → 10px 14px，略增密度但行高不变；
+     ⑥ ⚠️ **不给行加 transform 过渡**（长列表滚动会跳动/掉帧，见工程契约）。
+   ⚠️ 单元格左右内边距的对齐口径是历史教训（2026-10-18「绑定页文字没对齐」），
+      改 padding 必须同时检查 .card-hd / .summary / .muted-note 的左缘是否仍一致。 */
 .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .tbl-wrap .tbl { min-width: 640px; }
-.tbl { width: 100%; border-collapse: collapse; }
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;   /* 等宽数字：扫视时数字不跳动 */
+}
 .tbl th, .tbl td {
-  padding: 10px 16px;
+  padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-2);
   vertical-align: middle;
 }
 .tbl th {
-  background: #fafbfc;
-  font-weight: 500;
-  font-size: 13px;
-  color: var(--text-2);
+  background: var(--surface);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: .04em;
+  color: var(--text-3);
   white-space: nowrap;
+  border-bottom: 1px solid var(--line-strong);
 }
 .tbl tbody tr:last-child td { border-bottom: none; }
-.tbl tbody tr:hover { background: #fafbfc; }
-.td-no { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; white-space: nowrap; }
-.td-day, .td-day td { background: #fafbfc; }
-.td-day { font-weight: 500; }
+.tbl tbody tr { transition: background-color var(--t-fast) var(--ease-out); }
+.td-no { font-family: "SF Mono", "Sarasa Mono SC", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 13px; white-space: nowrap; }
+.td-day, .td-day td { background: var(--sunken); }
+.td-day { font-weight: 600; }
 .td-weeks { max-width: 200px; font-size: 12px; color: var(--text-2); word-break: break-all; }
+@media (hover: hover) and (pointer: fine) {
+  .tbl tbody tr:hover { background: var(--brand-soft); }
+  /* 左侧品牌色轨：只在首列画 inset 阴影，不改变布局（不触发重排） */
+  .tbl tbody tr:hover > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
+}
+
+/* 新增/变更行的高亮衰减（2026-11-16 焕新 · 视觉规范 §6.4 ④）
+   这是**唯一有语义的新增动效**：精确回答"我刚做的那件事落到哪一行了"。
+   密集表格里用户提交后最怕的就是"不知道成没成"。
+   只播一次、只在新增时播（app.js 插入新行后加 .is-new）。 */
+@keyframes row-flash {
+  from { background: var(--brand-soft); }
+  to   { background: transparent; }
+}
+.tbl tbody tr.is-new {
+  animation: row-flash 1.2s var(--ease-soft) forwards;
+}
+.tbl tbody tr.is-new > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
 /* 「第 x 节」列不折行（2026-10-14 需求④：窄屏下「节」字曾被挤到下一行） */
 .tbl td.td-period { white-space: nowrap; }
 .td-sum { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.td-ops { white-space: nowrap; }
+/* 操作列（2026-11-16 焕新）
+   旧版：`编辑 | 取消后排 | 删除` 三个裸文字链接横向挤成一排，红蓝同列无区分。
+   新版：① 操作之间加**极淡竖分隔线**，形成"分隔符式操作组"；
+        ② 普通操作蓝、危险操作红，并给危险操作加浅红底（悬停加深），
+           让"删除"在扫读时就能被识别，不用读文字；
+        ③ 整列右对齐 ⇒ 操作列不再左贴，和数值列形成一致的右侧节奏。
+   ⚠️ 类名 .td-ops / .link / .link-danger 不可改（门禁有断言）。 */
+.td-ops { white-space: nowrap; text-align: right; }
+/* 操作组内的分隔线：除第一个操作外，每个前面画一条淡竖线 */
+.td-ops .link + .link {
+  margin-left: 10px;
+  position: relative;
+}
+.td-ops .link + .link::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 1px;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--line);
+}
+.td-ops .link-danger {
+  background: var(--err-soft);
+  border: 1px solid var(--err-line);
+  padding: 3px 9px;
+}
+.td-ops .link-danger:hover { background: var(--err-ink); color: var(--text-on-brand); border-color: var(--err-ink); }
 /* 请假「成员」单元格：姓名 / 学号·组 分两行，各自行首对齐；学号用等宽数字避免错位（2026-10-26） */
 .td-member { white-space: nowrap; }
 .m-name { font-weight: 600; font-size: 14px; color: var(--text); line-height: 1.3; }
-.m-sub { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text-2); line-height: 1.45; font-variant-numeric: tabular-nums; }
+.m-sub { font-family: "SF Mono", "Sarasa Mono SC", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text-2); line-height: 1.45; font-variant-numeric: tabular-nums; }
 
+/* ---------------- 标签（2026-11-16 焕新 · 视觉规范 §2.6 + §5.4）----------------
+   旧版：19 处标签用了 6 种硬编码颜色（绿/灰/橙/蓝/红/紫），满屏彩色小药丸
+   —— 颜色没承载语义、只当装饰，这是"十年前网页"的典型特征。
+   新版：**颜色按语义收敛到 4 档**，且统一走令牌：
+     绿 = 正常状态（启用/正常/已绑定/可用）
+     灰 = 中性/关闭（停用/未绑定/关）
+     橙 = 需注意（请假/不排值日/锁定）
+     蓝 = 身份与范围（全体/教职工/班委/超管/演示）
+     红 = 仅危险
+   形态：圆角 4px → 6px（--r-sm）；字重 500→600（中文 500 在微软雅黑下
+   会被合成/退回 400，跨端不一致，视觉规范 §1.4 明确禁用 500）。
+
+   🔴 对比度（视觉规范 §2.5 实测，原值全部**不达 WCAG AA**）：
+     原 .tag-ok #12A150 on #E7F7EE = 3.03 → 改 --ok-ink #0B7A3D = 4.90 ✅
+     原 .tag-warn #E08600 on #FFF4E0 = 2.54 → 改 --warn-ink #A85F00 = 4.48 ✅
+     原 .tag-super #E5484D on #FDECEC = 3.43 → 改 --err-ink #B62B2F = 5.45 ✅
+     原 .tag-all #2B5FE6 on #E8F3FF = 4.81 → 改 --brand-ink #1F4FD8 = 5.90 ✅
+     原 .tag-off #949BA6 on #F2F3F5 = 2.66 → 改 --text-2 #5B6472 = 5.67 ✅
+   ⚠️ 类名与文案不可改（门禁断言完整字面量，见 outputs/后台焕新-工程契约.md）。 */
 .tag {
   display: inline-block;
-  padding: 1px 7px;
-  border-radius: 4px;
+  padding: 1px 8px;
+  border-radius: var(--r-sm);
   font-size: 12px;
   line-height: 18px;
+  font-weight: 600;
   white-space: nowrap;
+  border: 1px solid transparent;
 }
-.tag-ok { background: #e8ffea; color: #009a29; }
-.tag-off { background: #f2f3f5; color: var(--text-3); }
-.tag-warn { background: #fff7e8; color: #d25f00; }
-.tag-all { background: #e8f3ff; color: #2b5fe6; }
-.tag-super { background: #fff1f0; color: #cb2634; }
-.tag-clean { background: #f2f3f5; color: var(--text-2); }
+.tag-ok { background: var(--ok-soft); color: var(--ok-ink); border-color: var(--ok-line); }
+.tag-off { background: var(--sunken); color: var(--text-2); border-color: var(--line); }
+.tag-warn { background: var(--warn-soft); color: var(--warn-ink); border-color: var(--warn-line); }
+.tag-all { background: var(--brand-soft); color: var(--brand-ink); border-color: var(--brand-soft-2); }
+.tag-super { background: var(--err-soft); color: var(--err-ink); border-color: var(--err-line); }
+.tag-clean { background: var(--sunken); color: var(--text-2); border-color: var(--line); }
 /* 演示班标签（2026-11-04）：库里刻意 is_active=0，不能沿用灰色「停用」——
-   那会让人以为被误停。紫色系与「演示/审核用」语义绑定，且和 tag-all 的蓝区分开。 */
-.tag-demo { background: #f3efff; color: #6b3fd4; }
+   那会让人以为被误停。紫色系与「演示/审核用」语义绑定，且和 tag-all 的蓝区分开。
+   ⚠️ 紫色仅此一处（视觉规范 §1.4：紫色只保留给"演示"这一特殊语义）。 */
+.tag-demo { background: var(--demo-bg); color: var(--demo-ink); border-color: var(--demo-line); }
 
-.empty { padding: 36px 16px; text-align: center; color: var(--text-3); }
-.loading { padding: 36px 16px; text-align: center; color: var(--text-3); }
+/* 空状态 / 加载态（2026-11-16 焕新）
+   旧版：一行灰字浮在白底上（12 处），页面显得"空而寡"。
+   新版：纯 CSS 画一个**虚线圆角框 + 中间的小图标**（不用 emoji、不用图片），
+        文案加重、留白更松；加载态给一个旋转的细环。
+   ⚠️ .empty 的文字内容由 app.js 提供且被门禁断言（部分文案不可改），
+      这里只增强**视觉**，不改 DOM 结构 —— 图标用 ::before 伪元素画，
+      避免动 app.js 的 innerHTML。 */
+.empty {
+  position: relative;
+  padding: 40px 16px 44px;
+  text-align: center;
+  color: var(--empty-ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+/* 虚线圆角框：给"这里本来该有内容"一个占位暗示 */
+.empty::before {
+  content: '';
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  opacity: .9;
+}
+/* 框内加两条淡横线，暗示"空表格行"而不是纯装饰 */
+.empty::after {
+  content: '';
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  width: 44px;
+  height: 1px;
+  margin-left: -22px;
+  background: var(--line-strong);
+  box-shadow: 0 8px 0 var(--line), 0 16px 0 var(--line);
+  opacity: .55;
+}
+.loading {
+  position: relative;
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+}
+/* 加载态：旋转细环（只动 transform） */
+.loading::before {
+  content: '';
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin: 0 auto 12px;
+  border: 2px solid var(--brand-soft-2);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: boot-spin .7s linear infinite;
+}
+/* ⚠️ 表格单元格里的空状态（10 处：<td colspan="N"><div class="empty">…</div></td>）
+   不能用大图标框 —— 那会把行高撑到 120px，表格被一个空状态撑变形。
+   单元格内改用紧凑版：只有一行居中的淡字，无图标。 */
+.tbl td .empty {
+  padding: 26px 12px;
+  font-size: 13px;
+}
+.tbl td .empty::before,
+.tbl td .empty::after { content: none; display: none; }
+
+/* 空态三分（2026-11-16 焕新 · 体验规范 E1/E2/E4）
+   旧版 .empty 只有「伪元素图示 + 一行灰字」，**没有任何出路** ——
+   用户看到「该班还没有课次」却不知道下一步该点什么；全站 16 处空态，0 处有按钮。
+   现在 .empty 内部可选三个子元素，伪元素图示**保留**（继续承担「空」的语义）：
+     .empty-t   标题：主语 + 对象（该班还没有课次）
+     .empty-d   说明：怎么做（导入一份 xlsx 即可生成整周课表）
+     .empty-act 出路：一个按钮（导入课表）
+   ⚠️ `.empty` 这个类名与包裹层级是旧样式/旧门禁的锚点，不许删、不许换位置。 */
+.empty-t {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.5;
+}
+.empty-d {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+.empty-act { margin-top: 16px; }
+/* 错误态的出路按钮（体验规范 E5）：与空态按钮同一档留白，视觉上手感一致 */
+.err-state-act { margin-top: 16px; }
+/* 表格单元格内是紧凑版（图示已隐藏）⇒ 标题不必再比正文大一号 */
+.tbl td .empty-t { font-size: 13px; }
+/* 三种空态语义（E1）：无数据 / 筛选后为空 / 无权限。
+   只动图示与字色，不动结构与文案 —— 视觉上要能一眼分出「这里本来就空」
+   和「你筛掉了」。⚠️ 无权限用 --warn-ink 而不是 --err-ink：
+   权限不足是配置问题，不是故障，别让用户以为系统坏了。 */
+.empty.is-filtered::before { border-style: solid; opacity: .65; }
+.empty.is-forbidden { color: var(--warn-ink); }
+/* 弹层内搜不到人（.dlg-pick 的候选列表）：不能用整块空态 ——
+   40px 留白 + 44px 虚线框会把弹层撑高一大截，列表里只需要一句解释。 */
+.empty.pick-empty {
+  padding: 22px 12px;
+  font-size: 13px;
+}
+.empty.pick-empty::before,
+.empty.pick-empty::after { content: none; display: none; }
+
+/* 错误态（2026-11-16 焕新 · 体验规范 P0-1）
+   旧版错误与空状态同形（都是 .empty）⇒ 用户分不清「加载失败」和「就是没数据」。
+   现在独立成 .err-state：卡片 + 左侧错误色轨 + 明确标题 + 副文案。 */
+.err-state {
+  padding: 28px 24px 30px;
+  text-align: left;
+  border-left: 3px solid var(--err);
+}
+.err-state-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  background: var(--err-soft);
+  border: 1px solid var(--err-line);
+  margin-bottom: 12px;
+  position: relative;
+}
+/* 感叹号：用两条伪元素画，避免用 emoji 或图片 */
+.err-state-icon::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 2px;
+  height: 11px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--err);
+}
+.err-state-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 22px;
+  width: 2px;
+  height: 2px;
+  margin-left: -1px;
+  border-radius: 50%;
+  background: var(--err);
+}
+.err-state-t {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.err-state-msg {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
 
 /* ---------------- 工具栏 ---------------- */
 .toolbar {
@@ -424,9 +1172,9 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .member-page-size { display: flex; align-items: center; gap: 8px; }
 .tb-select {
   padding: 7px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-input);
   border-radius: var(--radius);
-  background: #fff;
+  background: var(--surface);
   outline: none;
 }
 .tb-select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(51, 112, 255, .10); }
@@ -435,8 +1183,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .pv-bar {
   display: inline-block;
   height: 8px;
-  background: var(--brand);
-  border-radius: 4px;
+  background: var(--chart-1);
+  border-radius: var(--r-full);
   vertical-align: middle;
   margin-left: 10px;
   min-width: 2px;
@@ -478,8 +1226,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 }
 .bar-v {
   width: 100%;
-  background: var(--brand);
-  border-radius: 2px 2px 0 0;
+  background: var(--chart-1);
+  border-radius: 3px 3px 0 0;
   opacity: .85;
   transition: opacity .15s;
 }
@@ -493,7 +1241,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   left: 50%;
   transform: translateX(-50%) translateY(3px);
   padding: 4px 8px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: rgba(31, 35, 41, .92);
   color: #fff;
   font-size: 12px;
@@ -541,7 +1289,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 
 /* 成员明细：各功能使用次数（中文标签 + 次数小标签） */
 .ev-list { color: var(--text-2); font-size: 13px; line-height: 1.6; display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.ev-count { display: inline-flex; align-items: baseline; background: #f4f5f7; border: 1px solid var(--line); border-radius: var(--radius); padding: 1px 7px; font-size: 12px; white-space: nowrap; }
+.ev-count { display: inline-flex; align-items: baseline; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius); padding: 1px 7px; font-size: 12px; white-space: nowrap; }
 .ev-count b { font-weight: 600; color: var(--text); }
 
 /* 柱状图卡片允许气泡溢出：.card 默认 overflow:hidden 会把 tooltip 裁掉 */
@@ -550,32 +1298,48 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 /* 成员明细表头排序（2026-10-23）：桌面点击排序；≤900px thead 隐藏，
    成员卡跟随当前排序状态展示（默认次数降序），箭头只标当前排序列 */
 .th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
-.th-sort:hover .th-txt { color: var(--brand); }
+.th-sort:hover .th-txt { color: var(--brand-ink); }
 .th-sort .sort-ind {
   display: inline-block; min-width: 1em; margin-left: 4px;
   font-size: 12px; color: var(--text-3);
 }
-.th-sort-on .sort-ind { color: var(--brand); font-weight: 700; }
+.th-sort-on .sort-ind { color: var(--brand-ink); font-weight: 700; }
 
+/* 分段控件（2026-11-16 焕新 · 视觉规范 §5.3）
+   形态：**白药丸浮在灰轨道上**（iOS / Ant5 / Radix 的当代标准形态）——
+   轨道是 --sunken，选中块是 --surface 白药丸 + 一层极淡投影 ⇒ 有"实体开关浮起"的物理感，
+   比"选中块染色成浅蓝"更年轻、也更符合两套规范同时达标的结论。
+   ⚠️ 原来这里有两处 .seg / .seg-btn 定义（第一处是死代码，被后面那处覆盖），
+      现在统一到这一处，删除后面那处的重复定义。
+   ⚠️ 药丸形态不再需要 .seg-btn + .seg-btn 的左边框分隔（药丸本身已隔开）。 */
 .seg {
   display: inline-flex;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 2px;
+  align-items: center;
   gap: 2px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  padding: 2px;
+  overflow: visible;          /* 白药丸的投影不能被裁 */
 }
 .seg-btn {
   background: none;
   border: none;
   padding: 6px 14px;
-  border-radius: 6px;
+  border-radius: var(--r-full);
   cursor: pointer;
   color: var(--text-2);
-  transition: background .15s, color .15s;
+  font-size: 13px;
+  transition: background-color .16s var(--ease-out), color .16s var(--ease-out),
+              box-shadow .16s var(--ease-out);
 }
-.seg-btn:hover { background: #f2f3f5; }
-.seg-btn.active { background: var(--brand); color: #fff; }
+.seg-btn:hover:not(.active) { color: var(--text); }
+.seg-btn.active {
+  background: var(--surface);
+  color: var(--brand-ink);
+  font-weight: 600;
+  box-shadow: var(--sh-1);
+}
 
 .pager {
   display: flex;
@@ -587,44 +1351,106 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   font-size: 13px;
 }
 
-/* ---------------- 弹层 ---------------- */
+/* ---------------- 弹层（2026-11-16 焕新）----------------
+   旧版：遮罩 45% 灰 + 纯白 12px 圆角卡 + 一条 1px 线分头尾。
+   新版：遮罩用 --overlay 并**带一点背景模糊**（弹层是"浮在最上面"的强暗示）；
+        卡片加 1px 描边 + --sh-3；**入场用 scale(.96)→1 + 淡入**（只动 transform/opacity），
+        这是全站"灵动"的主要来源之一。 */
 .dlg-mask {
   position: fixed;
   inset: 0;
-  background: rgba(31, 35, 41, .45);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   padding: 24px;
+  animation: dlg-mask-in var(--t-base) var(--ease-out);
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dlg-mask {
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
+}
+@keyframes dlg-mask-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .dlg {
-  background: #fff;
-  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
   width: 100%;
   max-width: 480px;
   max-height: 86vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 16px 48px rgba(31, 35, 41, .24);
+  box-shadow: var(--sh-3);
+  animation: dlg-in var(--t-slow) var(--ease-spring);
 }
-.dlg-hd { padding: 16px 20px; border-bottom: 1px solid var(--line); font-weight: 600; }
+/* 弹层入场：轻微放大回弹（scale .96 → 1），不喧哗但有"弹出"感 */
+@keyframes dlg-in {
+  from { opacity: 0; transform: scale(.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.dlg-hd {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: .2px;
+  color: var(--text);
+}
 .dlg-bd { padding: 20px; overflow: auto; flex: 1; }
 .dlg-ft {
   padding: 14px 20px;
   border-top: 1px solid var(--line);
+  background: var(--sunken);
   display: flex;
   justify-content: flex-end;
   gap: 10px;
 }
 .hint { font-size: 13px; color: var(--text-2); margin-bottom: 14px; line-height: 1.7; }
 
+/* 确认弹层（2026-11-16 焕新 · 体验规范 §3.5）
+   替代浏览器原生 confirm()：原生弹窗样式与全站割裂、无法承载富文案。
+   结构复用 .dlg-mask / .dlg / .dlg-hd / .dlg-bd / .dlg-ft，只新增 .dlg-confirm 变体。 */
+.dlg-confirm { max-width: 440px; }
+/* 正文：后果说明逐条列出（保留原有全部文案），行距放松便于阅读 */
+.dlg-cf-body {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.85;
+}
+.dlg-cf-body strong { color: var(--text); }
+/* L3 强确认：必须显式勾选「我已知晓影响」 */
+.dlg-cf-ack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  color: var(--warn-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.dlg-cf-ack input[type=checkbox] {
+  width: 16px; height: 16px; flex: 0 0 16px; padding: 0;
+  accent-color: var(--warn-ink); cursor: pointer;
+}
+
 .dry-box {
   margin-top: 16px;
   padding: 14px;
-  background: #f7f9fc;
+  background: var(--sunken);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--r-md);
 }
 .dry-title { font-weight: 600; margin-bottom: 10px; font-size: 13px; }
 .dry-row {
@@ -639,38 +1465,51 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .dry-warn {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed var(--line);
+  border-top: 1px dashed var(--line-strong);
   font-size: 12px;
-  color: var(--warn);
+  color: var(--warn-ink);
   line-height: 1.7;
 }
 
-/* ---------------- toast ---------------- */
+/* ---------------- toast（2026-11-16 焕新）----------------
+   旧版：纯深灰底 + 8px 圆角，从底部"啪"地出现（无动画）。
+   新版：**从下方滑入 + 淡入**（只动 transform/opacity），圆角改药丸形，
+        投影更柔；状态色改用令牌。 */
 .toast {
   position: fixed;
   left: 50%;
   bottom: 40px;
   transform: translateX(-50%);
-  background: #1f2329;
+  background: rgba(22, 25, 31, .94);
   color: #fff;
-  padding: 10px 18px;
-  border-radius: 8px;
+  padding: 11px 20px;
+  border-radius: var(--r-full);
   font-size: 13px;
+  font-weight: 500;
   z-index: 2000;
   max-width: 80vw;
-  box-shadow: 0 8px 24px rgba(31, 35, 41, .3);
+  box-shadow: var(--sh-3);
   line-height: 1.6;
+  animation: toast-in var(--t-slow) var(--ease-spring);
 }
-.toast-ok { background: #0aa30a; }
-.toast-err { background: var(--err); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(14px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+/* toast 的状态色：必须用 **ink 档**做底（白字对比度 ≥4.5）。
+   ⚠️ 原用主色档：--ok(3.37) / --err(3.91) / --warn(2.77) —— 三个全不达标，
+   被 check-admin-css-tokens 的「饱和底+白字」扫描抓出（该扫描跨规则继承解析，
+   修饰类 .toast-ok 的底色 + 基础类 .toast 的白字字色）。 */
+.toast-ok { background: var(--ok-ink); }
+.toast-err { background: var(--err-ink); }
 /* 提示型（非错误）：切到演示班时的说明走这个，别用红色吓人 */
-.toast-warn { background: #d25f00; }
+.toast-warn { background: var(--warn-ink); }
 
 /* 导入弹窗的「来源切换」：上传 xlsx 文件 / 粘贴青果网页源码 二选一 */
 .src-row { display: flex; gap: 8px; margin: 12px 0 16px; }
 .src-tab { flex: 1; font-size: 13px; padding: 8px 10px; }
-.src-tab.active { background: var(--brand); border-color: var(--brand); color: #fff; }
-.src-tab.active:hover:not(:disabled) { background: var(--brand); border-color: var(--brand); }
+.src-tab.active { background: var(--brand-strong); border-color: var(--brand-strong); color: var(--text-on-brand); }
+.src-tab.active:hover:not(:disabled) { background: var(--brand-strong); border-color: var(--brand-strong); }
 
 /* ---------------- 手机 UA 版式（2026-11-11：窗口宽度 → 设备 UA） ----------------
    入口：index.html 在 <head> 按 navigator.userAgent 给 <html> 打 .ua-mobile / .ua-desktop。
@@ -709,6 +1548,21 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 
 .ua-mobile .btn { min-height: 44px; }
 
+/* 表格操作列的文字按钮：桌面 28px（行高所限），手机必须补到 44px。
+   ⚠️ .link 是 inline 元素，光写 min-height **不生效** ⇒ 必须转 inline-flex 才撑得开，
+      这也正是「以为补了其实没补」的经典坑（.link 上方注释承诺过 .ua-mobile .link，
+      但此前一直没有这条规则）。 */
+.ua-mobile .link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+}
+
+/* 权限勾选行 / 选人候选行：整行可点，行高不足 44px 时手指极易点到相邻行 */
+.ua-mobile .perm-item { min-height: 44px; }
+.ua-mobile .pick-item { min-height: 44px; }
+
 /* 班级选择器在窄屏别撑爆：允许收缩、限宽 */
 .ua-mobile .class-picker { min-width: 0; }
 
@@ -737,16 +1591,16 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   border: none;                 /* 🔴 细边框在白底上会让两张卡之间的间隙
                                    「闭合成一个空矩形」（2026-10-22 用户截图圈出），
                                    改用投影与 .stat 卡一致，卡片立体可分 */
-  border-radius: 10px;
+  border-radius: var(--r-md);
   margin-bottom: 14px;
-  background: var(--panel);
+  background: var(--surface);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
 
 .ua-mobile .tbl tbody tr:last-child { margin-bottom: 0; }
 
-.ua-mobile .tbl tbody tr:hover { background: var(--panel); }
+.ua-mobile .tbl tbody tr:hover { background: var(--surface); }
 
 .ua-mobile .tbl td {
   border-bottom: 1px solid var(--line);
@@ -783,6 +1637,18 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
      上下边框 + 圆角在 12px 间隙里闭合成一个「空矩形」（用户截图圈出），
      卡片完全看不出是分开的。退化后白卡行直接浮在灰底（--bg）上。 */
 .ua-mobile .card.card-tbl { background: transparent; box-shadow: none; overflow: visible; }
+
+/* 手机端触控目标补足 44px（2026-11-16 焕新 · 体验规范 P1-1）
+   桌面端 .link 是 28px 的紧凑文字按钮（表格行高所限），但手机上必须 ≥44px，
+   否则「编辑 / 取消后排 / 删除」这些高频操作会误触。 */
+.ua-mobile .link {
+  min-height: 44px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+}
+.ua-mobile .td-ops .link + .link { margin-left: 4px; }
+.ua-mobile .td-ops .link + .link::before { display: none; }
 
 /* ⚠️ 手机版布局（2026-10-23 重构，2026-11-11 去掉重复的功能排行）：
      「每日活跃图」全宽堆叠在下面的 .usage-top；「成员明细」单独成块、成员卡两列并排。
@@ -842,14 +1708,9 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .card-hd-note { margin-left: 10px; font-size: 12px; font-weight: 400; color: var(--text-3); }
 .insight-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 8px 0 16px; }
 .metric-chips { display: inline-flex; flex-wrap: wrap; gap: 8px; }
-/* 页面级对比（2026-11-09）：工具条第二行「对比」开关 + 粒度 + 两段日期 */
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
-.seg-btn {
-  padding: 4px 12px; border: 0; background: transparent; color: var(--text-2);
-  font-size: 12px; cursor: pointer; transition: background .16s var(--ease-out), color .16s var(--ease-out);
-}
-.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
-.seg-btn.active { background: var(--brand-soft); color: var(--brand); }
+/* 页面级对比（2026-11-09）：工具条第二行「对比」开关 + 粒度 + 两段日期
+   ⚠️ .seg / .seg-btn 的基础与选中态已统一到上面那一处（2026-11-16 焕新，
+      白药丸浮在灰轨道），这里只保留**本模块的尺寸微调**，不再重复定义选中态。 */
 /* 对比控件跟时间范围/班级范围同排（不独占一行）；margin-left:auto 让它在极端窄屏
    折行时靠右续排，而不是从内容区最左顶格另起一段 */
 .usage-cmp { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-left: auto; }
@@ -857,14 +1718,17 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .cmp-dates { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .cmp-tag {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 15px; height: 15px; border-radius: 4px;
-  font-size: 10px; font-weight: 600; color: #fff;
+  width: 15px; height: 15px; border-radius: var(--r-sm);
+  font-size: 11px; font-weight: 600; color: var(--text-on-brand);
 }
-.cmp-tag-a { background: #3370FF; }
-.cmp-tag-b { background: #FF7D00; }
+/* A/B 图例与数据点必须用**同一套**图表色 ⇒ 同一个"B"不能显示成两色。
+   ⚠️ 原先图例写死 #3370FF/#FF7D00，而数据点用 --chart-1/--chart-2，
+      改色板后两者对不上（视觉设计师实测发现）。现在统一走 --chart-*。 */
+.cmp-tag-a { background: var(--series-a); font-size: 11px; }
+.cmp-tag-b { background: var(--series-b); font-size: 11px; }
 .cmp-date {
   width: 106px; min-width: 0; box-sizing: border-box;
-  padding: 3px 5px; border: 1px solid var(--line); border-radius: 4px;
+  padding: 3px 5px; border: 1px solid var(--line); border-radius: var(--r-sm);
   font-size: 12px; color: var(--text); background: #fff; font-family: inherit;
 }
 .cmp-date:focus { outline: none; border-color: var(--brand); }
@@ -877,19 +1741,22 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   display: inline-block; width: 8px; height: 8px; border-radius: 50%;
   margin-right: 6px; vertical-align: middle;
 }
-.cmp-dot-a { background: #3370FF; }
-.cmp-dot-b { background: #FF7D00; }
+.cmp-dot-a { background: var(--series-a); }
+.cmp-dot-b { background: var(--series-b); }
 .cmp-pct { font-size: 12px; font-variant-numeric: tabular-nums; }
-.cmp-pct.up { color: #00A870; }     /* 增长用绿、下降用灰红：统计报表习惯，与股价红绿相反 */
-.cmp-pct.down { color: #D54941; }
+/* 增长用绿、下降用灰红：统计报表习惯，与股价红绿相反。
+   ⚠️ 原写死 #00A870(3.07:1) / #D54941(4.32:1)，两者都低于 WCAG AA 4.5:1
+   ⇒ 改用 ink 档：--ok-ink 4.90:1 / --err-ink 5.45:1。 */
+.cmp-pct.up { color: var(--ok-ink); }
+.cmp-pct.down { color: var(--err-ink); }
 .cmp-pct.flat { color: var(--text-3); }
 .hidden { display: none !important; }
 /* We分析 指标筛选：4px 圆角矩形，未选中浅灰底，选中浅品牌色底 + 品牌字色 */
 .metric-chip {
   padding: 4px 12px;
   border: 1px solid transparent;
-  border-radius: 4px;
-  background: #f2f3f5;
+  border-radius: var(--r-sm);
+  background: var(--sunken);
   color: var(--text-2);
   font-size: 12px;
   cursor: pointer;
@@ -897,8 +1764,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
               transform .18s var(--ease-out);
 }
 .metric-chip:active { transform: scale(.97); }
-.metric-chip:hover { background: #e9eaec; color: var(--text); }
-.metric-chip.active { background: rgba(51, 112, 255, .10); border-color: transparent; color: var(--brand); }
+.metric-chip:hover { background: var(--hover); color: var(--text); }
+.metric-chip.active { background: var(--brand-soft); border-color: transparent; color: var(--brand-ink); }
 
 .trend-svg { width: 100%; height: auto; display: block; animation: insight-reveal .32s var(--ease-out) backwards; }
 .trend-axis-txt { fill: var(--text-3); font-size: 11px; }
@@ -913,21 +1780,21 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .src-list { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 6px; }
 .src-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .src-label { width: 92px; flex: 0 0 92px; color: var(--text-2); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.src-track { flex: 1; height: 10px; background: #f2f3f5; border-radius: 5px; overflow: hidden; }
+.src-track { flex: 1; height: 10px; background: var(--sunken); border-radius: var(--r-full); overflow: hidden; }
 /* 横条每次切指标都是整段 innerHTML 重建，width 过渡从未真正生效（死代码），
    直接去掉，避免留下「动 width」这种触发重排的伪动画。 */
-.src-bar { height: 100%; background: #00b42a; border-radius: 5px; min-width: 2px; }
+.src-bar { height: 100%; background: var(--chart-4); border-radius: var(--r-full); min-width: 2px; }
 .src-val { width: 34px; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
 .src-pct { width: 58px; text-align: right; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 2px 0 6px; }
-.metric-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; background: #fff; min-width: 0; }
+.metric-card { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; background: var(--surface); min-width: 0; }
 .metric-label { font-size: 13px; color: var(--text-2); }
 .metric-value { font-size: 26px; font-weight: 600; line-height: 1.5; color: var(--text); font-variant-numeric: tabular-nums; }
 .metric-unit { font-size: 13px; font-weight: 400; color: var(--text-3); margin-left: 4px; }
 .metric-cmp { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
-.metric-delta.up { color: var(--ok); }
-.metric-delta.down { color: var(--err); }
+.metric-delta.up { color: var(--ok-ink); }
+.metric-delta.down { color: var(--err-ink); }
 .metric-delta.flat { color: var(--text-3); }
 
 /* ---------------- 手机 UA 版式（2026-11-11：窗口宽度 → 设备 UA） ----------------
@@ -969,7 +1836,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--surface);
   box-shadow: 0 8px 24px rgba(31, 35, 41, .14);
   font-size: 12px; line-height: 1.7; color: var(--text-2);
   opacity: 0; transform: translateY(4px);
@@ -985,18 +1852,33 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .trend-hover-layer { opacity: 0; transition: opacity .16s var(--ease-out); }
 .trend-hover-layer.is-active { opacity: 1; }
 .trend-crosshair { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 4 4; }
-.trend-dot { stroke: #fff; stroke-width: 1.5; }
+.trend-dot { stroke: var(--surface); stroke-width: 1.5; }
 
 /* ③ 命中行的反馈（opacity，不触发重排） */
 .src-row { transition: opacity .16s var(--ease-out); }
 .src-row.is-active { opacity: .68; }
-.src-row.is-active .src-label { color: var(--brand); }
+.src-row.is-active .src-label { color: var(--brand-ink); }
 
 /* ④ 卡片 hover：轻微上浮 + 内描边淡入。
    .card 有 overflow:hidden，外阴影会被裁掉，故用 inset 阴影伪元素（纯 opacity 过渡）。 */
 .card-insight {
   position: relative;
   transition: transform .18s var(--ease-out);
+  animation: card-enter .4s var(--ease-out) backwards;
+  animation-delay: var(--enter-delay, 0ms);
+}
+/* 全站卡片错峰入场（2026-11-16 焕新 · 视觉规范 §6.4 ①）
+   复用 .card-insight 已有的 --enter-delay + card-enter 机制（被门禁锁定），
+   扩展到 .card / .stat —— 让"页面有生命"的第一印象成立。
+   ⚠️ 入场只在**进入视图**时播（app.js 的 stagger 助手负责写 --enter-delay），
+      翻页 / 筛选 / 刷新数据时不重播，否则每次点筛选都闪一遍 = 噪音。
+   ⚠️ .card-insight 自己也带 animation，若两者叠加会重复播放 ⇒
+      这里用 :not(.card-insight) 排除，保留它原有的规则不动。 */
+.card:not(.card-insight) {
+  animation: card-enter .4s var(--ease-out) backwards;
+  animation-delay: var(--enter-delay, 0ms);
+}
+.stat {
   animation: card-enter .4s var(--ease-out) backwards;
   animation-delay: var(--enter-delay, 0ms);
 }
@@ -1010,8 +1892,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
 .card-hd { position: relative; }
 .card-hd-action {
   position: absolute; right: 14px; top: 9px;
-  padding: 3px 10px; border: 1px solid var(--line); border-radius: 14px;
-  background: var(--panel); color: var(--text-2); font-size: 12px; cursor: pointer;
+  padding: 3px 10px; border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface); color: var(--text-2); font-size: 12px; cursor: pointer;
   opacity: 0; transform: translateY(2px);
   transition: opacity .18s var(--ease-out), transform .18s var(--ease-out);
 }
@@ -1053,6 +1935,25 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   .metric-chip { transition: background .12s ease, color .12s ease, border-color .12s ease; }
   .card-hd-action { transform: none; transition: opacity .12s ease; }
   .trend-hover-layer { transition: opacity .12s ease; }
+  /* —— 2026-11-16 焕新增的降级（视觉规范 §6.7）——
+     既有段落逐字保留，以上为追加项。 */
+  .card:not(.card-insight), .stat { animation: none; opacity: 1; transform: none; }
+  .dlg, .dlg-mask, .toast, .login-err { animation: none; opacity: 1; transform: none; }
+  .tbl tbody tr.is-new { animation: none; background: transparent; }
+  .btn:active:not(:disabled) { transform: none; }
+  .nav-item::before { transition: none; }
+  /* —— 2026-11-16 补：降级遗漏项（体验规范 §3.7 X-4 / X-5）——
+     这两处是既有动画，改造时漏掉了 reduced-motion 覆盖：
+     开了「减少动态效果」的用户仍会看到旋转 spinner 与抽屉滑动。 —— */
+  .boot-spinner { animation: none; opacity: .6; }
+  .ua-mobile .side { transition: none; }
+  /* 🔴 页内加载态的旋转环（.loading::before）同样必须停 ——
+     它也是 infinite 动画，漏掉就会让「减少动态效果」的用户一直看转圈。 */
+  .loading::before { animation: none; opacity: .55; }
+  /* 页内重取进度条：不做扫光，静态满条即可（仍随内容写完被移除） */
+  .view.is-refreshing::before { animation: none; opacity: .7; transform: scaleX(1); }
+  /* 动效总开关：JS 侧读这个变量决定要不要播（app.js 不能用 matchMedia，门禁所限） */
+  :root { --motion-ok: 0; }
 }
 
 /* ---------------- 手机 UA 版式（2026-11-11：窗口宽度 → 设备 UA） ----------------
@@ -1086,14 +1987,14 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.fee-sum-bal { color: var(--brand); }
+.fee-sum-bal { color: var(--brand-ink); }
 .fee-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fee-thumbs { display: inline-flex; align-items: center; gap: 6px; }
 .fee-thumb {
   width: 40px;
   height: 40px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   cursor: zoom-in;
   background: var(--bg);
@@ -1108,7 +2009,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   max-height: 64vh;
   object-fit: contain;
   background: var(--bg);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
 }
 
 /* ============ 值日 / 换班 / 倒数日 / 后台账号（2026-11-15 新增） ============ */
@@ -1126,8 +2027,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   height: 32px;
   padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg-card);
+  border-radius: var(--r-sm);
+  background: var(--bg-card, var(--surface));
   color: var(--text);
   font-size: 13px;
 }
@@ -1139,8 +2040,8 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   padding: 0 4px;
   margin-right: 6px;
   border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--bg-card);
+  border-radius: var(--r-full);
+  background: var(--bg-card, var(--surface));
   color: var(--text);
   font-size: 12px;
   vertical-align: middle;
@@ -1187,7 +2088,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   max-height: 42vh;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
 }
 .pick-item {
   display: block;
@@ -1201,7 +2102,7 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   color: var(--text);
 }
 .pick-item:last-child { border-bottom: 0; }
-.pick-item:hover { background: var(--bg-hover, #f2f7ff); }
+.pick-item:hover { background: var(--brand-soft); }
 .pick-name { display: block; font-weight: 600; font-size: 14px; }
 .pick-meta { display: block; margin-top: 3px; font-size: 12px; color: var(--text-3); }
 

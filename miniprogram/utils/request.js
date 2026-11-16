@@ -63,16 +63,21 @@ function call(name, action, payload, opt) {
    * 落库、只是响应在路上丢了，重放会造成重复记录。按 action 命名识别写操作，
    * 调用方仍可用 opt.retry 显式覆盖（0 = 关，1~3 = 指定次数）。 */
   const WRITE_ACTION = /(add|save|set|update|remove|delete|clear|publish|unpublish|apply|import|revert|confirm|cancel|bind|unbind|toggle|move|append|copy|submit|upsert|generate|reassign|swap|handle|track|send|create|mark|reset|upload)/i;
-  // 只读预览态（演示班级 demo / 体验版 trial，2026-11-12）：写类操作一律拦截，
-  // 绝不真正上报服务器 —— 演示班是所有体验者共享的一个班，任一条写入都会被别人看见。
+  // 只读预览态（**仅演示班级 demo**，2026-11-12 起；2026-11-16 移除 trial 环境兜底）：
+  // 写类操作一律拦截，绝不真正上报服务器 —— 演示班是所有体验者共享的一个班，
+  // 任一条写入都会被别人看见。
+  // ⚠️ 体验版（trial）环境**不再**算只读：体验版是未过审代码唯一能真机验收的地方，
+  //   真实身份在体验版里操作真实班级必须放行（否则改值日 / 手动排班全被拦，见 util.isReadonly 注释）。
   // 统一回 40099（静默，不弹 toast：自动埋点等后台调用不该打扰用户），
   // 用户主动点击的入口由各 handler 顶部的 util.readonlyBlocked() 弹提示。
   if (util && util.isReadonly() && WRITE_ACTION.test(String(action))) {
     // opt.toast !== false ⇒ 用户主动发起的操作（排班生成、发通知、课次增删等
     // 没在 handler 顶部加守卫的入口）→ 补一次提示，避免「点了没反应」。
     // 后台自动调用（埋点 / 预热 / 切身份恢复）都传 toast:false ⇒ 静默，不打扰。
-    if (needToast) util.toast('演示班级仅预览，操作不会真实保存');
-    return Promise.reject(mkErr(40099, '演示班级仅预览，操作不会真实保存'));
+    // 文案统一走 util.readonlyHint()，禁止在此写死（曾写死「演示班级…」导致用户以为身份错乱）。
+    const hint = (typeof util.readonlyHint === 'function') ? util.readonlyHint() : '演示班级仅预览，操作不会真实保存';
+    if (needToast) util.toast(hint);
+    return Promise.reject(mkErr(40099, hint));
   }
   const defaultRetry = WRITE_ACTION.test(String(action)) ? 0 : 1;
   const maxRetry = opt.retry === undefined
@@ -146,7 +151,7 @@ function call(name, action, payload, opt) {
 
 /** 上传本地文件到云存储 */
 function uploadFile(cloudPath, filePath) {
-  // 只读预览态（演示班级 / 体验版，2026-11-12）：文件一律不真正上传云存储，
+  // 只读预览态（**仅演示班级 demo**，2026-11-16 起不再含 trial 环境）：文件一律不真正上传云存储，
   // 避免假条、作业附件等违规内容进入共享桶被后续体验者看到。
   // 直传云存储不经过云函数，后端无权拦截 —— 这里是唯一闸口。
   if (util && util.isReadonly()) {

@@ -47,6 +47,11 @@
     memberScope: 'ALL',
     memberKw: '',
     auditPage: 1,
+    // 值日明细分页（2026-11-16 焕新 · UX 规范 P0）：
+    // 原来固定 pageSize=200 一次拉满，页面被撑成超长表格 ⇒ 改 60/页 + 分页器。
+    // 后端 lib/mod-duty.js 的 pageSize 默认也是 60，两侧口径一致。
+    dutyPage: 1,
+    dutyPageSize: 60,
     group: 'ALL',
     leaveStatus: 'ALL',
     leaveKw: ''
@@ -108,6 +113,85 @@
     clearTimeout(toast._t);
     // 错误与关键结果不能只在 2.6s 内一闪而过；成功/普通提示保持原节奏（SPT 02）。
     toast._t = setTimeout(function () { el.hidden = true; }, isError ? 5200 : 2600);
+  }
+
+  /* ---------------- 确认弹层（2026-11-16 焕新 · 体验规范 §3.5）----------------
+   * 为什么要有：原来全站 13 处危险操作用**浏览器原生 confirm()**，
+   *   系统弹窗样式与全站割裂、无法承载富文案、触屏上像"另一个应用"
+   *   —— 这是"老气"的最大来源之一。
+   * 现在统一走站内 .dlg-mask/.dlg 结构（新增 .dlg-confirm 变体）。
+   *
+   * 三级危险度（规范 C4）：
+   *   L1 轻确认 —— 删单条记录：无倒计时、无勾选
+   *   L2 标准   —— 删课次 / 删停用后台账号 / 清空课表：逐条列出影响数量
+   *   L3 强确认 —— 覆盖导入 / 清空课表：需显式勾选「我已知晓影响」
+   *
+   * 无障碍（规范 C5/C6）：
+   *   · role="dialog" + aria-modal="true" + aria-labelledby 指向标题
+   *   · 焦点移入弹层；**危险按钮默认不聚焦**（焦点落在「取消」），避免回车即误删
+   *   · Esc 关闭；关闭后**焦点归还触发元素**
+   *
+   * @param {object} o
+   *   o.title    标题（动词 + 对象）
+   *   o.body     正文（HTML，允许 <br> 与 <strong>）
+   *   o.okText   确认按钮文案（默认「确认」）
+   *   o.danger   true ⇒ 确认按钮用危险色（默认 true）
+   *   o.level    'L1' | 'L2' | 'L3'（L3 需勾选「我已知晓影响」）
+   * @returns {Promise<boolean>} 用户点了确认才 resolve(true)
+   */
+  function confirmDialog(o) {
+    o = o || {};
+    return new Promise(function (resolve) {
+      var prevFocus = document.activeElement;
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      var needAck = o.level === 'L3';
+      dlg.innerHTML =
+        '<div class="dlg dlg-confirm" role="dialog" aria-modal="true" aria-labelledby="dlg-cf-hd">' +
+        '<div class="dlg-hd" id="dlg-cf-hd">' + esc(o.title || '确认操作') + '</div>' +
+        '<div class="dlg-bd">' +
+        '<div class="dlg-cf-body">' + (o.body || '') + '</div>' +
+        (needAck
+          ? '<label class="dlg-cf-ack"><input type="checkbox" id="dlg-cf-ack"> 我已知晓以上影响</label>'
+          : '') +
+        '</div>' +
+        '<div class="dlg-ft">' +
+        '<button type="button" class="btn" id="dlg-cf-cancel">取消</button>' +
+        '<button type="button" class="btn ' + (o.danger === false ? 'btn-primary' : 'btn-danger') +
+        '" id="dlg-cf-ok"' + (needAck ? ' disabled' : '') + '>' + esc(o.okText || '确认') + '</button>' +
+        '</div></div>';
+      document.body.appendChild(dlg);
+
+      var okBtn = $('#dlg-cf-ok', dlg);
+      var cancelBtn = $('#dlg-cf-cancel', dlg);
+      var ackBox = needAck ? $('#dlg-cf-ack', dlg) : null;
+
+      function close(result) {
+        document.removeEventListener('keydown', onKey, true);
+        if (dlg.parentNode) dlg.parentNode.removeChild(dlg);
+        // 焦点归还触发元素（无障碍 C5）
+        try {
+          if (prevFocus && prevFocus.focus) prevFocus.focus();
+        } catch (e) { /* 元素已消失，忽略 */ }
+        resolve(!!result);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      }
+      if (ackBox) {
+        ackBox.onchange = function () { okBtn.disabled = !ackBox.checked; };
+      }
+      cancelBtn.onclick = function () { close(false); };
+      okBtn.onclick = function () {
+        if (needAck && ackBox && !ackBox.checked) return;
+        close(true);
+      };
+      // 点遮罩关闭（与站内其它弹层一致）
+      dlg.onclick = function (e) { if (e.target === dlg) close(false); };
+      document.addEventListener('keydown', onKey, true);
+      // 焦点落在「取消」（危险操作不默认聚焦确认按钮，避免回车即误删）
+      try { cancelBtn.focus(); } catch (e) { /* ignore */ }
+    });
   }
 
   /* ---------------- API 封装 ---------------- */
@@ -243,6 +327,30 @@
   }
 
   /**
+   * 导航分组（2026-11-16 焕新 · 体验规范 §1.4）
+   * 目的：超管看到 14 个页签、辅导员 11 个、副班长 7 个 —— 数量差异很大，
+   * 扁平一列时既难扫读又显得拥挤。分组标题是**纯视觉叠加层**，页签相对顺序一位不动。
+   *
+   * ⚠️ 红线（改之前先读，改错会翻门禁）：
+   *   R1 渲染按钮的模板必须保留字面量 `data-view="' + k + '"`（k 变量名不能改）
+   *      —— check-admin-fee.js 的正则直匹配源码文本；
+   *   R2 分组表写在 `var VIEWS = {...}` **之外** —— check-admin-nav-order 的
+   *      parseAppViews 要求 `{` 后紧跟 `title:`，写进条目内部会让它解析出 0 项；
+   *   R3 分组表的值是字符串/数组，不要用对象字面量 —— check-admin-fee 的
+   *      `[^}]*` 正则不允许出现 `}`；
+   *   R5 分组标题节点不带 id、不用 <button>、不带 data-view
+   *      —— 避免进 Tab 序列、避免被 closest('.nav-item') 误命中。
+   *
+   * 分组边界恰好落在**等字数边界**上 ⇒ 字数升序口径（用户 2026-11-16 要求）不受影响：
+   *   日常 8 项（2/2/2/2/3/3/4/4）→ 管理 4 项（4/4/4/4）→ 审计 2 项（4/4）
+   */
+  var NAV_GROUPS = [
+    { label: '日常', views: ['overview', 'member', 'leave', 'fee', 'countdown', 'timetable', 'duty', 'swap'] },
+    { label: '管理', views: ['class', 'config', 'rules', 'usage'] },
+    { label: '审计与账号', views: ['audit', 'accounts'] }
+  ];
+
+  /**
    * 按权限渲染导航。
    * 为什么不直接在 index.html 里写死再逐个 hidden：
    * 写死会让「HTML 有 10 个、JS 有 14 个」这种漂移长期存在，
@@ -251,15 +359,37 @@
   function renderNav() {
     var nav = $('#nav');
     if (!nav) return;
-    nav.innerHTML = allowedViews().map(function (k) {
-      return '<button class="nav-item" data-view="' + k + '">' + esc(VIEWS[k].title) + '</button>';
-    }).join('');
+    var list = allowedViews();                 // 已是 VIEWS 声明顺序
+    // 先切分、再剔除空组 —— 单组时**不输出任何标题**（副班长 7 项就是扁平列表）
+    var groups = [];
+    NAV_GROUPS.forEach(function (g) {
+      var items = g.views.filter(function (k) { return list.indexOf(k) >= 0; });
+      if (items.length) groups.push({ label: g.label, items: items });
+    });
+    var html = '';
+    if (groups.length > 1) {
+      groups.forEach(function (g) {
+        html += '<div class="nav-group-label">' + esc(g.label) + '</div>';
+        g.items.forEach(function (k) {
+          html += '<button class="nav-item" data-view="' + k + '">' + esc(VIEWS[k].title) + '</button>';
+        });
+      });
+    } else {
+      // 单组（或分组表没覆盖到的页签）⇒ 扁平渲染，保持 VIEWS 顺序
+      list.forEach(function (k) {
+        html += '<button class="nav-item" data-view="' + k + '">' + esc(VIEWS[k].title) + '</button>';
+      });
+    }
+    nav.innerHTML = html;
     if (!canView(state.view)) {
-      var list = allowedViews();
-      state.view = list.length ? list[0] : 'overview';
+      var list2 = allowedViews();
+      state.view = list2.length ? list2[0] : 'overview';
     }
     $$('.nav-item', nav).forEach(function (b) {
       b.classList.toggle('active', b.dataset.view === state.view);
+      // 读屏用户靠 aria-current 才知道"当前在哪一页"（视觉上是 .active 的指示条）
+      if (b.dataset.view === state.view) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
     });
   }
 
@@ -288,7 +418,11 @@
     if (!canView(view)) {
       var list = allowedViews();
       if (!list.length) {
-        $('#view').innerHTML = '<div class="empty">当前账号没有后台权限，请联系管理员</div>';
+        $('#view').innerHTML = emptyHtml({
+          t: '你没有查看该页的权限',
+          d: '当前账号没有后台权限，请联系管理员开通后再登录',
+          cls: 'is-forbidden'
+        });
         $('#page-title').textContent = '';
         return;
       }
@@ -299,15 +433,91 @@
     lsSet(LS_VIEW, view);
     $$('.nav-item').forEach(function (b) {
       b.classList.toggle('active', b.dataset.view === view);
+      if (b.dataset.view === view) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
     });
     $('#page-title').textContent = (VIEWS[view] || {}).title || '';
     var host = $('#view');
     host.innerHTML = '<div class="loading">加载中…</div>';
     // 切视图时先清空旧内容，否则上一次的数据会短暂留在新页面上（串页）
     VIEWS[view].render(host);
+    // 卡片错峰入场（2026-11-16 焕新）：只在**进入视图**时播一次。
+    // ⚠️ 不能放在 render 的回调里 —— 那样每次翻页/筛选都会重播（动画噪音）。
+    staggerWhenFilled(host);
+  }
+
+  /**
+   * 等容器被填上内容后，给它的直接子卡片写 --enter-delay（错峰入场）。
+   * 用 MutationObserver 而不是轮询：只在内容真的变了才触发一次。
+   * ⚠️ 兜底 1.2s 后自动断开 —— 页面若一直没渲染出卡片，不能一直挂着监听。
+   */
+  function staggerWhenFilled(host) {
+    if (!host || !motionOk()) return;
+    var done = false;
+    var mo = new MutationObserver(function () {
+      if (done) return;
+      if (!host.children.length) return;
+      done = true;
+      stagger(host, 40, 6);
+      countUpStats(host);
+      try { mo.disconnect(); } catch (e) { /* 已断开 */ }
+    });
+    mo.observe(host, { childList: true });
+    setTimeout(function () {
+      if (!done) { try { mo.disconnect(); } catch (e) { /* noop */ } }
+    }, 1200);
+  }
+
+  /**
+   * 统计数字滚动（2026-11-16 焕新 · 视觉规范 §6.4 ③）
+   * 只处理带 data-value 的 .stat-value（纯数字），其余跳过。
+   * ⚠️ 只在进入视图时播一次（与 stagger 同一次触发）—— 翻页/筛选不重播。
+   */
+  function countUpStats(root) {
+    $$('.stat-value[data-value]', root).forEach(function (el, i) {
+      var to = parseFloat(el.getAttribute('data-value'));
+      if (isNaN(to)) return;
+      // 错开一点，让多张卡不是同时跳（错峰 60ms，最多 5 张）
+      setTimeout(function () { countUp(el, to, 700); }, i * 60);
+    });
   }
 
   function reload() { go(state.view); }
+
+  /**
+   * 页内重取（2026-11-16 · 体验规范 L4/L6）：切筛选、翻页、搜索、改对比范围时用。
+   *
+   * 为什么不能直接调 reload()：reload()=go() 每次都把 #view 整个换成
+   * `<div class="loading">加载中…</div>` spinner，再调 staggerWhenFilled() 重播
+   * 卡片飞入 + 数字滚动。用户切一次「A 组」「下一页」就看到整页闪一下、卡片再飞一遍
+   * —— 这就是"切换筛选会刷新页面"的观感，且丢失滚动位置。
+   *
+   * softReload 只重新执行当前视图的 render，保留旧内容直到新数据就绪；
+   * 容器顶部挂 2px 进度条（.is-refreshing）作为加载指示，内容替换后自动收起。
+   * render 都是异步 api().then 里写 host.innerHTML，用 MutationObserver 捕获这次替换。
+   *
+   * ⚠️ 进度条动画**不是 infinite**（风格门禁禁止除 boot-spin 外的无限动画），
+   *    1.2s 扫到 92% 停住，等渲染完成移除 class 时消失。
+   * ⚠️ 8s 兜底：API 挂了也不能让进度条永远挂着（L4 不能阻塞交互）。
+   */
+  function softReload() {
+    var host = $('#view');
+    if (!host || !VIEWS[state.view]) return;
+    var top = host.scrollTop;                 // innerHTML 替换会重置滚动位置，记下来恢复
+    host.classList.add('is-refreshing');
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      host.classList.remove('is-refreshing');
+      try { host.scrollTop = top; } catch (e) { /* 容器不可滚动，忽略 */ }
+      try { mo.disconnect(); } catch (e) { /* 已断开 */ }
+    }
+    var mo = new MutationObserver(function () { setTimeout(finish, 0); });
+    mo.observe(host, { childList: true });
+    setTimeout(finish, 8000);
+    VIEWS[state.view].render(host);
+  }
 
   /**
    * 重新拉一次班级清单并**原地更新 state.classes**（不切视图、不弹提示）。
@@ -333,6 +543,73 @@
       if (state.classes[i].id === state.classId) return state.classes[i];
     }
     return null;
+  }
+
+  /* ---------------- 动效助手（2026-11-16 焕新）----------------
+   * 两件事，都是"让页面有生命"的关键，但都必须是**语义驱动**的：
+   *   ① stagger()  卡片错峰入场 —— 只在**进入视图**时播，翻页/筛选不重播；
+   *   ② countUp()  统计数字滚动 —— 只在进入含统计数的视图时播一次。
+   * 二者都必须尊重 prefers-reduced-motion（用户开了"减少动态效果"就直接落值）。
+   * ⚠️ 动效只动 transform + opacity（合成层友好），不改布局高度。
+   *
+   * 🔴 为什么不用 matchMedia 读动效偏好：
+   *   门禁 check-admin-usage-layout 的 appNoWidthSwitch 断言 app.js **不含** 该 API
+   *   （原意是禁止用它做**版式判定**，但断言是整文件级的字符串匹配，注释里也不能写）。
+   *   ⇒ 改用 CSS 变量中转：CSS 侧在 prefers-reduced-motion 媒体查询里写一个标记变量，
+   *      JS 读 getComputedStyle 拿它。这样既满足门禁口径，语义也更准确
+   *      （动效开关本来就该由 CSS 媒体查询判定，JS 只是读结果）。 */
+
+  /** 是否允许播动效（系统开了"减少动态效果"就一律不播）。
+   *  读 CSS 变量 --motion-ok：CSS 侧默认 "1"，在 reduce 媒体查询里改成 "0"。 */
+  function motionOk() {
+    try {
+      return getComputedStyle(document.documentElement).getPropertyValue('--motion-ok').trim() !== '0';
+    } catch (e) {
+      return true;
+    }
+  }
+
+  /**
+   * 卡片错峰入场：给容器下的直接子元素依次写 --enter-delay。
+   * CSS 侧用 animation-delay: var(--enter-delay, 0ms) 消费（被门禁锁定）。
+   * @param {Element} root 容器
+   * @param {number} step 每张错开多少 ms
+   * @param {number} max  最多错开几张（再多就成" slideshow"了）
+   */
+  function stagger(root, step, max) {
+    if (!root || !motionOk()) return;
+    var kids = root.children;
+    var n = Math.min(kids.length, max || 6);
+    for (var i = 0; i < n; i++) {
+      kids[i].style.setProperty('--enter-delay', (i * (step || 40)) + 'ms');
+    }
+  }
+
+  /**
+   * 统计数字滚动：数字从 0 滚到目标值。
+   * ⚠️ 只处理**纯数字**（含小数）——「3/4」「已停用」「—」这类一律跳过，
+   *    否则会显示成 NaN（比不滚动糟糕得多）。
+   * @param {Element} el 元素（内容会被替换为滚动中的数字）
+   * @param {number} to  目标值
+   * @param {number} dur 毫秒
+   */
+  function countUp(el, to, dur) {
+    if (!el || !motionOk()) return;
+    if (typeof to !== 'number' || !isFinite(to)) return;
+    var from = 0;
+    var start = null;
+    var dec = (Math.abs(to) % 1) > 0.0001 ? 2 : 0;   // 有小数就保留 2 位，避免位数跳动
+    function step(ts) {
+      if (start === null) start = ts;
+      var p = Math.min(1, (ts - start) / (dur || 700));
+      // easeOutExpo：起步快、收尾稳
+      var e = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+      var v = from + (to - from) * e;
+      el.textContent = dec ? v.toFixed(dec) : String(Math.round(v));
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = dec ? to.toFixed(dec) : String(to);
+    }
+    requestAnimationFrame(step);
   }
 
   /* ---------------- 概览 ---------------- */
@@ -370,8 +647,15 @@
     });
   }
 
+  /**
+   * 统计卡（2026-11-16 焕新）：纯数字时带 data-value，供 countUp 滚动。
+   * ⚠️ 值不是「纯数字」（含小数）时**不带** data-value —— countUp 会跳过，
+   *    避免把「3/4」「已停用」滚成 NaN（比不滚动糟糕得多）。
+   */
   function stat(label, value, hint) {
-    return '<div class="stat"><div class="stat-value">' + value + '</div>' +
+    var v = (typeof value === 'number' && isFinite(value)) ? String(value) : esc(value);
+    var dv = (typeof value === 'number' && isFinite(value)) ? ' data-value="' + value + '"' : '';
+    return '<div class="stat"><div class="stat-value"' + dv + '>' + v + '</div>' +
       '<div class="stat-label">' + esc(label) + '</div>' +
       '<div class="stat-hint">' + esc(hint) + '</div></div>';
   }
@@ -404,7 +688,11 @@
           '<div class="card-hd">' + esc(cls ? cls.name : '') +
           ' · 共 ' + rows.length + ' 个课次' +
           (state.group === 'ALL' ? '' : '（含全体课）') + '</div>' +
-          (rows.length ? '' : '<div class="empty">该班还没有课次，可点右上角「导入课表」</div>') +
+          (rows.length ? '' : emptyHtml({
+            t: '该班还没有课次',
+            d: '导入一份 xlsx 即可生成整周课表；也可以手动添加单节课次',
+            act: { k: 'timetable-import', label: '导入课表', primary: true }
+          })) +
           '<table class="tbl"><thead><tr>' +
           '<th>周</th><th>第几节</th><th>课程</th><th>教师</th><th>教室</th><th>组别</th><th>周次</th><th>每节值日</th><th>操作</th>' +
           '</tr></thead><tbody>' +
@@ -454,7 +742,8 @@
   }
   function bindSeg(host) {
     $$('.seg-btn', host).forEach(function (b) {
-      b.onclick = function () { state.group = b.dataset.group; reload(); };
+      // 页内切分组：保留旧内容 + 顶部进度条，不闪 spinner、不重播入场动画
+      b.onclick = function () { state.group = b.dataset.group; softReload(); };
     });
   }
 
@@ -576,11 +865,19 @@
       });
     };
 
-    $commit.onclick = function () {
+    $commit.onclick = async function () {
       var body = state.importDraft;
       if (!body) { toast('请先解析课表来源', 'err'); return; }
-      if (!confirm('即将覆盖 ' + cls.name + ' 的 ' + body.groupScope +
-        ' 组全部课程课次。\n系统会自动建备份表，仍建议先核对上方预览。\n\n确认继续？')) return;
+      /* L3 强确认（2026-11-16 焕新 · 体验规范 §3.5 C4）：
+         覆盖导入会清掉该组全部课程课次 ⇒ 需显式勾选「我已知晓影响」才放行。
+         原文案一字不删（"系统会自动建备份表，仍建议先核对上方预览"）。 */
+      var ok = await confirmDialog({
+        title: '即将覆盖 ' + cls.name + ' 的 ' + body.groupScope + ' 组全部课程课次',
+        okText: '确认覆盖导入',
+        level: 'L3',
+        body: '系统会自动建备份表，仍建议先核对上方预览。'
+      });
+      if (!ok) return;
       $commit.disabled = true;
       $commit.textContent = '导入中…';
       api('/api/timetable/import', { method: 'POST', body: body, timeoutMs: 60000 })
@@ -646,11 +943,17 @@
     sel.onchange = refresh;
     $('#c-cancel', dlg).onclick = function () { dlg.remove(); };
     dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
-    $('#c-confirm', dlg).onclick = function () {
+    $('#c-confirm', dlg).onclick = async function () {
       var g = sel.value;
       var scopeText = g === 'ALL' ? '全部课程课次（含全体课）' : g + ' 组课程课次';
-      if (!confirm('即将清空 ' + cls.name + ' 的 ' + scopeText +
-          '。\n系统会先自动备份，仍建议先核对上方预览。\n\n确认继续？')) return;
+      /* L3 强确认（体验规范 §3.5 C4）：清空课表影响面最大 ⇒ 需显式勾选确认。 */
+      var ok = await confirmDialog({
+        title: '即将清空 ' + cls.name + ' 的 ' + scopeText,
+        okText: '确认清空',
+        level: 'L3',
+        body: '系统会先自动备份，仍建议先核对上方预览。'
+      });
+      if (!ok) return;
       var btn = $('#c-confirm', dlg);
       btn.disabled = true;
       btn.textContent = '清空中…';
@@ -1018,7 +1321,10 @@
           '</div>' +
           '<div class="card">' +
           '<div class="card-hd">请假列表 · 共 ' + rows.length + ' 条</div>' +
-          (rows.length ? '' : '<div class="empty">该班暂无请假记录</div>') +
+          (rows.length ? '' : emptyHtml({
+            t: '该班还没有请假记录',
+            d: '学生在小程序提交请假后会出现在这里，可按状态审核'
+          })) +
           '<table class="tbl"><thead><tr>' +
           '<th>成员</th><th>班级</th><th>日期</th><th>时段</th><th>状态</th><th>假条</th><th>操作</th>' +
           '</tr></thead><tbody>' +
@@ -1188,8 +1494,13 @@
     });
   }
 
-  function deleteLeave(id) {
-    if (!confirm('确认删除这条请假？\n\n· 删除不可恢复；\n· 该成员这几天原本被标成「已请假」的值日会退回「待值日」。\n\n如果只是想改成已撤销，请用「编辑」把状态改为「已撤销」。')) return;
+  async function deleteLeave(id) {
+    var ok = await confirmDialog({
+      title: '删除这条请假？',
+      okText: '确认删除',
+      body: '· 删除<b>不可恢复</b>；<br>· 该成员这几天原本被标成「已请假」的值日会退回「待值日」。<br><br>如果只是想改成已撤销，请用「编辑」把状态改为「已撤销」。'
+    });
+    if (!ok) return;
     api('/api/leave/' + id + '/delete', { method: 'POST' }).then(function (res) {
       if (!res.ok) { toast(res.errMsg || '删除失败', 'err'); return; }
       toast('已删除；值日标记已同步', 'ok');
@@ -1277,7 +1588,15 @@
         '&dateTo=' + encodeURIComponent(f.dateTo) +
         (f.status ? '&status=' + f.status : '') +
         (f.kind ? '&kind=' + f.kind : '') +
-        '&pageSize=200';
+        /* 2026-11-16 焕新 · UX 规范 P0：原来固定 pageSize=200 一次拉 200 行，
+           页面被撑成"长表格"，用户要滚很久才够到分页/操作区。
+           现在按 60 条分页（后端默认也是 60），与成员页口径一致。 */
+        '&page=' + state.dutyPage + '&pageSize=' + state.dutyPageSize;
+      /* ⚠️ 上面这一行**必须以分号结尾**（2026-11-16 事故）：
+         曾漏写分号，导致下面的 api('/api/duty?' + qs) 被 `+` 吞进 qs 的初始化表达式，
+         调用时 qs 尚是 undefined ⇒ 请求发成 /api/duty?undefined ⇒ 后端报「缺少班级」。
+         node --check 抓不到 —— 字符串 + Promise 是**合法语法**，语义才错。门禁靠断言
+         classId 与 api 调用之间必须有分号来守（check-admin-duty-guard）。 */
       api('/api/duty?' + qs).then(function (d) {
         if (!d.ok) { host.innerHTML = errHtml(d); return; }
         var rows = d.data.items || [];
@@ -1308,7 +1627,10 @@
             '<button class="link" data-duty-swap="' + r.id + '">换人</button>' +
             '<button class="link link-danger" data-duty-del="' + r.id + '">删除</button>' +
             '</td></tr>';
-        }).join('') : '<tr><td colspan="8"><div class="empty">这段时间没有值日记录</div></td></tr>';
+        }).join('') : '<tr><td colspan="8">' + emptyHtml({
+          t: '这段时间没有值日记录',
+          d: '换个日期范围看看；若该班还没排值日，先在「课程表」里配好课次'
+        }) + '</td></tr>';
 
         host.innerHTML =
           '<div class="toolbar">' +
@@ -1322,11 +1644,20 @@
           '<div class="toolbar-right"><button class="btn" id="duty-refresh">刷新</button></div>' +
           '</div>' +
           '<div class="card">' +
-          '<div class="card-hd">值日明细 · 共 ' + rows.length + ' 条' +
+          /* 2026-11-16 焕新 · UX 规范 P0：标题处显示**总条数**（后端 total），
+             不再显示当前页行数（分页后 rows.length 只是本页条数，会误导）。 */
+          '<div class="card-hd">值日明细 · 共 ' + (d.data.total != null ? d.data.total : rows.length) + ' 条' +
           '<span class="muted-note">（状态可直接下拉修改；「已请假」由请假审批产生，这里不提供手工设置）</span></div>' +
           '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
           '<th>日期</th><th>周次</th><th>节次</th><th>课次</th><th>值日人</th><th>状态</th><th>来源</th><th>操作</th>' +
-          '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+          '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+          /* 分页器（原来一次拉 200 行，现在 60/页） */
+          (d.data.total && state.dutyPageSize
+            ? pager(d.data.total, d.data.page || state.dutyPage, state.dutyPageSize, function (p) {
+                state.dutyPage = p; load();
+              })
+            : '') +
+          '</div>';
 
         bind();
       });
@@ -1337,10 +1668,13 @@
       var toEl = $('#duty-to', host);
       var stEl = $('#duty-status', host);
       var kdEl = $('#duty-kind', host);
-      if (fromEl) fromEl.onchange = function () { f.dateFrom = fromEl.value; load(); };
-      if (toEl) toEl.onchange = function () { f.dateTo = toEl.value; load(); };
-      if (stEl) stEl.onchange = function () { f.status = stEl.value; load(); };
-      if (kdEl) kdEl.onchange = function () { f.kind = kdEl.value; load(); };
+      /* 筛选条件变化 ⇒ 回到第 1 页（否则可能停在一个已不存在的页码上，
+         后端返回空列表、用户以为"数据没了"）—— 与成员页口径一致。 */
+      function reloadFromFirst() { state.dutyPage = 1; load(); }
+      if (fromEl) fromEl.onchange = function () { f.dateFrom = fromEl.value; reloadFromFirst(); };
+      if (toEl) toEl.onchange = function () { f.dateTo = toEl.value; reloadFromFirst(); };
+      if (stEl) stEl.onchange = function () { f.status = stEl.value; reloadFromFirst(); };
+      if (kdEl) kdEl.onchange = function () { f.kind = kdEl.value; reloadFromFirst(); };
       var rf = $('#duty-refresh', host);
       if (rf) rf.onclick = function () { load(); };
 
@@ -1369,8 +1703,13 @@
         };
       });
       $$('[data-duty-del]', host).forEach(function (b) {
-        b.onclick = function () {
-          if (!confirm('确认删除这条值日记录？\n\n· 只删这一条，不影响其它周次；\n· 不会改动任何人的值日次数（轮转队列不变）；\n· 删掉后该时段就没有值日人了。')) return;
+        b.onclick = async function () {
+          var ok = await confirmDialog({
+            title: '删除这条值日记录？',
+            okText: '确认删除',
+            body: '· 只删这一条，不影响其它周次；<br>· 不会改动任何人的值日次数（<b>轮转队列不变</b>）；<br>· 删掉后该时段就没有值日人了。'
+          });
+          if (!ok) return;
           api('/api/duty/' + Number(b.dataset.dutyDel) + '/delete', { method: 'POST' }).then(function (r) {
             if (!r.ok) { toast(r.errMsg || '删除失败', 'err'); return; }
             toast('已删除', 'ok');
@@ -1419,7 +1758,10 @@
             '<td>' + esc(r.reasonText) + '</td>' +
             '<td>' + swapTag(r.status) + (r.expired ? '<br><span class="muted-note">已过期</span>' : '') + '</td>' +
             '<td class="td-ops">' + ops + '</td></tr>';
-        }).join('') : '<tr><td colspan="8"><div class="empty">没有换班申请</div></td></tr>';
+        }).join('') : '<tr><td colspan="8">' + emptyHtml({
+          t: '该班还没有换班申请',
+          d: '学生在小程序发起换班后，待审批的都列在这里'
+        }) + '</td></tr>';
 
         host.innerHTML =
           '<div class="toolbar">' +
@@ -1445,8 +1787,14 @@
       if (rf) rf.onclick = function () { load(); };
 
       $$('[data-swap-ok]', host).forEach(function (b) {
-        b.onclick = function () {
-          if (!confirm('通过这条换班申请？\n\n值日人会立刻换成替补，并写入换人记录（小程序里可还原）。')) return;
+        b.onclick = async function () {
+          var ok = await confirmDialog({
+            title: '通过这条换班申请？',
+            okText: '确认通过',
+            danger: false,
+            body: '值日人会立刻换成替补，并写入换人记录（小程序里可还原）。'
+          });
+          if (!ok) return;
           api('/api/swap/' + Number(b.dataset.swapOk) + '/approve', { method: 'POST', body: {} }).then(function (r) {
             if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); load(); return; }
             toast('已通过，值日人已更新', 'ok');
@@ -1455,8 +1803,14 @@
         };
       });
       $$('[data-swap-no]', host).forEach(function (b) {
-        b.onclick = function () {
-          if (!confirm('驳回这条申请？')) return;
+        b.onclick = async function () {
+          var ok = await confirmDialog({
+            title: '驳回这条申请？',
+            okText: '确认驳回',
+            danger: false,
+            body: '驳回后该申请将标记为已驳回，不会改动值日安排。'
+          });
+          if (!ok) return;
           api('/api/swap/' + Number(b.dataset.swapNo) + '/reject', { method: 'POST', body: {} }).then(function (r) {
             if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); return; }
             toast('已驳回', 'ok');
@@ -1465,8 +1819,13 @@
         };
       });
       $$('[data-swap-cancel]', host).forEach(function (b) {
-        b.onclick = function () {
-          if (!confirm('撤销这条申请？\n\n若它已把值日置为「已请假」，会一并退回「待值日」。')) return;
+        b.onclick = async function () {
+          var ok = await confirmDialog({
+            title: '撤销这条申请？',
+            okText: '确认撤销',
+            body: '若它已把值日置为「已请假」，会一并退回「待值日」。'
+          });
+          if (!ok) return;
           api('/api/swap/' + Number(b.dataset.swapCancel) + '/cancel', { method: 'POST', body: {} }).then(function (r) {
             if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); return; }
             toast('已撤销', 'ok');
@@ -1502,7 +1861,10 @@
             '<td>' + esc(r.position || '—') + '</td>' +
             '<td class="muted-note">' + esc(r.createdAt) + '</td>' +
             '</tr>';
-        }).join('') : '<tr><td colspan="6"><div class="empty">本班还没有人添加倒数日</div></td></tr>';
+        }).join('') : '<tr><td colspan="6">' + emptyHtml({
+          t: '该班还没有添加倒数日',
+          d: '同学们可在小程序自行添加，临近的日期会显示在首页'
+        }) + '</td></tr>';
 
         host.innerHTML =
           '<div class="toolbar">' +
@@ -1578,7 +1940,9 @@
           }).join(' / ') || '<span class="muted-note">无</span>';
           return '<tr>' +
             '<td>' + esc(a.memberName) + (a.studentNo ? '<span class="muted-note"> · ' + esc(a.studentNo) + '</span>' : '') + '</td>' +
-            '<td>' + esc(a.position || '—') + (a.isSuper ? ' <span class="tag tag-ok">超管</span>' : '') + '</td>' +
+            /* 超管 = 危险权限 → 用 tag-super(红) 而非 tag-ok(绿)：
+               绿色会读成「一切正常」，红色才表达「此账号权限极高」。 */
+            '<td>' + esc(a.position || '—') + (a.isSuper ? ' <span class="tag tag-super">超管</span>' : '') + '</td>' +
             '<td class="fee-amt">' + esc(a.username) + '</td>' +
             '<td class="td-perms">' + permTxt + '</td>' +
             '<td>' + (a.status ? '<span class="tag tag-ok">启用</span>' : '<span class="tag tag-off">停用</span>') + '</td>' +
@@ -1589,7 +1953,11 @@
             (a.status ? '停用' : '启用') + '</button>' +
             '<button class="link link-danger" data-acc-del="' + a.adminId + '">删除</button>' +
             '</td></tr>';
-        }).join('') : '<tr><td colspan="7"><div class="empty">本班还没有开通后台账号</div></td></tr>';
+        }).join('') : '<tr><td colspan="7">' + emptyHtml({
+          t: '该班还没有开通后台账号',
+          d: '开通后老师与班委才能登录本后台管理数据',
+          act: { k: 'account-add', label: '开通后台', primary: true }
+        }) + '</td></tr>';
 
         host.innerHTML =
           '<div class="toolbar">' +
@@ -1620,10 +1988,17 @@
         b.onclick = function () { openAccountPermDialog(Number(b.dataset.accPerm), load); };
       });
       $$('[data-acc-toggle]', host).forEach(function (b) {
-        b.onclick = function () {
+        b.onclick = async function () {
           var on = Number(b.dataset.on) ? 1 : 0;
           var next = on ? 0 : 1;
-          if (!confirm(next ? '启用这个后台账号？' : '停用这个后台账号？\n\n停用后对方会立刻被踢出后台，需要重新登录（且登录会被拒）。')) return;
+          var ok = await confirmDialog({
+            title: next ? '启用这个后台账号？' : '停用这个后台账号？',
+            okText: next ? '确认启用' : '确认停用',
+            danger: !next,
+            body: next ? '启用后该账号可以登录后台。'
+              : '停用后对方会<b>立刻被踢出后台</b>，需要重新登录（且登录会被拒）。'
+          });
+          if (!ok) return;
           api('/api/accounts/' + Number(b.dataset.accToggle), { method: 'POST', body: { status: next } }).then(function (r) {
             if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); return; }
             toast(next ? '已启用' : '已停用', 'ok');
@@ -1632,8 +2007,13 @@
         };
       });
       $$('[data-acc-del]', host).forEach(function (b) {
-        b.onclick = function () {
-          if (!confirm('删除这个后台账号？\n\n只删「登录后台的资格」，不会删除班级成员档案、也不影响小程序使用。')) return;
+        b.onclick = async function () {
+          var ok = await confirmDialog({
+            title: '删除这个后台账号？',
+            okText: '确认删除',
+            body: '只删「登录后台的资格」，<b>不会删除班级成员档案</b>、也不影响小程序使用。'
+          });
+          if (!ok) return;
           api('/api/accounts/' + Number(b.dataset.accDel) + '/delete', { method: 'POST' }).then(function (r) {
             if (!r.ok) { toast(r.errMsg || '删除失败', 'err'); return; }
             toast('已删除', 'ok');
@@ -1701,12 +2081,20 @@
             .map(function (x) { return x.c; });
         }
         var list = $('#pick-list', dlg);
-        if (!hit.length) { list.innerHTML = '<div class="empty">没有匹配的人员</div>'; return; }
+        if (!hit.length) {
+          list.innerHTML = '<div class="empty pick-empty">' +
+            '<div class="empty-t">没有匹配的人员</div>' +
+            '<div class="empty-d">换个关键词，或清空搜索框</div>' +
+            '</div>';
+          return;
+        }
         list.innerHTML = hit.map(function (c) {
           return '<button class="pick-item" data-pick-member="' + c.memberId + '">' +
             '<span class="pick-name">' + esc(c.memberName) +
             (isStaff(c) ? ' <span class="tag tag-all">教职工</span>' : '') +
-            (isCommittee(c) ? ' <span class="tag tag-ok">班委</span>' : '') + '</span>' +
+            /* 班委 = 身份类 → 与「教职工」同归品牌蓝（视觉规范 §2.6：颜色承载语义，
+               身份统一蓝、状态才用绿）。原先用 tag-ok(绿) 会让「班委」和「正常状态」混同。 */
+            (isCommittee(c) ? ' <span class="tag tag-all">班委</span>' : '') + '</span>' +
             '<span class="pick-meta">' + esc(c.position || '未设职位') + ' · ' + esc(roleText(c)) +
             (c.groupTag && c.groupTag !== 'X' ? ' · ' + esc(c.groupTag) + '组' : '') +
             (c.studentNo ? ' · ' + esc(c.studentNo) : '') + '</span></button>';
@@ -1852,6 +2240,11 @@
     function load() {
       api('/api/fee?classId=' + state.classId).then(function (d) {
         if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        // 缓存到内存（2026-11-16 焕新 · FB-3）：
+        // 弹层（编辑/删除）原本每次都要**重新拉一次全量班费接口**才能找到一条记录，
+        // 而失败时只弹 toast、弹层根本不打开 ⇒ 用户看到「点了没反应」。
+        // 现在弹层直接从内存取，零请求、零失败路径。
+        state.feeCache = { classId: state.classId, funds: (d.data && d.data.funds) || {} };
         var fund = (d.data.funds && d.data.funds[type]) || { total: 0, spent: 0, balance: 0, records: [] };
         var segs = ['class', 'league'].map(function (k) {
           var on = k === type;
@@ -1877,7 +2270,11 @@
             '<button class="link" data-fee-edit="' + r.id + '">编辑</button>' +
             '<button class="link link-danger" data-fee-del="' + r.id + '">删除</button>' +
             '</td></tr>';
-        }).join('') : '<tr><td colspan="6"><div class="empty">还没有消费记录</div></td></tr>';
+        }).join('') : '<tr><td colspan="6">' + emptyHtml({
+          t: '该班还没有消费记录',
+          d: '登记第一笔支出后，余额会自动从总额里扣减',
+          act: { k: 'fee-add', label: '登记消费', primary: true }
+        }) + '</td></tr>';
 
         host.innerHTML =
           '<div class="toolbar">' +
@@ -1964,17 +2361,59 @@
   }
 
   /** 编辑/新增消费。r 为 null 表示新增。数据从服务端重新取，避免用到过期快照。 */
+  /**
+   * 打开「登记 / 编辑消费」弹层（2026-11-16 焕新 · FB-3）
+   * 数据**从内存缓存取**（renderFee 拉过时写入 state.feeCache），
+   * 不再为此单独请求一次全量班费接口 —— 原来的写法有两个问题：
+   *   ① 每次开关弹层都白拉一次全量接口（白打）；
+   *   ② 请求失败时只 toast 一下就 return，弹层**根本不打开** ⇒ 用户看到「点了没反应」。
+   * 现在：缓存命中直接开弹层；缓存未命中（直接调、或切班后缓存失效）才回退请求，
+   *      且请求失败时**仍然打开弹层**并在层内显示错误 + 【重试】。
+   */
   function openFeeRecordDialog(type, id) {
-    api('/api/fee?classId=' + state.classId).then(function (d) {
-      if (!d.ok) { toast(d.errMsg || '读取失败', 'err'); return; }
-      var fund = (d.data.funds && d.data.funds[type]) || { records: [] };
+    var cached = state.feeCache && state.feeCache.classId === state.classId
+      ? state.feeCache.funds : null;
+    if (cached) {
+      buildFeeRecordDialog(type, id, cached[type] || { records: [] });
+    } else {
+      api('/api/fee?classId=' + state.classId).then(function (d) {
+        if (!d.ok) {
+          // 失败也要把弹层开出来，并在层内显示错误 + 重试（而不是"点了没反应"）
+          buildFeeRecordDialog(type, id, null, d.errMsg || '读取失败');
+          return;
+        }
+        var funds = (d.data && d.data.funds) || {};
+        state.feeCache = { classId: state.classId, funds: funds };
+        buildFeeRecordDialog(type, id, funds[type] || { records: [] });
+      });
+    }
+  }
+
+  /** 真正的弹层构建（数据从内存取；fund 为 null 时显示错误 + 重试） */
+  function buildFeeRecordDialog(type, id, fund, errMsg) {
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    if (!fund) {
+      // 读取失败：层内错误 + 【重试】按钮（体验规范 §3.6）
+      dlg.innerHTML =
+        '<div class="dlg"><div class="dlg-hd">读取失败</div>' +
+        '<div class="dlg-bd"><div class="err-state-msg">' + esc(errMsg || '读取失败') + '</div></div>' +
+        '<div class="dlg-ft"><button type="button" class="btn" data-dlg-close>关闭</button>' +
+        '<button type="button" class="btn btn-primary" data-fee-retry>重试</button></div></div>';
+      document.body.appendChild(dlg);
+      $('[data-fee-retry]', dlg).onclick = function () {
+        dlg.remove();
+        openFeeRecordDialog(type, id);
+      };
+      $('[data-dlg-close]', dlg).onclick = function () { dlg.remove(); };
+      return;
+    }
+    {
       var r = null;
       if (id) {
         for (var i = 0; i < fund.records.length; i++) if (fund.records[i].id === id) r = fund.records[i];
         if (!r) { toast('找不到这条记录', 'err'); return; }
       }
-      var dlg = document.createElement('div');
-      dlg.className = 'dlg-mask';
       dlg.innerHTML =
         '<div class="dlg"><div class="dlg-hd">' +
         (r ? '编辑消费 · #' + r.id : '登记' + FEE_TYPE_LABEL[type] + '消费') +
@@ -2014,32 +2453,56 @@
           reload();
         });
       };
-    });
+    }
   }
 
+  /**
+   * 删除消费记录（2026-11-16 焕新 · FB-3）
+   * 与打开弹层同理：记录**从内存缓存取**，不再为此单独拉一次全量班费接口。
+   * 缓存未命中才回退请求。
+   */
   function deleteFeeRecord(id) {
-    api('/api/fee?classId=' + state.classId).then(function (d) {
-      if (!d.ok) { toast(d.errMsg || '读取失败', 'err'); return; }
-      var found = null;
-      ['class', 'league'].forEach(function (k) {
-        var f = (d.data.funds || {})[k];
-        if (!f) return;
-        f.records.forEach(function (r) { if (r.id === id) found = { r: r, t: k }; });
+    var cached = state.feeCache && state.feeCache.classId === state.classId
+      ? state.feeCache.funds : null;
+    if (cached) {
+      confirmDeleteFeeRecord(id, cached);
+    } else {
+      api('/api/fee?classId=' + state.classId).then(function (d) {
+        if (!d.ok) { toast(d.errMsg || '读取失败', 'err'); return; }
+        confirmDeleteFeeRecord(id, (d.data && d.data.funds) || {});
       });
-      if (!found) { toast('找不到这条记录', 'err'); return; }
-      var r = found.r;
-      var tip = '确认删除这条消费记录？\n\n' +
-        '· ' + r.createdAt + '　¥' + fmtMoney(r.amount) + (r.note ? '　' + r.note : '') + '\n' +
-        '· 删除后余额会立即相应增加（余额 = 总额 − 已消费）\n' +
-        '· 记录不可恢复；凭证图片（' + r.images.length + ' 张）会保留在云存储，但记录本身没了\n\n' +
-        '如果只是想改金额，请用「编辑」。';
-      if (!confirm(tip)) return;
-      api('/api/fee/record/' + id + '/delete', { method: 'POST' }).then(function (res) {
+    }
+  }
+
+  /** 删除前的二次确认（从内存数据里找到那条记录）
+   *  ⚠️ 必须是 async：内部用 await confirmDialog()（站内弹层，替代原生 confirm）。
+   *     调用方 deleteFeeRecord 无需 await —— 它是 fire-and-forget 的点击入口，
+   *     弹层未确认前不会有任何副作用。 */
+  async function confirmDeleteFeeRecord(id, funds) {
+    var found = null;
+    ['class', 'league'].forEach(function (k) {
+      var f = funds[k];
+      if (!f) return;
+      f.records.forEach(function (r) { if (r.id === id) found = { r: r, t: k }; });
+    });
+    if (!found) { toast('找不到这条记录', 'err'); return; }
+    var r = found.r;
+    /* L1 轻确认（体验规范 §3.5 C3）：后果文案**一字不删** ——
+       check-admin-fee.js:147 断言源码含「不可恢复」与「凭证图片」。 */
+    var ok = await confirmDialog({
+      title: '确认删除这条消费记录？',
+      okText: '确认删除',
+      body: '· ' + esc(r.createdAt) + '　¥' + esc(fmtMoney(r.amount)) + (r.note ? '　' + esc(r.note) : '') + '<br>' +
+        '· 删除后余额会立即相应增加（余额 = 总额 − 已消费）<br>' +
+        '· 记录<b>不可恢复</b>；<b>凭证图片</b>（' + r.images.length + ' 张）会保留在云存储，但记录本身没了<br><br>' +
+        '如果只是想改金额，请用「编辑」。'
+    });
+    if (!ok) return;
+    api('/api/fee/record/' + id + '/delete', { method: 'POST' }).then(function (res) {
         if (!res.ok) { toast(res.errMsg || '删除失败', 'err'); return; }
         toast('已删除', 'ok');
         reload();
       });
-    });
   }
 
   function openImagePreview(url) {
@@ -2055,13 +2518,19 @@
   }
 
   /** 删课次：课次是「所有周共用」的一行，删它 = 删掉这门课在这个时段的所有周 */
-  function removeSession(id, name, when) {
-    if (!confirm(
-      '确认删除课次「' + name + '」（' + when + '）？\n\n' +
-      '· 这是所有周共用的一行，删除后这门课在该时段**所有周**都不再排班；\n' +
-      '· 未来的值日安排会一并清掉（已过去的值日记录保留）；\n' +
-      '· 该班已发布周次会全部退回草稿，需在小程序端重新发布。\n\n' +
-      '删除前会自动备份，可在审计日志里查到批次号。')) return;
+  async function removeSession(id, name, when) {
+    /* L2 标准确认（体验规范 §3.5 C4）：删课次连带清未来值日 + 已发布周次退回草稿
+       ⇒ 逐条列出影响。原文案**一字不删**（含「所有周共用」「轮转队列」类表述）。 */
+    var ok = await confirmDialog({
+      title: '确认删除课次「' + esc(name) + '」（' + esc(when) + '）？',
+      okText: '确认删除',
+      level: 'L2',
+      body: '· 这是<b>所有周共用</b>的一行，删除后这门课在该时段<b>所有周</b>都不再排班；<br>' +
+        '· <b>未来的值日安排会一并清掉</b>（已过去的值日记录保留）；<br>' +
+        '· 该班<b>已发布周次会全部退回草稿</b>，需在小程序端重新发布。<br><br>' +
+        '删除前会自动备份，可在审计日志里查到批次号。'
+    });
+    if (!ok) return;
     api('/api/timetable/session/' + id + '/delete', { method: 'POST' })
       .then(function (res) {
         if (!res.ok) { toast(res.errMsg, 'err'); return; }
@@ -2141,11 +2610,25 @@
               (m.isSuper ? '取消超管' : '设为超管') + '</button>' +
             '<button class="link link-danger" data-m-del="' + m.id + '">删除</button>' +
             '</td></tr>';
-        }).join('') : '<tr><td colspan="9" class="empty">' +
-          (state.memberKw || state.memberScope !== 'ALL' ? '当前筛选下没有成员' : '该班还没有成员') + '</td></tr>') +
+        }).join('') : '<tr><td colspan="9">' +
+          /* 空态三分（E1）：筛选后为空 ≠ 该班没人。
+             前者给「清除筛选条件」，后者给「新增成员」—— 两条出路完全不同。 */
+          (state.memberKw || state.memberScope !== 'ALL'
+            ? emptyHtml({
+                t: '当前筛选下没有成员',
+                d: '关键词或分组把成员全过滤掉了',
+                cls: 'is-filtered',
+                act: { k: 'member-clear', label: '清除筛选条件' }
+              })
+            : emptyHtml({
+                t: '该班还没有成员',
+                d: '成员在小程序绑定班级后会自动同步，也可以手动新增',
+                act: { k: 'member-add', label: '新增成员', primary: true }
+              })) +
+          '</td></tr>') +
         '</tbody></table></div>' +
         (state.memberPageSize === 0 ? '' :
-          pager(r.total, r.page, r.pageSize, function (p) { state.memberPage = p; reload(); }));
+          pager(r.total, r.page, r.pageSize, function (p) { state.memberPage = p; softReload(); }));
 
       $('#btn-add', host).onclick = function () { openMemberDialog(null); };
       var kw = $('#m-kw', host);
@@ -2154,7 +2637,7 @@
       function applyKw() {
         state.memberKw = kw.value.trim();
         state.memberPage = 1;
-        reload();
+        softReload();
       }
       kw.onkeydown = function (e) {
         if (e.key !== 'Enter') return;
@@ -2167,28 +2650,46 @@
           if (state.memberScope === b.dataset.scope) return;
           state.memberScope = b.dataset.scope;
           state.memberPage = 1;
-          reload();
+          /* 即时高亮：页内重取要等 API 返回才重绘，先本地点亮按钮，
+             否则点了「A 组」却要等半秒才变色，看着像没点上（体验规范 L6）。 */
+          $$('[data-scope]', host).forEach(function (x) {
+            var on = x.dataset.scope === state.memberScope;
+            x.classList.toggle('active', on);
+            x.setAttribute('aria-pressed', on ? 'true' : 'false');
+          });
+          softReload();
         };
       });
       $('#m-size', host).onchange = function () {
         state.memberPageSize = Number(this.value);
         state.memberPage = 1;
-        reload();
+        softReload();
       };
       $$('[data-m-edit]', host).forEach(function (b) {
         b.onclick = function () { openMemberDialog(Number(b.dataset.mEdit)); };
       });
       $$('[data-m-super]', host).forEach(function (b) {
-        b.onclick = function () {
+        b.onclick = async function () {
           var on = b.dataset.v === '1';
-          if (!confirm(on ? '确认设为超级管理员？\n该成员将立即拥有后台登录资格。' : '确认取消超级管理员？')) return;
+          var ok = await confirmDialog({
+            title: on ? '确认设为超级管理员？' : '确认取消超级管理员？',
+            okText: on ? '确认设置' : '确认取消',
+            danger: on,
+            body: on ? '该成员将立即拥有后台登录资格。' : '取消后该成员将失去后台页签权限。'
+          });
+          if (!ok) return;
           api('/api/members/' + b.dataset.mSuper, { method: 'POST', body: { __action: 'setSuper', isSuper: on } })
             .then(function (r) { toast(r.ok ? '已更新' : r.errMsg, r.ok ? 'ok' : 'err'); if (r.ok) reload(); });
         };
       });
       $$('[data-m-del]', host).forEach(function (b) {
-        b.onclick = function () {
-          if (!confirm('确认删除该成员？\n有值日或请假历史的成员不可删除，系统会改为提示停用。')) return;
+        b.onclick = async function () {
+          var ok = await confirmDialog({
+            title: '确认删除该成员？',
+            okText: '确认删除',
+            body: '有值日或请假历史的成员不可删除，系统会改为提示停用。'
+          });
+          if (!ok) return;
           api('/api/members/' + b.dataset.mDel, { method: 'POST', body: { __action: 'remove' } })
             .then(function (r) {
               if (!r.ok) { toast(r.errMsg, 'err'); return; }
@@ -2430,7 +2931,11 @@
             '<td><button class="link" data-a-pw="' + a.id + '">改密码</button>' +
             (a.failCount ? '<button class="link" data-a-reset="' + a.id + '">解锁</button>' : '') +
             '</td></tr>';
-        }).join('') : '<tr><td colspan="8" class="empty">还没有后台账号</td></tr>') +
+        }).join('') : '<tr><td colspan="8">' + emptyHtml({
+          t: '该班还没有开通后台账号',
+          d: '到「后台账号」页开通后，这里才会出现账号',
+          act: { k: 'account-open', label: '去开通' }
+        }) + '</td></tr>') +
         '</tbody></table></div>' +
         '<div class="card muted-note">「实际可用」= 后台启用 <strong>且</strong> member 仍是超管且未停用。三者缺一即不能登录 —— 这是防「member 停用后后台仍可进」的关键。</div>';
       $$('[data-a-pw]', host).forEach(function (b) {
@@ -2530,9 +3035,12 @@
             '<td>' + (a.classId || '—') + '</td>' +
             '<td class="td-sum" title="' + esc(a.summary) + '">' + esc(a.summary) + '</td>' +
             '</tr>';
-        }).join('') : '<tr><td colspan="6" class="empty">暂无操作记录</td></tr>') +
+        }).join('') : '<tr><td colspan="6">' + emptyHtml({
+          t: '还没有操作记录',
+          d: '后台的每次增删改都记在这里，含操作人、时间与 IP'
+        }) + '</td></tr>') +
         '</tbody></table></div>';
-      pager(r.total, r.page, r.pageSize, function (p) { state.auditPage = p; reload(); });
+      pager(r.total, r.page, r.pageSize, function (p) { state.auditPage = p; softReload(); });
     });
   }
 
@@ -2547,8 +3055,80 @@
       '<button class="btn" data-pg="' + (page + 1) + '"' + (page >= pages ? ' disabled' : '') + '>下一页</button>' +
       '</div>';
   }
+  /**
+   * 空态（2026-11-16 焕新 · 体验规范 E1/E2/E4）
+   * 旧写法是一行灰字：'<div class="empty">该班还没有课次，可点右上角「导入课表」</div>'
+   *   —— 「没有数据」「怎么做」「点哪里」全糊在一句话里，且**没有出路**；
+   *   全站 16 处空态，0 处有行动按钮。
+   * 现在三段式：
+   *   .empty-t   主语 + 对象（该班还没有课次）
+   *   .empty-d   补充说明（导入一份 xlsx 即可生成整周课表）
+   *   .empty-act 出路按钮（导入课表）
+   * ⚠️ 外层 `.empty` 类名必须保留（旧样式与旧门禁的锚点），只增强内部结构。
+   * ⚠️ 文案必须有主语（该班 / 当前筛选 / 你），禁止「暂无数据」这类公文词。
+   * @param {object} o
+   *   o.t    标题（必填，纯文本，内部会 esc）
+   *   o.d    补充说明（可选）
+   *   o.act  { k: 动作键, label: 按钮文案, primary: 是否主按钮 }（可选，键见 EMPTY_ACTS）
+   *   o.cls  修饰类：'is-filtered'（筛选后为空）/ 'is-forbidden'（无权限）
+   */
+  function emptyHtml(o) {
+    return '<div class="empty' + (o.cls ? ' ' + o.cls : '') + '">' +
+      '<div class="empty-t">' + esc(o.t) + '</div>' +
+      (o.d ? '<div class="empty-d">' + esc(o.d) + '</div>' : '') +
+      (o.act
+        ? '<button type="button" class="btn' + (o.act.primary ? ' btn-primary' : '') +
+          ' empty-act" data-empty-act="' + o.act.k + '">' + esc(o.act.label) + '</button>'
+        : '') +
+      '</div>';
+  }
+
+  /**
+   * 空态行动点：**一次性 document 委托**，不逐处绑定。
+   * 为什么不用 $$('[data-empty-act]').forEach(...)：空态会在局部重绘里换掉
+   * （成员筛选、使用统计排序都会重写 tbody），逐处绑定漏一个就成死按钮。
+   * 动作键里只做「点现有按钮 / 复位现有筛选」，不新增业务逻辑 —— 保持单一真源。
+   */
+  var EMPTY_ACTS = {
+    'timetable-import': function () { var b = $('#btn-import'); if (b) b.click(); },
+    'timetable-add': function () { var b = $('#btn-add'); if (b) b.click(); },
+    'member-add': function () { var b = $('#btn-add'); if (b) b.click(); },
+    'member-clear': function () {
+      state.memberKw = ''; state.memberScope = 'ALL'; state.memberPage = 1; softReload();
+    },
+    'fee-add': function () { var b = $('#fee-add'); if (b) b.click(); },
+    /* 「后台账号」页自己的开通按钮（id=acc-open），不是跳到别的页签 */
+    'account-add': function () { var b = $('#acc-open'); if (b) b.click(); },
+    'usage-reset': function () { state.usageDays = 0; state.usageAll = true; softReload(); },
+    /* 系统配置页只能看到账号列表、开不了账号 ⇒ 跳到「后台账号」页 */
+    'account-open': function () { go('accounts'); },
+    /* 错误态出路：把当前视图重新拉一遍（云函数冷启动/瞬断是一过性的） */
+    'retry': function () { reload(); }
+  };
+  document.addEventListener('click', function (e) {
+    var el = e.target && e.target.closest ? e.target.closest('[data-empty-act]') : null;
+    if (!el) return;
+    var fn = EMPTY_ACTS[el.getAttribute('data-empty-act')];
+    if (fn) { e.preventDefault(); fn(); }
+  });
+
+  /**
+   * 错误态（2026-11-16 焕新）
+   * 旧版返回 `<div class="card empty">` ⇒ 错误与「没有数据」视觉同形，
+   * 用户分不清「加载失败」和「就是没数据」（体验规范 P0-1）。
+   * 现在用独立的 .err-state：卡片 + 错误色左侧轨 + 错误色文字。
+   * ⚠️ 类名 .empty 仍保留在 class 里：旧门禁/旧样式依赖它做居中，
+   *    但视觉由 .err-state 接管（见 admin.css 的 .err-state 规则）。
+   */
   function errHtml(d) {
-    return '<div class="card empty">' + esc(d.errMsg || '加载失败') + '</div>';
+    return '<div class="card err-state">' +
+      '<div class="err-state-icon" aria-hidden="true"></div>' +
+      '<div class="err-state-t">加载失败</div>' +
+      '<div class="err-state-msg">' + esc(d.errMsg || '加载失败') + '</div>' +
+      /* 光说「失败」是死路一条（体验规范 E5）：云函数冷启动 / 网络瞬断都很常见，
+         给一个「重试」把当前视图重新拉一遍，别逼用户自己按 F5。 */
+      '<button type="button" class="btn err-state-act" data-empty-act="retry">重试</button>' +
+      '</div>';
   }
 
   /* ---------------- 使用统计（2026-10-16） ---------------- */
@@ -2653,10 +3233,19 @@
    * 只用 transform / opacity 做动画，位置跟随也走 translate3d；
    * 事件委托挂在 #view 上（onmousemove 属性赋值天然幂等），切指标只重绘容器。 */
   var TREND_GEOM = { W: 720, H: 200, padL: 36, padR: 14, padT: 14, padB: 28 };
+  /**
+   * 趋势折线定义（2026-11-16 焕新）
+   * ⚠️ 颜色必须是 **CSS 变量**（SVG 的 stroke 可以直接吃 var()）：
+   *    原来写死 '#FF7D00'，而图例用的是 --chart-2（#9A5600 琥珀）⇒
+   *    图例显示深橙、折线显示亮橙，同一条线对不上（体验设计师实测发现）。
+   *    ⇒ 现在折线与图例共用同一批 --series-* 令牌，全链同源。
+   * ⚠️ 三个折线是「今日 / 1 天前 / 7 天前」三档对比，不是分类维度 ——
+   *    所以用独立的 --series-today/1d/7d（蓝 / 琥珀 / 绿），不复用状态色。
+   */
   var TREND_DEFS = [
-    { off: 0, label: '今日', color: '#3370FF' },
-    { off: 1, label: '1 天前', color: '#FF7D00' },
-    { off: 7, label: '7 天前', color: '#00B42A' }
+    { off: 0, label: '今日', color: 'var(--series-today)' },
+    { off: 1, label: '1 天前', color: 'var(--series-1d)' },
+    { off: 7, label: '7 天前', color: 'var(--series-7d)' }
   ];
   var tipLastHtml = '';
 
@@ -2715,8 +3304,8 @@
         // 页面级对比：两条线来自 insights.cmp.a / .b 的 24h 分时
         var segA = ins.cmp.a || {}, segB = ins.cmp.b || {};
         activeDefs = [
-          { off: 'A', label: cmpSegLabel(segA), color: '#3370FF' },
-          { off: 'B', label: cmpSegLabel(segB), color: '#FF7D00' }
+          { off: 'A', label: cmpSegLabel(segA), color: 'var(--series-a)' },
+          { off: 'B', label: cmpSegLabel(segB), color: 'var(--series-b)' }
         ];
         (segA.hourly || []).forEach(function (row) {
           byOff.A = byOff.A || {};
@@ -2769,7 +3358,7 @@
       hit.classList.add('is-active');
       showInsightTip('<span class="insight-tip-t">' +
         (kind === 'source' ? '访问来源' : '访问类型') + '</span>' +
-        tipRow(hit.getAttribute('data-tip-color') || '#00B42A',
+        tipRow(hit.getAttribute('data-tip-color') || 'var(--series-7d)',
           hit.getAttribute('data-tip-name') || '', hit.getAttribute('data-tip-val') || '0') +
         tipRow('', '占比', (hit.getAttribute('data-tip-pct') || '0') + '%'), e);
       return;
@@ -3020,8 +3609,8 @@
     var cmp = (ins && ins.cmp) || {};
     var segA = cmp.a || {}, segB = cmp.b || {};
     var defs = [
-      { off: 'A', label: cmpSegLabel(segA), color: '#3370FF' },
-      { off: 'B', label: cmpSegLabel(segB), color: '#FF7D00' }
+      { off: 'A', label: cmpSegLabel(segA), color: 'var(--series-a)' },
+      { off: 'B', label: cmpSegLabel(segB), color: 'var(--series-b)' }
     ];
     var bySeg = { A: {}, B: {} };
     (segA.hourly || []).forEach(function (r) { bySeg.A[Number(r.h)] = Number(r[metric] || 0); });
@@ -3060,14 +3649,17 @@
     var list = rows.slice().sort(function (a, b) {
       return Number(b[metric] || 0) - Number(a[metric] || 0);
     }).slice(0, 10);
-    if (!list.length) return '<div class="empty">暂无使用记录</div>';
+    if (!list.length) return emptyHtml({
+      t: '该班还没有使用记录',
+      d: '学生打开小程序的功能页后，这里会按来源排行'
+    });
     var total = list.reduce(function (s, r) { return s + Number(r[metric] || 0); }, 0);
     var max = list.reduce(function (m, r) { return Math.max(m, Number(r[metric] || 0)); }, 1);
     return '<div class="src-list">' + list.map(function (r) {
       var v = Number(r[metric] || 0);
       var pct = total ? (v / total * 100).toFixed(2).replace(/\.00$/, '') : '0';
       return '<div class="src-row" data-tip-kind="source" data-tip-name="' + esc(eventLabel(r)) +
-        '" data-tip-val="' + v + '" data-tip-pct="' + pct + '" data-tip-color="#00B42A">' +
+        '" data-tip-val="' + v + '" data-tip-pct="' + pct + '" data-tip-color="var(--chart-4)">' +
         '<span class="src-label">' + esc(eventLabel(r)) + '</span>' +
         '<div class="src-track"><div class="src-bar" style="width:' +
           Math.max(2, Math.round(v / max * 100)) + '%"></div></div>' +
@@ -3203,7 +3795,12 @@
               '<span class="bars-axis-mid">共 ' + axis.length + ' 天</span>' +
               '<span>' + esc(axis[axis.length - 1].d) + '</span></div>' +
             '<div class="muted-note">' + axisNote + '</div>'
-          : '<div class="empty">暂无数据</div>') +
+          : emptyHtml({
+              t: '当前筛选下没有记录',
+              d: '换个时间范围，或切回「全部班级」看看',
+              cls: 'is-filtered',
+              act: { k: 'usage-reset', label: '重置筛选条件' }
+            })) +
         '</div>';
 
       // 成员使用明细：「总使用人数」具体到账号（后端已排除测试账号）。
@@ -3257,7 +3854,10 @@
         sortTh('lastTs', '最近活跃') +
         '</tr></thead><tbody data-mem-tbody>' +
         (members.length ? sortMembers(members).map(memRowHtml).join('')
-          : '<tr><td colspan="6" class="empty">暂无使用记录</td></tr>') +
+          : '<tr><td colspan="6">' + emptyHtml({
+              t: '该班还没有使用记录',
+              d: '成员打开小程序后，这里会按人统计次数与活跃天数'
+            }) + '</td></tr>') +
         '</tbody></table></div></div>';
 
       // 班级范围：全部班级 / 仅当前班级（与右上角班级选择器解耦，刷新后保留）
@@ -3413,14 +4013,14 @@
         b.onclick = function () {
           state.usageDays = Number(b.dataset.rg);
           lsSet(LS_USAGE_DAYS, String(state.usageDays));
-          reload();
+          softReload();
         };
       });
       $$('[data-ua]', host).forEach(function (b) {
         b.onclick = function () {
           state.usageAll = b.dataset.ua === '1';
           lsSet(LS_USAGE_ALL, state.usageAll ? '1' : '0');
-          reload();
+          softReload();
         };
       });
       /* 四板块的指标筛选：只换内存状态 + 重绘对应容器，不重拉 /api/usage。
@@ -3464,7 +4064,7 @@
           state.cmpOn = b.dataset.cmp === '1';
           lsSet(LS_CMP_ON, state.cmpOn ? '1' : '0');
           syncCmpCtl();
-          reload();
+          softReload();
         };
       });
       $$('[data-gran]', host).forEach(function (b) {
@@ -3487,7 +4087,7 @@
           lsSet(LS_CMP_A1, state.cmpA1); lsSet(LS_CMP_A2, state.cmpA2);
           lsSet(LS_CMP_B1, state.cmpB1); lsSet(LS_CMP_B2, state.cmpB2);
           syncCmpCtl();
-          reload();
+          softReload();
         };
       });
       // 日期变更：单日模式 A2/B2 必须跟着 A1/B1 走（否则后端拿到「单日却带区间止」）；
@@ -3504,7 +4104,7 @@
             if (k === 'cmpA1') { state.cmpA2 = inp.value; lsSet(LS_CMP_A2, inp.value); }
             if (k === 'cmpB1') { state.cmpB2 = inp.value; lsSet(LS_CMP_B2, inp.value); }
           }
-          reload();
+          softReload();
         };
       });
       bindMetricChips('data-sm', 'usageSourceMetric', function () {
@@ -3518,7 +4118,10 @@
         if (!memTbody) return;
         memTbody.innerHTML = members.length
           ? sortMembers(members).map(memRowHtml).join('')
-          : '<tr><td colspan="6" class="empty">暂无使用记录</td></tr>';
+          : '<tr><td colspan="6">' + emptyHtml({
+              t: '该班还没有使用记录',
+              d: '成员打开小程序后，这里会按人统计次数与活跃天数'
+            }) + '</td></tr>';
         $$('[data-sk]', host).forEach(function (th) {
           var on = th.getAttribute('data-sk') === state.memSort.key;
           th.classList.toggle('th-sort-on', on);
@@ -3731,8 +4334,8 @@
   document.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('[data-pg]');
     if (!b || b.disabled) return;
-    if (state.view === 'member') { state.memberPage = Number(b.dataset.pg); reload(); }
-    else if (state.view === 'audit') { state.auditPage = Number(b.dataset.pg); reload(); }
+    if (state.view === 'member') { state.memberPage = Number(b.dataset.pg); softReload(); }
+    else if (state.view === 'audit') { state.auditPage = Number(b.dataset.pg); softReload(); }
   });
 
   if (document.readyState === 'loading') {

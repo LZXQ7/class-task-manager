@@ -159,13 +159,16 @@ async function audit(X, withRuntime) {
   need(has(X.app, "'<select id=\"m-size\" class=\"tb-select\">'"), 'uiSelect');
   need(has(X.app, "$$('[data-scope]', host).forEach"), 'uiScopeBind');
   need(has(X.app, "state.memberPageSize = Number(this.value);"), 'uiSizeBind');
-  need((X.app.match(/state\.memberPage = 1;\s*reload\(\);/g) || []).length >= 3, 'uiResetPage');
+  /* 2026-11-16：筛选/搜索改走页内重取 softReload()（不清空整页、不闪 spinner），
+     语义仍是「重置页码并重取数据」。reload 与 softReload 都算，只认「重置页码 + 重取」。 */
+  need((X.app.match(/state\.memberPage = 1;[\s\S]{0,520}?(?:reload|softReload)\(\);/g) || []).length >= 3, 'uiResetPage');
   need(has(X.app, "state.memberPageSize === 0 ? '' :"), 'uiNoPagerOnAll');
   need(has(X.app, "if (!pageSize || pageSize <= 0) return '';"), 'pagerZeroGuard');
   // 从真实源码抠出 applyKw 函数体：搜索必须真的触发重渲染（原来只弹 toast 不改表格）
   let applyKwSrc = '';
   try { applyKwSrc = extractFn(X.app, 'applyKw'); } catch (e) { p.push('fnExtractApplyKw'); }
-  need(has(applyKwSrc, 'state.memberKw = kw.value.trim();') && has(applyKwSrc, 'reload();'), 'searchReload');
+  need(has(applyKwSrc, 'state.memberKw = kw.value.trim();')
+    && (has(applyKwSrc, 'reload();') || has(applyKwSrc, 'softReload();')), 'searchReload');
   need(!has(X.app, "toast('找到 ' + r.data.total + ' 人')"), 'searchNoFakeToast');
   need(has(X.app, '当前筛选下没有成员'), 'filteredEmptyText');
 
@@ -188,7 +191,8 @@ const MUTANTS = [
   { key: 'uiQs', file: 'app', from: "'&pageSize=' + state.memberPageSize + '&scope=' + encodeURIComponent(state.memberScope)", to: "'&pageSize=' + state.memberPageSize" },
   { key: 'uiSizes', file: 'app', from: 'var MEMBER_PAGE_SIZES = [10, 30, 50, 0];', to: 'var MEMBER_PAGE_SIZES = [10, 30, 50];' },
   { key: 'uiNoPagerOnAll', file: 'app', from: "state.memberPageSize === 0 ? '' :", to: 'false ? \'\' :' },
-  { key: 'searchReload', file: 'app', from: 'function applyKw() {\n        state.memberKw = kw.value.trim();\n        state.memberPage = 1;\n        reload();\n      }', to: 'function applyKw() {\n        state.memberKw = kw.value.trim();\n      }' }
+  // 2026-11-16：搜索改走页内重取 softReload()（旧锚点写 reload() 已漂移，变异静默不生效）
+  { key: 'searchReload', file: 'app', from: 'state.memberKw = kw.value.trim();\n        state.memberPage = 1;\n        softReload();', to: 'state.memberKw = kw.value.trim();' }
 ];
 
 (async function main() {

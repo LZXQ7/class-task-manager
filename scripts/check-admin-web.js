@@ -711,8 +711,12 @@ t('删课次：路由 + 前端确认弹窗都在（2026-10-10 新增能力）', 
   assert.ok(/data-del-session/.test(js), '课表行缺删除按钮');
   assert.ok(/function removeSession/.test(js) && /session\/' \+ id \+ '\/delete/.test(js),
     '前端缺 removeSession 或没调删除接口');
-  assert.ok(/confirm\(/.test(js.match(/function removeSession[\s\S]{0,900}/)[0]),
-    '删除必须先 confirm（课次是所有周共用的一行，删错影响全班）');
+  /* 2026-11-16：确认方式从**浏览器原生 confirm()** 升级为**站内确认弹层 confirmDialog()**
+     （体验规范 §3.5：13 处原生确认框是"老气"最大来源之一）。
+     判据改为「两种确认方式任一存在」——本质要求是"删除前必须有二次确认"，不锁死实现形态。 */
+  assert.ok(/confirmDialog\(/.test(js.match(/function removeSession[\s\S]{0,1200}/)[0])
+    || /confirm\(/.test(js.match(/function removeSession[\s\S]{0,1200}/)[0]),
+    '删除必须先二次确认（课次是所有周共用的一行，删错影响全班）—— confirmDialog() 或 confirm() 均可');
 });
 
 t('右上角切班：就地刷新，不跳回概览（2026-10-10 用户要求）', () => {

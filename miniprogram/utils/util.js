@@ -239,9 +239,30 @@ function isTrial() {
   return t;
 }
 
-/** 只读预览态：演示班级（demo）或体验版环境（trial）—— 上传/写操作一律不真正执行 */
+/**
+ * 只读预览态：**仅演示班级（demo）** —— 上传 / 写操作一律不真正执行。
+ * ------------------------------------------------------------
+ * 🔴 2026-11-16 移除 `isTrial()` 环境兜底（用户报「我这不是演示班级，改值日也提示演示班级无法修改，
+ *   手动排班也排不了」）。原实现 `isDemo() || isTrial()` 把**整个微信体验版环境**变成只读 ——
+ *   而体验版恰恰是未过审代码唯一能真机跑的地方：超管在体验版里操作自己真实班级时，
+ *   每一个写操作都被静默拦掉，真机验收被整条禁死，且提示文案写死「演示班级」，
+ *   用户只会以为身份错乱（本次报障即此）。
+ *   2026-11-12 已纠正过口径：需要只读的是**演示班身份**（全体验者共享一个班、他人看得见内容），
+ *   不是「体验版环境」；演示班另有后端硬闸 `review-demo.gateDemoWrite` 兜底，
+ *   删掉这层不影响安全。
+ *   ⚠️ `isTrial()` 本身保留 —— 「我的 → 返回登录页」显示条件、`app._bootstrap` 冷启动清演示态仍在用，
+ *   只是不再参与只读判定。
+ */
 function isReadonly() {
-  return isDemo() || isTrial();
+  return isDemo();
+}
+
+/**
+ * 只读提示文案（全站唯一口径）。
+ * 网络层与各页面守卫共用同一函数，杜绝「文案写死演示班、实际是别的原因」这类口径漂移。
+ */
+function readonlyHint() {
+  return isDemo() ? '演示班级仅预览，操作不会真实保存' : '当前为只读预览，操作不会真实保存';
 }
 
 /**
@@ -252,8 +273,7 @@ function isReadonly() {
  */
 function readonlyBlocked(msg) {
   if (!isReadonly()) return false;
-  const def = isDemo() ? '演示班级仅预览，操作不会真实保存' : '体验版仅预览不可操作';
-  toast(msg || def);
+  toast(msg || readonlyHint());
   return true;
 }
 
@@ -543,6 +563,6 @@ module.exports = {
    * ⚠️ 同 classNameOf 那条教训 —— 新增方法必须同步进 exports，否则调用处拿到 undefined。 */
   shortClassLabel,
   toast, confirm, confirmStrict, throttleTap, randPath, pad, roleTag, POSITIONS, GRANTED_POSITIONS,
-  isDemo, isTrial, isReadonly, readonlyBlocked,
+  isDemo, isTrial, isReadonly, readonlyHint, readonlyBlocked,
   feeRights
 };

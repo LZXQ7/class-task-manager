@@ -77,8 +77,9 @@ check(/if \(kind === 'all'\) \{[\s\S]*?isStaff\(a\.c\)/.test(pick),
   '「全部」视图对候选做教职工置顶排序（isStaff 参与比较）');
 check(/ka === kb \? a\.i - b\.i/.test(pick),
   '置顶排序稳定：同组保持后端原顺序（按原始序号 i）');
-check(/isCommittee\(c\) \? ' <span class="tag tag-ok">班委<\/span>'/.test(pick),
-  '班委成员名字后加绿色「班委」标签（tag-ok，区别于教职工蓝色 tag-all）');
+check(/isCommittee\(c\) \? ' <span class="tag tag-all">班委<\/span>'/.test(pick),
+  '班委成员名字后加「班委」标签（tag-all 蓝 = 身份类，与教职工同族；'
+  + '2026-11-16 视觉规范 §2.6 修正：原先用 tag-ok 绿，会与「正常状态」绿混同）');
 check(/isStaff\(c\) \? ' <span class="tag tag-all">教职工<\/span>'/.test(pick),
   '教职工标签改用 isStaff 判定（与筛选口径一致）');
 
@@ -140,8 +141,8 @@ const badSort = pick.replace(/var ka = isStaff\(a\.c\) \? 0 : 1;/, 'var ka = 1;'
 check(!/if \(kind === 'all'\) \{[\s\S]*?isStaff\(a\.c\)/.test(badSort),
   '变异被抓：去掉教职工置顶 → 置顶判据翻红');
 // 4.9 删掉班委标签 → 班委标签判据翻红
-const badTag = pick.replace(/isCommittee\(c\) \? ' <span class="tag tag-ok">班委<\/span>'/, "''");
-check(!/isCommittee\(c\) \? ' <span class="tag tag-ok">班委<\/span>'/.test(badTag),
+const badTag = pick.replace(/isCommittee\(c\) \? ' <span class="tag tag-all">班委<\/span>'/, "''");
+check(!/isCommittee\(c\) \? ' <span class="tag tag-all">班委<\/span>'/.test(badTag),
   '变异被抓：删班委标签 → 标签判据翻红');
 
 console.log('\n结果：' + (fail ? '失败 ' + fail + ' / 通过 ' + pass : '全部通过（' + pass + ' 项）'));
