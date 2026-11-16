@@ -159,6 +159,9 @@ Page({
 
     /* ===== 课前演讲（v2 2026-11-17，并入本页分段控件）===== */
     viewMode: 'duty',          // duty | speech（日期切换器共用，不随此重建）
+    /* 视图切换动画：首屏留空（不播，避免与 st-5 入场叠加成 16px 双动）；
+       点分段切换时与 viewMode 同一次 setData 置 'vp-anim'，新节点带 class 才播一次淡入上浮。 */
+    viewAnim: '',
     speechStatus: 'DRAFT',
     speechUnpublished: false,
     speechLoading: false,
@@ -603,7 +606,7 @@ Page({
   onViewMode(e) {
     const mode = (e.currentTarget.dataset.mode === 'speech') ? 'speech' : 'duty';
     if (mode === this.data.viewMode) return;
-    this.setData({ viewMode: mode });
+    this.setData({ viewMode: mode, viewAnim: 'vp-anim' });
     if (mode === 'speech') this.loadSpeech();
   },
 

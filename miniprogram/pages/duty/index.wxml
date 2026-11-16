@@ -47,8 +47,8 @@
   <!-- 值日 / 课前演讲 分段控件（v2 2026-11-17）：替换原独立页入口卡；日期切换器（上方 week-switcher）共用不动。
        刻意不套 st-item 档位（避开 check-tab-enter 的 1→2→3 连续约束），用独立类。 -->
   <view class="dt-view-tabs">
-    <view class="dt-view-tab {{viewMode === 'duty' ? 'on' : ''}}" data-mode="duty" bindtap="onViewMode">值日</view>
-    <view class="dt-view-tab {{viewMode === 'speech' ? 'on' : ''}}" data-mode="speech" bindtap="onViewMode">课前演讲</view>
+    <view data-pressable hover-class="press-dim" hover-start-time="0" hover-stay-time="60" class="dt-view-tab {{viewMode === 'duty' ? 'on' : ''}}" data-mode="duty" bindtap="onViewMode">值日</view>
+    <view data-pressable hover-class="press-dim" hover-start-time="0" hover-stay-time="60" class="dt-view-tab {{viewMode === 'speech' ? 'on' : ''}}" data-mode="speech" bindtap="onViewMode">课前演讲</view>
   </view>
 
   <!-- 顶部工具行（2026-11-14 用户要求②）：班级下拉 + 「历史」合并成一行。
@@ -110,6 +110,9 @@
   <view class="st-item st-5">
   <!-- ===== 值日视图（viewMode=duty）===== -->
   <block wx:if="{{viewMode === 'duty'}}">
+  <!-- 视图切换淡入上浮层：viewAnim 首屏为空（不播，避免与 st-5 入场叠加），
+       点分段切换时同一次 setData 置为 vp-anim，新插入节点带 class 即播一次。 -->
+  <view class="dt-vp {{viewAnim}}">
   <!-- 切周骨架：必须与「按日」真实版式同构（日期卡 + 2 行头像行）。
        旧写法 type="card" rows=3 height=400 会先糊上 3 块 400rpx 的大白块 ——
        真机上就是「切下一页闪过三个很明显的框」，高度还和真内容差一大截。 -->
@@ -213,11 +216,13 @@
 
     <view class="dt-foot"></view>
   </block>
+  </view>
   </block><!-- /值日视图 -->
 
   <!-- ===== 课前演讲视图（viewMode=speech，v2 2026-11-17）=====
        不套独立 st-item（避开档位连续约束），与值日共用 week-switcher / 日期切换。 -->
   <block wx:else>
+  <view class="dt-vp {{viewAnim}}">
     <view class="sp-legend">
       <text class="sp-leg">上午 · 第1节前 08:00-08:10</text>
       <text class="sp-leg">下午 · 第3节前 14:30-14:40</text>
@@ -266,6 +271,7 @@
       </view>
       <view class="sp-foot">点姓名可换人（管理员）</view>
     </view>
+  </view>
   </block>
   </view>
   </view>

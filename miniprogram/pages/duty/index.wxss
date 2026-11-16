@@ -18,9 +18,15 @@
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .card { background: var(--bg-card, rgba(255, 255, 255, 0.9)); }
+  .dt-view-tabs, .dt-admin-btn { background: var(--tabbar-solid, rgba(255, 255, 255, 0.88)); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .card { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .dt-view-tabs, .dt-admin-btn {
+    background: var(--tabbar-solid, rgba(255, 255, 255, 0.88));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 .dt-daycard { margin: 0 32rpx 24rpx; }
 .dt-dayhead {
@@ -109,12 +115,21 @@
   white-space: nowrap;
   margin-right: 16rpx;
   padding: 0 8rpx;
+  /* 玻璃按钮（2026-11-17）：与底部导航栏同一套 --tabbar-* 令牌 —— 半透明底 + 背景模糊 +
+     亮边 + 柔和投影 + 顶部内高光；深浅色由令牌自动翻（页面 wxss 不写死色值）。
+     下面的变体只改文字色，不再各铺一层实底，否则玻璃被盖住、看起来还是老的色块按钮。 */
+  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.6));
+  box-shadow:
+    var(--tabbar-shadow, 0 8rpx 28rpx rgba(29, 33, 41, 0.14)),
+    var(--tabbar-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.95));
 }
 .dt-admin-btn:last-child { margin-right: 0; }
-.dt-admin-btn.ghost { background: var(--bg-fill); color: var(--text-2); }
-/* ⚠️ 不能再写 margin-right: 0 —— primary 后面现在可能还跟着「历史」 */
-.dt-admin-btn.primary { background: var(--brand); color: #FFFFFF; font-weight: 600; }
-.dt-admin-btn.danger { background: var(--danger-bg); color: var(--danger); }
+.dt-admin-btn.ghost { color: var(--text-2); }
+.dt-admin-btn.primary { color: var(--brand); font-weight: 600; border-color: var(--brand-disable); }
+.dt-admin-btn.danger { color: var(--danger); border-color: var(--danger); }
 .dt-admin-btn:active { opacity: 0.85; }
 
 /* 普通管理员提示：值日表的生成/发布仅超级管理员可操作 */
@@ -473,11 +488,10 @@
 .dt-hist {
   flex: 0 0 auto;
   padding: 8rpx 22rpx;
-  border-radius: 24rpx;
   font-size: 24rpx;
   line-height: 32rpx;
   color: var(--text-2);
-  background: var(--bg-fill);
+  /* 复用 .dt-admin-btn 的玻璃底/亮边/模糊，只在这里收窄尺寸 */
 }
 
 /* ============ 加值日生弹层（v0.7.16 需求③） ============
@@ -805,10 +819,50 @@
   color: var(--text-3, #86909C);
 }
 
-/* 值日 / 课前演讲 分段控件（v2 2026-11-17）：替换原独立页入口卡；不占 st-item 档位 */
-.dt-view-tabs { display: flex; gap: 8rpx; margin: 16rpx 24rpx 4rpx; padding: 6rpx; border-radius: 16rpx; background: var(--bg-fill); }
-.dt-view-tab { flex: 1; text-align: center; padding: 16rpx 0; border-radius: 12rpx; font-size: 27rpx; font-weight: 600; color: var(--text-2); }
-.dt-view-tab.on { background: var(--brand); color: #FFFFFF; }
+/* 值日 / 课前演讲 分段控件（v2 2026-11-17）：替换原独立页入口卡；不占 st-item 档位。
+   轨道做成与底栏同款玻璃胶囊；选中项用 --tab-ind 品牌淡蓝（不是实底蓝），
+   文字走 --brand —— 深浅色都由令牌翻，深色下是亮蓝 tint 浮起而非死蓝块。 */
+.dt-view-tabs {
+  display: flex;
+  gap: 8rpx;
+  margin: 16rpx 24rpx 4rpx;
+  padding: 6rpx;
+  border-radius: 999rpx;
+  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.6));
+  box-shadow:
+    var(--tabbar-shadow, 0 8rpx 28rpx rgba(29, 33, 41, 0.14)),
+    var(--tabbar-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.95));
+}
+.dt-view-tab {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border-radius: 999rpx;
+  font-size: 27rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: background .24s ease, color .24s ease;
+}
+.dt-view-tab.on {
+  background: var(--tab-ind, rgba(51, 112, 255, .22));
+  color: var(--brand);
+  box-shadow: inset 0 1rpx 0 var(--tab-ind-edge, rgba(255, 255, 255, .6));
+}
+
+/* 值日 ↔ 课前演讲 切换：淡入 + 轻微上浮（仅切换时播，首屏不播）。
+   .vp-anim 由 onViewMode 与 viewMode 同一次 setData 下发，wx:if 换新节点即播一次。
+   ⚠️ 只动 transform / opacity（合成层）；位移 16rpx 与 st-item 入场同量级、但不叠加首屏。 */
+@keyframes dtViewIn {
+  from { opacity: 0; transform: translateY(16rpx); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dt-vp.vp-anim { animation: dtViewIn .24s cubic-bezier(.23, 1, .32, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .dt-vp.vp-anim { animation: none; }
+}
 
 /* ===== 课前演讲视图（v2，从独立页搬入，令牌走 var(--x,兜底)） ===== */
 .sp-legend { display: flex; justify-content: space-between; padding: 12rpx 28rpx; }
