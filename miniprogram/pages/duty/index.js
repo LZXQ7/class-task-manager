@@ -298,6 +298,9 @@ Page({
     const gView = Number(app.globalData.viewClassId) || 0;
     const needClassReload = !!gView && gView !== (this._shownViewClassId || 0);
     this.load(corrected || dutyDirty || needClassReload);
+    /* 演讲视图同理：周次被纠回（冷启动 / 周日看下周）或换了查看班级时，
+       演讲那份数据不会自己变 —— 不重拉就会「标题新周、卡片旧周」（2026-11-17 报障）。 */
+    if (this.data.viewMode === 'speech' && (corrected || needClassReload)) this.loadSpeech();
     this._shownViewClassId = gView || (this.data.isCounselor ? (Number(this.data.viewClassId) || 0) : 0);
     // v0.7.32 问题②：切 tab 也做一次节流身份重校；身份变了就重套 + 强刷
     if (typeof app.recheckAuth === 'function') {
@@ -340,6 +343,8 @@ Page({
     // 同步全局「当前查看班级」，与班级信息页切班互通（其余 Tab 跟随）
     getApp().globalData.viewClassId = id;
     this.load(true);
+    // 演讲视图：换了班级 = 换一份演讲名单，必须跟着重拉（辅导员切班场景）
+    if (this.data.viewMode === 'speech') this.loadSpeech();
   },
 
   /* ---------------- 加值日生（v0.7.16 需求③，仅超管） ---------------- */
@@ -788,6 +793,11 @@ Page({
     // 否则会拿上周的名单冒充本周（静默刷新只对「同一周重进页面」成立）
     this._hasData = false;
     this.load();
+    /* 🔴 演讲视图与值日共用 week，但数据是两份：只 load() 值日那份，
+     *   标题会跳到第 11 周、卡片里还是第 10 周的日期（2026-11-17 用户报障
+     *   「第十周排好了，但是切换到下一周和后面的周，都显示第十周的」）。
+     *   值日视图下不必白打一次演讲请求，故加 viewMode 守卫。 */
+    if (this.data.viewMode === 'speech') this.loadSpeech();
   },
 
   /** 左右滑动切周（左滑 = 下一周，右滑 = 上一周）。与箭头按钮同一条路径。 */
