@@ -32,6 +32,24 @@ function aggregateDutyStatus(statuses) {
 }
 
 /**
+ * 姓名逐字拆开（1.0.8.58 用户口径「名字两端对齐，两个字的名字也是」）
+ * ------------------------------------------------------------
+ * 胶囊里放一个**定宽 3 字**的 flex 容器，逐字当 flex item，
+ * `justify-content: space-between` 把 2 字名的两个字推到两端 ⇒
+ * 「许　　娜」「王 宁 宁」左右都齐，第二个人的起始位置也跟着齐，
+ * 这就是汉字排版里的**姓名分散对齐**（纯 CSS 做不到 baseline 一致，必须逐字）。
+ *
+ * ⚠️ 用 `Array.from` 而不是 `split('')`：生僻字（如 𠮷）是 UTF-16 代理对，
+ *    split('') 会把一个字拆成两半 ⇒ 屏幕上出现乱码方块。
+ * ⚠️ `wide`（4 字及以上）放开定宽：欧阳娜娜这种套 3 字宽会被挤成一团。
+ */
+function speechNameCells(p) {
+  const name = (p && p.name) || '';
+  const chars = Array.from(name).map((c, k) => ({ c, k }));
+  return Object.assign({}, p, { chars, wide: chars.length > 3 });
+}
+
+/**
  * 演讲时段内按「组」分行（2026-11-17 用户报，两轮口径）
  * ------------------------------------------------------------
  * 现场一（周五上午第一节）：A 组、B 组各有一门**不同**的课（不是全体课），
@@ -61,7 +79,8 @@ function speechSlotGroups(list) {
   const out = [];
   [['A', 'A组'], ['B', 'B组'], ['ALL', '全体']].forEach((slot) => {
     if (!bucket[slot[0]].length) return;
-    out.push({ scope: slot[0], label: slot[1], people: bucket[slot[0]] });
+    /* 逐字 cells 在这里一次性算好（渲染层不做计算，wxml 表达式越少越好） */
+    out.push({ scope: slot[0], label: slot[1], people: bucket[slot[0]].map(speechNameCells) });
   });
   return out;
 }

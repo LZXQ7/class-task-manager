@@ -249,8 +249,8 @@
           <text class="sp-wd">{{item.weekdayText}}</text>
         </view>
         <!-- 上午：按组归拢成行，行首固定组别小标（A组/B组/全体）；
-             A、B 两组同时有课时 A 组在上、B 组在下。姓名胶囊里只放姓名。
-             见 index.js speechSlotGroups，组内顺序走后端学号序，前端不重排。 -->
+             A、B 两组同时有课时 A 组在上、B 组在下。姓名逐字排成定宽 3 字，
+             2 字名撑满两端对齐（见 index.js speechNameCells），组内走后端学号序。 -->
         <view class="sp-slot {{item.amGroups.length > 1 ? 'split' : ''}}">
           <view class="sp-slot-tag am">上午</view>
           <view wx:if="{{item.amGroups.length}}" class="sp-lines">
@@ -258,7 +258,9 @@
               <text class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
               <view class="sp-persons">
                 <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
-                  <text class="sp-name">{{p.name}}</text>
+                  <view class="sp-name {{p.wide ? 'wide' : ''}}">
+                    <text wx:for="{{p.chars}}" wx:for-item="c" wx:key="k" class="sp-char">{{c.c}}</text>
+                  </view>
                 </view>
               </view>
             </view>
@@ -272,7 +274,9 @@
               <text class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
               <view class="sp-persons">
                 <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
-                  <text class="sp-name">{{p.name}}</text>
+                  <view class="sp-name {{p.wide ? 'wide' : ''}}">
+                    <text wx:for="{{p.chars}}" wx:for-item="c" wx:key="k" class="sp-char">{{c.c}}</text>
+                  </view>
                 </view>
               </view>
             </view>

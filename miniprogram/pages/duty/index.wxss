@@ -892,8 +892,14 @@
 .sp-line-tag { flex: 0 0 64rpx; text-align: center; border-radius: 8rpx; font-size: 20rpx; line-height: 32rpx; font-weight: 600; background: var(--brand-light); color: var(--brand); }
 .sp-line-tag.all { background: var(--fill-soft); color: var(--text-3); }
 .sp-persons { display: flex; flex-wrap: wrap; gap: 12rpx; flex: 1; }
+/* 姓名胶囊：胶囊宽度随姓名容器定宽而恒定 ⇒ 一行里第二个人的起始位置也齐 */
 .sp-person { display: flex; align-items: center; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--fill-soft); }
-.sp-name { font-size: 26rpx; color: var(--text-1); font-weight: 500; }
+/* 姓名分散对齐（1.0.8.58）：定宽 = 26rpx × 3 字，逐字当 flex item，
+   space-between 把 2 字名的两个字推到两端，与 3 字名左右都齐。
+   ⚠️ 改字号必须同步改这个宽度（约等于 字号 × 3） */
+.sp-name { display: flex; justify-content: space-between; align-items: center; width: 78rpx; }
+.sp-name.wide { width: auto; }
+.sp-char { font-size: 26rpx; color: var(--text-1); font-weight: 500; }
 /* 仅「智能排班」预览用：那里是一人一行的流水账，行尾跟一个小字说明组别；
    卡片时段视图已改成一行的组别小标在前，不用这个 */
 .sp-scope { font-size: 20rpx; color: var(--text-3); }

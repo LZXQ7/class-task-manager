@@ -59,9 +59,12 @@ function fnSource(js, name) {
   return '';
 }
 
+/** 被检查函数 + 它的页内依赖（拆字 helper 必须一起装进来，否则沙盒里 undefined） */
+const DEPS = ['speechNameCells', FN];
+
 /** 把源码里的纯函数装起来真跑（变异改了内存里的字符串，这里跟着读改后的副本） */
 function loadFn(js, name) {
-  const src = fnSource(stripJs(js), name);
+  const src = DEPS.map((n) => fnSource(stripJs(js), n)).filter(Boolean).join('\n');
   if (!src) return null;
   try {
     // eslint-disable-next-line no-new-func
@@ -117,6 +120,30 @@ function evalAll(s) {
   const names = (g) => (g ? g.map((it) => it.label || it.name).join(',') : '');
   const people = (g) => (g ? g.map((it) => it.name).join(',') : '');
 
+  /* 姓名「分散对齐」：分组函数给每个人附逐字 cells（{c,k}）+ wide 标记。
+     2 字名要撑满 3 字宽、左右都齐 —— 这就是汉字排版的姓名分散对齐。 */
+  let c2 = null;
+  let c3 = null;
+  let c4 = null;
+  let cSur = null;
+  if (fn) {
+    try {
+      c2 = fn([{ name: '示例成员12', scope: 'B' }])[0].people[0];
+      c3 = fn([{ name: '示例成员18', scope: 'A' }])[0].people[0];
+      c4 = fn([{ name: '欧阳娜娜', scope: 'ALL' }])[0].people[0];
+      /* 生僻字是代理对：Array.from 得到 1 个字，split('') 会拆成两半 */
+      cSur = fn([{ name: '𠮷野', scope: 'ALL' }])[0].people[0];
+    } catch (e) {
+      c2 = null;
+    }
+  }
+  const charsOf = (p) => (p && Array.isArray(p.chars)
+    ? p.chars.map((x) => (x && x.c != null ? x.c : x)).join('')
+    : '');
+  const charsKeyed = (p) => !!(p && Array.isArray(p.chars)
+    && p.chars.length > 0 && p.chars.every((x, i) => x && x.k === i && typeof x.c === 'string'));
+
+
   const slotBodies = w.match(/class="sp-slot[ "]/g) || [];
   const hasAmGroups = /wx:for="\{\{item\.amGroups\}\}"/.test(w);
   const hasPmGroups = /wx:for="\{\{item\.pmGroups\}\}"/.test(w);
@@ -133,6 +160,11 @@ function evalAll(s) {
   const perNameTag = slotChunks.some((c) => /class="sp-scope/.test(c) || /\{\{p\.scope\}\}/.test(c));
   /* 预览那套仍然要用 .sp-scope（样式别被顺手删掉，否则行尾小字变成默认大字） */
   const previewTag = /class="sp-scope/.test(w) && /\.sp-scope\s*\{/.test(s.wxss);
+  /* 姓名逐字渲染 + 定宽两端对齐（1.0.8.58 用户口径「名字两端对齐，两个字的名字也是」） */
+  const charLoops = (w.match(/wx:for="\{\{p\.chars\}\}"/g) || []).length;
+  const plainName = /<text class="sp-name">/.test(w);
+  const cssName = (s.wxss.match(/\.sp-name\s*\{[^}]*\}/) || [''])[0];
+  const cssWide = (s.wxss.match(/\.sp-name\.wide\s*\{[^}]*\}/) || [''])[0];
   const load = methodBody(j, 'loadSpeech');
 
   return {
@@ -163,6 +195,22 @@ function evalAll(s) {
     noPerNameTag: slotChunks.length === 2 && !perNameTag,
     /* 预览那套 sp-scope 与样式都还在（别误删） */
     previewTag,
+    /* 姓名逐字拆分：两字/三字都拆对，key 唯一，原 name 保留 */
+    cellsOk: !!(c2 && c3
+      && charsOf(c2) === '示例成员12' && c2.name === '示例成员12' && c2.wide === false
+      && charsOf(c3) === '示例成员18' && c3.wide === false
+      && charsKeyed(c2) && charsKeyed(c3)),
+    /* 生僻字/代理对不能被拆成两半（必须 Array.from，不能 split('')） */
+    cellsSurrogate: !!(cSur && charsOf(cSur) === '𠮷野' && cSur.chars.length === 2),
+    /* 4 字及以上不参与定宽（否则挤成一团），但仍逐字 */
+    cellsWide: !!(c4 && charsOf(c4) === '欧阳娜娜' && c4.wide === true && charsKeyed(c4)),
+    /* WXML：两处时段都逐字渲染，且不再整串塞一个 text */
+    wxmlChars: charLoops === 2 && !plainName,
+    /* 样式：定宽 78rpx（26rpx × 3）+ 两端对齐 + 超长放开 + 字色 */
+    nameJustify: /display:\s*flex/.test(cssName) && /justify-content:\s*space-between/.test(cssName),
+    nameWidth: /width:\s*78rpx/.test(cssName),
+    wideCss: /width:\s*auto/.test(cssWide),
+    cssChar: /\.sp-char\s*\{/.test(s.wxss),
     /* 数据接线：loadSpeech 里给每天算出 amGroups / pmGroups */
     dataWired: /amGroups\s*:/.test(load) && /pmGroups\s*:/.test(load) && new RegExp(FN + '\\s*\\(').test(load),
     /* 样式：分行容器与行首标签都有定义（否则真机就是两坨贴在一起） */
@@ -189,12 +237,22 @@ check(S.wxmlGroups, '上午 / 下午两处都按 amGroups / pmGroups 渲染，�
 check(S.lineTag, '两处时段各有一个行首组别标签 {{grp.label}}');
 check(S.tagUnguarded, '行首标签无条件渲染（不许挂 grp.split 守卫，单组课也要有）');
 check(S.noPerNameTag, '时段块里姓名胶囊只剩姓名，不再逐个挂 A组/B组/全体 小字');
+check(S.cellsOk, '姓名逐字拆分：示例成员12 → 许+娜、示例成员18 → 金+晶+晶，key 递增且原 name 保留');
+check(S.cellsSurrogate, '生僻字（代理对 𠮷野）只算 1 个字，不能被 split 拆成两半');
+check(S.cellsWide, '四字名（欧阳娜娜）也逐字，但 wide=true 不参与定宽');
 
-console.log('\n── ③ 样式');
+console.log('\n── ③ 姓名两端对齐（1.0.8.58）');
+check(S.wxmlChars, '两处时段都按 p.chars 逐字渲染，不再是整串一个 text');
+check(S.nameJustify, '姓名容器 display:flex + justify-content:space-between（两端对齐的关键）');
+check(S.nameWidth, '姓名容器定宽 78rpx（= 26rpx × 3 字），两字名才撑得满');
+check(S.wideCss, '.sp-name.wide 放开定宽（超三字的名不被挤坏）');
+check(S.cssChar, '.sp-char 逐字样式有定义');
+
+console.log('\n── ④ 样式');
 check(S.cssLine, '.sp-lines / .sp-line / .sp-line-tag 三条样式齐备');
 check(S.previewTag, '智能排班预览那套行尾组别小字（.sp-scope）与样式都还在，没被顺手删掉');
 
-console.log('\n── ④ 变异自证（改坏 → 判据必须翻红）');
+console.log('\n── ⑤ 变异自证（改坏 → 判据必须翻红）');
 const MUT = [
   { name: '顺序改成 B 组在上（用户明确要 A 在上）', probe: 'mixOrder', file: 'js',
     from: "[['A', 'A组'], ['B', 'B组'], ['ALL', '全体']]",
@@ -205,8 +263,8 @@ const MUT = [
   { name: '行首标签的「全体」写成英文 scope', probe: 'allLabel', file: 'js',
     from: "['ALL', '全体']", to: "['ALL', 'ALL']" },
   { name: '只给第二行起挂标签（第一行裸着，回到「标签不统一」的老样子）', probe: 'singleLabel', file: 'js',
-    from: '    out.push({ scope: slot[0], label: slot[1], people: bucket[slot[0]] });',
-    to: '    out.push({ scope: slot[0], label: out.length ? slot[1] : \'\', people: bucket[slot[0]] });' },
+    from: '    out.push({ scope: slot[0], label: slot[1], people: bucket[slot[0]].map(speechNameCells) });',
+    to: "    out.push({ scope: slot[0], label: out.length ? slot[1] : '', people: bucket[slot[0]].map(speechNameCells) });" },
   { name: '两个时段都退回平铺渲染', probe: 'wxmlGroups', file: 'wxml',
     from: 'wx:for="{{item.amGroups}}"', to: 'wx:for="{{item.am}}"' },
   { name: '去掉行首组别标签', probe: 'lineTag', file: 'wxml',
@@ -215,10 +273,24 @@ const MUT = [
     /* 上下午两处都要改坏：只 replace 首处，另一处还裸着 ⇒ 判据仍绿 ⇒ 假通过 */
     apply: (src) => src.split('class="sp-line-tag').join('wx:if="{{grp.split}}" class="sp-line-tag') },
   { name: '姓名后又挂回组别小字', probe: 'noPerNameTag', file: 'wxml',
-    apply: (src) => src.split('<text class="sp-name">{{p.name}}</text>')
-      .join('<text class="sp-name">{{p.name}}</text><text class="sp-scope">{{p.scope}}</text>') },
+    apply: (src) => src.split('<text wx:for="{{p.chars}}" wx:for-item="c" wx:key="k" class="sp-char">{{c.c}}</text>')
+      .join('<text wx:for="{{p.chars}}" wx:for-item="c" wx:key="k" class="sp-char">{{c.c}}</text><text class="sp-scope">{{p.scope}}</text>') },
   { name: 'loadSpeech 不再算分组数组', probe: 'dataWired', file: 'js',
-    apply: (src) => src.replace(/\n\s*amGroups:\s*speechSlotGroups\(d\.am\),\n\s*pmGroups:\s*speechSlotGroups\(d\.pm\)/, '') }
+    apply: (src) => src.replace(/\n\s*amGroups:\s*speechSlotGroups\(d\.am\),\n\s*pmGroups:\s*speechSlotGroups\(d\.pm\)/, '') },
+  { name: '姓名容器改成左对齐（两字名不再撑满）', probe: 'nameJustify', file: 'wxss',
+    from: 'justify-content: space-between; align-items: center; width: 78rpx;',
+    to: 'justify-content: flex-start; align-items: center; width: 78rpx;' },
+  { name: '姓名容器不定宽（各人胶囊宽窄不一，第二列就歪了）', probe: 'nameWidth', file: 'wxss',
+    from: 'align-items: center; width: 78rpx;',
+    to: 'align-items: center;' },
+  { name: '去掉 .sp-name.wide 放开规则（四字名被挤成一团）', probe: 'wideCss', file: 'wxss',
+    apply: (src) => src.replace(/\n\.sp-name\.wide \{[^}]*\}/, '') },
+  { name: '退回整串渲染（不逐字，做不出两端对齐）', probe: 'wxmlChars', file: 'wxml',
+    apply: (src) => src.split('wx:for="{{p.chars}}"').join('wx:for="{{p.name}}"') },
+  { name: '用 split 拆字（生僻字/代理对被拆成两半）', probe: 'cellsSurrogate', file: 'js',
+    from: 'Array.from(name)', to: "name.split('')" },
+  { name: 'wide 判定恒 false（四字名也套定宽）', probe: 'cellsWide', file: 'js',
+    from: 'chars.length > 3', to: 'false' }
 ];
 
 MUT.forEach((mu) => {
