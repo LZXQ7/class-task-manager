@@ -248,18 +248,17 @@
           <text class="sp-date">{{item.date}}</text>
           <text class="sp-wd">{{item.weekdayText}}</text>
         </view>
-        <!-- 上午：A/B 两组课不同时拆两行（A 组在上、B 组在下），见 index.js speechSlotGroups。
-             组内顺序走后端学号序，前端不重排。 -->
+        <!-- 上午：按组归拢成行，行首固定组别小标（A组/B组/全体）；
+             A、B 两组同时有课时 A 组在上、B 组在下。姓名胶囊里只放姓名。
+             见 index.js speechSlotGroups，组内顺序走后端学号序，前端不重排。 -->
         <view class="sp-slot {{item.amGroups.length > 1 ? 'split' : ''}}">
           <view class="sp-slot-tag am">上午</view>
           <view wx:if="{{item.amGroups.length}}" class="sp-lines">
             <view wx:for="{{item.amGroups}}" wx:for-item="grp" wx:key="scope" class="sp-line">
-              <text wx:if="{{grp.split}}" class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
+              <text class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
               <view class="sp-persons">
                 <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
                   <text class="sp-name">{{p.name}}</text>
-                  <text wx:if="{{!grp.split && p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
-                  <text wx:elif="{{!grp.split}}" class="sp-scope all">全体</text>
                 </view>
               </view>
             </view>
@@ -270,12 +269,10 @@
           <view class="sp-slot-tag pm">下午</view>
           <view wx:if="{{item.pmGroups.length}}" class="sp-lines">
             <view wx:for="{{item.pmGroups}}" wx:for-item="grp" wx:key="scope" class="sp-line">
-              <text wx:if="{{grp.split}}" class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
+              <text class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
               <view class="sp-persons">
                 <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
                   <text class="sp-name">{{p.name}}</text>
-                  <text wx:if="{{!grp.split && p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
-                  <text wx:elif="{{!grp.split}}" class="sp-scope all">全体</text>
                 </view>
               </view>
             </view>

@@ -885,14 +885,17 @@
 .sp-slot-tag { flex: 0 0 76rpx; text-align: center; font-size: 22rpx; font-weight: 600; padding: 6rpx 0; border-radius: 10rpx; }
 .sp-slot-tag.am { background: var(--brand-light); color: var(--brand); }
 .sp-slot-tag.pm { background: var(--warning-bg); color: var(--warning); }
-/* 一行 = 一个组（A 组 / B 组 / 全体）。单组时行首标签不渲染，等同原来的平铺 */
+/* 一行 = 一个组（A 组 / B 组 / 全体），组别小标恒在行首；姓名胶囊里只有姓名 */
 .sp-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10rpx; }
 .sp-line { display: flex; align-items: center; gap: 12rpx; }
-.sp-line-tag { flex: 0 0 auto; padding: 0 10rpx; border-radius: 8rpx; font-size: 20rpx; line-height: 32rpx; font-weight: 600; background: var(--brand-light); color: var(--brand); }
+/* 定宽：A组 / B组 / 全体 都是两个字，定宽让多行时姓名左边对齐成一条线 */
+.sp-line-tag { flex: 0 0 64rpx; text-align: center; border-radius: 8rpx; font-size: 20rpx; line-height: 32rpx; font-weight: 600; background: var(--brand-light); color: var(--brand); }
 .sp-line-tag.all { background: var(--fill-soft); color: var(--text-3); }
 .sp-persons { display: flex; flex-wrap: wrap; gap: 12rpx; flex: 1; }
-.sp-person { display: flex; align-items: center; gap: 8rpx; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--fill-soft); }
+.sp-person { display: flex; align-items: center; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--fill-soft); }
 .sp-name { font-size: 26rpx; color: var(--text-1); font-weight: 500; }
+/* 仅「智能排班」预览用：那里是一人一行的流水账，行尾跟一个小字说明组别；
+   卡片时段视图已改成一行的组别小标在前，不用这个 */
 .sp-scope { font-size: 20rpx; color: var(--text-3); }
 .sp-scope.all { color: var(--brand); }
 .sp-none { color: var(--text-4, #C9CDD4); font-size: 24rpx; }
