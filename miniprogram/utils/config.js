@@ -605,9 +605,27 @@ const NOTICE_PAGE = 'pages/notice/index';
  *       编辑副本 `spRuleEdit`（取消不污染），保存时与双游标一起提交。
  *   口径：规则按 **session（课次）** 走，不按「周五下午」这种字符串 —— 调课后仍跟着这门课。
  *   门禁新增 `check-speech-need-rule.js`（20 判据 + 9 变异全抓，含真跑 parseSlotRules）。
+ *
+ * v1.0.8.60（2026-11-17）· 演讲游标「生成即推进」（11 周排过的人 12 周又排了一遍）
+ *   用户口径：「十一周安排过的，十二周又安排了」。
+ *   复现（生产库 class 3 实测）：第 10 周已发布 ⇒ `speech_cursor` = A27/B20；
+ *     第 11 周生成（草稿）只把 A41/B40 写进 `speech_publish.pending_cursors`，游标没动；
+ *     第 12 周生成又从 27/20 起跑 ⇒ 322/324/326… 与 11 周逐条重复。
+ *   修法（v3，仅云函数 + 一列迁移，**不改小程序逻辑**）：
+ *     ①`speechGenerate` / `speechAiApply` 落库时**立即**把新游标写回 `speech_cursor`
+ *       （抽取 `saveSpeechCursors`），不再等发布；
+ *     ②`speech_publish` 增列 `base_cursors`（本周生成之前的游标）：
+ *       同周重排起点取 base ⇒ 幂等，仍是同一批人；清空/撤回回滚到 base ⇒
+ *       「清空后重排不跳过清空前的人」这个原口径照样成立；
+ *     ③发布不再落游标，只把 base 记成 `cursor_snapshot`；旧记录没有 base 时才把
+ *       pending 落库（向后兼容）；
+ *     ④手工改起点（`speechSetSettings`）作废该班所有 base，否则手动设置不生效。
+ *   起点决策抽成纯函数 `startCursorsOf(baseRaw, current)`，门禁真跑它。
+ *   门禁新增 `check-speech-cursor-advance.js`（22 判据 + 9 变异全抓）；既有
+ *   `check-speech-schedule.js` 的 v2 契约（"生成不写游标"）同步改成 v3。
  * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.59';
+const APP_VERSION = '1.0.8.60';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

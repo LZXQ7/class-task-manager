@@ -151,15 +151,24 @@ check(/INSERT IGNORE INTO speech\b/.test(SCH_SRC) && /speech_cursor/.test(SCH_SR
 check(/CREATE TABLE IF NOT EXISTS speech_cursor/.test(SQL_SRC) && /PRIMARY KEY \(class_id, grp\)/.test(SQL_SRC),
       'speech_cursor 每班每组一条游标');
 
-/* v2 游标契约（静态）：generate 不写游标、publish 落游标、unpublish 回滚、AI 集成 */
+/* v3 游标契约（静态，2026-11-17 口径变更）：
+ *   旧 v2 是「generate 只预演、发布才落游标」。后果：连着生成两周草稿时，两周都从同一个
+ *   起点起跑，排出逐条相同的人（用户原话「十一周安排过的，十二周又安排了」）。
+ *   新 v3：generate 立即推进 speech_cursor，并把「本周之前的游标」记进
+ *   speech_publish.base_cursors —— 同周重排 / 清空回滚都靠 base，
+ *   所以「清空后重排不跳过清空前的人」这个原诉求仍然成立。
+ *   细节判据（含真跑 startCursorsOf）见 check-speech-cursor-advance.js。 */
 const genBody = SCH_SRC.slice(SCH_SRC.indexOf('speechGenerate:'), SCH_SRC.indexOf('speechReassign:'));
 const pubBody = SCH_SRC.slice(SCH_SRC.indexOf('speechPublish:'), SCH_SRC.indexOf('speechSetSettings:'));
 /* 只看真实 SQL 写语句：忽略注释里的 speech_cursor 字样 */
 const genSql = genBody.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-check(!/(INSERT\s+INTO|UPDATE)\s+speech_cursor/i.test(genSql),
-      'speechGenerate 只预演不写 speech_cursor（清空后重排不跳过）');
-check(/(UPDATE|INSERT)[^;]{0,160}speech_cursor/.test(pubBody) && /cursor_snapshot/.test(pubBody),
-      'speechPublish 发布落游标 + 写发布前快照 cursor_snapshot');
+check(/saveSpeechCursors\(conn,\s*classId,\s*plan\.cursors\)/.test(genSql),
+      'speechGenerate 生成即推进 speech_cursor（否则下一周又从原起点重排同一批人）');
+check(/async function saveSpeechCursors[\s\S]{0,400}INSERT INTO speech_cursor/.test(SCH_SRC),
+      '写游标的 saveSpeechCursors 真落 SQL（不是空壳）');
+check(/base_cursors/.test(genSql), 'speechGenerate 记下本周之前的游标 base_cursors（同周重排幂等）');
+check(/base_cursors/.test(pubBody) && /cursor_snapshot/.test(pubBody),
+      'speechPublish 撤回快照取 base_cursors（本周之前的游标）');
 check(/speechAiParse[\s\S]{0,4000}callAi|callAi[\s\S]{0,6000}speechAiParse/.test(SCH_SRC),
       'AI 智能排班解析走 callAi（ai-proxy）');
 check(/单双号|奇数.*A|奇数.*偶数|seq\s*%\s*2/.test(SCH_SRC),

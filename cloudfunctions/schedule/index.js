@@ -1328,6 +1328,60 @@ async function loadSlotRules(db, classId) {
   return parseSlotRules(rows[0] && rows[0].slot_rules);
 }
 
+/* ============================================================
+ * 演讲游标：「生成即推进」（v3，2026-11-17）
+ *   用户口径：「十一周安排过的，十二周又安排了」。
+ *   旧实现只在**发布**时把游标落库 ⇒ 连着生成两周草稿时，两周都从同一个起点
+ *   起跑，排出逐条相同的人（生产库实测：11 周 322/324/326… 12 周又是 322/324/326…）。
+ *   现在生成/智能排班落库时就推进游标，并把「本周生成之前的游标」记在
+ *   speech_publish.base_cursors，供同周重排（幂等）与清空/撤回（回滚）使用。
+ * ============================================================ */
+
+/**
+ * 决定本次生成的起点游标。
+ * @param {string|object} baseRaw  speech_publish.base_cursors（本周之前生成时记下的游标）
+ * @param {object} current         当前 speech_cursor
+ * @returns {{start:object, base:object, reuse:boolean}}
+ *          start = 本次起跑用；base = 要记回 speech_publish 的快照；
+ *          reuse = true 表示 base 可信（同周重排 / 清空回滚据此判断）。
+ * ⚠️ 坏 JSON 一律当「没有 base」，按当前游标起跑 —— 设置坏了不能让整周排不了班。
+ */
+function startCursorsOf(baseRaw, current) {
+  const cur = {
+    A: Math.max(0, Number(current && current.A) || 0),
+    B: Math.max(0, Number(current && current.B) || 0)
+  };
+  let base = null;
+  if (baseRaw) {
+    try {
+      const o = typeof baseRaw === 'string' ? JSON.parse(baseRaw) : baseRaw;
+      if (o && typeof o === 'object') {
+        base = {
+          A: Math.max(0, Number(o.A) || 0),
+          B: Math.max(0, Number(o.B) || 0)
+        };
+      }
+    } catch (e) {
+      base = null;
+      console.error('base_cursors 解析失败，按当前游标起跑', e && e.message);
+    }
+  }
+  if (!base) return { start: cur, base: cur, reuse: false };
+  return { start: base, base, reuse: true };
+}
+
+/** 写双游标（幂等 upsert）。conn 可以是 pool 或事务连接。 */
+async function saveSpeechCursors(db, classId, cursors) {
+  const c = cursors || {};
+  for (const g of ['A', 'B']) {
+    await db.query(
+      `INSERT INTO speech_cursor (class_id, grp, cursor_val) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE cursor_val = VALUES(cursor_val)`,
+      [classId, g, Math.max(0, Number(c[g]) || 0)]
+    );
+  }
+}
+
 
 const routes = {
   listWeek: {
@@ -2735,16 +2789,19 @@ const routes = {
           .filter(m => m.seq > 0).sort((a, b) => a.seq - b.seq || a.id - b.id);
         if (!roster.length) throw new BizError(41003, '本班没有可排演讲的同学');
 
-        /* ③ 读当前进度双游标（起点）—— v2 撤掉固定起始设置，管理员直接设 A/B 已排到号 */
+        /* ③ 起点游标（v3）：本周已经生成过 ⇒ 起点回到 base_cursors（重排同周还是同一批人）；
+         *    本周第一次生成 ⇒ 起点 = speech_cursor，并把它记成 base。见 startCursorsOf 注释。 */
         const [curRows] = await conn.query('SELECT grp, cursor_val FROM speech_cursor WHERE class_id = ?', [classId]);
-        const cursors = { A: 0, B: 0 };
-        curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') cursors[c.grp] = Number(c.cursor_val) || 0; });
+        const current = { A: 0, B: 0 };
+        curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') current[c.grp] = Number(c.cursor_val) || 0; });
+        const [pubRows] = await conn.query('SELECT base_cursors FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]);
+        const start = startCursorsOf(pubRows[0] && pubRows[0].base_cursors, current);
 
         /* ④ 筛场次骨架 + 轮转选人（默认每场 2 人；「每场人数规则」里 need=1 的场次只排 1 人） */
         const ruleMap = await loadSlotRules(conn, classId);
         const slots = speechCore.buildSlots(sessions, wk, { override: ruleMap }, week);
         if (!slots.length) throw new BizError(41004, '本周第1节/第3节没有集体课，无需排演讲');
-        const plan = speechCore.assign(slots, roster, cursors, {});
+        const plan = speechCore.assign(slots, roster, start.start, {});
 
         /* ⑤ 清掉本周 AUTO 行（保留 MANUAL 换人），重写 */
         await conn.query("DELETE FROM speech WHERE class_id = ? AND week = ? AND source = 'AUTO'", [classId, wk]);
@@ -2755,14 +2812,16 @@ const routes = {
             [classId, wk, r.date, r.slot, r.memberId, r.scope]
           );
         }
-        /* ⑥ v2：生成**不写游标**（只预演）。plan.cursors 暂存进 speech_publish.pending_cursors，
-         *    只有发布时才落到 speech_cursor —— 清空后重排得到同一批人，不跳过清空前的人。 */
+        /* ⑥ v3：生成即推进游标（不再等发布），并把「本周之前的游标」记进 base_cursors。
+         *    这样下一周生成读到的是本周排完后的位置，不会再从同一个起点重排一批相同的人；
+         *    同一周重排则回到 base，仍是同一批人（幂等）。 */
+        await saveSpeechCursors(conn, classId, plan.cursors);
         await conn.query(
-          `INSERT INTO speech_publish (class_id, week, status, pending_cursors)
-           VALUES (?, ?, 'DRAFT', ?)
+          `INSERT INTO speech_publish (class_id, week, status, pending_cursors, base_cursors)
+           VALUES (?, ?, 'DRAFT', ?, ?)
            ON DUPLICATE KEY UPDATE status = 'DRAFT', published_at = NULL, published_by = NULL,
-             pending_cursors = VALUES(pending_cursors)`,
-          [classId, wk, JSON.stringify(plan.cursors)]
+             pending_cursors = VALUES(pending_cursors), base_cursors = VALUES(base_cursors)`,
+          [classId, wk, JSON.stringify(plan.cursors), JSON.stringify(start.base)]
         );
         await conn.commit();
         console.log(JSON.stringify({ fn: 'schedule', action: 'speechGenerate', member: ctx.member.id, classId, week: wk, sessions: slots.length, rows: plan.rows.length, short: plan.short, pending: plan.cursors }));
@@ -2825,10 +2884,15 @@ const routes = {
       const pool = getPool();
       const classId = guard.classIdOf(ctx);
       await pool.query('DELETE FROM speech WHERE class_id = ? AND week = ?', [classId, wk]);
-      /* v2：清空不动 speech_cursor（不推进/不回滚），只清本周状态与待落游标 */
+      /* v3：清空 = 本周没排过。游标回滚到生成前的 base（重排得同一批人，原 v2 口径），
+       * 并把 base 置空 —— 下次生成重新以「当时游标」为起点。base 不可信时不回滚。 */
+      const [pub] = await pool.query('SELECT base_cursors FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]);
+      const cur = startCursorsOf(pub[0] && pub[0].base_cursors, { A: 0, B: 0 });
+      if (cur.reuse) await saveSpeechCursors(pool, classId, cur.start);
       await pool.query(
-        `INSERT INTO speech_publish (class_id, week, status, pending_cursors) VALUES (?, ?, 'DRAFT', NULL)
-         ON DUPLICATE KEY UPDATE status = 'DRAFT', published_at = NULL, published_by = NULL, pending_cursors = NULL`,
+        `INSERT INTO speech_publish (class_id, week, status, pending_cursors, base_cursors) VALUES (?, ?, 'DRAFT', NULL, NULL)
+         ON DUPLICATE KEY UPDATE status = 'DRAFT', published_at = NULL, published_by = NULL,
+           pending_cursors = NULL, base_cursors = NULL`,
         [classId, wk]
       );
       console.log(JSON.stringify({ fn: 'schedule', action: 'speechClear', member: ctx.member.id, classId, week: wk }));
@@ -2851,30 +2915,25 @@ const routes = {
       try {
         await conn.beginTransaction();
         if (status === 'PUBLISHED') {
-          /* v2：发布才落游标。① 读 generate 暂存的 pending_cursors；② 把当前 speech_cursor
-           * 存进 cursor_snapshot（撤回用）；③ 把 pending 写进 speech_cursor。 */
+          /* v3：游标在**生成时**就已经推进过了，这里只把「本周之前的游标」（base）记成撤回快照。
+           * 只有旧记录（没有 base_cursors）才把 pending 落到游标 —— 向后兼容。 */
           const [pub] = await conn.query(
-            'SELECT pending_cursors FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]
+            'SELECT pending_cursors, base_cursors FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]
           );
           const pending = (pub[0] && pub[0].pending_cursors) ? JSON.parse(pub[0].pending_cursors) : null;
           const [curRows] = await conn.query('SELECT grp, cursor_val FROM speech_cursor WHERE class_id = ?', [classId]);
           const before = { A: 0, B: 0 };
           curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') before[c.grp] = Number(c.cursor_val) || 0; });
-          if (pending) {
-            for (const g of ['A', 'B']) {
-              await conn.query(
-                `INSERT INTO speech_cursor (class_id, grp, cursor_val) VALUES (?, ?, ?)
-                 ON DUPLICATE KEY UPDATE cursor_val = VALUES(cursor_val)`,
-                [classId, g, Number(pending[g]) || 0]
-              );
-            }
+          const snap = startCursorsOf(pub[0] && pub[0].base_cursors, before);
+          if (!snap.reuse && pending) {
+            await saveSpeechCursors(conn, classId, pending);
           }
           await conn.query(
             `INSERT INTO speech_publish (class_id, week, status, published_at, published_by, cursor_snapshot)
              VALUES (?, ?, 'PUBLISHED', ?, ?, ?)
              ON DUPLICATE KEY UPDATE status = 'PUBLISHED', published_at = VALUES(published_at),
                published_by = VALUES(published_by), cursor_snapshot = VALUES(cursor_snapshot)`,
-            [classId, wk, week.nowStamp(), ctx.member.id, JSON.stringify(before)]
+            [classId, wk, week.nowStamp(), ctx.member.id, JSON.stringify(snap.start)]
           );
         } else {
           /* v2：撤回回滚游标。从 cursor_snapshot 恢复到 speech_cursor。 */
@@ -2927,6 +2986,8 @@ const routes = {
             [classId, g, g === 'A' ? a : b]
           );
         }
+        /* v3：手动改起点后，旧的 base 快照全部作废 —— 否则重排本周仍从旧 base 起跑，手动设置白设。 */
+        await conn.query('UPDATE speech_publish SET base_cursors = NULL WHERE class_id = ?', [classId]);
         await conn.commit();
       } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
       console.log(JSON.stringify({ fn: 'schedule', action: 'speechSetSettings', member: ctx.member.id, classId, cursorA: a, cursorB: b }));
@@ -3186,6 +3247,12 @@ const routes = {
       const conn = await pool.getConnection();
       try {
         await conn.beginTransaction();
+        /* v3：与一键生成同一口径 —— 起点优先取本周的 base（重排幂等），落库后推进游标。 */
+        const [curRows] = await conn.query('SELECT grp, cursor_val FROM speech_cursor WHERE class_id = ?', [classId]);
+        const current = { A: 0, B: 0 };
+        curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') current[c.grp] = Number(c.cursor_val) || 0; });
+        const [pubRows] = await conn.query('SELECT base_cursors FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]);
+        const start = startCursorsOf(pubRows[0] && pubRows[0].base_cursors, current);
         await conn.query("DELETE FROM speech WHERE class_id = ? AND week = ? AND source = 'AUTO'", [classId, wk]);
         for (const r of rows) {
           if (!r || !r.memberId || !r.date || !r.slot) continue;
@@ -3195,11 +3262,15 @@ const routes = {
             [classId, wk, r.date, r.slot, r.memberId, r.scope || 'ALL']
           );
         }
+        if (pending && (pending.A !== undefined || pending.B !== undefined)) {
+          await saveSpeechCursors(conn, classId, { A: Number(pending.A) || 0, B: Number(pending.B) || 0 });
+        }
         await conn.query(
-          `INSERT INTO speech_publish (class_id, week, status, pending_cursors) VALUES (?, ?, 'DRAFT', ?)
+          `INSERT INTO speech_publish (class_id, week, status, pending_cursors, base_cursors)
+           VALUES (?, ?, 'DRAFT', ?, ?)
            ON DUPLICATE KEY UPDATE status = 'DRAFT', published_at = NULL, published_by = NULL,
-             pending_cursors = VALUES(pending_cursors)`,
-          [classId, wk, pending ? JSON.stringify(pending) : null]
+             pending_cursors = VALUES(pending_cursors), base_cursors = VALUES(base_cursors)`,
+          [classId, wk, pending ? JSON.stringify(pending) : null, JSON.stringify(start.base)]
         );
         await conn.commit();
       } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
