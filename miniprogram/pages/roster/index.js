@@ -1169,29 +1169,13 @@ _clockNow() {
 
   /** 撤销某条请假（并恢复区间内的值日） */
   /**
-   * #9 长按确认入口（2026-11-14）：请假「撤销」改为**按住 700ms** 才执行。
-   * ⚠️ 与 onLeaveCancelTap 的区别：**不再弹二次确认框** —— 长按本身就是确认动作，
-   *    再弹一次「确定吗？」等于把确认做了两遍（用户原话：「还是点击弹出确认卡片」）。
-   *    弹层里的那条确认框仍保留给其它入口（历史列表等）。
+   * 撤销入口（2026-11-17 修回「点一下」）：点「撤销」→ confirmStrict 二次确认 → leaveCancel。
+   * 🔴 为什么不能是长按：1.0.9.0 曾改成 <hold-confirm> 长按 700ms，业务 id 走**组件属性 id**，
+   *    而 id 是 WXML 保留属性（官方《组件属性》），父级赋值永远进不到 properties ⇒ 组件拿到的
+   *    id 恒为空串 ⇒ 长按走满也回传 {id:''} ⇒ `Number('')=0` → 静默 return，用户看到的就是
+   *    「点了没用」，且没有任何报错。业务 id 一律走 data-id（dataset），不再经组件属性。
+   * 二次确认保留：撤销会把区间内标记「已请假」的值日恢复，属危险操作，不能一点就执行。
    */
-  onLeaveCancelHold(e) {
-    if (this.data.leaveBusy) return;
-    const leaveId = Number((e && e.detail && e.detail.id) || 0);
-    if (!leaveId) return;
-    this.setData({ leaveBusy: true });
-    api.leaveCancel({ leaveId }, { toast: false })
-      .then((r) => {
-        this.setData({ leaveBusy: false });
-        util.toast((r && r.restored) ? ('已撤销，恢复 ' + r.restored + ' 条值日') : '已撤销');
-        this._loadLeaveBoard();
-        this._loadLeaveHistory();
-      })
-      .catch((err) => {
-        this.setData({ leaveBusy: false });
-        util.toast((err && err.message) ? err.message : '撤销失败');
-      });
-  },
-
   onLeaveCancelTap(e) {
     if (this.data.leaveBusy) return;
     const leaveId = Number(e.currentTarget.dataset.id);

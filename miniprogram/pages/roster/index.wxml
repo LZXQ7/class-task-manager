@@ -433,13 +433,17 @@
               data-has="0"
               catchtap="onLeaveImageTap"
             >传假条</view>
-            <!-- #9 长按确认（2026-11-14）：撤销改为**按住 700ms** 才真的执行，
-                 不再「点一下就弹确认卡片」（用户实锤原话）。
-                 hold-confirm 用 bare 模式：不套圆壳，保留原来的「撤销」文字按钮外观，
-                 按住时按钮下方走一条进度条；松手未满则平滑回退。 -->
-            <hold-confirm bare id="{{item.leaveId}}" duration="{{700}}" bind:confirm="onLeaveCancelHold">
-              <view class="lv-cancel {{leaveBusy ? 'busy' : ''}}">撤销</view>
-            </hold-confirm>
+            <!-- 撤销（2026-11-17 修）：改回**点一下** → confirmStrict 二次确认 → leaveCancel。
+                 🔴 原来的 <hold-confirm bare id="{{item.leaveId}}"> 是无效设计：id 是 WXML
+                 保留属性（官方《组件属性》：id/class/style/slot 无法在 WXML 中对它们赋值），
+                 父级赋值永远进不到 properties ⇒ 组件里 id 恒为空串 ⇒ confirm 回传 { id: '' }
+                 ⇒ 页面 Number('') = 0 → 静默 return。现象就是「按满也不撤销」，
+                 而且全程没有任何报错/日志。业务 id 从此只走 data-id（页面自己的 dataset）。 -->
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
+              class="lv-cancel {{leaveBusy ? 'busy' : ''}}"
+              data-id="{{item.leaveId}}"
+              bindtap="onLeaveCancelTap"
+            >撤销</view>
           </view>
         </view>
         <view wx:if="{{leaveListB.length}}" class="lv-grp">
@@ -470,13 +474,17 @@
               data-has="0"
               catchtap="onLeaveImageTap"
             >传假条</view>
-            <!-- #9 长按确认（2026-11-14）：撤销改为**按住 700ms** 才真的执行，
-                 不再「点一下就弹确认卡片」（用户实锤原话）。
-                 hold-confirm 用 bare 模式：不套圆壳，保留原来的「撤销」文字按钮外观，
-                 按住时按钮下方走一条进度条；松手未满则平滑回退。 -->
-            <hold-confirm bare id="{{item.leaveId}}" duration="{{700}}" bind:confirm="onLeaveCancelHold">
-              <view class="lv-cancel {{leaveBusy ? 'busy' : ''}}">撤销</view>
-            </hold-confirm>
+            <!-- 撤销（2026-11-17 修）：改回**点一下** → confirmStrict 二次确认 → leaveCancel。
+                 🔴 原来的 <hold-confirm bare id="{{item.leaveId}}"> 是无效设计：id 是 WXML
+                 保留属性（官方《组件属性》：id/class/style/slot 无法在 WXML 中对它们赋值），
+                 父级赋值永远进不到 properties ⇒ 组件里 id 恒为空串 ⇒ confirm 回传 { id: '' }
+                 ⇒ 页面 Number('') = 0 → 静默 return。现象就是「按满也不撤销」，
+                 而且全程没有任何报错/日志。业务 id 从此只走 data-id（页面自己的 dataset）。 -->
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
+              class="lv-cancel {{leaveBusy ? 'busy' : ''}}"
+              data-id="{{item.leaveId}}"
+              bindtap="onLeaveCancelTap"
+            >撤销</view>
           </view>
         </view>
         <view wx:if="{{!leaveList.length}}" class="lv-empty">今天没有人请假</view>

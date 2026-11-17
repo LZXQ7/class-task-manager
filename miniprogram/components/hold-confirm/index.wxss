@@ -58,6 +58,9 @@
   background: transparent;
   display: inline-block;
   vertical-align: middle;
+  /* ⚠️ 必须复位：.hc-btn 的 overflow:hidden 会把下方 ::after 进度条（bottom:-6rpx）整条裁掉，
+     按住 700ms 期间零反馈 —— 用户会以为按钮是坏的（2026-11-17 请假撤销事故的同因之一）。 */
+  overflow: visible;
 }
 .hc-btn.hc-bare .hc-track,
 .hc-btn.hc-bare .hc-ring { display: none; }

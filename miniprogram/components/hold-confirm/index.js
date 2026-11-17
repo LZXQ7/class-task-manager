@@ -14,8 +14,13 @@ Component({
      * 🔴 为什么需要：自定义组件内部的 <view> 上拿不到外层的 data-id
      *    （currentTarget 是组件内部的节点，dataset 是空的），
      *    所以业务 id 必须由页面显式传进来，否则页面无法知道确认的是哪一条。
+     * 🔴 为什么字段名是 pk 而不是 id：`id` / `class` / `style` / `slot` 是 WXML **保留属性**，
+     *    官方《组件属性》明确写「虽然可以设为组件属性，但无法在 WXML 中对它们赋值」。
+     *    2026-11-17 请假「撤销」就是踩了这个坑：`id="{{item.leaveId}}"` 永远进不来，
+     *    组件拿到空串、长按走满也执行不了，而且**零报错**（用户现象：点了没用）。
+     *    组件属性永远不要取名 id。
      */
-    id: { type: String, value: '' },
+    pk: { type: String, value: '' },
     /**
      * 裸模式：只借用「长按计时 + 进度条」，**不画圆形按钮外壳**。
      * 用途：把页面里已有的小按钮（撤销/删除等文字按钮）升级成长按确认，
@@ -36,7 +41,7 @@ Component({
       if (this.data.disabled || this.data.confirmed) return;
       if (e && e.preventDefault) e.preventDefault();
       if (!motion.on('holdConfirm')) {           // 关掉时退化为普通点击：直接触发
-        this.triggerEvent('confirm', { id: this.properties.id });
+        this.triggerEvent('confirm', { id: this.properties.pk });
         return;
       }
       this._stop();
@@ -51,7 +56,7 @@ Component({
       if (p >= 100) {
         this._raf = null;
         this.setData({ holding: false, confirmed: true });
-        this.triggerEvent('confirm', { id: this.properties.id });
+        this.triggerEvent('confirm', { id: this.properties.pk });
         return;
       }
       this._raf = raf(() => this._tick());

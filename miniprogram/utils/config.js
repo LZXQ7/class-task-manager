@@ -535,7 +535,7 @@ const NOTICE_PAGE = 'pages/notice/index';
  *     9 组自证全抓；等价验证 `_verify_demo_readonly.js` 三场景（demo 拦 / real 放行 / trial 放行）。
  *   全量门禁 **141 过 / 14 历史存量红**，零新增回归。纯前端改动，无需重部署云函数。
  */
-const APP_VERSION = '1.0.8.52';
+const APP_VERSION = '1.0.8.53';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。
