@@ -32,6 +32,38 @@ function aggregateDutyStatus(statuses) {
 }
 
 /**
+ * 演讲时段内按「组」分行（2026-11-17 用户报）
+ * ------------------------------------------------------------
+ * 现场：周五上午第一节，A 组、B 组各有一门**不同**的课（不是全体课），
+ * 两组各排 2 个演讲人 ⇒ 4 个人被平铺进同一行，按学号交错：
+ *   示例成员16 B组 ｜ 示例成员18 B组 ｜ 示例成员25 A组 ｜ 示例成员27 A组
+ * 用户原话：「上面显示 a 组下面显示 b 组，不要放在一起」。
+ *
+ * 口径：
+ *   · 同一时段**同时**有 A 组与 B 组的人（= 两门不同的分组课）⇒ 拆两行，
+ *     **A 组在上、B 组在下**，行首给一个组别小标；
+ *   · 只有一组 / 全体课 ⇒ 单行，split=false，逐块仍带组别小标（原样式）；
+ *   · 组内顺序 = 后端顺序（按学号），前端不重排；
+ *   · scope 缺省或脏值一律兜底成 ALL（渲染成「全体」，不会静默丢人）。
+ */
+function speechSlotGroups(list) {
+  const arr = Array.isArray(list) ? list : [];
+  if (!arr.length) return [];
+  const bucket = { A: [], B: [], ALL: [] };
+  arr.forEach((p) => {
+    const s = p && p.scope === 'A' ? 'A' : (p && p.scope === 'B' ? 'B' : 'ALL');
+    bucket[s].push(p);
+  });
+  const split = bucket.A.length > 0 && bucket.B.length > 0;
+  const out = [];
+  [['A', 'A组'], ['B', 'B组'], ['ALL', '全体']].forEach((slot) => {
+    if (!bucket[slot[0]].length) return;
+    out.push({ scope: slot[0], label: slot[1], split, people: bucket[slot[0]] });
+  });
+  return out;
+}
+
+/**
  * 写操作（生成 / 发布 / 撤回 / 清空）的 busy 看门狗上限。
  * ------------------------------------------------------------
  * 为什么要有它（2026-09-26 用户反馈「点『按序号轮转』后没有任何反应」）：
@@ -620,7 +652,12 @@ Page({
     return api.speechList({ week: this.data.week, classId: cid || undefined }, { toast: false })
       .then((r) => {
         const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
-        const days = ((r && r.days) || []).map(d => Object.assign({}, d, { weekdayText: '周' + (WEEKDAY[d.weekday] || '') }));
+        const days = ((r && r.days) || []).map(d => Object.assign({}, d, {
+          weekdayText: '周' + (WEEKDAY[d.weekday] || ''),
+          /* A/B 两组同一时段课不同 ⇒ 分组分行（见 speechSlotGroups 注释） */
+          amGroups: speechSlotGroups(d.am),
+          pmGroups: speechSlotGroups(d.pm)
+        }));
         this.setData({
           speechLoading: false,
           speechStatus: (r && r.status) || 'DRAFT',

@@ -248,24 +248,36 @@
           <text class="sp-date">{{item.date}}</text>
           <text class="sp-wd">{{item.weekdayText}}</text>
         </view>
-        <view class="sp-slot">
+        <!-- 上午：A/B 两组课不同时拆两行（A 组在上、B 组在下），见 index.js speechSlotGroups。
+             组内顺序走后端学号序，前端不重排。 -->
+        <view class="sp-slot {{item.amGroups.length > 1 ? 'split' : ''}}">
           <view class="sp-slot-tag am">上午</view>
-          <view wx:if="{{item.am.length}}" class="sp-persons">
-            <view wx:for="{{item.am}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
-              <text class="sp-name">{{p.name}}</text>
-              <text wx:if="{{p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
-              <text wx:else class="sp-scope all">全体</text>
+          <view wx:if="{{item.amGroups.length}}" class="sp-lines">
+            <view wx:for="{{item.amGroups}}" wx:for-item="grp" wx:key="scope" class="sp-line">
+              <text wx:if="{{grp.split}}" class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
+              <view class="sp-persons">
+                <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
+                  <text class="sp-name">{{p.name}}</text>
+                  <text wx:if="{{!grp.split && p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
+                  <text wx:elif="{{!grp.split}}" class="sp-scope all">全体</text>
+                </view>
+              </view>
             </view>
           </view>
           <view wx:else class="sp-none">—</view>
         </view>
-        <view class="sp-slot">
+        <view class="sp-slot {{item.pmGroups.length > 1 ? 'split' : ''}}">
           <view class="sp-slot-tag pm">下午</view>
-          <view wx:if="{{item.pm.length}}" class="sp-persons">
-            <view wx:for="{{item.pm}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
-              <text class="sp-name">{{p.name}}</text>
-              <text wx:if="{{p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
-              <text wx:else class="sp-scope all">全体</text>
+          <view wx:if="{{item.pmGroups.length}}" class="sp-lines">
+            <view wx:for="{{item.pmGroups}}" wx:for-item="grp" wx:key="scope" class="sp-line">
+              <text wx:if="{{grp.split}}" class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
+              <view class="sp-persons">
+                <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
+                  <text class="sp-name">{{p.name}}</text>
+                  <text wx:if="{{!grp.split && p.scope !== 'ALL'}}" class="sp-scope">{{p.scope === 'A' ? 'A组' : 'B组'}}</text>
+                  <text wx:elif="{{!grp.split}}" class="sp-scope all">全体</text>
+                </view>
+              </view>
             </view>
           </view>
           <view wx:else class="sp-none">—</view>

@@ -880,9 +880,16 @@
 .sp-date { font-size: 28rpx; font-weight: 700; color: var(--text-1); }
 .sp-wd { font-size: 22rpx; color: var(--text-3); }
 .sp-slot { display: flex; align-items: center; gap: 16rpx; padding: 10rpx 0; }
+/* A/B 两组课不同时段（split）：标签与第一行文字对齐，不要被两行内容顶到中间 */
+.sp-slot.split { align-items: flex-start; }
 .sp-slot-tag { flex: 0 0 76rpx; text-align: center; font-size: 22rpx; font-weight: 600; padding: 6rpx 0; border-radius: 10rpx; }
 .sp-slot-tag.am { background: var(--brand-light); color: var(--brand); }
 .sp-slot-tag.pm { background: var(--warning-bg); color: var(--warning); }
+/* 一行 = 一个组（A 组 / B 组 / 全体）。单组时行首标签不渲染，等同原来的平铺 */
+.sp-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10rpx; }
+.sp-line { display: flex; align-items: center; gap: 12rpx; }
+.sp-line-tag { flex: 0 0 auto; padding: 0 10rpx; border-radius: 8rpx; font-size: 20rpx; line-height: 32rpx; font-weight: 600; background: var(--brand-light); color: var(--brand); }
+.sp-line-tag.all { background: var(--fill-soft); color: var(--text-3); }
 .sp-persons { display: flex; flex-wrap: wrap; gap: 12rpx; flex: 1; }
 .sp-person { display: flex; align-items: center; gap: 8rpx; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--fill-soft); }
 .sp-name { font-size: 26rpx; color: var(--text-1); font-weight: 500; }
