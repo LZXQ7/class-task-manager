@@ -912,6 +912,8 @@
 .sp-ai-date { font-size: 24rpx; color: var(--text-2); }
 .sp-ai-slot { font-size: 22rpx; color: var(--text-3); }
 .sp-ai-name { flex: 1; font-size: 24rpx; color: var(--text-1); }
+/* 「指定」小标签：仅点名到号的预览行出现，提示这行不是轮转排的 */
+.sp-ai-pin { flex: 0 0 auto; padding: 0 10rpx; border-radius: 8rpx; font-size: 20rpx; line-height: 28rpx; color: var(--brand); background: var(--brand-light); }
 .sp-swap-list { max-height: 60vh; overflow-y: auto; }
 .sp-swap-row { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 8rpx; border-bottom: 2rpx solid var(--nav-line); }
 .sp-swap-name { font-size: 28rpx; color: var(--text-1); }

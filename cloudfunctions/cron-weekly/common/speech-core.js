@@ -71,7 +71,12 @@ function buildSlots(sessions, wk, options, week) {
  * @param {Array} roster  [{id, seq, group}]，seq>0 才参与；group='B' 进 B 池，其余进 A 池
  * @param {object} cursors {A,B} **管理员设置的"当前进度双游标"** / 上次发布落下的游标
  *                          —— v2 起起点就是这个，不再有任何 start_seq 下限
- * @param {object} options {need_n:2}  默认每场人数（单场 s.need 优先）
+ * @param {object} options {need_n:2, pins:[{day,slot,seqs:[12,14]}]}
+ *                          · need_n = 默认每场人数（单场 s.need 优先）
+ *                          · pins   = 用户点名「周三上午 b组12号14号」这类**指定人号**。
+ *                            命中场次用指定的人（不再轮转），并把该组游标**落在这组最大号**上
+ *                            （后续场次从它往后续排），这是 2026-11-17 用户实锤的第三版口径：
+ *                            「从周三上午开始，b组12号14号，周三下午a组17号19号」。
  * @returns {{rows:Array, cursors:object, short:number}}
  *          rows = [{date, slot, scope, memberId, seq, group, source:'AUTO'}]
  *          cursors = 本次预演后的游标 —— ⚠️ 只返回，不落库；由 speechPublish 在发布时才写入
@@ -82,12 +87,71 @@ function assign(slots, roster, cursors, options) {
   if (!(need === 1 || need === 2)) need = 2;
   const cur = Object.assign({ A: 0, B: 0 }, cursors || {});
   const state = rr.buildState(roster || [], cur);
+  const list = roster || [];
+
+  /* ---- 指定人号（pins）预处理 ------------------------------------------
+   * 口径（用户 2026-11-17 实锤）：用户说「周三上午 b组12号14号」= 这一场就排 12、14，
+   * 然后该组从 14 往后续排（周三下午 a组17号19号 ⇒ A 组从 19 往后续排）。
+   * 所以 pin 不是「额外插一条」，而是**把游标搬到指定号上** —— 落在钉住的最大号。
+   * ⚠️ 游标是"本轮已排到哪"的语义，搬动后 used 必须按新游标重建，
+   *    否则进位时残留的 used 会让后续场次从旧位置续排（实测：pin 12/14 后仍出 52/54）。 */
+  const bySeq = {};
+  list.forEach(m => { const n = Number(m.seq); if (n > 0 && !bySeq[n]) bySeq[n] = m; });
+  const pinMap = {};
+  const pinnedSeqs = new Set();
+  (Array.isArray(opt.pins) ? opt.pins : []).forEach(p => {
+    const day = Number(p && p.day);
+    const slot = p && p.slot === 'PM' ? 'PM' : (p && p.slot === 'AM' ? 'AM' : '');
+    const seqs = (Array.isArray(p && p.seqs) ? p.seqs : [])
+      .map(n => Number(n)).filter(n => Number.isInteger(n) && n > 0);
+    if (!(day > 0) || !slot || !seqs.length) return;
+    const key = day + '|' + slot;
+    if (!pinMap[key]) pinMap[key] = [];
+    seqs.forEach(n => {
+      if (pinMap[key].indexOf(n) < 0) pinMap[key].push(n);
+      pinnedSeqs.add(n);
+    });
+  });
+  const groupOf = (m) => (m.group === 'B' ? 'B' : 'A');
+
   const out = [];
   let short = 0;
   (slots || []).forEach(s => {
+    const key = Number(s.day) + '|' + s.slot;
+    const pin = pinMap[key];
+    if (pin && pin.length) {
+      const picked = [];
+      pin.forEach(n => { const m = bySeq[n]; if (m && picked.indexOf(m) < 0) picked.push(m); });
+      /* ① 每组游标搬到该组钉住的最大号 ② 按新游标重建 used（= 本轮已排到这儿） */
+      const maxBy = { A: 0, B: 0 };
+      picked.forEach(m => {
+        const g = groupOf(m);
+        if (Number(m.seq) > maxBy[g]) maxBy[g] = Number(m.seq);
+      });
+      ['A', 'B'].forEach(g => {
+        if (!(maxBy[g] > 0)) return;
+        state.cursors[g] = maxBy[g];
+        const set = new Set();
+        list.forEach(m => { if (groupOf(m) === g && Number(m.seq) <= maxBy[g]) set.add(Number(m.seq)); });
+        state.used[g] = set;
+      });
+      picked.forEach(m => out.push({
+        date: s.date,
+        slot: s.slot,
+        scope: s.scope,
+        sessionId: s.sessionId,
+        memberId: m.id,
+        seq: m.seq,
+        group: groupOf(m),
+        source: 'PIN'
+      }));
+      if (picked.length < pin.length) short += pin.length - picked.length;
+      return;
+    }
     const scope = s.scope === 'A' ? 'A' : (s.scope === 'B' ? 'B' : null); // ALL→null 走全体混排
     const needThis = Number(s.need) === 1 || Number(s.need) === 2 ? Number(s.need) : need;
-    const res = rr.pickBySeq(roster || [], scope, needThis, state);
+    /* 钉住的人不参与自动轮转（否则同一周可能被自动排一次、又在指定场排一次） */
+    const res = rr.pickBySeq(list, scope, needThis, state, pinnedSeqs.size ? { skipSeqs: pinnedSeqs } : undefined);
     short += res.short || 0;
     res.chosen.forEach(m => out.push({
       date: s.date,

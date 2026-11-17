@@ -2902,10 +2902,16 @@ const routes = {
             '你是课前演讲排班指令解析器。只把用户的话解析成 JSON，不做排班、不编造姓名。',
             '输出 JSON 结构：',
             '{"start_weekday": 数字|null, "start_slot": "AM"|"PM"|null, "start_seq": 数字|null,',
+            ' "pins": [{"weekday": 3, "slot": "AM", "seqs": [12, 14]}],',
             ' "course_need": [{"course":"课名关键字","need":1|2}]}',
             '字段口径：',
             '- start_weekday/start_slot：话里"从周X上午/下午开始"→首场落点；没说就 null。',
-            '- start_seq：话里"从第N号开始"→起始学号序号；没说就 null。',
+            '- start_seq：只有话里说"从第N号开始"且**没有**点名具体某天某场的人号时才填；否则 null。',
+            '- pins：话里点名"周X上午/下午 + 号数"→每场一条；seqs 是**序号**（= 学号后两位，2 位数字），',
+            '  不是完整学号；号数按用户原话逐个填，一个都不要自己加。',
+            '  例：「周三上午 b组12号14号」→ {"weekday":3,"slot":"AM","seqs":[12,14]}；',
+            '      「周三下午 a组17号19号」→ {"weekday":3,"slot":"PM","seqs":[17,19]}；',
+            '  组别词（A组/B组）只用于人话表达，不进 JSON（组别由排班内核按课表判定）。',
             '- course_need：话里"XX课只安排一个人/两 人"→课名关键字和人数；没说给 []。',
             '只回复符合上述结构的 JSON，不要输出任何其他文字。'
           ].join('\n') },
@@ -2922,6 +2928,20 @@ const routes = {
       const startDay = Number(cmd.start_weekday) || 0;
       const startSlot = cmd.start_slot === 'PM' ? 'PM' : (cmd.start_slot === 'AM' ? 'AM' : '');
       const startSeq = Number(cmd.start_seq) || 0;
+      /* ③c 点名到号（2026-11-17 用户实锤缺失项）：只做语法归一，
+       *     语义校验（号在不在名册 / 组别对不对 / 那天有没有课）放到 ⑥ —— 那里才有 slots 与名册。 */
+      const pins = [];
+      (Array.isArray(cmd.pins) ? cmd.pins : []).forEach(item => {
+        if (!item) return;
+        const day = Number(item.weekday);
+        const slot = item.slot === 'PM' ? 'PM' : (item.slot === 'AM' ? 'AM' : '');
+        const seqs = (Array.isArray(item.seqs) ? item.seqs : [])
+          .map(n => Number(n)).filter(n => Number.isInteger(n) && n > 0);
+        const uniq = [];
+        seqs.forEach(n => { if (uniq.indexOf(n) < 0) uniq.push(n); });
+        if (!(day >= 1 && day <= 7) || !slot || !uniq.length) return;
+        pins.push({ day, slot, seqs: uniq });
+      });
       const override = {};
       const notes = [];
       (Array.isArray(cmd.course_need) ? cmd.course_need : []).forEach(item => {
@@ -2933,9 +2953,9 @@ const routes = {
         notes.push(key + ' → 每场 ' + n + ' 人' + (hit.length ? '' : '（未找到该课名，已忽略）'));
       });
 
-      /* ④ 组别校验（仅指定起始学号时）：单号=A、双号=B；首场组别不符 → 红字错误 */
+      /* ④ 组别校验（仅「从第N号开始」且**没有**点名到号时）：起点号必须与首场组别一致 */
       let redError = '';
-      if (startSeq > 0 && startDay > 0) {
+      if (!pins.length && startSeq > 0 && startDay > 0) {
         const first = sessions.filter(s => s.day_of_week === startDay &&
           (!startSlot || (startSlot === 'AM' ? s.period === speechCore.AM_PERIOD : s.period === speechCore.PM_PERIOD)))
           .sort((a, b) => (a.period - b.period))[0];
@@ -2959,15 +2979,62 @@ const routes = {
       );
       const roster = memRows.map(m => ({ id: m.id, seq: week.seqOf(m.student_no), group: m.group_tag, name: m.name }))
         .filter(m => m.seq > 0).sort((a, b) => a.seq - b.seq || a.id - b.id);
-      let preview = { rows: [], cursors, short: 0, slots: 0 };
-      if (!redError) {
-        const slots = speechCore.buildSlots(sessions, wk, {
-          start_weekday: startDay, start_slot: startSlot, override
-        }, week);
-        if (slots.length) {
-          const plan = speechCore.assign(slots, roster, cursors, {});
-          preview = { rows: plan.rows, cursors: plan.cursors, short: plan.short, slots: slots.length };
+
+      /* ⑥ 场次骨架 + 点名到号的语义校验（用户要的是「红字说明原因」，不是静默忽略） */
+      const slots = speechCore.buildSlots(sessions, wk, {
+        start_weekday: startDay, start_slot: startSlot, override
+      }, week);
+      const dayName = (d) => weekdays[d] || ('周' + d);
+      const slotName = (sl) => (sl === 'AM' ? '上午第1节' : '下午第3节');
+      const rosterBySeq = {};
+      roster.forEach(m => { const n = Number(m.seq); if (n > 0 && !rosterBySeq[n]) rosterBySeq[n] = m; });
+      pins.forEach(p => {
+        if (redError) return;
+        const tag = dayName(p.day) + slotName(p.slot);
+        if (p.seqs.length > 2) {
+          redError = tag + '最多排 2 人，你现在点了 ' + p.seqs.length + ' 个号（' + p.seqs.join('、') + '）。';
+          return;
         }
+        const hit = slots.filter(s => s.day === p.day && s.slot === p.slot)[0];
+        if (!hit) {
+          /* 区分「本来就无课」与「被「从周X开始」筛掉了」—— 后者说清楚才不会被当成 bug */
+          const exist = sessions.filter(s => s.day_of_week === p.day &&
+            s.period === (p.slot === 'AM' ? speechCore.AM_PERIOD : speechCore.PM_PERIOD))[0];
+          redError = exist
+            ? (tag + '在「' + (startSlot ? (dayName(startDay) + slotName(startSlot)) : '起点') + '」之前，不参与本次排班。')
+            : (tag + '本周没有这节课，排不了演讲。');
+          return;
+        }
+        p.seqs.forEach(n => {
+          if (redError) return;
+          const m = rosterBySeq[n];
+          if (!m) { redError = tag + '找不到 ' + n + ' 号（不在本班演讲名册，或已停用/免排值日）。'; return; }
+          if (hit.scope !== 'ALL' && m.group !== hit.scope) {
+            redError = tag + '是 ' + hit.scope + ' 组课，而 ' + n + ' 号（' + m.name + '）是 ' + m.group + ' 组（'
+              + (n % 2 === 1 ? '单号' : '双号') + '），组别不匹配，不能排。';
+          }
+        });
+        if (!redError) {
+          notes.push(tag + '：指定 ' + p.seqs.map(n => {
+            const m = rosterBySeq[n];
+            return n + ' 号' + (m ? '（' + m.name + '）' : '');
+          }).join('、'));
+        }
+      });
+
+      /* ⑦ 只说了「从第N号开始」：把首场那一组的游标搬到 N-1，下一个就被取成 N 号 */
+      if (!redError && !pins.length && startSeq > 0 && slots.length) {
+        const first = slots[0];
+        const g = first.scope === 'B' ? 'B' : 'A';
+        const from = Math.max(0, startSeq - 1);
+        if (first.scope === 'ALL') { cursors.A = from; cursors.B = from; }
+        else cursors[g] = from;
+      }
+
+      let preview = { rows: [], cursors, short: 0, slots: 0 };
+      if (!redError && slots.length) {
+        const plan = speechCore.assign(slots, roster, cursors, { pins });
+        preview = { rows: plan.rows, cursors: plan.cursors, short: plan.short, slots: slots.length };
       }
       /* 预览里补姓名/学号（内核只给 memberId/seq；用上面已读的名册映射） */
       const nameMap = {};
@@ -2981,7 +3048,7 @@ const routes = {
       return {
         ok: !redError, redError,
         text, notes,
-        parsed: { start_weekday: startDay || null, start_slot: startSlot || null, start_seq: startSeq || null },
+        parsed: { start_weekday: startDay || null, start_slot: startSlot || null, start_seq: startSeq || null, pins: pins.length },
         rows, pending: preview.cursors, short: preview.short, slots: preview.slots
       };
     }

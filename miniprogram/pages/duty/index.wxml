@@ -667,8 +667,8 @@
   <bottom-sheet show="{{spAiShow}}" title="智能排班" height="{{1280}}" bind:close="onSpAiClose">
     <view class="sp-form">
       <view class="sp-label">用一句话描述排班</view>
-      <textarea class="sp-ai-input" placeholder="例如：从周二上午开始，从第13号开始，儿童文学只安排一个人" value="{{spAiText}}" bindinput="onSpAiInput" maxlength="200" auto-height />
-      <view class="sp-form-note">支持：从周X上午/下午开始、从第N号开始、某门课只安排1人/2人。可连起来说。</view>
+      <textarea class="sp-ai-input" placeholder="例如：从周三上午开始，b组12号14号，周三下午a组17号19号" value="{{spAiText}}" bindinput="onSpAiInput" maxlength="200" auto-height />
+      <view class="sp-form-note">支持：从周X上午/下午开始、点名某场的人号（周三上午12号14号）、从第N号开始、某门课只安排1人/2人。可连起来说。</view>
       <view wx:if="{{spAiError}}" class="sp-ai-error">{{spAiError}}</view>
       <block wx:if="{{spAiRows.length}}">
         <view class="sp-ai-preview-title">预览（{{spAiRows.length}} 人次{{spAiShort ? ' · 有缺口' : ''}}）</view>
@@ -677,7 +677,8 @@
           <view wx:for="{{spAiRows}}" wx:key="index" class="sp-ai-row">
             <text class="sp-ai-date">{{item.date}}</text>
             <text class="sp-ai-slot">{{item.time}}</text>
-            <text class="sp-ai-name">{{item.name}}（{{item.studentNo}}）</text>
+            <text class="sp-ai-name">{{item.name}}（{{item.studentNo}} 号）</text>
+            <text wx:if="{{item.source === 'PIN'}}" class="sp-ai-pin">指定</text>
             <text wx:if="{{item.scope !== 'ALL'}}" class="sp-scope">{{item.scope === 'A' ? 'A组' : 'B组'}}</text>
             <text wx:else class="sp-scope all">全体</text>
           </view>
