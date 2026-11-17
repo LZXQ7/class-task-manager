@@ -226,6 +226,9 @@ Page({
     spSettingShow: false,
     spCursorA: '',
     spCursorB: '',
+    /* 每场人数规则（speechList 下发）：[{sid,day,slot,courseName,need}]，need=1 才落库 */
+    spSlotRules: [],
+    spRuleEdit: [],            // 弹层里的编辑副本（改完点保存才落库，取消不污染）
     /* 智能排班：输入 + 预览确认 + 红字错误 */
     spAiShow: false,
     spAiText: '',
@@ -685,37 +688,73 @@ Page({
           amGroups: speechSlotGroups(d.am),
           pmGroups: speechSlotGroups(d.pm)
         }));
+        /* 每场人数规则：day/slot 在这里拼成人话标签（wxml 里不做计算） */
+        const slotRules = ((r && r.slotRules) || []).map((it) => ({
+          sid: it.sid,
+          day: it.day,
+          slot: it.slot,
+          courseName: it.courseName,
+          need: it.need === 1 ? 1 : 2,
+          label: '周' + (WEEKDAY[it.day] || '') + ' ' + (it.slot === 'AM' ? '上午第1节' : '下午第3节')
+            + (it.courseName ? ' · ' + it.courseName : '')
+        }));
         this.setData({
           speechLoading: false,
           speechStatus: (r && r.status) || 'DRAFT',
           speechUnpublished: !!(r && r.unpublished),
           speechDays: days,
           speechSetting: (r && r.setting) || this.data.speechSetting,
+          spSlotRules: slotRules,
           speechRoster: (r && r.roster) || []
         });
       })
       .catch((e) => { this.setData({ speechLoading: false }); util.toast((e && e.errMsg) || '加载演讲安排失败'); });
   },
 
-  /* ---- 演讲：设置当前进度双游标 ---- */
+  /* ---- 演讲：设置当前进度双游标 + 每场人数规则 ---- */
   onSpSettingOpen() {
     const s = this.data.speechSetting || {};
-    this.setData({ spSettingShow: true, spCursorA: String(s.cursorA || 0), spCursorB: String(s.cursorB || 0) });
+    /* 编辑副本：改了一半点「取消」不能污染原数据 */
+    const rules = (this.data.spSlotRules || []).map((r) => ({
+      sid: r.sid, day: r.day, slot: r.slot, courseName: r.courseName,
+      need: r.need === 1 ? 1 : 2, label: r.label
+    }));
+    this.setData({
+      spSettingShow: true,
+      spCursorA: String(s.cursorA || 0),
+      spCursorB: String(s.cursorB || 0),
+      spRuleEdit: rules
+    });
   },
   onSpSettingClose() { this.setData({ spSettingShow: false }); },
   onSpCursorA(e) { this.setData({ spCursorA: e.detail.value }); },
   onSpCursorB(e) { this.setData({ spCursorB: e.detail.value }); },
+  /** 每场人数切换（1 人 / 2 人）—— 只改编辑副本，保存时才落库 */
+  onSpRuleNeed(e) {
+    const idx = Number(e.currentTarget.dataset.idx);
+    const need = Number(e.currentTarget.dataset.need) === 1 ? 1 : 2;
+    if (!(idx >= 0) || !this.data.spRuleEdit[idx]) return;
+    this.setData({ ['spRuleEdit[' + idx + '].need']: need });
+  },
   onSpSettingSave() {
     const a = String(this.data.spCursorA || '').trim();
     const b = String(this.data.spCursorB || '').trim();
     if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) { util.toast('两组已排到号都要填数字'); return; }
     if (this._spBusy) return;
     this._spBusy = true;
-    api.speechSetSettings({ cursorA: Number(a), cursorB: Number(b) }, { toast: false }).then(() => {
-      this._spBusy = false;
-      this.setData({ spSettingShow: false });
-      util.toast('进度已保存'); this.loadSpeech();
-    }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '保存失败'); });
+    /* 先落规则、再落游标：规则决定"每场几个人"，游标决定"从谁开始"。
+       规则传全量（need=1 的才留），后端整体覆盖写 ⇒ 幂等。 */
+    const rules = (this.data.spRuleEdit || [])
+      .filter((r) => r && r.need === 1)
+      .map((r) => ({ sid: r.sid, need: 1 }));
+    api.speechSetSlotRules({ rules: rules }, { toast: false })
+      .then(() => api.speechSetSettings({ cursorA: Number(a), cursorB: Number(b) }, { toast: false }))
+      .then(() => {
+        this._spBusy = false;
+        this.setData({ spSettingShow: false });
+        util.toast('设置已保存');
+        this.loadSpeech();
+      }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '保存失败'); });
   },
 
   /* ---- 演讲：一键生成 / 清空 / 发布 / 撤回 ---- */

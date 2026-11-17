@@ -1266,6 +1266,68 @@ function decorateDuty(d, periods, meId) {
  * 本周排到 40 号 → 下周从 41 号继续 → 56 人排完重置回 1 号。
  */
 
+/* ============================================================
+ * 课前演讲：「每场人数规则」持久化（v3，2026-11-17）
+ *   用户口径：「课前演讲设置规则，每周五下午的儿童文学只安排一个人课前演讲」。
+ *   此前 `course_need` 只活在智能排班那一次指令里 —— 下周再排又回到每场 2 人。
+ *   现在落库到 `speech_setting.slot_rules`，一键生成 / 智能排班 / 设置页三处同源。
+ * ============================================================ */
+
+/**
+ * 本周可排演讲的场次（带课名）。
+ * 与 speechGenerate / speechAiParse 原来的内联查询同一口径，抽出来给设置页复用，
+ * 避免「设置页看到的场次」与「实际排的场次」对不上。
+ */
+async function loadSpeechSessions(db, classId, wk) {
+  const cfg = await week.getConfig(db, classId);
+  const cal = await week.loadCalendar(db);
+  const [rows] = await db.query(
+    `SELECT s.id, s.day_of_week, s.period, s.group_scope, s.weeks, s.week_rule, c.name AS courseName
+       FROM session s JOIN course c ON c.id = s.course_id
+      WHERE s.class_id = ? AND s.kind = 'COURSE' ORDER BY s.day_of_week, s.period`, [classId]
+  );
+  const shifts = await week.loadSessionShifts(db);
+  const out = [];
+  rows.forEach(s => {
+    const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
+    if (!slot) return;
+    const p = Number(slot.period);
+    if (p !== speechCore.AM_PERIOD && p !== speechCore.PM_PERIOD) return;
+    const classDate = week.classDateOf(cfg, wk, slot.day, cal);
+    if (!classDate) return;
+    out.push({
+      id: s.id, day_of_week: slot.day, period: p, group_scope: s.group_scope,
+      weeks: s.weeks, week_rule: s.week_rule, class_date: classDate, courseName: s.courseName || ''
+    });
+  });
+  return out;
+}
+
+/**
+ * 解析 slot_rules → `{[sessionId]: 1}`（只认 need=1）。
+ * ⚠️ 脏 JSON / 空值一律当「没有规则」：设置坏了不能让整周排不了班。
+ */
+function parseSlotRules(raw) {
+  const map = {};
+  if (!raw) return map;
+  let arr = raw;
+  if (typeof raw === 'string') {
+    try { arr = JSON.parse(raw); } catch (e) { return map; }
+  }
+  (Array.isArray(arr) ? arr : []).forEach(it => {
+    const sid = Number(it && it.sid);
+    const n = Number(it && it.need);
+    if (sid > 0 && n === 1) map[sid] = 1;
+  });
+  return map;
+}
+
+/** 读本班规则（无行 / 无列 / 脏值都返回空对象） */
+async function loadSlotRules(db, classId) {
+  const [rows] = await db.query('SELECT slot_rules FROM speech_setting WHERE class_id = ?', [classId]);
+  return parseSlotRules(rows[0] && rows[0].slot_rules);
+}
+
 
 const routes = {
   listWeek: {
@@ -2587,8 +2649,21 @@ const routes = {
         );
         roster = rm.map(m => ({ id: m.id, name: m.name, studentNo: m.student_no, seq: week.seqOf(m.student_no) }));
       }
+      /* 每场人数规则（设置页要显示）：本周场次 + 当前 need（没规则 = 2 人） */
+      let slotRules = [];
+      if (guard.canSpeech(ctx.member)) {
+        const ruleMap = await loadSlotRules(pool, classId);
+        const weekSlots = await loadSpeechSessions(pool, classId, wk);
+        slotRules = weekSlots.map(sl => ({
+          sid: sl.id,
+          day: sl.day_of_week,
+          slot: sl.period === speechCore.AM_PERIOD ? 'AM' : 'PM',
+          courseName: sl.courseName,
+          need: ruleMap[sl.id] === 1 ? 1 : 2
+        }));
+      }
       if (!admin && !published) {
-        return { status: 'DRAFT', unpublished: true, days: [], setting, canSpeech: false, roster: [] };
+        return { status: 'DRAFT', unpublished: true, days: [], setting, canSpeech: false, roster: [], slotRules: [] };
       }
       const [rows] = await pool.query(
         `SELECT sp.id, sp.class_date, sp.slot, sp.member_id, sp.scope, sp.source, sp.status,
@@ -2615,6 +2690,7 @@ const routes = {
         setting,
         canSchedule: guard.isSuper(ctx.member) || guard.isDutyAdmin(ctx.member),
         canSpeech: guard.canSpeech(ctx.member),
+        slotRules,
         roster
       };
     }
@@ -2664,8 +2740,9 @@ const routes = {
         const cursors = { A: 0, B: 0 };
         curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') cursors[c.grp] = Number(c.cursor_val) || 0; });
 
-        /* ④ 筛场次骨架 + 轮转选人（默认每场 2 人；无起始设置/人数覆盖） */
-        const slots = speechCore.buildSlots(sessions, wk, {}, week);
+        /* ④ 筛场次骨架 + 轮转选人（默认每场 2 人；「每场人数规则」里 need=1 的场次只排 1 人） */
+        const ruleMap = await loadSlotRules(conn, classId);
+        const slots = speechCore.buildSlots(sessions, wk, { override: ruleMap }, week);
         if (!slots.length) throw new BizError(41004, '本周第1节/第3节没有集体课，无需排演讲');
         const plan = speechCore.assign(slots, roster, cursors, {});
 
@@ -2857,6 +2934,42 @@ const routes = {
     }
   },
 
+  /**
+   * 每场人数规则（v3，2026-11-17）：只存 need=1 的场次，2 人 = 默认不落库。
+   * 前端传全量 [{sid, need}]，归一后**整体覆盖写** —— 幂等，重复保存不会叠加。
+   * 「每周五下午的儿童文学只安排一个人」= 这条规则里 sid=儿童文学课次、need=1，
+   * 之后每周一键生成 / 智能排班都按它排。
+   */
+  speechSetSlotRules: {
+    auth: { speechAuth: true },
+    handler: async (payload, ctx) => {
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const list = Array.isArray(payload.rules) ? payload.rules : [];
+      /* 只能配本班的课次（防越权写别人班级的 session） */
+      const [own] = await pool.query('SELECT id FROM session WHERE class_id = ?', [classId]);
+      const ownSet = new Set(own.map(r => Number(r.id)));
+      const kept = [];
+      const seen = new Set();
+      list.forEach(it => {
+        const sid = Number(it && it.sid);
+        const n = Number(it && it.need);
+        if (!ownSet.has(sid) || (n !== 1 && n !== 2)) return;
+        if (n === 1 && !seen.has(sid)) { seen.add(sid); kept.push({ sid, need: 1 }); }
+      });
+      await pool.query(
+        `INSERT INTO speech_setting (class_id, slot_rules) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE slot_rules = VALUES(slot_rules)`,
+        [classId, JSON.stringify(kept)]
+      );
+      console.log(JSON.stringify({
+        fn: 'schedule', action: 'speechSetSlotRules', member: ctx.member.id, classId,
+        kept: kept.length, dropped: list.length - kept.length
+      }));
+      return { rules: kept };
+    }
+  },
+
   /* ============================================================
    * AI 智能排班（v2 2026-11-17）—— 自然语言 → 结构化指令 → 预览。
    * ★ AI 只做"听懂人话"（解析起始落点/起始学号/某课人数），排班仍由 speech-core
@@ -2942,8 +3055,14 @@ const routes = {
         if (!(day >= 1 && day <= 7) || !slot || !uniq.length) return;
         pins.push({ day, slot, seqs: uniq });
       });
-      const override = {};
+      /* 已保存的「每场人数规则」是本场的底；本次话里说的「XX课只安排1人」再盖上去
+         （指令优先，但**不写回**规则 —— 否则一次随口的话会变成永久规则）。 */
+      const override = Object.assign({}, await loadSlotRules(pool, classId));
       const notes = [];
+      Object.keys(override).forEach(sid => {
+        const s = sessions.filter(x => String(x.id) === String(sid))[0];
+        if (s) notes.push('规则：' + (s.courseName || ('课次 ' + sid)) + ' 每场 ' + override[sid] + ' 人');
+      });
       (Array.isArray(cmd.course_need) ? cmd.course_need : []).forEach(item => {
         const key = String((item && item.course) || '').trim();
         const n = Number(item && item.need);

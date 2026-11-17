@@ -669,6 +669,18 @@
         <input class="sp-input" type="number" placeholder="例如 28" value="{{spCursorB}}" bindinput="onSpCursorB" />
       </view>
       <view class="sp-form-note">只设一次，之后每次发布都接着这个进度往后轮。单号为A组、双号为B组；留 0 表示从头开始。</view>
+      <!-- 每场人数规则（v3）：某门课只排 1 人（如「每周五下午的儿童文学」），保存后每周沿用 -->
+      <view wx:if="{{spRuleEdit.length}}" class="sp-rules">
+        <view class="sp-rules-title">每场人数</view>
+        <view wx:for="{{spRuleEdit}}" wx:key="sid" class="sp-rule">
+          <view class="sp-rule-name">{{item.label}}</view>
+          <view class="sp-need-seg">
+            <view class="sp-need-opt {{item.need === 1 ? 'on' : ''}}" data-idx="{{index}}" data-need="1" bindtap="onSpRuleNeed">1人</view>
+            <view class="sp-need-opt {{item.need !== 1 ? 'on' : ''}}" data-idx="{{index}}" data-need="2" bindtap="onSpRuleNeed">2人</view>
+          </view>
+        </view>
+        <view class="sp-rules-note">默认每场 2 人。改成 1 人的场次会一直沿用（例如周五下午的儿童文学）；点「保存」后，再点「一键生成」重排本周才生效。</view>
+      </view>
     </view>
     <view class="f-actions">
       <view class="btn btn-ghost f-cancel" bindtap="onSpSettingClose">取消</view>
