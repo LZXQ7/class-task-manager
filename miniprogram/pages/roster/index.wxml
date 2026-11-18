@@ -128,8 +128,10 @@
       </view>
       <!-- 辅导员（X 组）不展示学号（需求①）：教职工的学号只是入库占位，展示会误导 -->
       <view wx:if="{{item.groupTag === 'X'}}" class="mb-sub"><text>辅导员 · 不参与值日轮转</text></view>
-      <!-- 只读身份（普通成员）：后端不回学号与值日次数（2026-10-28），这一行没有可显示的内容，
-           整行不出 —— 否则会显示「0 号 · 值日 次」这种半截文案 -->
+      <!-- 只读身份（普通成员）：2026-11-18 放开学号尾号（后端只派生 seq，不含完整学号/值日次数/绑定态）。
+           有尾号才出这一行小字；seq=0（无学号占位）不出，免得显示半截「0 号」。 -->
+      <view wx:elif="{{item.readOnly && item.seq}}" class="mb-sub"><text>{{item.seq}} 号</text></view>
+      <!-- 管理视图：仍是「X 号 · 值日 N 次」整行（含值日次数，只读身份不走这里）。 -->
       <view wx:elif="{{!item.readOnly}}" class="mb-sub"><text>{{item.seq}} 号 · 值日</text><text class="cnt-num">{{item.dutyCount}}</text><text>次</text></view>
     </view>
     <!-- X = 教职工（辅导员）：青色「辅导员」头衔，不显示 A/B 组；其余按职位头衔显示（超管金 / 班委蓝） -->

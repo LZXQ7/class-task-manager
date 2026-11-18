@@ -92,6 +92,10 @@ ok(/readOnly\s*:\s*true/.test(readBlk),
   '② read 分支带 readOnly 标记（前端据此隐藏学号列与管理动作）');
 ok(/position\s*:\s*r\.position/.test(readBlk),
   '② read 分支回传 position（职务是公开信息，前端用它出「班长/生活委员」标签）');
+/* 2026-11-18：放开尾号给普通成员（用户要求「其他人也要看到学号尾号」）。
+ * 只回 seq（后两位），完整 student_no 仍不外泄 —— 新门禁 check-member-readonly-tail.js 真跑口径。 */
+ok(/seq\s*:\s*seqTail\(r\.student_no\)/.test(readBlk),
+  '② read 分支回传 seq 尾号（2026-11-18 放开），但仍是 seqTail 派生的后两位');
 
 /* ---------- ③ 锁死本班 ---------- */
 ok(/guard\.classIdOf\(ctx\)/.test(readBlk),

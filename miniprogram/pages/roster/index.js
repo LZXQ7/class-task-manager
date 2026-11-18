@@ -1343,8 +1343,10 @@ _clockNow() {
           return Object.assign({}, x, {
             // 辅导员（X 组）不展示学号：seq 只用于排序，给一个大值让他留在列表末尾
             // （展示层由 groupTag==='X' 分支接管，不会出现「999 号」）
-            // 只读行没有 studentNo → seqOf 返回 0，整列同值 ⇒ 稳定排序保持后端「按学号」的原序。
-            seq: x.groupTag === 'X' ? 999 : util.seqOf(x.studentNo),
+            // 2026-11-18：只读行（public='read'）后端已派生 seq（尾号），**优先用它**——
+            //   否则这里 seqOf(undefined)=0 会覆盖掉后端尾号，name 下方又显示不出「X 号」。
+            //   管理视图仍从完整 studentNo 现算（口径不变，与后端 seqTail 同为后两位）。
+            seq: x.groupTag === 'X' ? 999 : (x.seq !== undefined && x.seq !== null ? x.seq : util.seqOf(x.studentNo)),
             roleTag: roleText,
             roleTier: roleTier,
             // 列表过渡的内联样式落点（v0.7.21 需求⑤）；wxml 用 style="{{item.lt}}"
