@@ -950,6 +950,13 @@ button, input, select, textarea { font-family: inherit; font-size: 14px; color: 
   padding: 3px 9px;
 }
 .td-ops .link-danger:hover { background: var(--err-ink); color: var(--text-on-brand); border-color: var(--err-ink); }
+/* 成员表操作列对齐（2026-11-18）：受保护行/只读行的中间元素是静态文字说明，
+   此前复用 .muted-note（padding:12px 16px）会把操作列撑宽 ⇒ 右对齐下「删除」右偏 9px。
+   ① 用 flex 右对齐锁定整列基准，中间元素多宽都不影响「删除」贴右；
+   ② 静态说明改用轻量 .ops-note（无大 padding），行高也与按钮行一致。
+   只作用于成员表（类名由 app.js 加在成员表 td 上），不波及请假/值日等其它操作列。 */
+.td-ops-members { display: flex; justify-content: flex-end; align-items: center; }
+.td-ops .ops-note { color: var(--text-2); font-size: 13px; cursor: default; }
 /* 请假「成员」单元格：姓名 / 学号·组 分两行，各自行首对齐；学号用等宽数字避免错位（2026-10-26） */
 .td-member { white-space: nowrap; }
 .m-name { font-weight: 600; font-size: 14px; color: var(--text); line-height: 1.3; }

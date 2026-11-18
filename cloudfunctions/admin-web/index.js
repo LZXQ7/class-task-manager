@@ -209,7 +209,8 @@ function requireAnyPerm(keys) {
 
 /** 概览 / 配置 / 审计 ---------------- */
 
-app.get('/api/overview', requirePerm('overview'), (req, res) => handle(res, () => modConfig.overview()));
+app.get('/api/overview', requirePerm('overview'), (req, res) => handle(res, () =>
+  modConfig.overview(!!(req.session2 && req.session2.canSeeDemo))));
 
 app.get('/api/audit', requirePerm('audit'), (req, res) => handle(res, () => modConfig.listAudit(req.query)));
 

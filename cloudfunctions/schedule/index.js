@@ -2698,7 +2698,7 @@ const routes = {
       let roster = [];
       if (guard.canSpeech(ctx.member)) {
         const [rm] = await pool.query(
-          "SELECT id, name, student_no FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' AND duty_off = 0 ORDER BY student_no",
+          "SELECT id, name, student_no FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' ORDER BY student_no",
           [classId]
         );
         roster = rm.map(m => ({ id: m.id, name: m.name, studentNo: m.student_no, seq: week.seqOf(m.student_no) }));
@@ -2780,9 +2780,12 @@ const routes = {
         });
         if (!sessions.length) throw new BizError(41002, '本班尚未录入课程表，无法生成演讲安排');
 
-        /* ② 取名册（排除教职工/测试/不值日），按序号升序 */
+        /* ② 取名册（排除教职工/测试号），按序号升序
+         *    ⚠️ 2026-11-17 用户报：1 号示例成员01排不到演讲。
+         *    根因是这条 SQL 从值日那份整段复制过来，把 `duty_off = 0` 也带了过来 ——
+         *    「不排值日」是**卫生**的开关，不该连课前演讲一起排除。此处刻意不读 duty_off。 */
         const [memRows] = await conn.query(
-          "SELECT id, student_no, group_tag FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' AND duty_off = 0",
+          "SELECT id, student_no, group_tag FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X'",
           [classId]
         );
         const roster = memRows.map(m => ({ id: m.id, seq: week.seqOf(m.student_no), group: m.group_tag }))
@@ -2850,9 +2853,9 @@ const routes = {
         const [old] = await conn.query('SELECT * FROM speech WHERE id = ? AND class_id = ?', [id, classId]);
         if (!old.length) throw new BizError(41005, '演讲安排不存在');
         const o = old[0];
-        /* 目标人必须在本班可演讲名册内（排除教职工/测试/不值日） */
+        /* 目标人必须在本班可演讲名册内（排除教职工/测试号；不排值日的人照样能演讲） */
         const [m] = await conn.query(
-          "SELECT id, group_tag FROM member WHERE id = ? AND class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' AND duty_off = 0",
+          "SELECT id, group_tag FROM member WHERE id = ? AND class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X'",
           [memberId, classId]
         );
         if (!m.length) throw new BizError(41006, '所选同学不可排演讲');
@@ -3149,12 +3152,13 @@ const routes = {
         }
       }
 
-      /* ⑤ 读双游标+名册，生成预览（buildSlots 带落点+覆盖；assign 只选人不落库） */
+      /* ⑤ 读双游标+名册，生成预览（buildSlots 带落点+覆盖；assign 只选人不落库）
+       *    名册不读 duty_off：「不排值日」只影响卫生，演讲照常参与轮转。 */
       const [curRows] = await pool.query('SELECT grp, cursor_val FROM speech_cursor WHERE class_id = ?', [classId]);
       const cursors = { A: 0, B: 0 };
       curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') cursors[c.grp] = Number(c.cursor_val) || 0; });
       const [memRows] = await pool.query(
-        "SELECT id, student_no, group_tag, name FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' AND duty_off = 0",
+        "SELECT id, student_no, group_tag, name FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X'",
         [classId]
       );
       const roster = memRows.map(m => ({ id: m.id, seq: week.seqOf(m.student_no), group: m.group_tag, name: m.name }))

@@ -71,7 +71,8 @@ require.cache[dbId] = {
   check('假数据里存在 is_demo=1 的班（防空跑变绿）',
     CLASS_ROWS.some((r) => Number(r.is_demo) === 1));
 
-  const ov = await modConfig.overview();
+  // 超管视角：演示班仍要出现在表格里（带「演示」标记），stats 不把它计入合计。
+  const ov = await modConfig.overview(true);
   const demoRow = ov.classes.find((c) => c.id === 104);
   const realRow = ov.classes.find((c) => c.id === 1);
 
@@ -84,6 +85,15 @@ require.cache[dbId] = {
   check('stats.memberCount 排除演示班（57，不是 97）', ov.stats.memberCount === 57, '实际 ' + ov.stats.memberCount);
   check('stats.sessionCount 排除演示班（28，不是 41）', ov.stats.sessionCount === 28, '实际 ' + ov.stats.sessionCount);
   check('stats.classCount 只数启用真实班（1）', ov.stats.classCount === 1, '实际 ' + ov.stats.classCount);
+
+  // 2026-11-18 用户口径：辅导员概览页「各班规模」表格不显示演示班。
+  const ovCounselor = await modConfig.overview(false);
+  check('非超管 overview 表格不含演示班（id=104）',
+    !ovCounselor.classes.some((c) => c.id === 104));
+  check('非超管 overview 仍保留真实班（id=1）',
+    ovCounselor.classes.some((c) => c.id === 1));
+  check('非超管 overview 的 stats 口径不变（memberCount 仍 57）',
+    ovCounselor.stats.memberCount === 57, '实际 ' + ovCounselor.stats.memberCount);
 
   currentPool = poolFor(LIST_ROWS);
   const list = await modClass.listClasses();

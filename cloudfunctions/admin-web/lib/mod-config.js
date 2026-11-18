@@ -10,10 +10,12 @@ const { BizError } = require('../common/resp');
 const { NOT_TEST } = require('../common/test-account');
 const { logAction } = require('./audit');
 
-/** 后台首页概览：一屏看清各班规模 */
-async function overview() {
+/** 后台首页概览：一屏看清各班规模
+ *  @param canSeeDemo 是否超管 —— 演示班是审核用的虚构班，辅导员不该在「各班规模」
+ *    表格里看到它（顶部下拉已在 filterAdminVisible 过滤，这里曾漏掉，2026-11-18 用户实锤）。 */
+async function overview(canSeeDemo) {
   const pool = getPool();
-  const [classes] = await pool.query(
+  const [allClasses] = await pool.query(
     'SELECT c.id, c.name, c.is_active, c.is_demo, c.total_weeks, c.term_start, ' +
     '(SELECT COUNT(*) FROM member m WHERE m.class_id = c.id AND ' + NOT_TEST('m') + ') AS memberCnt, ' +
     // ⚠️ 绑定 = openid 已写入（成员把微信绑定到学号）。同样显式排除测试账号。
@@ -28,6 +30,9 @@ async function overview() {
   const [[recent]] = await pool.query(
     'SELECT COUNT(*) AS c FROM admin_audit_log WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)'
   );
+  // 概览表格：非超管看不到演示班（与 filterAdminVisible 的下拉口径一致）。
+  // stats 仍基于 allClasses 计算——它内部已按 is_demo=0 全量排除，不受这里影响。
+  const classes = canSeeDemo ? allClasses : allClasses.filter((c) => Number(c.is_demo) === 0);
   return {
     classes: classes.map((c) => ({
       id: c.id,

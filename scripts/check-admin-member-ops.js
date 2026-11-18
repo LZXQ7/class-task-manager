@@ -52,12 +52,12 @@ const onlyMembers = (arr) => (arr || []).filter((k) => String(k).indexOf('member
 /* ============================================================
  * ① 权限位定义
  * ============================================================ */
-section('① 6 个操作位定义齐全，且都是 members.* 命名');
+section('① 7 个操作位定义齐全，且都是 members.* 命名');
 
-check(Array.isArray(P.MEMBER_OPS) && P.MEMBER_OPS.length === 6,
-  'MEMBER_OPS 有 6 项（实际 ' + (P.MEMBER_OPS || []).length + '）');
+check(Array.isArray(P.MEMBER_OPS) && P.MEMBER_OPS.length === 7,
+  'MEMBER_OPS 有 7 项（实际 ' + (P.MEMBER_OPS || []).length + '）');
 const keys = (P.MEMBER_OPS || []).map((o) => o.key);
-['members.view', 'members.add', 'members.edit', 'members.import', 'members.remove', 'members.super'].forEach((k) => {
+['members.view', 'members.add', 'members.edit', 'members.import', 'members.remove', 'members.super', 'members.grant'].forEach((k) => {
   check(keys.indexOf(k) >= 0, '有 ' + k);
 });
 check(keys.every((k) => k.indexOf('members.') === 0), '全部以 members. 开头（命名空间统一）');
@@ -74,8 +74,8 @@ section('② resolve() 展开规则：给多少就多少，绝不顺手提权');
 
 const someone = { is_super: 0, position: '辅导员', group_tag: 'X', role: 'ADMIN' };
 const legacy = onlyMembers(P.resolve(someone, 'members')).sort();
-check(legacy.length === 7 && legacy.indexOf('members') >= 0,
-  '老数据（只写 members）→ 展开成父级 + 全部 6 项（改造前行为不变）');
+check(legacy.length === 8 && legacy.indexOf('members') >= 0 && legacy.indexOf('members.grant') >= 0,
+  '老数据（只写 members）→ 展开成父级 + 全部 7 项（含单独授权，老账号不被夺权）');
 
 const viewOnly = onlyMembers(P.resolve(someone, 'members.view')).sort();
 check(viewOnly.join(',') === 'members,members.view',
@@ -86,12 +86,14 @@ check(editOnly.indexOf('members.remove') < 0 && editOnly.indexOf('members.super'
   '只勾「编辑」不会带出「删除 / 设超管」');
 check(editOnly.indexOf('members.view') >= 0 && editOnly.indexOf('members') >= 0,
   '勾了写操作自动补「能进页面 + 能看名单」（否则按钮点了也是 403）');
+check(editOnly.indexOf('members.grant') < 0,
+  '勾「编辑资料」不会白送「单独授权」（三项单独设置必须单独勾，2026-11-18）');
 
 const noMembers = P.resolve(someone, 'fee');
 check(onlyMembers(noMembers).length === 0, '完全不勾成员 → 一个成员权限位都不下发');
 
 const superAll = onlyMembers(P.resolve({ is_super: 1 }, ''));
-check(superAll.length === 7, '超管恒含全部操作位（含 members.super）');
+check(superAll.length === 8, '超管恒含全部操作位（含 members.super / members.grant）');
 
 check(P.resolve(someone, 'members,audit').indexOf('audit') < 0,
   '显式勾 audit 仍被 SUPER_ONLY 过滤（细粒度没有开后门）');
@@ -137,7 +139,11 @@ check(/function canPerm\(/.test(APP) && /state\.perms\.indexOf\(key\)/.test(APP)
 });
 check(/canEdit \? '<button class="link" data-m-edit=/.test(APP), '「编辑」按钮按 members.edit 显隐');
 check(/canDel \? '<button class="link link-danger" data-m-del=/.test(APP), '「删除」按钮按 members.remove 显隐');
-check(/canSuper \? '<button class="link" data-m-super=/.test(APP), '「设为超管」按钮按 members.super 显隐');
+// 2026-11-18：受保护账号（admin）不渲染取消按钮，条件变成 canSuper && !(...)；
+// 仍以 canSuper && 开头即为「按 members.super 显隐」，新门禁 check-member-super-guard
+// 专门守 protectedSuper 那部分。
+check(/canSuper[\s\S]{0,80}?data-m-super=/.test(APP) && /canSuper &&/.test(APP),
+  '「设为超管」按钮按 members.super 显隐');
 
 check(/v\.key === 'members'/.test(APP) && /perm-group/.test(APP),
   'permChecks 把 members 特判成分组（否则 6 个操作位永远发不出去）');

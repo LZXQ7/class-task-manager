@@ -2704,12 +2704,17 @@
             // duty_off（不排值日）必须在列表可见：值日是本小程序的核心业务，
             // 「这个人不参与排班」只藏在编辑弹层里的话，管理员在排班视图根本看不出来。
             '<td>' + m.dutyCount + (m.dutyOff ? ' <span class="tag tag-warn">不排值日</span>' : '') + '</td>' +
-            '<td class="td-ops">' +
+            // td-ops-members：成员表操作列用 flex 右对齐 + 轻量 ops-note，
+            // 避免受保护行/只读行的静态说明把列撑宽导致「删除」按钮右偏（2026-11-18）。
+            '<td class="td-ops td-ops-members">' +
             (canEdit ? '<button class="link" data-m-edit="' + m.id + '">编辑</button>' : '') +
-            (canSuper ? '<button class="link" data-m-super="' + m.id + '" data-v="' + (m.isSuper ? 0 : 1) + '">' +
-              (m.isSuper ? '取消超管' : '设为超管') + '</button>' : '') +
+            (canSuper && !(m.protectedSuper && m.isSuper)
+              ? '<button class="link" data-m-super="' + m.id + '" data-v="' + (m.isSuper ? 0 : 1) + '">' +
+                (m.isSuper ? '取消超管' : '设为超管') + '</button>'
+              : (m.protectedSuper && m.isSuper
+                ? '<span class="ops-note" title="最高管理员，超管身份受保护">最高管理员</span>' : '')) +
             (canDel ? '<button class="link link-danger" data-m-del="' + m.id + '">删除</button>' : '') +
-            (!canEdit && !canSuper && !canDel ? '<span class="muted-note">只读</span>' : '') +
+            (!canEdit && !canSuper && !canDel ? '<span class="ops-note">只读</span>' : '') +
             '</td></tr>';
         }).join('') : '<tr><td colspan="9">' +
           /* 空态三分（E1）：筛选后为空 ≠ 该班没人。
@@ -3010,10 +3015,11 @@
 
   function openMemberDialog(id) {
     var isNew = !id;
+    var canGrant = canPerm('members.grant');
     var dlg = document.createElement('div');
     dlg.className = 'dlg-mask';
     dlg.innerHTML = '<div class="dlg"><div class="dlg-hd">' + (isNew ? '新增成员' : '编辑成员') + '</div>' +
-      '<div class="dlg-bd">' + (isNew ? memberFormHTML(null) : '<div class="loading">读取中…</div>') + '</div>' +
+      '<div class="dlg-bd">' + (isNew ? memberFormHTML(null, canGrant) : '<div class="loading">读取中…</div>') + '</div>' +
       '<div class="dlg-ft"><button class="btn" id="dlg-cancel">取消</button>' +
       (isNew ? '<button class="btn btn-primary" id="dlg-ok">创建</button>' : '') +
       '</div></div>';
@@ -3021,7 +3027,7 @@
     $('#dlg-cancel', dlg).onclick = function () { dlg.remove(); };
     if (isNew) {
       $('#dlg-ok', dlg).onclick = function () {
-        var body = readMemberForm(dlg);
+        var body = readMemberForm(dlg, canGrant);
         api('/api/members', { method: 'POST', body: body }).then(function (r) {
           if (!r.ok) { toast(r.errMsg, 'err'); return; }
           dlg.remove(); toast('已创建', 'ok'); reload();
@@ -3031,11 +3037,11 @@
     }
     api('/api/members/' + id).then(function (r) {
       if (!r.ok) { dlg.remove(); toast(r.errMsg, 'err'); return; }
-      $('.dlg-bd', dlg).innerHTML = memberFormHTML(r.data);
+      $('.dlg-bd', dlg).innerHTML = memberFormHTML(r.data, canGrant);
       var ok = document.createElement('button');
       ok.className = 'btn btn-primary'; ok.textContent = '保存';
       ok.onclick = function () {
-        api('/api/members/' + id, { method: 'POST', body: readMemberForm(dlg) }).then(function (res) {
+        api('/api/members/' + id, { method: 'POST', body: readMemberForm(dlg, canGrant) }).then(function (res) {
           if (!res.ok) { toast(res.errMsg, 'err'); return; }
           dlg.remove(); toast('已保存', 'ok'); reload();
         });
@@ -3057,27 +3063,15 @@
     }).join('');
   }
 
-  function memberFormHTML(m) {
+  function memberFormHTML(m, canGrant) {
     m = m || {};
-    return fld('姓名', '<input type="text" id="f-name" value="' + esc(m.name || '') + '">') +
-      fld('学号', '<input type="text" id="f-no" value="' + esc(m.studentNo || '') + '"' + (m.id ? '' : '') + '>') +
-      fld('分组', '<select id="f-group">' +
-        ['A', 'B', 'X'].map(function (g) {
-          return '<option value="' + g + '"' + (g === (m.groupTag || 'A') ? ' selected' : '') + '>' +
-            (g === 'X' ? '不分组（教职工）' : g + ' 组') + '</option>';
-        }).join('') + '</select>') +
-      fld('角色', '<select id="f-role">' +
-        [['MEMBER', '学生'], ['ADMIN', '管理员'], ['MONITOR', '班委']].map(function (p) {
-          return '<option value="' + p[0] + '"' + (p[0] === (m.role || 'MEMBER') ? ' selected' : '') + '>' + p[1] + '</option>';
-        }).join('') + '</select>') +
-      fld('职位头衔', '<select id="f-position">' + positionOptions(m.position) + '</select>') +
-      fld('状态', '<select id="f-status">' +
-        [['ACTIVE', '正常'], ['LEAVE', '请假'], ['DISABLED', '停用']].map(function (p) {
-          return '<option value="' + p[0] + '"' + (p[0] === (m.status || 'ACTIVE') ? ' selected' : '') + '>' + p[1] + '</option>';
-        }).join('') + '</select>') +
-      fld('不参与值日轮换', '<select id="f-dutyoff">' +
+    // 三项「单独设置」会给成员本人带来实际权限，按 members.grant 单独控制显隐
+    //   （2026-11-18 用户要求：admin 可决定其他后台账号能否设置这些）。
+    //   无权限账号：字段不渲染，后端也会忽略这三项，双闸防伪造提交。
+    var grantFields = canGrant ? (
+      fld('不参与值日轮换（只影响卫生）', '<select id="f-dutyoff">' +
         '<option value="0"' + (!m.dutyOff ? ' selected' : '') + '>否</option>' +
-        '<option value="1"' + (m.dutyOff ? ' selected' : '') + '>是（不排值日）</option></select>') +
+        '<option value="1"' + (m.dutyOff ? ' selected' : '') + '>是（不影响课前演讲）</option></select>') +
       // 单独授予（2026-11-08）：只额外给，不撤销职位自带权限；设置总额不在此列。
       // ⚠️ 不能用 fld() 包多个 checkbox —— 外层是 <label>，点任意位置会误触第一个框。
       '<div class="field"><span class="field-label">单独授予权限（班费）</span>' +
@@ -3094,28 +3088,53 @@
         (m.speechPerm ? ' checked' : '') + '> 可排课前演讲</label>' +
       '<div class="hint">学习委员、生活委员、超管本就自带该权限，无需勾选；' +
       '勾上等于额外授予某人，不撤销任何职位权限。值日排班仍归生活委员，此项只影响课前演讲。' +
-      '</div></div>';
+      '</div></div>'
+    ) : '<div class="field"><span class="field-label">单独授权</span>' +
+      '<div class="hint">当前账号无「单独授权」权限，不能修改不排值日 / 班费消费授权 / 课前演讲授权。</div></div>';
+    return fld('姓名', '<input type="text" id="f-name" value="' + esc(m.name || '') + '">') +
+      fld('学号', '<input type="text" id="f-no" value="' + esc(m.studentNo || '') + '"' + (m.id ? '' : '') + '>') +
+      fld('分组', '<select id="f-group">' +
+        ['A', 'B', 'X'].map(function (g) {
+          return '<option value="' + g + '"' + (g === (m.groupTag || 'A') ? ' selected' : '') + '>' +
+            (g === 'X' ? '不分组（教职工）' : g + ' 组') + '</option>';
+        }).join('') + '</select>') +
+      fld('角色', '<select id="f-role">' +
+        [['MEMBER', '学生'], ['ADMIN', '管理员'], ['MONITOR', '班委']].map(function (p) {
+          return '<option value="' + p[0] + '"' + (p[0] === (m.role || 'MEMBER') ? ' selected' : '') + '>' + p[1] + '</option>';
+        }).join('') + '</select>') +
+      fld('职位头衔', '<select id="f-position">' + positionOptions(m.position) + '</select>') +
+      fld('状态', '<select id="f-status">' +
+        [['ACTIVE', '正常'], ['LEAVE', '请假'], ['DISABLED', '停用']].map(function (p) {
+          return '<option value="' + p[0] + '"' + (p[0] === (m.status || 'ACTIVE') ? ' selected' : '') + '>' + p[1] + '</option>';
+        }).join('') + '</select>') +
+      grantFields;
   }
-  function readMemberForm(dlg) {
-    return {
+  function readMemberForm(dlg, canGrant) {
+    var body = {
       name: $('#f-name', dlg).value.trim(),
       studentNo: $('#f-no', dlg).value.trim(),
       groupTag: $('#f-group', dlg).value,
       role: $('#f-role', dlg).value,
       position: $('#f-position', dlg).value.trim(),
-      status: $('#f-status', dlg).value,
-      dutyOff: $('#f-dutyoff', dlg).value === '1',
-      speechPerm: (function () {
+      status: $('#f-status', dlg).value
+    };
+    // 三项单独设置只有「单独授权」权限才提交（无权限时字段根本没渲染）。
+    // 后端还有一道 canGrant 校验，前端这里只是不送，双闸防伪造。
+    if (canGrant) {
+      var duty = $('#f-dutyoff', dlg);
+      body.dutyOff = !!(duty && duty.value === '1');
+      body.speechPerm = (function () {
         var c = $('#f-perm-speech', dlg);
         return !!(c && c.checked);
-      })(),
-      feePerms: (function () {
+      })();
+      body.feePerms = (function () {
         var out = [];
         var a = $('#f-perm-class', dlg); if (a && a.checked) out.push('class');
         var b = $('#f-perm-league', dlg); if (b && b.checked) out.push('league');
         return out;
-      }())
-    };
+      })();
+    }
+    return body;
   }
 
   /* ---------------- 账号班级 ---------------- */
@@ -3320,7 +3339,7 @@
         '</div></div>' +
         '<div class="card muted-note">' +
         '<strong>另外两处也在后台改、同样无需送审：</strong><br>' +
-        '· <strong>谁不参与值日</strong> → 到「成员」页编辑该成员，把「不排值日」设为<strong>是</strong>（写 member.duty_off，一键排班与定时排班都会自动跳过，且不受轮转影响）。<br>' +
+        '· <strong>谁不参与值日</strong> → 到「成员」页编辑该成员，把「不排值日」设为<strong>是</strong>（写 member.duty_off，一键排班与定时排班都会自动跳过，且不受轮转影响；<strong>只管值日/卫生，课前演讲照常参加</strong>）。<br>' +
         '· <strong>保洁排第几节</strong> → 到「课程表」页编辑保洁课次（kind=CLEAN）的节次即可，算法按课表顺序排，不是写死的。' +
         '</div>';
       $('#r-save', host).onclick = function () {

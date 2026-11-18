@@ -9,6 +9,7 @@ const { getPool } = require('../common/db');
 const { BizError } = require('../common/resp');
 const { NOT_TEST } = require('../common/test-account');
 const { logAction } = require('./audit');
+const permsMod = require('./perms');
 const { FEE_PERM_KEYS, normalizeFeePerms, stringifyFeePerms } = require('../common/fee-perms');
 
 const ROLES = ['ADMIN', 'MONITOR', 'MEMBER'];
@@ -30,6 +31,8 @@ function maskMember(r) {
     groupTag: r.group_tag,
     role: r.role,
     isSuper: Number(r.is_super) === 1,
+    // 受保护最高管理员（admin）：前端据此隐藏「取消超管」按钮（点了才报错=体验差）
+    protectedSuper: permsMod.isProtectedSuper(r),
     position: r.position || '',
     status: r.status,
     dutyCount: Number(r.duty_count || 0),
@@ -201,6 +204,15 @@ async function updateMember(id, patch, session, req) {
   if (!before) throw new BizError(40404, '成员不存在');
   validate(patch);
 
+  // 三项「单独设置」会给成员本人带来实际权限，须有 members.grant 才能改
+  //   （2026-11-18 用户要求，与前端 canPerm('members.grant') 显隐呼应）。
+  //   无权限时静默剥离而非报错：前端本就不渲染/不提交这三项；伪造提交也改不动。
+  if (!permsMod.has(session && session.perms, 'members.grant')) {
+    delete patch.dutyOff;
+    delete patch.feePerms;
+    delete patch.speechPerm;
+  }
+
   const sets = [];
   const args = [];
   const changed = {};
@@ -251,9 +263,29 @@ async function setSuper(id, isSuper, session, req) {
   if (isSuper && before.role !== 'ADMIN') {
     throw new BizError(40001, '只有 ADMIN 角色才能设为超级管理员');
   }
+
+  // ---- 取消超管的护栏（2026-11-18）----
+  if (!isSuper) {
+    // ① 受保护的最高管理员（admin）：任何人都不能取消，含本人误操作。
+    //    这是用户明确口径「给老师开通后台，也要让他们无法取消我的权限」。
+    if (permsMod.isProtectedSuper(before)) {
+      throw new BizError(40001, '这是最高管理员账号，不能取消其超管身份');
+    }
+    // ② 最后一个超管不能取消（防自锁，与 mod-accounts.removeAccount 同口径）。
+    //    注意用裸列名 NOT_TEST()：这里是单表 member 无别名，写 NOT_TEST('m')
+    //    会生成 m.student_no → MySQL 1054（本 bug 的根因，勿复发）。
+    if (Number(before.is_super) === 1) {
+      const [cnt] = await pool.query(
+        'SELECT COUNT(*) AS n FROM member WHERE is_super = 1 AND status = \'ACTIVE\' AND ' + NOT_TEST()
+      );
+      if (Number(cnt[0].n) <= 1) throw new BizError(40001, '这是最后一个超管，不能取消');
+    }
+  }
+
   // ⚠️ WHERE 里带 NOT_TEST：测试账号是内部造的调试数据，不该被后台授予超管，
   // 否则会把 99 段学号的假账号坐实成真权限根。
-  await pool.query('UPDATE member SET is_super = ? WHERE id = ? AND ' + NOT_TEST('m'), [isSuper ? 1 : 0, id]);
+  // ⚠️ 单表 UPDATE 无别名 ⇒ 用 NOT_TEST() 裸列名；写 NOT_TEST('m') 会 1054。
+  await pool.query('UPDATE member SET is_super = ? WHERE id = ? AND ' + NOT_TEST(), [isSuper ? 1 : 0, id]);
   await logAction(session, {
     module: 'member',
     action: isSuper ? 'member.grantSuper' : 'member.revokeSuper',
@@ -268,6 +300,11 @@ async function setSuper(id, isSuper, session, req) {
 async function addMember(data, session, req) {
   const pool = getPool();
   validate(data);
+  // 与 updateMember 同源：无 members.grant 不许随新增成员塞入单独授权
+  if (!permsMod.has(session && session.perms, 'members.grant')) {
+    delete data.feePerms;
+    delete data.speechPerm;
+  }
   const classId = Number(data.classId);
   if (!classId) throw new BizError(40001, '请选择班级');
   const [crows] = await pool.query('SELECT id, name FROM `class` WHERE id = ? LIMIT 1', [classId]);
@@ -308,6 +345,10 @@ async function removeMember(id, session, req) {
   );
   const m = rows[0];
   if (!m) throw new BizError(40404, '成员不存在');
+  // 受保护最高管理员：删人 = 连同超管身份一起删，等价于夺权，一律拒绝
+  if (permsMod.isProtectedSuper(m)) {
+    throw new BizError(40001, '这是最高管理员账号，不能删除');
+  }
   const [[d]] = await pool.query('SELECT COUNT(*) AS c FROM duty WHERE member_id = ?', [id]);
   const [[l]] = await pool.query('SELECT COUNT(*) AS c FROM leave_request WHERE member_id = ?', [id]);
   const dutyCnt = Number(d.c || 0);
@@ -321,7 +362,8 @@ async function removeMember(id, session, req) {
       suggestion: '该成员已有 ' + dutyCnt + ' 条值日、' + leaveCnt + ' 条请假记录，不能删除；建议改为「停用」。'
     };
   }
-  await pool.query('DELETE FROM member WHERE id = ? AND ' + NOT_TEST('m'), [id]);
+  // ⚠️ 单表 DELETE 无别名 ⇒ 用 NOT_TEST() 裸列名；NOT_TEST('m') 会 1054。
+  await pool.query('DELETE FROM member WHERE id = ? AND ' + NOT_TEST(), [id]);
   await logAction(session, {
     module: 'member',
     action: 'member.remove',

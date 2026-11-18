@@ -39,8 +39,10 @@
     total="{{totalWeeks}}"
     current="{{current}}"
     term-start="{{termStart}}"
-    status-text="{{status === 'PUBLISHED' ? '已发布' : (archived ? '已归档' : '草稿')}}"
-    status-type="{{status === 'PUBLISHED' ? 'published' : (archived ? 'archived' : 'draft')}}"
+    <!-- 徽章跟随当前视图：值日看 status，课前演讲看 speechStatus（两者独立，1.0.8.61 修）。
+         曾只绑 status ⇒ 演讲已发布（「撤回发布」都出现了）顶部仍显示「草稿」。archived 两视图共用。 -->
+    status-text="{{(viewMode === 'speech' ? speechStatus : status) === 'PUBLISHED' ? '已发布' : (archived ? '已归档' : '草稿')}}"
+    status-type="{{(viewMode === 'speech' ? speechStatus : status) === 'PUBLISHED' ? 'published' : (archived ? 'archived' : 'draft')}}"
     bind:change="onWeekChange"
   />
 

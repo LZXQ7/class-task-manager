@@ -209,6 +209,10 @@ async function updateAccount(p, session, req) {
     if (!st && Number(a.member_id) === Number(session.memberId)) {
       throw new BizError(40001, '不能停用自己的账号（会导致没人能进后台）');
     }
+    // 受保护最高管理员（admin）：停用他的后台账号 = 夺权，任何人都不许
+    if (!st && permsMod.isProtectedSuper(m)) {
+      throw new BizError(40001, '这是最高管理员账号，不能停用其后台权限');
+    }
     sets.push('status = ?'); args.push(st);
     changes.push(st ? '启用' : '停用');
   }
@@ -251,9 +255,13 @@ async function removeAccount(p, session, req) {
   if (Number(a.member_id) === Number(session.memberId)) {
     throw new BizError(40001, '不能删除自己的账号');
   }
-  // 最后一个超管账号也不许删 —— 删了就再也没人能管理后台
-  const [ms] = await pool.query('SELECT name, class_id, is_super FROM member WHERE id = ? LIMIT 1', [a.member_id]);
+  const [ms] = await pool.query('SELECT id, name, class_id, is_super FROM member WHERE id = ? LIMIT 1', [a.member_id]);
   const m = ms[0] || {};
+  // 受保护最高管理员（admin）：删他的后台账号 = 夺权，任何人都不许
+  if (permsMod.isProtectedSuper(m)) {
+    throw new BizError(40001, '这是最高管理员账号，不能删除其后台权限');
+  }
+  // 最后一个超管账号也不许删 —— 删了就再也没人能管理后台
   if (Number(m.is_super) === 1) {
     const [cnt] = await pool.query(
       'SELECT COUNT(*) AS n FROM admin_user a JOIN member m ON m.id = a.member_id ' +

@@ -75,7 +75,14 @@ const MEMBER_OPS = [
   { key: 'members.edit',   label: '编辑资料 / 停用恢复', desc: '改姓名学号分组职位状态、班费额外权限' },
   { key: 'members.import', label: '导入成员名单',   desc: '批量导入 xlsx/csv/文本（后台特有）' },
   { key: 'members.remove', label: '删除成员',       desc: '硬删无历史记录的人（不可撤回）' },
-  { key: 'members.super',  label: '设为 / 取消超管', desc: '把成员提为超级管理员（极高权限）' }
+  { key: 'members.super',  label: '设为 / 取消超管', desc: '把成员提为超级管理员（极高权限）' },
+  // 单独授权（2026-11-18 用户要求）：编辑成员弹窗里的三项「单独设置」——
+  //   不参与值日轮换(duty_off) / 单独授予班费消费权(fee_perms) / 单独授予课前演讲排班权(speech_perm)。
+  //   这三项能给成员本人带来实际权限，故独立于「编辑资料」单独控制：
+  //   没勾此项的账号，即使有 members.edit 也只能改姓名/分组/职位/状态，碰不到这三项。
+  //   ⚠️ 放在数组末尾是有意的——expandMembers 规则①会把「只有父级 members」的老账号
+  //   展开成全部位（含本项），老账号不会被突然夺权；显式勾了子项的账号才需单独勾它。
+  { key: 'members.grant',  label: '单独授权',       desc: '改「不排值日 / 班费消费授权 / 课前演讲授权」三项单独设置' }
 ];
 const MEMBER_OP_KEYS = MEMBER_OPS.map((o) => o.key);
 
@@ -113,6 +120,18 @@ function expandMembers(list) {
 
 /** 超管专属：任何情况下都不随 perms 下发 */
 const SUPER_ONLY = ['audit', 'accounts'];
+
+/** 受保护的最高管理员账号（唯一 SUPER，示例成员01 / 后台用户名 admin）。
+ *  2026-11-18 用户口径：「admin 是最大的权限，给老师等其他人开通后台账号，
+ *  需要让他们无法取消我的权限」——任何人（含其他超管、含本人误操作）都不得
+ *  取消他的超管身份，也不得停用/删除他的成员或后台账号（那些都等价于夺权）。
+ *  双标识：member id + 学号，任一命中即保护（单一字段变动不致保护失效）。 */
+const PROTECTED_SUPER = { memberId: 13, studentNo: '000000000301' };
+function isProtectedSuper(member) {
+  if (!member) return false;
+  return Number(member.id) === PROTECTED_SUPER.memberId ||
+    String(member.student_no || member.studentNo || '') === PROTECTED_SUPER.studentNo;
+}
 
 /**
  * 职位 → 页签模板。
@@ -203,7 +222,7 @@ function navFor(perms) {
 }
 
 module.exports = {
-  VIEWS, ALL_VIEWS, SUPER_ONLY, POSITION_PERMS, FALLBACK_ADMIN,
+  VIEWS, ALL_VIEWS, SUPER_ONLY, PROTECTED_SUPER, POSITION_PERMS, FALLBACK_ADMIN,
   MEMBER_OPS, MEMBER_OP_KEYS, ALL_PERM_KEYS, expandMembers, isValidPermKey,
-  isSuper, parsePerms, resolve, has, canSeeDemo, navFor
+  isSuper, isProtectedSuper, parsePerms, resolve, has, canSeeDemo, navFor
 };
