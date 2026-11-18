@@ -635,8 +635,16 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   门禁新增 `check-leave-reason-required.js` + `check-courseinfo-template.js`（真跑+变异），
  *   `check-leave-realtime-courseinfo.js` 文案断言同步新模板。**adjust 云函数需部署**。
  * ---------------------------------------------------------------------------
+ * v1.0.8.65（2026-11-18）· 课堂情况模板去首尾括号
+ *   用户反馈：课堂情况文本首尾的「【」「】」括号去掉。
+ *   首行由 `【M月D日星期X` 改为 `M月D日星期X`，末行由 `无迟到旷课情况】` 改为
+ *   `无迟到旷课情况`；其余（大节/课程/两段名单/完整学号/空段省略）全部不变。
+ *   门禁 `check-leave-realtime-courseinfo.js` + `check-courseinfo-template.js` 同步：
+ *   断言从「必须有括号」改成「必须没有括号」，后者新增首行加回括号的变异自证。
+ *   **纯前端改动，adjust 云函数无需重新部署。**
+ * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.64';
+const APP_VERSION = '1.0.8.65';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

@@ -246,7 +246,7 @@ if (buildFn) {
   chk(/const actual = Math\.max\(0, expected - absentees\.length\);/.test(b),
     '实到 = 应到 − 请假数，且下限 0（不能是负数）');
   // ============ 2026-11-18 新模板判据 ============
-  chk(/'【' \+ dateText/.test(b), '⚠️ 第一行以「【」开头（整段发群包裹符，照用户模板）');
+  chk(!/【|】/.test(bc), '⚠️⚠️ 用户明确要求：课堂情况文本首尾不带【】括号（初版加了，已去掉）');
   chk(/const dateText = util\.md\(util\.todayStr\(\)\) \+ '星期' \+ util\.weekdayShort\(util\.todayWeekday\(\)\);/.test(b),
     '⚠️ 第一行是「M月D日星期X」（中文星期，走 util.weekdayShort）');
   chk(/bigPeriodText\(s && s\.period\)/.test(b), '⚠️ 第二行大节描述走 bigPeriodText(period)');
@@ -261,7 +261,7 @@ if (buildFn) {
     '⚠️⚠️ 每行「姓名 空格 完整学号」（姓名在前、完整学号在后，照用户模板）');
   chk(!/String\(x\.seq/.test(bc),
     '🔴⚠️ 不许拿 `seq`（后两位）当学号塞进文本 —— 模板要完整学号');
-  chk(/lines\.push\('无迟到旷课情况】'\)/.test(b), '⚠️ 末行是「无迟到旷课情况】」（结尾包裹符）');
+  chk(/lines\.push\('无迟到旷课情况'\)/.test(b), '⚠️ 末行是「无迟到旷课情况」（无结尾括号）');
   chk(/courseInfoLines: text\.split\(/.test(b), '⚠️ 预览行由 text 拆出（看到的=复制的）');
 // 后端：leaveBoard 必须回完整 studentNo（字段名与 leaveHistory 一致，别造第二种命名）
 const boardBlock = /const list = rows\.map\(r => \(\{[\s\S]*?image: r\.leave_image \|\| ''\s*\}\)\);/.exec(adjustSrc);
@@ -270,7 +270,7 @@ chk(!!boardBlock && /studentNo: String\(r\.student_no \|\| ''\)/.test(boardBlock
     + '只是映射时漏了 ⇒ 前端拿到空串 ⇒ 复制出去少了学号，用户实拍）');
   // 新模板不再写班级名/应到实到/教师，这三项已从 lines 移除（改由日期星期与大节打头）
   chk(!/'应到' \+ expected \+ '人'/.test(b), '旧文案「应到N人」已移除（新模板不要应到实到）');
-  chk(!/'课堂情况：正常'/.test(b), '旧文案「课堂情况：正常」已移除（新模板固定「无迟到旷课情况】」）');
+  chk(!/'课堂情况：正常'/.test(b), '旧文案「课堂情况：正常」已移除（新模板固定「无迟到旷课情况」）');
   chk(/const expected = rows\.filter\(inScope\)\.length;/.test(b)
     && /const actual = Math\.max\(0, expected - absentees\.length\);/.test(b),
     '⚠️ 应到/实到仍计算（口径守卫），只是不写进新模板文本');
@@ -443,8 +443,8 @@ function judge(o) {
     push(/lines\.push\('请假人员：'\)/.test(b) && /lines\.push\('公假人员:'\)/.test(b));
     push(/lines\.push\(\(x\.name \|\| ''\) \+ ' ' \+ String\(x\.studentNo \|\| ''\)\);/.test(b));
     push(!/String\(x\.seq/.test(bcs));
-    push(/lines\.push\('无迟到旷课情况】'\)/.test(b));
-    push(/'【' \+ dateText/.test(b) && /bigPeriodText\(s && s\.period\)/.test(b) && /'课程:'/.test(b));
+    push(/lines\.push\('无迟到旷课情况'\)/.test(b));
+    push(!/【|】/.test(bcs) && /dateText,/.test(b) && /bigPeriodText\(s && s\.period\)/.test(b) && /'课程:'/.test(b));
     const bb = /const list = rows\.map\(r => \(\{[\s\S]*?image: r\.leave_image \|\| ''\s*\}\)\);/.exec(vAdjustAll);
     push(!!bb && /studentNo: String\(r\.student_no \|\| ''\)/.test(bb[0]));
     push(!!bb && /reason: r\.reason \|\| ''/.test(bb[0]));

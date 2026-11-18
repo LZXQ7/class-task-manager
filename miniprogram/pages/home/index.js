@@ -922,15 +922,15 @@ Page({
     const absentees = (leaveList || []).filter(inScope).filter(overlap);
     const actual = Math.max(0, expected - absentees.length);
     // ============ 新模板（2026-11-18 用户需求）============
-    //  【M月D日星期X
+    //  M月D日星期X
     //  上午第一大节
     //  课程:课程名
     //  请假人员：
     //  姓名 学号
     //  公假人员:
     //  姓名 学号
-    //  无迟到旷课情况】
-    // ⚠️ 第一段开头有「【」、末段结尾有「】」（整段当一行消息发群里的包裹符，照抄用户模板）。
+    //  无迟到旷课情况
+    // ⚠️ 首尾**不加**【】括号（2026-11-18 用户明确要求：初版照模板加了包裹符，用户要求去掉）。
     // ⚠️ 事由分流：reason=PUBLIC → 公假人员；其余（病假/事假/其他/老数据无事由）→ 请假人员。
     // ⚠️ 空段整段省略（用户选「整段省略」）：没有请假人员就不写「请假人员：」标题，公假同理。
     // ⚠️ 每行「姓名 学号」姓名在前、完整学号在后（用户模板顺序），中间一个空格。
@@ -939,7 +939,7 @@ Page({
     const leaveRows = absentees.filter((x) => !isPublic(x));
     const dateText = util.md(util.todayStr()) + '星期' + util.weekdayShort(util.todayWeekday());
     const lines = [
-      '【' + dateText,
+      dateText,
       bigPeriodText(s && s.period),
       '课程:' + ((s && s.name) || '')
     ];
@@ -955,7 +955,7 @@ Page({
         lines.push((x.name || '') + ' ' + String(x.studentNo || ''));
       });
     }
-    lines.push('无迟到旷课情况】');
+    lines.push('无迟到旷课情况');
     const text = lines.filter((l) => !!l).join('\n');
     this.setData({
       courseInfoLoading: false,

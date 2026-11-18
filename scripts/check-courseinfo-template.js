@@ -68,12 +68,14 @@ let out = run(s, roster, []);
 let lines = out.courseInfoText.split('\n');
 console.log('\n[场景1 无人请假]');
 console.log(lines.join('\n'));
-chk(lines[0] === '【11月18日星期三', '第一行 = 【M月D日星期X');
+chk(lines[0] === '11月18日星期三', '第一行 = M月D日星期X（无【】括号）');
 chk(lines[1] === '下午第一大节', 'period=3 → 下午第一大节（映射口径）');
 chk(lines[2] === '课程:儿童文学', '第三行 = 课程:课程名');
 chk(!lines.some((l) => l.indexOf('请假人员：') >= 0), '空段省略：无请假人员时不写标题');
 chk(!lines.some((l) => l.indexOf('公假人员:') >= 0), '空段省略：无公假人员时不写标题');
-chk(lines[lines.length - 1] === '无迟到旷课情况】', '末行 = 无迟到旷课情况】');
+chk(lines[lines.length - 1] === '无迟到旷课情况', '末行 = 无迟到旷课情况（无】括号）');
+chk(!lines.join('\n').includes('【') && !lines.join('\n').includes('】'),
+  '用户明确要求：整段文本首尾不带【】括号');
 
 // 场景2：1 病假 + 1 公假 → 分两段，每行「姓名 学号」
 out = run(s, roster, [
@@ -119,6 +121,20 @@ const badOut = badRunner(s, roster, [mkLeave('张三', '000000000346', 'PUBLIC')
 const badLines = badOut.courseInfoText.split('\n');
 chk(badLines.indexOf('公假人员:') < 0 && badLines.indexOf('请假人员：') >= 0,
   '变异「PUBLIC 不算公假」被抓：公假人员段消失、该人落到请假段');
+
+// 变异自证2：把首行加回【】括号，真跑输出必须带括号（证明上面的「无括号」判据不是摆设）
+const bracketSrc = m[1].replace('      dateText,', "      '【' + dateText + '】',");
+chk(bracketSrc !== m[1], '变异锚点命中（首行 dateText 可替换）');
+const bracketRunner = new Function(
+  'util', 'bigPeriodText',
+  'return function(s, roster, leaveList) {'
+  + '  var out = null; var self = { data: {}, setData: function(o){ out = o; } };'
+  + '  (function(){' + bracketSrc.replace(/this\.setData/g, 'self.setData') + '\n  }).call(self, s, roster, leaveList);'
+  + '  return out; };'
+)(utilStub, bigPeriodText);
+const bracketFirst = bracketRunner(s, roster, []).courseInfoText.split('\n')[0];
+chk(bracketFirst === '【11月18日星期三】',
+  '变异「首行加回【】括号」被抓：真跑输出首行确实带括号');
 
 console.log('');
 if (bad) { console.log('[FAIL] ' + bad + ' 项未通过'); process.exit(1); }
