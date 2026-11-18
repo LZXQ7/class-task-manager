@@ -91,6 +91,13 @@ check(!!GOOD_T && /viewMode/.test(GOOD_T) && /speechStatus/.test(GOOD_T),
 check(!!GOOD_Y && /viewMode/.test(GOOD_Y) && /speechStatus/.test(GOOD_Y),
   'status-type 表达式按 viewMode 在 status / speechStatus 间选源');
 
+/* 真上传曾因此失败：注释被插进 <week-switcher> 起始标签的属性之间
+   ⇒ summer-minifywxml 压缩器报 `42:5:unexpected character '<'`（本地 check-wxml 不管这个）。
+   把判据放门禁里，下次再犯本地就红，不用等上传。 */
+const wsOpen = (SRC.match(/<week-switcher\b[\s\S]*?\/>/) || [''])[0];
+check(!!wsOpen && wsOpen.indexOf('<!--') < 0,
+  '<week-switcher> 起始标签内部不得插 <!-- 注释（否则真上传编译报 unexpected character）');
+
 console.log('\n── ③ 变异自证（改坏 → 对应场景必须翻红）');
 /** 用「文件名 + 属性整串」做锚点替换，限定只改这一处 */
 function mutate(newT, newY) {

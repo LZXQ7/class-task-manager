@@ -33,14 +33,15 @@
   <spring-scroll style="display:block;flex:1;min-height:0" class="dt-scroll" id="dsMain" bindrefresh="onRefresh">
 
   <!-- addGlobalClass: true，外部 class 能作用到组件根节点，所以它也参与入场（st-item） -->
+  <!-- 徽章跟随当前视图：值日看 status，课前演讲看 speechStatus（两者独立，1.0.8.61 修）。
+       曾只绑 status ⇒ 演讲已发布（「撤回发布」都出现了）顶部仍显示「草稿」。archived 两视图共用。
+       ⚠️ 注释只能放标签外：WXML 起始标签的属性之间插注释标记，会让真上传编译报 unexpected character '<'。 -->
   <week-switcher
     class="st-item st-1"
     week="{{week}}"
     total="{{totalWeeks}}"
     current="{{current}}"
     term-start="{{termStart}}"
-    <!-- 徽章跟随当前视图：值日看 status，课前演讲看 speechStatus（两者独立，1.0.8.61 修）。
-         曾只绑 status ⇒ 演讲已发布（「撤回发布」都出现了）顶部仍显示「草稿」。archived 两视图共用。 -->
     status-text="{{(viewMode === 'speech' ? speechStatus : status) === 'PUBLISHED' ? '已发布' : (archived ? '已归档' : '草稿')}}"
     status-type="{{(viewMode === 'speech' ? speechStatus : status) === 'PUBLISHED' ? 'published' : (archived ? 'archived' : 'draft')}}"
     bind:change="onWeekChange"
