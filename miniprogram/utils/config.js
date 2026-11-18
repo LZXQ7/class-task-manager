@@ -625,7 +625,7 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   `check-speech-schedule.js` 的 v2 契约（"生成不写游标"）同步改成 v3。
  * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.62';
+const APP_VERSION = '1.0.8.63';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

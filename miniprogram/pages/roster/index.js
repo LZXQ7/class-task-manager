@@ -185,6 +185,13 @@ Page({
     isSuper: false,
     /** 辅导员（groupTag='X'）：与超管同享「看绑定状态 / 停用成员」权限（v0.7.19） */
     isCounselor: false,
+    /**
+     * 学号可见闸（2026-11-18 用户定：仅超管 / 辅导员 / 班委可见学号，普通成员不可见）。
+     * = isSuper || 辅导员 || canLeave(超管 || 学生班委)。后端 auth.login 下发的权威位，
+     * 前端只做展示闸；真正的数据拦截在 member.list read 分支的 guard.isCommittee。
+     * 双闸原因：名单缓存 mem 只按班级+关键词隔离，普通成员可能读到班委缓存里残留的 seq。
+     */
+    canSeeNo: false,
     /** 成员备注（v0.7.16 需求⑦）：仅教职工 + 超管可见可写 */
     noteVisible: false,
     noteList: [],
@@ -392,9 +399,11 @@ Page({
     this._pendingOpenLeave = String(o.openLeave || '') === '1';
     const p = (app && app.globalData && app.globalData.profile) || null;
     const isSuper = !!(app && app.isSuper && app.isSuper());
-    const canManage = isSuper || !!(p && p.groupTag === 'X');
+    const isCounselor = !!(p && p.groupTag === 'X');
+    const canManage = isSuper || isCounselor;
     const canRosterEdit = !!(app && app.canRosterEdit && app.canRosterEdit());
     const canGrantPosition = !!(app && app.canGrantPosition && app.canGrantPosition());
+    const canLeave = !!(app && app.canLeave && app.canLeave());
     this.setData({
       statusBarHeight: app.globalData.statusBarHeight || 20,
       classId,
@@ -403,10 +412,12 @@ Page({
       canRosterEdit,
       canGrantPosition,
       isSuper,
-      isCounselor: !!(p && p.groupTag === 'X'),
+      isCounselor,
+      // 学号可见闸：超管 / 辅导员 / 班委(canLeave) 可见，普通成员不可见。
+      canSeeNo: isSuper || isCounselor || canLeave,
       // 关注的学生**卡片**已于 2026-11-14 迁回首页；本页只在详情里保留「固定到主页」按钮
       isAdmin: !!(app && app.isAdmin && app.isAdmin()),
-      canLeave: !!(app && app.canLeave && app.canLeave()),
+      canLeave,
       navTitle: name ? (name + ' · 成员') : '成员与分组'
     });
     // 登录可能晚于 onLoad 完成：就绪后补一次身份，否则超管首屏看不到「解除微信绑定」
@@ -414,14 +425,18 @@ Page({
       app.ready().then(() => {
         const p2 = (app.globalData && app.globalData.profile) || null;
         const s2 = !!(app.isSuper && app.isSuper());
+        const c2 = !!(p2 && p2.groupTag === 'X');
+        const l2 = !!(app.canLeave && app.canLeave());
         this.setData({
           isSuper: s2,
-          isCounselor: !!(p2 && p2.groupTag === 'X'),
+          isCounselor: c2,
           isAdmin: !!(app.isAdmin && app.isAdmin()),
-          canManage: s2 || !!(p2 && p2.groupTag === 'X'),
+          canManage: s2 || c2,
           canRosterEdit: !!(app.canRosterEdit && app.canRosterEdit()),
           canGrantPosition: !!(app.canGrantPosition && app.canGrantPosition()),
-          canLeave: !!(app.canLeave && app.canLeave())
+          canLeave: l2,
+          // 登录晚于 onLoad 时补算学号可见闸（同 onLoad 口径）。
+          canSeeNo: s2 || c2 || l2
         }, () => {
           // ⚠️ 登录晚于 onLoad 完成时：onLoad/onShow 里那两次 _loadLeaveBoard 都会因为
           //    canLeave 还没算出来而直接 return —— 必须在这里补拉一次，

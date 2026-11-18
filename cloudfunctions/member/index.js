@@ -801,16 +801,23 @@ const routes = {
        *
        * 口径（用户 2026-10-28 定）：**姓名 + 组别 + 职务**，其余一律不给 ——
        *   学号、微信绑定态、值日次数、备注都是管理动作需要的，全班可见没有收益只有风险。
-       * 2026-11-18 微调：在「姓名下方」额外放开**学号尾号**（seq，仅后两位），
-       *   用户口径「其他人也要能看到学号尾号」；完整学号 / 绑定态 / 值日次数仍不给。
+       * 2026-11-18 两次调整（最终口径）：
+       *   ① 先放开**学号尾号**（seq，后两位）给「其他人」；
+       *   ② 同日收紧为「仅超管 / 辅导员 / 班委可见」—— 班委与普通成员同走 read 分支
+       *      （前端 canManage 只含 isSuper / 辅导员），故用 guard.isCommittee 区分：
+       *      班委回 seq、普通成员**连 seq 都不回**。超管 / 辅导员走 manage 分支，不受此处影响。
+       *   完整学号 / 绑定态 / 值日次数仍一律不给。
        *
        * ⚠️ 只读本班：忽略 payload.classId（不像 manage 可以带 classId 跨班查），
        *    用 `guard.classIdOf(ctx)` 锁死。普通成员没有理由看别的班。
-       * ⚠️ 排序用 student_no、并派生 seq 返回；**完整 student_no 仍不返回** ——
-       *    名单顺序要和管理员视图一致（按学号），否则同一份名单两种身份排出两种顺序。
+       * ⚠️ 排序用 student_no（SELECT 里取、但不返回原值）；seq 只作为**受身份闸保护的展示字段**
+       *    派生，名单顺序要和管理员视图一致（按学号），否则同一份名单两种身份排出两种顺序。
        */
       if (payload.public === 'read') {
-        guard.requireBind(ctx);
+        const me = guard.requireBind(ctx);
+        // 学号可见闸：班委（role ∈ {ADMIN,MONITOR} 且非 X 组）才看得到尾号。
+        // 超管 / 辅导员走 manage 分支不会到这里；这里的 ADMIN 非 X = 学生班委。
+        const canSeeNo = guard.isCommittee(me);
         const classId = guard.classIdOf(ctx);
         const kw = String(payload.kw || '').trim();
         let sql = 'SELECT id, name, group_tag, position, student_no FROM member WHERE class_id = ?'
@@ -827,9 +834,10 @@ const routes = {
           name: r.name,
           groupTag: r.group_tag,
           position: r.position || '',
-          // 2026-11-18：只放开尾号（后两位数字），供姓名下方显示「X 号」。
+          // 学号可见闸（2026-11-18 最终口径）：仅班委拿到尾号（后两位），供姓名下方显示「X 号」。
+          // 普通成员此字段**完全不下发**（连 0 都不给，避免字段存在被误判为有数据）。
           // 不放完整 student_no / 绑定态 / 值日次数 —— 仍是只读名单。
-          seq: seqTail(r.student_no),
+          ...(canSeeNo ? { seq: seqTail(r.student_no) } : {}),
           // 只读标记：前端据此隐藏绑定态 / 调组 / 移出等全部管理动作。
           // 字段名刻意与管理视图不同名，避免「字段恰好存在就以为是完整数据」。
           readOnly: true

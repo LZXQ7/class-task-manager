@@ -92,10 +92,11 @@ ok(/readOnly\s*:\s*true/.test(readBlk),
   '② read 分支带 readOnly 标记（前端据此隐藏学号列与管理动作）');
 ok(/position\s*:\s*r\.position/.test(readBlk),
   '② read 分支回传 position（职务是公开信息，前端用它出「班长/生活委员」标签）');
-/* 2026-11-18：放开尾号给普通成员（用户要求「其他人也要看到学号尾号」）。
- * 只回 seq（后两位），完整 student_no 仍不外泄 —— 新门禁 check-member-readonly-tail.js 真跑口径。 */
+/* 2026-11-18：尾号最终口径 = 仅超管 / 辅导员 / 班委可见（普通成员不可见）。
+ * seq 派生受 guard.isCommittee 闸（...(canSeeNo ? {seq: seqTail(...)} : {})），完整 student_no 不外泄。
+ * 可见范围真跑口径由 check-member-readonly-tail.js 守，这里只钉「seq 仍来自 seqTail 后两位」。 */
 ok(/seq\s*:\s*seqTail\(r\.student_no\)/.test(readBlk),
-  '② read 分支回传 seq 尾号（2026-11-18 放开），但仍是 seqTail 派生的后两位');
+  '② read 分支的 seq 尾号仍由 seqTail 派生后两位（可见范围由 tail 门禁 gate）');
 
 /* ---------- ③ 锁死本班 ---------- */
 ok(/guard\.classIdOf\(ctx\)/.test(readBlk),
