@@ -899,6 +899,26 @@
   background: var(--brand-light);
 }
 
+/* 请假事由 picker（与提交请假申请同口径）：整行可点，右侧箭头提示可选 */
+.lv-reason-pick {
+  width: 100%;
+  min-width: 0;
+  height: 76rpx;
+  margin-top: 4rpx;
+}
+/* 「其他」的手填说明输入框（必填） */
+.lv-reason-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 76rpx;
+  margin-top: 16rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+  color: var(--text-1);
+  background: var(--bg-fill);
+  border-radius: 20rpx;
+}
+
 .lv-search {
   display: flex;
   align-items: center;

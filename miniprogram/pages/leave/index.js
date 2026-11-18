@@ -21,6 +21,7 @@ const PERIOD_DEFS_FRONT = {
 /**
  * 请假事由（2026-11-03 需求③）：公假 / 病假 / 事假 / 其他。
  * 选「其他」必须手填说明（存 reason_note）：前端拦一次，后端再拦一次。
+ * 2026-11-18 起「其他」说明由选填收紧为**必填**（与请假登记同口径）。
  * ⚠️ 与换班事由（COURSE/SICK/INTERN/OTHER，落 swap_request 的 ENUM 列）是两套枚举，别混。
  */
 const REASON_OPTS = [
@@ -110,7 +111,7 @@ Page({
     reasonOpts: REASON_OPTS,
     reasonIndex: 3,
     reasonText: '其他',
-    /** 选「其他」时才显示手填说明输入框（选填） */
+    /** 选「其他」时才显示手填说明输入框（必填，2026-11-18 收紧） */
     reasonIsOther: true,
     reasonNote: '',
     imageFileId: '',
@@ -266,7 +267,7 @@ Page({
     });
   },
 
-  /** 「其他」的手填说明（选填，最多 30 字） */
+  /** 「其他」的手填说明（必填，最多 30 字） */
   onReasonNoteInput(e) {
     this.setData({ reasonNote: String((e.detail && e.detail.value) || '').slice(0, 30) });
   },
@@ -334,6 +335,8 @@ Page({
     const reason = REASON_OPTS[this.data.reasonIndex] ? REASON_OPTS[this.data.reasonIndex].key : 'OTHER';
     const periods = leavePeriods || [];
     const note = reason === 'OTHER' ? String(reasonNote || '').trim() : '';
+    // 事由「其他」必须手填说明：前端拦一次，后端 leaveApply 再拦一次
+    if (reason === 'OTHER' && !note) { util.toast('请填写事由说明'); return; }
     this.setData({ submitting: true });
     api.leaveApply({ startDate, endDate, periods, reason, reasonNote: note, fileId: imageFileId }, { toast: false })
       .then((r) => {

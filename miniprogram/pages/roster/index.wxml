@@ -521,6 +521,17 @@
         <view class="lv-hint">{{leavePeriodHint}}</view>
         <view class="lv-hint">区间内已排的值日会自动标记为「已请假」（按整天标记）；撤销时恢复。</view>
 
+        <!-- 请假事由（与提交请假申请同口径）：公假 / 病假 / 事假 / 其他。选「其他」必须手填说明。 -->
+        <view class="lv-sec-t">请假事由</view>
+        <picker mode="selector" range="{{leaveReasonOpts}}" range-key="text" value="{{leaveReasonIndex}}" bindchange="onLeaveReasonChange">
+          <view class="lv-date lv-reason-pick">
+            <text>{{leaveReasonText}}</text>
+            <app-icon name="chevron-down" variant="gray" size="{{26}}" />
+          </view>
+        </picker>
+        <input wx:if="{{leaveReasonIsOther}}" class="lv-reason-input" value="{{leaveReasonNote}}"
+          placeholder="请填写具体事由（必填，最多 30 字）" placeholder-class="f-ph" maxlength="30" bindinput="onLeaveReasonNoteInput" />
+
         <view class="lv-sec-t">选择同学（点一下即登记上面的日期）</view>
         <view class="lv-search">
           <app-icon name="search" variant="gray" size="{{32}}" />

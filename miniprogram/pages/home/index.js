@@ -22,6 +22,19 @@ const FEED_OUT_MS = 260;
 const FEED_PLAY_MAX = 5;
 
 /**
+ * 课堂情况模板的「大节」描述（2026-11-18 用户需求）。
+ * 全校一天 5 大节：上午 2 + 下午 2 + 晚上 1。session.period 就是 1~5 的大节序号：
+ *   1→上午第一大节 2→上午第二大节 3→下午第一大节 4→下午第二大节 5→晚上第一大节
+ * 用中文数字，与用户模板「第一大节」口径一致；6 及以上（自定义课表）兜底「第N大节」。
+ */
+const PERIOD_BIG_TEXT = ['', '上午第一大节', '上午第二大节', '下午第一大节', '下午第二大节', '晚上第一大节'];
+const CN_NUM = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+function bigPeriodText(period) {
+  const n = Number(period) || 0;
+  return PERIOD_BIG_TEXT[n] || ('第' + (CN_NUM[n] || n) + '大节');
+}
+
+/**
  * Hero 卡 = 纯提醒：只告诉你「今天你值日」以及在哪一节、和谁一起，
  * 不再提供打卡 / 确认完成（本工具只做值日提醒，不做打卡验收）。
  */
@@ -140,6 +153,8 @@ Page({
     courseInfoLoading: false,
     /** 组好的整段文本（一键复制的内容；**唯一真源**，弹层显示与复制都用它） */
     courseInfoText: '',
+    /** 预览按行显示（由 courseInfoText.split('\n') 派生，保证看到的=复制的） */
+    courseInfoLines: [],
     courseInfoTitle: '',
     courseInfoTeacher: '',
     courseInfoRoom: '',
@@ -906,41 +921,47 @@ Page({
     // 请假者也必须落在同一组口径内：单组课里，别组的人请假不该扣这节课的应到
     const absentees = (leaveList || []).filter(inScope).filter(overlap);
     const actual = Math.max(0, expected - absentees.length);
-    // 🔴 模板第一行是「班级全称」（形如「示例专业A1班」）。
-    //    它只由 `_setLeaveHomeClass` 顺带赋值（`leaveBoard` 的 className），
-    //    而那个请求是异步的 ⇒ 曾出现「本班」占位（用户实拍）。
-    //    三层保障：
-    //      ① `classFullName`（**主路径**，来自 duty.home 的 className，首屏就到）；
-    //      ② `leaveHomeClassName`（请假日备用；实测常为空，仅作二次兜底）；
-    //      ③ 还拿不到时用**「（班级）」**占位。
-    //      ③ 还拿不到时用**「（班级）」**占位。
-    //    ⚠️③ 为什么不写「本班」：那是个**看起来像真名的词** —— 班委会直接发到群里，
-    //    别人看到「本班 · 儿童文学」不知道是哪个班，比明说「没取到」更糟。
-    //    ⚠️ 第一行**绝不能空**：空会被下面那行 filter 连课程名一起滤掉，复制出去少一行首。
-    const cls = String(this.data.classFullName || this.data.leaveHomeClassName || '').trim();
+    // ============ 新模板（2026-11-18 用户需求）============
+    //  【M月D日星期X
+    //  上午第一大节
+    //  课程:课程名
+    //  请假人员：
+    //  姓名 学号
+    //  公假人员:
+    //  姓名 学号
+    //  无迟到旷课情况】
+    // ⚠️ 第一段开头有「【」、末段结尾有「】」（整段当一行消息发群里的包裹符，照抄用户模板）。
+    // ⚠️ 事由分流：reason=PUBLIC → 公假人员；其余（病假/事假/其他/老数据无事由）→ 请假人员。
+    // ⚠️ 空段整段省略（用户选「整段省略」）：没有请假人员就不写「请假人员：」标题，公假同理。
+    // ⚠️ 每行「姓名 学号」姓名在前、完整学号在后（用户模板顺序），中间一个空格。
+    const isPublic = (x) => String(x.reason || '') === 'PUBLIC';
+    const publicRows = absentees.filter(isPublic);
+    const leaveRows = absentees.filter((x) => !isPublic(x));
+    const dateText = util.md(util.todayStr()) + '星期' + util.weekdayShort(util.todayWeekday());
     const lines = [
-      cls || '（班级）',
-      (s && s.name) || '',
-      [
-        (s && s.teacher) || '',
-        '应到' + expected + '人',
-        '实到' + actual + '人'
-      ].filter(Boolean).join(' '),
-      '课堂情况：正常'
+      '【' + dateText,
+      bigPeriodText(s && s.period),
+      '课程:' + ((s && s.name) || '')
     ];
-    // 每行请假：学号 姓名 请假（用户模板里学号与姓名之间**没有空格**，照抄）
-    absentees.forEach((x) => {
-      lines.push(String(x.studentNo || '') + (x.name || '') + '请假');
-    });
-    // ⚠️ 只滤**尾部**的空行：第 0 行（班级全称）已经兜底成「本班」，
-    //    但万一将来它真的空了，也不能连带把课程名那几行一起滤掉。
-    const text = lines
-      .map((l, i) => (i === 0 ? l : String(l || '').trim()))
-      .filter((l, i) => (i === 0 ? true : !!l))
-      .join('\n');
+    if (leaveRows.length) {
+      lines.push('请假人员：');
+      leaveRows.forEach((x) => {
+        lines.push((x.name || '') + ' ' + String(x.studentNo || ''));
+      });
+    }
+    if (publicRows.length) {
+      lines.push('公假人员:');
+      publicRows.forEach((x) => {
+        lines.push((x.name || '') + ' ' + String(x.studentNo || ''));
+      });
+    }
+    lines.push('无迟到旷课情况】');
+    const text = lines.filter((l) => !!l).join('\n');
     this.setData({
       courseInfoLoading: false,
       courseInfoText: text,
+      // 预览行与复制文本同源（都由 text 拆出），不会再出现「看到的≠复制的」
+      courseInfoLines: text.split('\n'),
       courseInfoExpected: expected,
       courseInfoActual: actual,
       courseInfoAbsentees: absentees

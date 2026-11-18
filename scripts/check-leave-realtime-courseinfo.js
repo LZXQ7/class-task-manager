@@ -245,30 +245,35 @@ if (buildFn) {
     '⚠️ 已撤销的记录由后端 `WHERE status = APPROVED` 挡掉，前端不重复判');
   chk(/const actual = Math\.max\(0, expected - absentees\.length\);/.test(b),
     '实到 = 应到 − 请假数，且下限 0（不能是负数）');
-  chk(/'课堂情况：正常'/.test(b), '课堂情况固定写「正常」');
-// 🔴🔴 每行请假必须是「**完整学号 + 姓名 + 请假**」（2026-10-09 用户实拍：
-//    弹层里只有「郝鹏杰请假」，前面没有学号）。
-//    根因是**后端 `leaveBoard` 的行映射漏了 studentNo**（SQL 早就选了 m.student_no，
-//    但映射时没带出来）⇒ 前端 `String(x.studentNo || '')` 拿到空串。
-//    ⚠️ `seq`（后两位）顶不了替 —— 模板要的是完整学号（形如 000000000056）。
-chk(/lines\.push\(String\(x\.studentNo \|\| ''\) \+ \(x\.name \|\| ''\) \+ '请假'\);/.test(b),
-    '🔴⚠️⚠️ 每行请假 = 完整学号 + 姓名 + 请假（学号与姓名之间**无空格**，照用户模板抄）');
-chk(!/lines\.push\(String\(x\.seq/.test(b),
+  // ============ 2026-11-18 新模板判据 ============
+  chk(/'【' \+ dateText/.test(b), '⚠️ 第一行以「【」开头（整段发群包裹符，照用户模板）');
+  chk(/const dateText = util\.md\(util\.todayStr\(\)\) \+ '星期' \+ util\.weekdayShort\(util\.todayWeekday\(\)\);/.test(b),
+    '⚠️ 第一行是「M月D日星期X」（中文星期，走 util.weekdayShort）');
+  chk(/bigPeriodText\(s && s\.period\)/.test(b), '⚠️ 第二行大节描述走 bigPeriodText(period)');
+  chk(/'课程:' \+ \(\(s && s\.name\) \|\| ''\)/.test(b), '⚠️ 第三行是「课程:课程名」');
+  chk(/const isPublic = \(x\) => String\(x\.reason \|\| ''\) === 'PUBLIC';/.test(b),
+    '⚠️⚠️ 公假按 reason=PUBLIC 分流（病假/事假/其他/老数据无事由都算请假人员）');
+  chk(/lines\.push\('请假人员：'\)/.test(b) && /lines\.push\('公假人员:'\)/.test(b),
+    '⚠️ 请假人员/公假人员两段标题（照用户模板的全角/半角冒号）');
+  chk(/if \(leaveRows\.length\)/.test(b) && /if \(publicRows\.length\)/.test(b),
+    '⚠️⚠️ 空段整段省略（用户选的口径）：没有该类人员连标题都不写');
+  chk(/lines\.push\(\(x\.name \|\| ''\) \+ ' ' \+ String\(x\.studentNo \|\| ''\)\);/.test(b),
+    '⚠️⚠️ 每行「姓名 空格 完整学号」（姓名在前、完整学号在后，照用户模板）');
+  chk(!/String\(x\.seq/.test(bc),
     '🔴⚠️ 不许拿 `seq`（后两位）当学号塞进文本 —— 模板要完整学号');
+  chk(/lines\.push\('无迟到旷课情况】'\)/.test(b), '⚠️ 末行是「无迟到旷课情况】」（结尾包裹符）');
+  chk(/courseInfoLines: text\.split\(/.test(b), '⚠️ 预览行由 text 拆出（看到的=复制的）');
 // 后端：leaveBoard 必须回完整 studentNo（字段名与 leaveHistory 一致，别造第二种命名）
 const boardBlock = /const list = rows\.map\(r => \(\{[\s\S]*?image: r\.leave_image \|\| ''\s*\}\)\);/.exec(adjustSrc);
 chk(!!boardBlock && /studentNo: String\(r\.student_no \|\| ''\)/.test(boardBlock[0]),
     '🔴⚠️⚠️ 后端 leaveBoard 的行映射回 studentNo（SQL 早选了 m.student_no，'
     + '只是映射时漏了 ⇒ 前端拿到空串 ⇒ 复制出去少了学号，用户实拍）');
-  chk(/'应到' \+ expected \+ '人'/.test(b) && /'实到' \+ actual \+ '人'/.test(b),
-    '⚠️ 文案是「应到N人 实到N人」（与用户给的模板一致）');
-  chk(/String\(x\.studentNo \|\| ''\) \+ \(x\.name \|\| ''\) \+ '请假'/.test(b),
-    "⚠️⚠️ 每行请假 = 学号+姓名+「请假」（用户模板里学号与姓名之间**没有空格**）");
-  // ⚠️ 写法 2026-10-09 改过两次：
-  //   ① `this.data.classFullName || ''` → 加两级兜底后的 `cls || '（班级）'`
-  //      （占位从「本班」改成「（班级）」：前者像真名，会被直接发到群里）。
-  chk(/const lines = \[\s*\n\s*cls \|\| '（班级）',/.test(b),
-    '⚠️ 第一行是班级全称（模板第一行）；⚠️ 占位用「（班级）」而不是「本班」——后者像真名');
+  // 新模板不再写班级名/应到实到/教师，这三项已从 lines 移除（改由日期星期与大节打头）
+  chk(!/'应到' \+ expected \+ '人'/.test(b), '旧文案「应到N人」已移除（新模板不要应到实到）');
+  chk(!/'课堂情况：正常'/.test(b), '旧文案「课堂情况：正常」已移除（新模板固定「无迟到旷课情况】」）');
+  chk(/const expected = rows\.filter\(inScope\)\.length;/.test(b)
+    && /const actual = Math\.max\(0, expected - absentees\.length\);/.test(b),
+    '⚠️ 应到/实到仍计算（口径守卫），只是不写进新模板文本');
 }
 chk(/_buildCourseInfo\(s, roster, this\.data\.leaveHomeRaw \|\| \[\]\)/.test(js),
   '⚠️⚠️ 请假名单传的是 **leaveHomeRaw（日期口径全列）**，不是 leaveHomeNowList'
@@ -286,16 +291,12 @@ chk(/teacher: s\.teacher \|\| ''/.test(duty),
  * 文本散在背景上与全站卡片不统一。 */
 chk(/class="ci-card"/.test(wxmlCode),
   '⚠️ 文本装进 .ci-card 卡片框（散在弹层背景上与全站 .card 不统一）');
-chk(/\{\{classFullName \|\| leaveHomeClassName \|\| '（班级）'\}\}/.test(wxmlCode),
-    "⚠️⚠️ 弹层里有班级名行且带兜底（用户实拍「课程名上面没有班级名」）；"
-    + "⚠️ 兜底**不再写「本班」**——真名已拿到时仍显示「本班」会让人以为没生效");
-chk(/ci-cls/.test(wxmlCode) && /ci-course/.test(wxmlCode),
-  '⚠️ 班级名与课程名各有自己的 class（能分主次，也便于门禁区分）');
-chk(/const cls = String\(this\.data\.classFullName \|\| this\.data\.leaveHomeClassName \|\| ''\)\.trim\(\);/.test(jsCode),
-  '⚠️⚠️ 组文本时班级名有两层兜底（classFullName → leaveHomeClassName → 空）');
-chk(/cls \|\| '（班级）',/.test(jsCode),
-  "⚠️⚠️ 班级名最终兜底成「（班级）」——**绝不能让模板第一行空着**"
-  + "（空会被下面那行 filter 连课程名一起滤掉，复制出去少一行）");
+chk(/wx:for="\{\{courseInfoLines\}\}"/.test(wxmlCode),
+  '⚠️⚠️ 弹层预览按 courseInfoLines 逐行渲染（新模板：日期/大节/课程/两段名单/末行）');
+chk(!/\{\{classFullName \|\| leaveHomeClassName \|\| '（班级）'\}\}/.test(wxmlCode),
+  '⚠️ 旧的班级名预览行已移除（新模板第一行是「M月D日星期X」，不再是班级全称）');
+chk(/courseInfoLines: text\.split\(/.test(jsCode) && /courseInfoLines: \[\]/.test(jsCode),
+  '⚠️⚠️ courseInfoLines 由 text 拆出且在 data 有初值（预览与复制同源，不会「看到的≠复制的」）');
 
 /* ---------- 2026-10-09 用户第二轮实拍：间距 / 班级名真值/ 按钮居中 ---------- */
 const rosterWxss = read('miniprogram/pages/roster/index.wxss');
@@ -437,17 +438,17 @@ function judge(o) {
     push(/const expected = rows\.filter\(inScope\)\.length;/.test(b));
     push(/return String\(x\.startTime\) <= ce && String\(x\.endTime\) >= cs;/.test(b));
     push(!/x\.over/.test(bcs));
-    push(/'课堂情况：正常'/.test(b));
-    push(/lines\.push\(String\(x\.studentNo \|\| ''\) \+ \(x\.name \|\| ''\) \+ '请假'\);/.test(b));
-    push(!/lines\.push\(String\(x\.seq/.test(b));
     push(/const absentees = \(leaveList \|\| \[\]\)\.filter\(inScope\)\.filter\(overlap\);/.test(b));
+    push(/const isPublic = \(x\) => String\(x\.reason \|\| ''\) === 'PUBLIC';/.test(b));
+    push(/lines\.push\('请假人员：'\)/.test(b) && /lines\.push\('公假人员:'\)/.test(b));
+    push(/lines\.push\(\(x\.name \|\| ''\) \+ ' ' \+ String\(x\.studentNo \|\| ''\)\);/.test(b));
+    push(!/String\(x\.seq/.test(bcs));
+    push(/lines\.push\('无迟到旷课情况】'\)/.test(b));
+    push(/'【' \+ dateText/.test(b) && /bigPeriodText\(s && s\.period\)/.test(b) && /'课程:'/.test(b));
     const bb = /const list = rows\.map\(r => \(\{[\s\S]*?image: r\.leave_image \|\| ''\s*\}\)\);/.exec(vAdjustAll);
     push(!!bb && /studentNo: String\(r\.student_no \|\| ''\)/.test(bb[0]));
+    push(!!bb && /reason: r\.reason \|\| ''/.test(bb[0]));
     push(/const actual = Math\.max\(0, expected - absentees\.length\);/.test(b));
-    push(/'课堂情况：正常'/.test(b));
-    push(/'应到' \+ expected \+ '人'/.test(b) && /'实到' \+ actual \+ '人'/.test(b));
-    push(/String\(x\.studentNo \|\| ''\) \+ \(x\.name \|\| ''\) \+ '请假'/.test(b));
-    push(/const lines = \[\s*\n\s*cls \|\| '（班级）',/.test(b));
   }
   push(/_buildCourseInfo\(s, roster, this\.data\.leaveHomeRaw \|\| \[\]\)/.test(vJs));
   push(/c\.name, c\.room, c\.teacher/.test(vDuty));
@@ -455,10 +456,9 @@ function judge(o) {
 
   // 课堂情况弹层的视觉与可达（与主判据同源）
   push(/class="ci-card"/.test(c2));
-  push(/\{\{classFullName \|\| leaveHomeClassName \|\| '（班级）'\}\}/.test(c2));
-  push(/ci-cls/.test(c2) && /ci-course/.test(c2));
-  push(/const cls = String\(this\.data\.classFullName \|\| this\.data\.leaveHomeClassName \|\| ''\)\.trim\(\);/.test(c1));
-  push(/cls \|\| '（班级）',/.test(c1));
+  push(/wx:for="\{\{courseInfoLines\}\}"/.test(c2));
+  push(!/\{\{classFullName \|\| leaveHomeClassName \|\| '（班级）'\}\}/.test(c2));
+  push(/courseInfoLines: text\.split\(/.test(c1) && /courseInfoLines: \[\]/.test(c1));
 
   // 第二轮实拍：间距 / 班级名真值 / 按钮居中
   push(/\.ci\s*\{[^}]*padding:\s*8rpx 32rpx 0;/.test(vWxss));
@@ -581,8 +581,8 @@ const MUT = [
     // 拿 seq（后两位）当学号顶替 —— 模板要完整学号
     name: 'M14 拿 `seq`（后两位）当学号顶替（模板要的是完整学号）',
     apply: () => ({
-      js: js.replace("lines.push(String(x.studentNo || '') + (x.name || '') + '请假');",
-        "lines.push(String(x.seq || '') + (x.name || '') + '请假');")
+      js: js.replace("lines.push((x.name || '') + ' ' + String(x.studentNo || ''));",
+        "lines.push((x.name || '') + ' ' + String(x.seq || ''));")
     })
   },
   {

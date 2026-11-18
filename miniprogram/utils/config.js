@@ -624,8 +624,19 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   门禁新增 `check-speech-cursor-advance.js`（22 判据 + 9 变异全抓）；既有
  *   `check-speech-schedule.js` 的 v2 契约（"生成不写游标"）同步改成 v3。
  * ---------------------------------------------------------------------------
+ * v1.0.8.64（2026-11-18）· 请假事由 + 课堂情况新模板
+ *   需求①：请假登记（roster，班委代登记）增加事由四选项（公假/病假/事假/其他），
+ *          选「其他」必须手填说明；提交请假申请（leave）的「其他」说明由选填收紧为必填。
+ *          后端 addLeave/leaveApply 双拦 + 落库，leaveBoard/leaveSummary 下发 reason。
+ *   需求②：首页点今日课次弹出的「课堂情况」改模板：
+ *          【M月D日星期X / 上午第一大节 / 课程:课名 / 请假人员(姓名 学号) /
+ *           公假人员(姓名 学号) / 无迟到旷课情况】。按 reason=PUBLIC 分列、空段省略、
+ *           完整学号；大节映射 1→上午第一大节…5→晚上第一大节（bigPeriodText）。
+ *   门禁新增 `check-leave-reason-required.js` + `check-courseinfo-template.js`（真跑+变异），
+ *   `check-leave-realtime-courseinfo.js` 文案断言同步新模板。**adjust 云函数需部署**。
+ * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.63';
+const APP_VERSION = '1.0.8.64';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

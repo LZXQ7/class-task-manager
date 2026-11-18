@@ -659,7 +659,7 @@ const routes = {
       const isDemo = await guard.isDemoMember(pool, ctx);
       const [rows] = await pool.query(
         `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date,
-                l.start_time, l.end_time, l.periods, l.leave_image,
+                l.start_time, l.end_time, l.periods, l.leave_image, l.reason,
                 m.name, m.group_tag, m.student_no
            FROM leave_request l
            JOIN member m ON m.id = l.member_id
@@ -692,6 +692,8 @@ const routes = {
         startTime: normTime(r.start_time),
         endTime: normTime(r.end_time),
         periods: parsePeriods(r.periods),
+        // 事由（课堂情况弹层按公假/请假分列要用）；老记录无 reason 时按「请假」兜底
+        reason: r.reason || '',
         hasImage: !!r.leave_image,
         image: r.leave_image || ''
       }));
@@ -753,7 +755,7 @@ const routes = {
       const [cl] = await pool.query('SELECT name FROM `class` WHERE id = ?', [classId]);
       const [rows] = await pool.query(
         `SELECT l.id AS leaveId, l.member_id AS memberId, l.start_date, l.end_date,
-                l.start_time, l.end_time, l.periods, l.leave_image,
+                l.start_time, l.end_time, l.periods, l.leave_image, l.reason,
                 m.name, m.group_tag, m.student_no
            FROM leave_request l
            JOIN member m ON m.id = l.member_id
@@ -776,6 +778,8 @@ const routes = {
         startTime: normTime(r.start_time),
         endTime: normTime(r.end_time),
         periods: parsePeriods(r.periods),
+        // 事由（课堂情况弹层按公假/请假分列要用）；老记录无 reason 时按「请假」兜底
+        reason: r.reason || '',
         hasImage: !!r.leave_image,
         image: r.leave_image || ''
       }));
@@ -815,6 +819,10 @@ const routes = {
       // 请假 v2（2026-11-02 升级）：多时段。periods 权威（空=全天），派生 start/end 仅兼容。
       const periods = normPeriods(payload.periods);
       const tp = periodsToTime(periods);
+      // 请假事由（与本人申请同口径）：白名单外一律 OTHER；OTHER 必须带手填说明（前端拦 + 此处双拦）
+      const reason = LEAVE_REASONS.includes(payload.reason) ? payload.reason : 'OTHER';
+      const reasonNote = reason === 'OTHER' ? String(payload.reasonNote || '').trim().slice(0, 30) : '';
+      if (reason === 'OTHER' && !reasonNote) throw new BizError(41001, '请填写事由说明');
       // 目标必须是本班在读**学生**（教职工 / 测试账号 / 已停用一律拒绝）
       const [ms] = await pool.query(
         "SELECT id FROM member WHERE id = ? AND class_id = ? AND status <> 'DISABLED' AND group_tag <> 'X' AND " + notTest(''),
@@ -831,11 +839,11 @@ const routes = {
       if (dup.length) return { leaveId: Number(dup[0].id), affected: 0, existed: true };
       const affected = await markDutiesLeave(pool, classId, memberId, startDate, endDate, me.id);
       const [ins] = await pool.query(
-        "INSERT INTO leave_request (class_id, member_id, start_date, end_date, start_time, end_time, periods, status, source) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', 'register')",
-        [classId, memberId, startDate, endDate, tp.start, tp.end, periods.join(',')]
+        "INSERT INTO leave_request (class_id, member_id, start_date, end_date, start_time, end_time, periods, status, source, reason, reason_note) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', 'register', ?, ?)",
+        [classId, memberId, startDate, endDate, tp.start, tp.end, periods.join(','), reason, reasonNote || null]
       );
-      console.log(JSON.stringify({ fn: 'adjust', action: 'addLeave', by: me.id, target: memberId, startDate, endDate, periods: periods.join(','), affected }));
+      console.log(JSON.stringify({ fn: 'adjust', action: 'addLeave', by: me.id, target: memberId, startDate, endDate, periods: periods.join(','), reason, affected }));
       return { leaveId: Number(ins.insertId), affected };
     }
   },
@@ -1083,8 +1091,10 @@ const routes = {
       const periods = normPeriods(payload.periods);
       const tp = periodsToTime(periods);
       const reason = LEAVE_REASONS.includes(payload.reason) ? payload.reason : 'OTHER';
-      // 「其他」可补一句手填说明（选填，最多 30 字）；非 OTHER 时一律丢弃，不落库
+      // 「其他」的手填说明现在**必填**（2026-11-18 收紧，与请假登记同口径）：前端拦一次，后端再拦一次。
+      // 非 OTHER 时一律丢弃，不落库。
       const reasonNote = reason === 'OTHER' ? String(payload.reasonNote || '').trim().slice(0, 30) : '';
+      if (reason === 'OTHER' && !reasonNote) throw new BizError(41001, '请填写事由说明');
       // 假条必传（2026-11-03 需求②）：前端拦一次，后端再拦一次——绕过界面直调云函数也必须带图
       const fileId = String(payload.fileId || '').slice(0, 128);
       if (!fileId) throw new BizError(41001, '请上传假条照片');

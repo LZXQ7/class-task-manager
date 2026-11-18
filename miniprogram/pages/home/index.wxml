@@ -456,16 +456,10 @@
                 （bottom-sheet 的 .sheet-footer 注释已写明：让位由内容自己写 padding-bottom）。
              预览块整体复制到剪贴板的形态不变，仍是 courseInfoText 那一份（唯一真源）。 -->
         <view class="ci-card">
-          <!-- 班级名：与 `courseInfoText` 第一行**同源**（都由 classFullName → leaveHomeClassName 兜底）。
-             ⚠️ 这里**不再自带「本班」占位**：那个占位会在真名已经拿到时仍显示「本班」，
-             让人以为没生效（用户实拍过一次）。真名到底在哪一层兜底由 JS 单点决定。 -->
-          <text class="ci-line ci-cls">{{classFullName || leaveHomeClassName || '（班级）'}}</text>
-          <text class="ci-line ci-course">{{courseInfoTitle}}</text>
-          <text class="ci-line">{{courseInfoTeacher}} 应到{{courseInfoExpected}}人 实到{{courseInfoActual}}人</text>
-          <text class="ci-line ci-normal">课堂情况：正常</text>
-          <text wx:for="{{courseInfoAbsentees}}" wx:key="leaveId" class="ci-line ci-absent">{{item.studentNo}}{{item.name}}请假</text>
+          <!-- 2026-11-18 新模板：整段文本由 _buildCourseInfo 现算，按行拆成 courseInfoLines。
+               预览与「一键复制」读同一个 text（拆行只是显示），不会「看到的≠复制的」。 -->
+          <text wx:for="{{courseInfoLines}}" wx:key="index" class="ci-line">{{item}}</text>
         </view>
-        <view wx:if="{{!courseInfoAbsentees.length}}" class="ci-none">这节课没人请假，实到 = 应到</view>
       </block>
     </view>
     <view slot="footer" class="ci-foot">

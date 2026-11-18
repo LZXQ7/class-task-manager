@@ -65,6 +65,17 @@ const LEAVE_SLOTS = [
   { key: 'pm', label: '下午', start: '13:00', end: '18:00', hint: '每天 13:00–18:00' },
   { key: 'eve', label: '晚上', start: '18:00', end: '21:00', hint: '每天 18:00–21:00' }
 ];
+/**
+ * 请假事由（与提交请假申请 leave 页同口径）：公假 / 病假 / 事假 / 其他。
+ * 选「其他」必须手填说明（reasonNote）：前端拦一次，后端 addLeave 再拦一次。
+ * ⚠️ 与换班事由（COURSE/SICK/INTERN/OTHER，落 swap_request 的 ENUM 列）是两套枚举，别混。
+ */
+const REASON_OPTS = [
+  { key: 'PUBLIC', text: '公假' },
+  { key: 'SICK', text: '病假' },
+  { key: 'PERSONAL', text: '事假' },
+  { key: 'OTHER', text: '其他' }
+];
 /** 时段固定顺序（上午→下午→晚上）：文案顺序与点选先后无关 */
 const PERIOD_ORDER = ['am', 'pm', 'eve'];
 /** 时段 key → {label,start,end}：直接复用 LEAVE_SLOTS，避免两处定义漂移 */
@@ -325,6 +336,15 @@ Page({
     periodPmOn: false,
     periodEveOn: false,
     leavePeriodHint: '全天请假（区间内每天所有时段都算请假）。',
+    /**
+     * 请假事由（与提交请假申请同口径）：公假 / 病假 / 事假 / 其他。
+     * 选「其他」必须手填说明（leaveReasonNote）才可登记，前端拦 + 后端 addLeave 再拦。
+     */
+    leaveReasonOpts: REASON_OPTS,
+    leaveReasonIndex: 0,
+    leaveReasonText: '公假',
+    leaveReasonIsOther: false,
+    leaveReasonNote: '',
     /** 历史请假（后端 adjust.leaveHistory，倒序 300 条，含已撤销；筛选全在前端做） */
     leaveHistory: [],
     /**
@@ -991,6 +1011,11 @@ _clockNow() {
       periodPmOn: false,
       periodEveOn: false,
       leavePeriodHint: '全天请假（区间内每天所有时段都算请假）。',
+      // 事由每次开弹层都回落到「公假」（默认档，选其他时要手填说明）
+      leaveReasonIndex: 0,
+      leaveReasonText: '公假',
+      leaveReasonIsOther: false,
+      leaveReasonNote: '',
       leaveMaxDate: ymd(new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())),
       leaveCands: this._leaveFilter('', this.data.members)
     });
@@ -1084,6 +1109,25 @@ _clockNow() {
     this._setLeavePeriods(next);
   },
 
+  /** 请假事由变更：选「其他」才显示手填说明；从其他切走时清掉残留说明 */
+  onLeaveReasonChange(e) {
+    const idx = Number(e.detail.value);
+    const opt = REASON_OPTS[idx];
+    if (!opt) return;
+    const isOther = opt.key === 'OTHER';
+    this.setData({
+      leaveReasonIndex: idx,
+      leaveReasonText: opt.text,
+      leaveReasonIsOther: isOther,
+      leaveReasonNote: isOther ? this.data.leaveReasonNote : ''
+    });
+  },
+
+  /** 「其他」的手填说明（必填，最多 30 字） */
+  onLeaveReasonNoteInput(e) {
+    this.setData({ leaveReasonNote: String((e.detail && e.detail.value) || '').slice(0, 30) });
+  },
+
   onLeaveClose() {
     this.setData({ leaveShow: false });
   },
@@ -1150,6 +1194,10 @@ _clockNow() {
     const { leaveStart, leaveEnd, leavePeriods } = this.data;
     if (!leaveStart || !leaveEnd) { util.toast('请先选择请假日期'); return; }
     if (leaveEnd < leaveStart) { util.toast('结束日期不能早于开始日期'); return; }
+    // 事由「其他」必须手填说明：前端拦一次，后端 addLeave 再拦一次
+    const reason = REASON_OPTS[this.data.leaveReasonIndex] ? REASON_OPTS[this.data.leaveReasonIndex].key : 'PUBLIC';
+    const reasonNote = reason === 'OTHER' ? String(this.data.leaveReasonNote || '').trim() : '';
+    if (reason === 'OTHER' && !reasonNote) { util.toast('请填写事由说明'); return; }
     // 时段改为多选（需求①）：leavePeriods 空数组 = 全天；否则 ['am'|'pm'|'eve'] 任意组合。
     // 钟点写死在后端 PERIOD_DEFS，前端只传 key 数组 ⇒ 旧的「结束必须晚于开始」校验随之失效，
     // **不再保留那条死代码**。periods 经后端 normPeriods 白名单兜底，写坏也不会提交非法档位。
@@ -1166,7 +1214,9 @@ _clockNow() {
           memberId: id,
           startDate: leaveStart,
           endDate: leaveEnd,
-          periods: periods   // 多时段：periods 权威字段，后端 addLeave 据此派生 start/end 并落库
+          periods: periods,  // 多时段：periods 权威字段，后端 addLeave 据此派生 start/end 并落库
+          reason,            // 事由：PUBLIC/SICK/PERSONAL/OTHER（课堂情况按公假/请假分列要用）
+          reasonNote         // 「其他」的手填说明；非 OTHER 为空串，后端一律不落库
         };
         api.leaveAdd(payload, { toast: false })
           .then((r) => {
