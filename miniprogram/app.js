@@ -542,7 +542,11 @@ App({
       // 冷启动容器是冷的会 1~3s。登录后趁热预发一次把它暖起来，用户真正进首页再调就命中热容器。
       // 失败一律吞掉（纯优化，绝不影响启动/首屏）。
       try {
-        const cid = (g.profile && g.profile.classId) || (g.config && g.config.classId) || 0;
+        /* v1.0.8.72 修真 bug：这里原写 `g.profile / g.config`，但本作用域没有 g
+           （g 只存在于其它方法），每次都抛 ReferenceError 被下面的 catch 吞掉 ⇒
+           dutyToday 预热从未真正执行，首页冷启动多等一次云函数。改用 this.globalData。 */
+        const gd = this.globalData || {};
+        const cid = (gd.profile && gd.profile.classId) || (gd.config && gd.config.classId) || 0;
         if (cid) api.dutyToday({ classId: cid }, { toast: false }).catch(() => {});
       } catch (e) { /* 预热失败不影响主流程 */ }
     } catch (e) {

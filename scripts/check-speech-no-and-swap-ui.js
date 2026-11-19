@@ -121,16 +121,19 @@ function evalAll(s) {
     && !/max-height/.test(s.wxss.slice(s.wxss.indexOf('.sp-swap-list'), s.wxss.indexOf('.sp-swap-list') + 160))
     && !/overflow-y/.test(s.wxss.slice(s.wxss.indexOf('.sp-swap-list'), s.wxss.indexOf('.sp-swap-list') + 160));
   const oldSwapGone = !/class="sp-swap-name"/.test(w) && !/class="sp-swap-seq"/.test(w);
+  /* v1.0.8.72：换人列表从一人一行改 3 列网格（用户诉求）——判据同步升级：
+     容器 flex-wrap + 每项 1/3 宽 + 紧凑卡高度；旧的 112rpx / 分隔线 / last-child 契约作废。 */
+  const cssList = (s.wxss.match(/\.sp-swap-list\s*\{[^}]*\}/) || [''])[0];
   const cssRow = (s.wxss.match(/\.sp-swap-row\s*\{[^}]*\}/) || [''])[0];
-  const rowStyled = /min-height:\s*112rpx/.test(cssRow)
-    && /padding:\s*16rpx 32rpx/.test(cssRow)
-    && /border-bottom:\s*2rpx solid var\(--bg-fill\)/.test(cssRow);
-  const rowLast = /\.sp-swap-row:last-child\s*\{[\s\S]*?border-bottom:\s*none/.test(s.wxss);
+  const rowStyled = /flex-wrap:\s*wrap/.test(cssList)
+    && /width:\s*calc\(\(100% - 28rpx\) \/ 3\)/.test(cssRow)
+    && /min-height:\s*150rpx/.test(cssRow);
+  const rowGrid = /flex-direction:\s*row/.test(cssList) && !/border-bottom/.test(cssRow);
 
   return {
     fnOk: !!fn, seqOk, seqEmpty, seqSurrogate, noRender, noFixed,
     personPress, personCount: personTags.length,
-    swapFound: !!swap, swapAvatar, swapHover, swapInfo, swapScrollable, oldSwapGone, rowStyled, rowLast
+    swapFound: !!swap, swapAvatar, swapHover, swapInfo, swapScrollable, oldSwapGone, rowStyled, rowGrid
   };
 }
 
@@ -154,8 +157,8 @@ check(S.swapAvatar, '列表行有头像（avatar-tag：姓名 + N 号 + no-fallb
 check(S.swapHover, '列表行带 data-pressable + tap-hover + hover 0/60');
 check(S.swapInfo, '行信息仍用 .dt-row-name / .dt-row-sub（与其它弹层同一套）');
 check(S.oldSwapGone, '旧的朴素两列文字（.sp-swap-name / .sp-swap-seq）已下线');
-check(S.rowStyled, '.sp-swap-row 与 .dt-group-row 同规格（112rpx / 16rpx 32rpx / --bg-fill 分隔线）');
-check(S.rowLast, '最后一行去掉分隔线');
+check(S.rowStyled, '换人列表 3 列网格：容器 flex-wrap + 每项 1/3 宽 + 150rpx 紧凑卡（v1.0.8.72）');
+check(S.rowGrid, '网格卡无旧分隔线（一人一行样式已下线）');
 check(S.swapScrollable, '换人弹层固定高 1080rpx + 列表无 overflow-y/max-height（交给 spring-scroll 滚）');
 
 console.log('\n── ④ 变异自证（改坏 → 判据必须翻红）');
@@ -199,8 +202,8 @@ const MUT = [
       const fixed = block.slice(0, j) + 'hover-class=""' + block.slice(j + needle.length);
       return src.slice(0, i) + fixed + src.slice(end);
     } },
-  { name: '换人弹层退回旧的两列文字样式', probe: 'rowStyled', file: 'wxss',
-    from: 'min-height: 112rpx; padding: 16rpx 32rpx;', to: 'padding: 20rpx 8rpx;' },
+  { name: '换人弹层退回一人一行（去掉 3 列宽）', probe: 'rowStyled', file: 'wxss',
+    from: 'width: calc((100% - 28rpx) / 3);', to: 'width: 100%;' },
   { name: '换人弹层去掉固定高（56 人又滚不动）', probe: 'swapScrollable', file: 'wxml',
     apply: (src) => {
       const i = src.indexOf('show="{{spSwapShow}}"');
@@ -212,8 +215,8 @@ const MUT = [
       return src.slice(0, i) + fixed + src.slice(gt + 1);
     } },
   { name: '换人弹层列表加回 overflow-y（view 上无效、假修复）', probe: 'swapScrollable', file: 'wxss',
-    from: '.sp-swap-list { padding: 8rpx 0 24rpx; }',
-    to: '.sp-swap-list { max-height: 60vh; overflow-y: auto; padding: 8rpx 0 24rpx; }' }
+    from: '.sp-swap-list { display: flex; flex-direction: row; flex-wrap: wrap; gap: 14rpx; padding: 8rpx 32rpx 24rpx; }',
+    to: '.sp-swap-list { max-height: 60vh; overflow-y: auto; padding: 8rpx 32rpx 24rpx; }' }
 ];
 
 MUT.forEach((mu) => {

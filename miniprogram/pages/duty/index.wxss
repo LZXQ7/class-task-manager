@@ -124,10 +124,10 @@
   /* 玻璃按钮（2026-11-17）：与底部导航栏同一套 --tabbar-* 令牌 —— 半透明底 + 背景模糊 +
      亮边 + 柔和投影 + 顶部内高光；深浅色由令牌自动翻（页面 wxss 不写死色值）。
      下面的变体只改文字色，不再各铺一层实底，否则玻璃被盖住、看起来还是老的色块按钮。 */
-  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
-  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.6));
+  background: var(--tabbar-bg, rgba(255, 255, 255, 0.28));
+  -webkit-backdrop-filter: var(--glass-blur-strong, blur(38px) saturate(180%));
+  backdrop-filter: var(--glass-blur-strong, blur(38px) saturate(180%));
+  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.72));
   box-shadow:
     var(--tabbar-shadow, 0 8rpx 28rpx rgba(29, 33, 41, 0.14)),
     var(--tabbar-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.95));
@@ -834,10 +834,10 @@
   margin: 16rpx 24rpx 4rpx;
   padding: 6rpx;
   border-radius: 999rpx;
-  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
-  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.6));
+  background: var(--tabbar-bg, rgba(255, 255, 255, 0.28));
+  -webkit-backdrop-filter: var(--glass-blur-strong, blur(38px) saturate(180%));
+  backdrop-filter: var(--glass-blur-strong, blur(38px) saturate(180%));
+  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.72));
   box-shadow:
     var(--tabbar-shadow, 0 8rpx 28rpx rgba(29, 33, 41, 0.14)),
     var(--tabbar-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.95));
@@ -923,7 +923,9 @@
 .sp-form { padding: 8rpx 32rpx 20rpx; }
 .sp-fld { margin-bottom: 24rpx; }
 .sp-label { font-size: 26rpx; color: var(--text-2); margin-bottom: 12rpx; }
-.sp-input { width: 100%; box-sizing: border-box; padding: 16rpx 20rpx; border-radius: 12rpx; background: var(--fill-soft); color: var(--text-1); font-size: 26rpx; }
+/* v1.0.8.72：输入框数字贴顶错位修复 —— 之前无 height/line-height，被全局 line-height:1.5
+   与原生 type=number 行盒顶得贴顶。给固定 height + 等值 line-height 垂直居中。 */
+.sp-input { width: 100%; box-sizing: border-box; height: 68rpx; line-height: 68rpx; padding: 0 20rpx; border-radius: 12rpx; background: var(--fill-soft); color: var(--text-1); font-size: 26rpx; }
 .sp-form-note { font-size: 22rpx; color: var(--text-3); line-height: 1.6; }
 /* 每场人数规则（演讲进度设置里，v3）：一场一行 + 右侧 1人/2人 分段 */
 .sp-rules { margin-top: 24rpx; padding-top: 20rpx; border-top: 1rpx solid var(--fill-soft); }
@@ -959,11 +961,23 @@
    头像 + 姓名/学号 + 分隔线 + tap-hover 按下高亮；原来是朴素两列文字，像原生弹窗。 */
 /* 1.0.8.67：去掉 max-height/overflow-y —— 小程序 view 上这两个属性不产生滚动，
    56 人名册滚不动。改由 bottom-sheet 传 height 固定面板，交给它的 spring-scroll 滚。 */
-.sp-swap-list { padding: 8rpx 0 24rpx; }
-.sp-swap-row { display: flex; align-items: center; min-height: 112rpx; padding: 16rpx 32rpx; border-bottom: 2rpx solid var(--bg-fill); }
-.sp-swap-row:last-child { border-bottom: none; }
-/* 弹层底部操作条（miniprogram-page-conventions 第 6 条：flex 两按钮等宽） */
-.f-actions { display: flex; gap: 20rpx; align-items: stretch; margin-top: 24rpx; }
+/* v1.0.8.72：演讲换人候选改 3 列网格（用户反馈一人一行太占空间）——
+   与值日换人 ds-cand-grid 同一套观感：头像在上、姓名+学号在下，56 人约 19 行。 */
+.sp-swap-list { display: flex; flex-direction: row; flex-wrap: wrap; gap: 14rpx; padding: 8rpx 32rpx 24rpx; }
+.sp-swap-row {
+  box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: calc((100% - 28rpx) / 3);   /* 3 列：两道 14rpx gap */
+  min-height: 150rpx; padding: 16rpx 8rpx 12rpx;
+  border-radius: 24rpx; background: var(--fill-soft);
+}
+.sp-swap-row .dt-row-info { flex: none; margin-left: 0; margin-top: 10rpx; width: 100%; align-items: center; text-align: center; }
+.sp-swap-row .dt-row-name { font-size: 26rpx; }
+.sp-swap-row .dt-row-sub { font-size: 20rpx; margin-top: 4rpx; }
+/* 弹层底部操作条（miniprogram-page-conventions 第 6 条：flex 两按钮等宽）
+   v1.0.8.72：补左右 padding —— 之前按钮贴着弹层边缘（用户反馈「左右两边没有间距」），
+   现在与 .sp-form 的 32rpx 内容区对齐。 */
+.f-actions { display: flex; gap: 20rpx; align-items: stretch; margin-top: 24rpx; padding: 0 32rpx 20rpx; }
 .f-cancel, .f-save { flex: 1; }
 .f-save.off { opacity: .5; }
 
@@ -977,10 +991,10 @@
   flex: 1;
   min-width: 0;
   padding: 0 12rpx;
-  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
-  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.6));
+  background: var(--tabbar-bg, rgba(255, 255, 255, 0.28));
+  -webkit-backdrop-filter: var(--glass-blur-strong, blur(38px) saturate(180%));
+  backdrop-filter: var(--glass-blur-strong, blur(38px) saturate(180%));
+  border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.72));
   box-shadow:
     var(--tabbar-shadow, 0 8rpx 28rpx rgba(29, 33, 41, 0.14)),
     var(--tabbar-highlight, inset 0 1rpx 0 rgba(255, 255, 255, 0.95));

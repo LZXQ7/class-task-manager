@@ -315,7 +315,10 @@ const routes = {
       let sql = 'SELECT id, name, group_tag, duty_count, last_duty_at, student_no FROM member WHERE status = ? AND class_id = ? AND id != ? AND duty_off = 0 AND ' + notTest();
       args.push(me.id);
       if (scope) { sql += ' AND group_tag = ?'; args.push(scope); }
-      const [members] = await pool.query(sql + ' ORDER BY duty_count, id', args);
+      /* v1.0.8.72：候选按学号升序（=序号升序），与演讲换人 ORDER BY student_no 口径一致。
+         旧口径 ORDER BY duty_count,id 让用户看到 33/35/45/51/7 这种「内部 id 顺序」很混乱；
+         值日次数仍随候选一并下发展示（dutyCount），但不再当排序主键。 */
+      const [members] = await pool.query(sql + ' ORDER BY student_no', args);
       const [leaves] = await pool.query(
         "SELECT member_id FROM leave_request WHERE class_id = ? AND status = 'APPROVED' AND start_date <= ? AND end_date >= ?",
         [classId, classDate, classDate]

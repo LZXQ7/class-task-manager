@@ -29,6 +29,8 @@ page {
 
   /* ---- 玻璃模糊半径：与主题无关（深色下同样要模糊，只是模糊源更暗）---- */
   --glass-blur: blur(24px) saturate(180%);
+  /* 强模糊（v1.0.8.72 底栏/弹层/主按钮）：24→38px，透光感更强 */
+  --glass-blur-strong: blur(38px) saturate(180%);
 
   /* ---- 极光背景兜底（v0.7.19 起，2026-10-08 补回）----
    * 🔴 这段**必须留在 page{} 里**，不能只放在 `.t-light`：
@@ -63,6 +65,9 @@ page {
   --bg-fill: #F2F3F5;
   --fill-soft: #F7F8FA;
   --bg-mask: rgba(0,0,0,0.45);
+  /* 遮罩径向渐变的「中心更透」色（v1.0.8.72）：边缘仍用 --bg-mask 聚拢，中心用这档更透，
+     遮罩不再是死板一整块灰。组件 wxss 的渐变色标必须用 rpx（百分比会被真机丢弃）。 */
+  --bg-mask-soft: rgba(0,0,0,0.26);
   /* segmented 选中胶囊：浅色 = 原 .seg-ind 的 --bg-card 值，逐值相同（零变化）。
      深色在 .t-dark 另给一份亮 tint；组件内不能写 .t-dark .seg-ind（跨组件不命中）。 */
   --seg-ind: #FFFFFF;
@@ -191,9 +196,9 @@ page {
   --dlg-shadow: 0 20rpx 60rpx rgba(29,33,41,0.18), inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
   /* float 居中弹卡的投影色（bottom-sheet variant="float"）：深色要更重才看得出浮起 */
   --float-shadow-color: rgba(29, 33, 41, 0.28);
-  --tabbar-bg: rgba(255, 255, 255, 0.35);
-  --tabbar-solid: rgba(255, 255, 255, 0.88);
-  --tabbar-edge: rgba(255, 255, 255, 0.6);
+  --tabbar-bg: rgba(255, 255, 255, 0.28);
+  --tabbar-solid: rgba(255, 255, 255, 0.66);
+  --tabbar-edge: rgba(255, 255, 255, 0.72);
   --tabbar-shadow: 0 8rpx 28rpx rgba(29,33,41,0.14);
   --tabbar-highlight: inset 0 1rpx 0 rgba(255, 255, 255, 0.95);
   /* 底栏当前 tab 的指示块（custom-tab-bar 引用；原来只在组件里写浅色兜底 ⇒ 深色一直是浅色） */
@@ -226,6 +231,7 @@ page {
   --bg-fill: #262B33;
   --fill-soft: #262B33;
   --bg-mask: rgba(0,0,0,0.65);
+  --bg-mask-soft: rgba(0,0,0,0.42);
   /* 选中胶囊比 --glass-bg(0.10) 更亮的冷白 tint —— 深色下必须「浮起」而非凹陷。 */
   --seg-ind: rgba(150, 170, 210, 0.18);
 
@@ -325,9 +331,9 @@ page {
   --dlg-edge: rgba(200, 215, 245, 0.14);
   --dlg-shadow: 0 20rpx 60rpx rgba(0,0,0,0.55), inset 0 1rpx 0 rgba(200, 215, 245, 0.08);
   --float-shadow-color: rgba(0, 0, 0, 0.6);
-  --tabbar-bg: rgba(28, 33, 43, 0.55);
-  --tabbar-solid: rgba(26, 30, 39, 0.94);
-  --tabbar-edge: rgba(200, 215, 245, 0.14);
+  --tabbar-bg: rgba(28, 33, 43, 0.42);
+  --tabbar-solid: rgba(26, 30, 39, 0.72);
+  --tabbar-edge: rgba(200, 215, 245, 0.22);
   --tabbar-shadow: 0 8rpx 28rpx rgba(0,0,0,0.45);
   --tabbar-highlight: inset 0 1rpx 0 rgba(200, 215, 245, 0.08);
   --tab-ind: rgba(77, 139, 255, 0.24);
@@ -403,6 +409,9 @@ button::after { border: none; }
   .card-bordered {
     background: rgba(255, 255, 255, 0.9);
   }
+  /* 不支持模糊：主按钮退成实心底 —— 用主题令牌 --brand-light 自动翻深浅，
+     不需 .t-dark .btn 覆盖（令牌本身主题感知，也避免干扰降级门禁的变异自证）。 */
+  .btn { background: var(--brand-light); }
   /* 深色下的「磨砂实心卡」= 深色实心，不是白色 */
   .t-dark .card,
   .t-dark .card-bordered {
@@ -422,6 +431,12 @@ button::after { border: none; }
   .t-dark .card,
   .t-dark .card-bordered {
     background: #1C2027;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  /* 降低透明度：主按钮实心底 + 品牌蓝字（--brand-light 主题感知，无需 .t-dark 覆盖） */
+  .btn {
+    background: var(--brand-light);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
@@ -483,9 +498,10 @@ button::after { border: none; }
 .hairline-bottom { border-bottom: 2rpx solid var(--line-2); }
 
 /* ============ 按钮 ============
- * v0.7.18：主按钮改成 Auroraqua 的品牌渐变（violet → pink → accent，135°），
- * 它是「冰态果冻」最显眼的识别点之一；次按钮用他们的 .glass-btn 配方
- * （白色半透明斜向渐变 + 白描边），压在极光背景上会自然透出底色。 */
+ * v1.0.8.72：全站主按钮去掉高饱和蓝紫粉渐变（用户反馈「太鲜艳」），改玻璃质感 ——
+ * 主按钮 = 玻璃半透明底 + backdrop 模糊 + 品牌蓝字 + 品牌色细边，与底栏/弹层
+ * 同一套玻璃语言。主次靠「蓝字+细边」（主） vs 「灰字」（次 .btn-ghost）区分。
+ * ⚠️ 降级见文件末尾 @supports not / prefers-reduced-transparency 两处（.btn 已列入）。 */
 .btn {
   display: flex;
   align-items: center;
@@ -494,12 +510,15 @@ button::after { border: none; }
   border-radius: var(--r-md);
   font-size: 32rpx;
   font-weight: 600;
-  background: linear-gradient(135deg, #7C5CFF 0%, #3370FF 55%, #F472B6 100%);
-  color: #FFFFFF;
-  box-shadow: 0 8rpx 24rpx rgba(51,112,255,0.28);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1rpx solid var(--brand-disable);
+  color: var(--brand);
+  box-shadow: var(--tabbar-shadow, 0 8rpx 24rpx rgba(29,33,41,0.14));
   transition: opacity .15s, transform .12s, box-shadow .15s;
 }
-.btn-hover { background: linear-gradient(135deg, #722ED1 0%, #245BDB 55%, #3370FF 100%); }
+.btn-hover { background: var(--brand-light-hover, var(--glass-bg-strong)); }
 .btn.disabled {
   background: var(--brand-disable);
   color: #FFFFFF;

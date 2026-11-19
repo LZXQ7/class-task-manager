@@ -394,33 +394,43 @@ const routes = {
       const dutyId = Number(payload.dutyId);
       const classId = guard.classIdOf(ctx);
       const pool = getPool();
-      const cfg = await week.getConfig(pool, classId);
+      /* v1.0.8.72：详情加载加速 —— 原实现 7-10 次 DB 往返**全串行**（用户反馈「点开很慢」）。
+         第一批 4 项互相独立（班级配置 / 主记录 / 调课表 / 操作日志），改 Promise.all 并行；
+         peers 与 reassign 依赖主记录 d，放第二批。鉴权 getContext 在路由层，不在这里。 */
+      const [cfgResult, rowsResult, shiftsResult, logsResult] = await Promise.all([
+        week.getConfig(pool, classId),
+        pool.query(
+          `SELECT d.*, s.day_of_week, s.period, s.group_scope, s.week_rule, s.kind AS sessionKind,
+                  c.name AS courseName, c.room, c.teacher,
+                  m.name AS memberName, m.group_tag AS memberGroup, m.student_no
+             FROM duty d
+             JOIN session s ON s.id = d.session_id
+             JOIN course c ON c.id = s.course_id
+             JOIN member m ON m.id = d.member_id
+            WHERE d.id = ? AND d.class_id = ?`, [dutyId, classId]
+        ),
+        week.loadSessionShifts(pool, classId),
+        pool.query(
+          `SELECT l.action, l.created_at, m.name AS operatorName, l.from_member, l.to_member
+             FROM duty_log l LEFT JOIN member m ON m.id = l.operator_id
+            WHERE l.duty_id = ? ORDER BY l.id DESC LIMIT 10`, [dutyId]
+        )
+      ]);
+      const cfg = cfgResult;
+      const rows = rowsResult[0];
+      const logs = logsResult[0];
       const periods = week.periodMap(cfg);
-      const [rows] = await pool.query(
-        `SELECT d.*, s.day_of_week, s.period, s.group_scope, s.week_rule, s.kind AS sessionKind,
-                c.name AS courseName, c.room, c.teacher,
-                m.name AS memberName, m.group_tag AS memberGroup, m.student_no
-           FROM duty d
-           JOIN session s ON s.id = d.session_id
-           JOIN course c ON c.id = s.course_id
-           JOIN member m ON m.id = d.member_id
-          WHERE d.id = ? AND d.class_id = ?`, [dutyId, classId]
-      );
       if (!rows.length) throw new BizError(41001, '值日不存在');
       const d = rows[0];
       // 临时调课后的真实落位（节次可能变了；duty 表里没有节次这一列）
       // 2026-11-11：跨周搬移行用 dutySlotOf 反查补课格，裸 resolveSlot 会退回源周节次
-      const slot = week.dutySlotOf(d, await week.loadSessionShifts(pool, classId), d.week)
+      // 2026-11-20：调课表已在上批并行取回，shiftsResult 直接复用，不再单独 await
+      const slot = week.dutySlotOf(d, shiftsResult, d.week)
         || { day: d.day_of_week, period: d.period };
-      // 同班该课次所有人
+      // 第二批：peers 依赖 d.session_id/week，与上面的结果无依赖但只能现在查
       const [peers] = await pool.query(
         `SELECT m.name, m.group_tag, m.student_no, d.status FROM duty d JOIN member m ON m.id = d.member_id
           WHERE d.session_id = ? AND d.week = ? AND d.class_id = ? AND d.status != 'SWAPPED_OUT'`, [d.session_id, d.week, classId]
-      );
-      const [logs] = await pool.query(
-        `SELECT l.action, l.created_at, m.name AS operatorName, l.from_member, l.to_member
-           FROM duty_log l LEFT JOIN member m ON m.id = l.operator_id
-          WHERE l.duty_id = ? ORDER BY l.id DESC LIMIT 10`, [dutyId]
       );
       /**
        * 这条值日是不是「被换人换上来的」？是的话，超级管理员可以在详情里一键还原。

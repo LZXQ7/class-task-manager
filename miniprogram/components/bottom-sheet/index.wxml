@@ -3,7 +3,10 @@
      v0.7.32 拖拽：只有 .sheet-drag（grabber + 标题栏）接 touchmove —— 内容区 scroll-view
      的滚动不会触发拖动；拖动只改 transform / opacity，不碰布局（不闪、不重排）。 -->
 <view wx:if="{{mounted}}" class="sheet-root {{variant === 'float' ? 'float' : ''}}">
-  <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="sheet-mask {{active ? 'in' : ''}}" style="{{maskStyle}}" bindtap="onMask" catchtouchmove="noop"></view>
+  <!-- v1.0.8.72：遮罩不再带 press-shrink/data-pressable —— 之前按住遮罩会命中全站
+       按压缩放(scale .96+内阴影)，铺满全屏的遮罩一缩就露出一圈灰矩形（用户实锤「很奇怪」）。
+       遮罩只需点击关闭，不需要按压反馈。 -->
+  <view class="sheet-mask {{active ? 'in' : ''}}" style="{{maskStyle}}" bindtap="onMask" catchtouchmove="noop"></view>
   <view class="sheet-panel {{active ? 'up' : ''}} {{dragging ? 'drag' : ''}} {{tall ? 'tall' : ''}} {{resizeCls}}" style="border-radius:{{variant === 'float' ? '32rpx' : (radius + 'rpx ' + radius + 'rpx 0 0')}};{{height ? 'height:' + height + 'rpx' : ''}};{{capStyle}};{{resizeStyle}};{{dragStyle}}">
     <!-- ⚠️ `{{height …}}` 与 `{{capStyle}}` 之间**必须有 `;`**（2026-09-29 修复）：
          漏掉会拼成 `height:1040rpxmax-height:calc(100vh - 68px);` —— 长度值非法 ⇒

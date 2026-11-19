@@ -43,9 +43,9 @@
      饱和度 180% → 200%。透明的那一半靠模糊 + 高光撑住可读性 ——
      纯降 alpha 不加大模糊，会变成「文字压着内容」的糊底。
      不支持模糊时仍降级为 .88（保留可见的半透明，不再回退到近乎实心）。 */
-  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
+  background: var(--tabbar-bg, rgba(255, 255, 255, 0.28));
+  -webkit-backdrop-filter: var(--glass-blur-strong, blur(38px) saturate(180%));
+  backdrop-filter: var(--glass-blur-strong, blur(38px) saturate(180%));
   border: 1rpx solid var(--tabbar-edge, rgba(255, 255, 255, 0.6));
   box-shadow:
     var(--tabbar-shadow, 0 8rpx 28rpx rgba(29,33,41,0.14)),
@@ -54,11 +54,11 @@
   overflow: hidden;
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .tabbar { background: var(--tabbar-solid, rgba(255, 255, 255, 0.88)); }
+  .tabbar { background: var(--tabbar-solid, rgba(255, 255, 255, 0.66)); }
 }
 @media (prefers-reduced-transparency: reduce) {
   .tabbar {
-    background: var(--tabbar-solid, rgba(255, 255, 255, 0.88));
+    background: var(--tabbar-solid, rgba(255, 255, 255, 0.66));
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

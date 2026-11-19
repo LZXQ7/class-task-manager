@@ -84,6 +84,7 @@
                 padding="{{40}}"
               />
             </view>
+            <view class="ds-cand-grid">
             <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{candidates}}"
               wx:key="id"
@@ -91,12 +92,13 @@
               data-id="{{item.id}}"
               bindtap="onPickTo"
             >
-              <avatar-tag name="{{item.name}}" text="{{item.seqText}}" no-fallback="{{true}}" size="{{80}}" />
+              <avatar-tag name="{{item.name}}" text="{{item.seqText}}" no-fallback="{{true}}" size="{{64}}" />
               <view class="ds-cand-info">
                 <text class="ds-cand-name">{{item.name}}</text>
                 <text class="ds-cand-sub">{{item.where}}</text>
               </view>
-              <app-icon wx:if="{{toMemberId === item.id}}" name="check" variant="brand" size="{{40}}" />
+              <app-icon wx:if="{{toMemberId === item.id}}" class="ds-cand-check" name="check" variant="brand" size="{{36}}" />
+            </view>
             </view>
           </block>
 
@@ -109,6 +111,7 @@
                 padding="{{40}}"
               />
             </view>
+            <view class="ds-cand-grid">
             <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
               wx:for="{{candidates}}"
               wx:key="id"
@@ -116,13 +119,14 @@
               data-id="{{item.id}}"
               bindtap="onPickTo"
             >
-              <avatar-tag name="{{item.name}}" text="{{item.seqText}}" no-fallback="{{true}}" size="{{80}}" />
+              <avatar-tag name="{{item.name}}" text="{{item.seqText}}" no-fallback="{{true}}" size="{{64}}" />
               <view class="ds-cand-info">
                 <text class="ds-cand-name">{{item.name}}</text>
                 <!-- 「值日 / 数字 / 次」三段：数字占固定宽度并居中，1 位↔2 位时「次」不会左右跳动 -->
                 <view class="ds-cand-sub"><text>值日</text><text class="cnt-num">{{item.dutyCount}}</text><text>次</text></view>
               </view>
-              <app-icon wx:if="{{toMemberId === item.id}}" name="check" variant="brand" size="{{40}}" />
+              <app-icon wx:if="{{toMemberId === item.id}}" class="ds-cand-check" name="check" variant="brand" size="{{36}}" />
+            </view>
             </view>
           </block>
 

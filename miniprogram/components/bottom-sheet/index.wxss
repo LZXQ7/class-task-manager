@@ -16,8 +16,11 @@
   right: 0;
   top: 0;
   bottom: 0;
-  /* 深色下遮罩要更重（--bg-mask 0.45 → 0.65），否则深页面压不暗、弹层浮不起来 */
-  background: var(--bg-mask, rgba(0,0,0,0.45));
+  /* v1.0.8.72：柔和径向遮罩 —— 中心(偏下，弹层浮出处)用 --bg-mask-soft 更透、
+     四周边缘回到 --bg-mask 聚拢，不再是死板一整块灰。⚠️ 色标用 rpx（组件 wxss 里
+     百分比色标会被真机整条丢弃，见 nav-bar/index.wxss:213 同款写法）。
+     深色下两档令牌都更重（0.42 → 0.65），保证弹层仍浮得起。 */
+  background: radial-gradient(ellipse 160% 110% at 50% 68%, var(--bg-mask-soft, rgba(0,0,0,0.26)) 0rpx, var(--bg-mask, rgba(0,0,0,0.45)) 1000rpx);
   opacity: 0;
   transition: opacity .24s ease;
 }
