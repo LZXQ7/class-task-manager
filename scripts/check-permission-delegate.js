@@ -174,13 +174,14 @@ has(DUTY_W, /btn-text="\{\{canSchedule \? '去发布' : ''\}\}"/, '未发布提�
 /* 2026-11-17：v2 把课前演讲并进值日页，但**权限不再共用** —— 用户要求「只给学习委员
  * 课前演讲，值日仍归生活委员」，于是按钮分两套能力位：
  *   值日按钮（清空/一键/撤回/发布/调整›/去发布）= canSchedule；
- *   演讲按钮（清空/一键/智能排班/撤回/发布）= canSpeech。
+ *   演讲按钮（清空/一键生成/撤回/发布）= canSpeech（v4 智能排班并入一键生成弹层）。
  * 条数只钉「值日侧」= 6（2 纯 + 1 showAddDutyBtn + 1 三元 + 2 「调整›」），
  * 演讲侧的覆盖见下方 ④c 逐按钮 + check-speech-perms.js。 */
 eq(count(DUTY_W, /wx:if="\{\{canSchedule\}\}"/g) + count(DUTY_W, /wx:if="\{\{canSchedule && showAddDutyBtn\}\}"/g) + count(DUTY_W, /canSchedule \?/g), 6,
   '值日页值日侧入口仍全部按 canSchedule（6 处；演讲侧已切到 canSpeech）');
-eq(count(DUTY_W, /wx:if="\{\{canSpeech\}\}" class="dt-admin-btn/g), 3,
-  '课前演讲三个纯权限按钮（清空 / 一键生成 / 智能排班）按 canSpeech');
+/* v4（2026-11-20）：一键生成/智能排班合并 ⇒ 顶部纯权限按钮从 3 个减为 2 个（清空 / 一键生成） */
+eq(count(DUTY_W, /wx:if="\{\{canSpeech\}\}" class="dt-admin-btn/g), 2,
+  '课前演讲两个纯权限按钮（清空 / 一键生成）按 canSpeech（v4 智能排班已并入弹层）');
 /**
  * ④b 权限下沉后的逐个校验（2026-10-31）：容器已放宽给普通成员看「历史」，
  *     因此**每个排班动作按钮自身**必须带能力位，否则无权限者会看到能点的按钮。
@@ -194,7 +195,10 @@ eq(count(DUTY_W, /wx:if="\{\{canSpeech\}\}" class="dt-admin-btn/g), 3,
   if (pass) ok('值日动作按钮 ' + h + ' 自身受 ' + perm + ' 保护');
   else bad('值日动作按钮 ' + h + ' 没带 ' + perm + ' —— 无权限者会看到可点按钮');
 });
-[['onSpClear', 'canSpeech'], ['onSpGenerate', 'canSpeech'], ['onSpAiOpen', 'canSpeech'],
+/* v4（2026-11-20）一键生成/智能排班合并：顶部演讲动作按钮从 5 个变 4 个 ——
+   onSpGenerate/onSpAiOpen 收进「一键生成」弹层内部（已在弹层里，不再单独按 canSpeech），
+   顶部只留单个 onSpGenOpen 入口受 canSpeech 保护。 */
+[['onSpClear', 'canSpeech'], ['onSpGenOpen', 'canSpeech'],
  ['onSpUnpublish', 'canSpeech'], ['onSpPublish', 'canSpeech']].forEach(([h, perm]) => {
   const tag = new RegExp('<view[^>]*bindtap="' + h + '"[^>]*>').exec(DUTY_W);
   const pass = !!tag && new RegExp('wx:if="\\{\\{[^"]*' + perm + '[^"]*\\}\\}"').test(tag[0]);

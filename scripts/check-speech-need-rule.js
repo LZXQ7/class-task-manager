@@ -1,20 +1,21 @@
 #!/usr/bin/env node
 /**
- * 离线自检：课前演讲「每场人数规则」必须持久生效（2026-11-17 用户口径）
+ * 离线自检：课前演讲「排班方式 · 每场人数」必须持久生效（v4，2026-11-20）
  * --------------------------------------------------------------------------------
- * 用户原话：「课前演讲设置规则，每周五下午的儿童文学只安排一个人课前演讲」。
+ * 用户原话（v3）：「每周五下午的儿童文学只安排一个人课前演讲」
+ * 用户口径（v4）：「像值日排班一样设置排班方式，可单独设置周几的上午或下午
+ *                  安排几个人，默认2人最多2人；一键生成和智能排班合并为一键生成」
  *
- * 现状：`course_need` 只活在**智能排班那一次指令**里（AI 解析 → 本次 override），
- *       一键生成 / 下周再排就回到每场 2 人 —— 不是"规则"，是一次性指令。
- *
- * 定规（v3）：
- *   ① 规则持久化在 `speech_setting.slot_rules`（TEXT，JSON：`[{"sid":339,"need":1}]`），
- *      **只存 need=1 的场次**（2 人 = 默认，不落库，避免一堆无用行）；
- *   ② 三处口径统一：`speechList`（设置页展示）、`speechGenerate`（一键生成）、
- *      `speechAiParse`（智能排班预览）都读同一份规则；
- *   ③ 智能排班那句话里的「某课 1 人」**临时覆盖**规则（本次指令优先），但不写回规则；
- *   ④ 落库前校验：session 必须属于本班、need 只能是 1/2（越权/脏值静默丢弃）；
+ * 定规（v4）：
+ *   ① 规则持久化在 `speech_setting.slot_rules`（TEXT，JSON：`[{"day":5,"slot":"PM","need":1}]`），
+ *      **只存 need=1 的格子**（2 人 = 默认，不落库）；维度是「周几 × 上午/下午」10 格，
+ *      命中该时段**所有**课次（调课后仍跟周几时段走）。兼容旧 {sid,need:1}：借 sessions 反查格子。
+ *   ② 三处口径统一：speechList / speechBoard / speechGenerate / speechAiParse 都读同一份规则；
+ *      格子经 gridToSidMap 展开成 sid override 交给 buildSlots。
+ *   ③ 智能排班那句话里的「某课 1 人」临时覆盖规则（本次指令优先），但不写回规则；
+ *   ④ 落库前校验：day 1-5 / slot AM|PM / need 1|2（脏值静默丢弃）；
  *   ⑤ 脏 JSON / 列缺失一律当「没有规则」，不能拖垮整周排班。
+ *   ⑥ 前端：「一键生成」合并入口 + 排班方式弹层 5 行×2 列 10 格，每格 1人/2人。
  *
  * 用法：node scripts/check-speech-need-rule.js
  */
@@ -67,115 +68,139 @@ function routeBody(js, name) {
 
 function evalAll(s) {
   const js = stripJs(s.js);
-  /* parseSlotRules 真跑：它是纯函数，变异改的是内存里的字符串 */
-  const src = fnSource(js, 'parseSlotRules');
+  /* parseSlotRules / gridToSidMap 真跑：纯函数，注入 speechCore 桩（AM=1 / PM=3） */
+  const parseSrc = fnSource(js, 'parseSlotRules');
+  const gridSrc = fnSource(js, 'gridToSidMap');
+  const STUB = 'const speechCore = { AM_PERIOD: 1, PM_PERIOD: 3 };\n';
   let parse = null;
+  let grid = null;
   try {
-    // eslint-disable-next-line no-new-func
-    parse = src ? new Function(src + '\nreturn parseSlotRules;')() : null;
-  } catch (e) { parse = null; }
+    parse = parseSrc ? new Function(STUB + parseSrc + '\nreturn parseSlotRules;')() : null;
+    grid = gridSrc ? new Function(STUB + gridSrc + '\nreturn gridToSidMap;')() : null;
+  } catch (e) { parse = null; grid = null; }
 
-  let pOne = null;
-  let pTwo = null;
-  let pDirty = null;
-  let pStr = null;
+  const sessions = [
+    { id: 339, day_of_week: 5, period: 3, courseName: '儿童文学' },
+    { id: 401, day_of_week: 5, period: 3, courseName: '体育' },
+    { id: 210, day_of_week: 1, period: 1, courseName: '语文' }
+  ];
+  let cNew = null;   // 新格式 {day,slot,need:1} → 周五下午格
+  let cLegacy = null; // 旧格式 {sid:339,need:1} → 借 session 反查成周五下午格
+  let cTwo = null;   // need=2 不落库
+  let cDirty = null; // 脏 JSON
+  let cStr = null;   // 字符串字段
+  let sidMap = null; // 格子展开成 sid override（周五下午命中 339+401）
   if (parse) {
     try {
-      pOne = parse('[{"sid":339,"need":1}]');
-      pTwo = parse('[{"sid":339,"need":2},{"sid":401,"need":1}]');
-      pDirty = parse('{not json');
-      pStr = parse([{ sid: '339', need: '1' }]);
-    } catch (e) { pOne = null; }
+      cNew = parse('[{"day":5,"slot":"PM","need":1}]', sessions);
+      cLegacy = parse('[{"sid":339,"need":1}]', sessions);
+      cTwo = parse('[{"day":5,"slot":"PM","need":2}]', sessions);
+      cDirty = parse('{not json', sessions);
+      cStr = parse([{ day: '5', slot: 'PM', need: '1' }], sessions);
+      sidMap = grid ? grid(cNew, sessions) : null;
+    } catch (e) { cNew = null; }
   }
   const keys = (o) => (o && typeof o === 'object' ? Object.keys(o).join(',') : '<throw>');
 
   const gen = routeBody(js, 'speechGenerate');
   const ai = routeBody(js, 'speechAiParse');
   const list = routeBody(js, 'speechList');
+  const board = routeBody(js, 'speechBoard');
   const setRoute = routeBody(js, 'speechSetSlotRules');
   const mig = s.mig || '';
 
   return {
-    /* ① 迁移：列存在 */
+    /* ① 持久化与纯函数 */
     migCol: /ALTER\s+TABLE\s+speech_setting\s+ADD\s+COLUMN\s+slot_rules/i.test(mig),
-    /* ② 纯函数行为 */
-    fnOk: !!parse,
-    oneKept: keys(pOne) === '339' && pOne[339] === 1,
-    twoDropped: keys(pTwo) === '401' && pTwo[401] === 1,
-    dirtySafe: !!(pDirty && typeof pDirty === 'object' && Object.keys(pDirty).length === 0),
-    strCoerce: !!(pStr && pStr[339] === 1),
-    /* ③ 读库 helper */
+    fnOk: !!parse && !!grid,
+    newCellOk: keys(cNew) === '5|PM' && cNew['5|PM'] === 1,
+    legacyOk: keys(cLegacy) === '5|PM' && cLegacy['5|PM'] === 1,
+    twoDropped: !!(cTwo && Object.keys(cTwo).length === 0),
+    dirtySafe: !!(cDirty && typeof cDirty === 'object' && Object.keys(cDirty).length === 0),
+    strCoerce: !!(cStr && cStr['5|PM'] === 1),
+    gridExpand: !!(sidMap && sidMap[339] === 1 && sidMap[401] === 1 && sidMap[210] === undefined),
+    /* ② 读库 helper */
     reader: /SELECT\s+slot_rules\s+FROM\s+speech_setting/i.test(js) && /loadSlotRules\s*\(\s*db/.test(js),
-    /* ④ 写库路由：挂 speechAuth */
+    /* ③ 写库路由：挂 speechAuth + 格子校验 */
     routeExists: !!setRoute && /speechSetSlotRules/.test(js),
     routeAuth: /auth:\s*\{\s*speechAuth:\s*true\s*\}/.test(setRoute),
-    /* ⑤ 落库校验：本班 session + need 只认 1/2 */
-    ownCheck: /FROM\s+session\s+WHERE\s+class_id\s*=\s*\?/i.test(setRoute) && /ownSet\.has\(\s*sid\s*\)/.test(setRoute),
-    needGuard: /n\s*!==\s*1\s*&&\s*n\s*!==\s*2/.test(setRoute) || /n\s*===\s*1\s*\|\|\s*n\s*===\s*2/.test(setRoute),
-    /* ⑥ 一键生成用规则 */
-    genWired: /loadSlotRules\s*\(/.test(gen) && /override/.test(gen) && /buildSlots\([^)]*override/.test(gen),
-    /* ⑦ 智能排班以规则为底、AI 再覆盖 */
-    aiWired: /loadSlotRules\s*\(/.test(ai) && /Object\.assign\(\s*\{\}\s*,\s*await\s+loadSlotRules/.test(ai),
-    /* ⑧ 设置页能拿到场次 + 规则 */
-    listWired: /\n\s*slotRules,/.test(list) && /loadSpeechSessions\s*\(/.test(list) && /loadSlotRules\s*\(/.test(list),
-    /* ⑨ 前端接线 */
+    dayGuard: /day\s*>=\s*1\s*&&\s*day\s*<=\s*5/.test(setRoute),
+    slotGuard: /slot.*AM.*PM/.test(setRoute) || /'AM'/.test(setRoute) && /'PM'/.test(setRoute),
+    needGuard: /n\s*!==\s*1\s*&&\s*n\s*!==\s*2/.test(setRoute),
+    keptCell: /kept\.push\(\s*\{\s*day,\s*slot,\s*need:\s*1\s*\}\s*\)/.test(setRoute),
+    /* ④ 四处口径统一：都 loadSlotRules + gridToSidMap */
+    genWired: /loadSlotRules\s*\(/.test(gen) && /gridToSidMap\s*\(/.test(gen) && /buildSlots\([^)]*override/.test(gen),
+    aiWired: /loadSlotRules\s*\(/.test(ai) && /gridToSidMap\s*\(/.test(ai),
+    listWired: /loadSlotRules\s*\(/.test(list) && /d\s*<=\s*5/.test(list) && /\['AM',\s*'PM'\]/.test(list),
+    boardWired: /loadSlotRules\s*\(/.test(board) && /gridToSidMap\s*\(/.test(board),
+    /* ⑤ 前端接线：合并入口 + 10 格网格 */
     apiWired: /speechSetSlotRules\s*:/.test(s.api),
-    feState: /spSlotRules\s*:/.test(s.pjs) && /spRuleEdit/.test(s.pjs),
-    feUi: /onSpRuleNeed/.test(s.pwxml) && /sp-need/.test(s.pwxml) && /data-need/.test(s.pwxml),
-    feSave: /speechSetSlotRules\(\s*\{[^}]*rules/.test(s.pjs),
-    feCss: /\.sp-need-seg\s*\{/.test(s.pwxss) && /\.sp-need-opt\s*\{/.test(s.pwxss) && /\.sp-need-opt\.on\s*\{/.test(s.pwxss)
+    feState: /spGridRows\s*:/.test(s.pjs) && /spGridSummaryOf/.test(s.pjs),
+    feGridRows: /for\s*\(let d = 1; d <= 5/.test(s.pjs) && /am:\s*am/.test(s.pjs) && /pm:\s*pm/.test(s.pjs),
+    feUi: /data-day=/.test(s.pwxml) && /data-slot=/.test(s.pwxml) && /onSpRuleNeed/.test(s.pwxml),
+    feTenCells: /spGridRows/.test(s.pwxml) && /sp-need-seg/.test(s.pwxml) && /wx:for="\{\{spGridRows\}\}"/.test(s.pwxml),
+    feMerge: /bindtap="onSpGenOpen"/.test(s.pwxml) && !/bindtap="onSpAiOpen"/.test(s.pwxml)
+      && /bindtap="onSpGenerate"/.test(s.pwxml) && /bindtap="onSpAiParse"/.test(s.pwxml),
+    feSave: /speechSetSlotRules\(\s*\{\s*rules:\s*rules/.test(s.pjs) && /day:\s*r\.day,\s*slot:\s*'AM'/.test(s.pjs),
+    feCss: /\.sp-grid-row\s*\{/.test(s.pwxss) && /\.sp-grid-cell\s*\{/.test(s.pwxss) && /\.sp-seg-compact\s*\{/.test(s.pwxss)
   };
 }
 
 const S = evalAll(SRC);
 
-console.log('── ① 持久化与读库');
+console.log('── ① 持久化与纯函数（格子维度 + 旧格式兼容）');
 check(S.migCol, '迁移脚本给 speech_setting 加 slot_rules 列');
-check(S.reader, 'loadSlotRules() 从 speech_setting 读 slot_rules');
-check(S.fnOk, 'parseSlotRules() 可执行');
-check(S.oneKept, '只存 need=1：「周五下午儿童文学 1 人」能读回来');
-check(S.twoDropped, 'need=2 视为默认、不落库（只有 need=1 的场次留在规则里）');
-check(S.dirtySafe, '脏 JSON 当「没有规则」，不抛错（不能拖垮整周排班）');
-check(S.strCoerce, '字符串 sid/need（JSON 往返）也能正确转数字');
+check(S.fnOk, 'parseSlotRules() / gridToSidMap() 可执行');
+check(S.newCellOk, '新格式 {day:5,slot:PM,need:1} 读成「5|PM」格');
+check(S.legacyOk, '旧格式 {sid:339,need:1} 借 session 反查成同一格（升级不失效）');
+check(S.twoDropped, 'need=2 视为默认、不落库');
+check(S.dirtySafe, '脏 JSON 当「没有规则」，不抛错');
+check(S.strCoerce, '字符串 day/slot/need（JSON 往返）也能正确转数字');
+check(S.gridExpand, '格子展开 override：周五下午命中该时段所有课次（339+401），其它时段不受影响');
 
-console.log('\n── ② 后端三处口径统一');
-check(S.routeExists, '新增 speechSetSlotRules 路由');
-check(S.routeAuth, 'speechSetSlotRules 挂 speechAuth（与其它演讲写接口一致）');
-check(S.ownCheck, '落库前校验 session 属于本班（防越权写别人的课次）');
-check(S.needGuard, 'need 只接受 1/2，其它值丢弃');
-check(S.genWired, '一键生成把规则作为 override 交给 buildSlots');
-check(S.aiWired, '智能排班以已保存规则为底，本次指令再覆盖');
-check(S.listWired, 'speechList 下发本周场次 + 每场 need（设置页要显示）');
+console.log('\n── ② 后端四处口径统一');
+check(S.routeExists, 'speechSetSlotRules 路由存在');
+check(S.routeAuth, 'speechSetSlotRules 挂 speechAuth');
+check(S.dayGuard && S.slotGuard, '落库校验 day 1-5 / slot AM|PM');
+check(S.needGuard && S.keptCell, 'need 只接受 1/2，只留 need=1 的格子');
+check(S.genWired, '一键生成：格子规则展开后交给 buildSlots');
+check(S.aiWired, '智能排班：格子规则展开成 override 为底，AI 再覆盖');
+check(S.listWired, 'speechList 下发固定 10 格（1-5 × AM/PM）');
+check(S.boardWired, 'speechBoard 场次 need 按格子取');
 
-console.log('\n── ③ 小程序设置页');
-check(S.apiWired, 'api.js 增加 speechSetSlotRules 封装');
-check(S.feState, '页面 data 有 spSlotRules / spRuleEdit（编辑副本，取消不写回）');
-check(S.feUi, '设置弹层里每场一个「1人 / 2人」切换（data-need 接线）');
-check(S.feSave, '保存时把规则一起提交给 speechSetSlotRules');
-check(S.feCss, '.sp-need-seg / .sp-need-opt / .sp-need-opt.on 样式齐备');
+console.log('\n── ③ 小程序：合并入口 + 排班方式 10 格');
+check(S.apiWired, 'api.js 有 speechSetSlotRules 封装');
+check(S.feState && S.feGridRows, '页面 data 有 spGridRows / spGridSummaryOf，10 格按 1-5×AM/PM 构建');
+check(S.feUi && S.feTenCells, '排班方式弹层 5 行×2 列，每格 data-day/data-slot 接线');
+check(S.feMerge, '顶部只留单个「一键生成」入口（onSpGenOpen），弹层内选轮转/智能排班');
+check(S.feSave, '保存时提交格子规则 [{day,slot,need:1}]');
+check(S.feCss, '.sp-grid-row / .sp-grid-cell / .sp-seg-compact 样式齐备');
 
 console.log('\n── ④ 变异自证（改坏 → 判据必须翻红）');
 const MUT = [
   { name: 'need=2 也当成规则存下来', probe: 'twoDropped', file: 'js',
-    from: 'if (sid > 0 && n === 1) map[sid] = 1;', to: 'if (sid > 0 && n >= 1) map[sid] = 1;' },
+    from: 'if (!it || Number(it.need) !== 1) return;', to: 'if (!it || Number(it.need) < 1) return;' },
   { name: '脏 JSON 直接抛（设置坏了整周排不了）', probe: 'dirtySafe', file: 'js',
-    from: 'try { arr = JSON.parse(raw); } catch (e) { return map; }', to: 'arr = JSON.parse(raw);' },
-  { name: '落库不校验是否本班课次（可写别人班级）', probe: 'ownCheck', file: 'js',
-    apply: (src) => src.replace('if (!ownSet.has(sid) || (n !== 1 && n !== 2)) return;', 'if (n !== 1 && n !== 2) return;') },
+    from: 'try { arr = JSON.parse(raw); } catch (e) { return cells; }', to: 'arr = JSON.parse(raw);' },
+  { name: '格子展开丢掉同格另一门课（只认单门）', probe: 'gridExpand', file: 'js',
+    from: "if (d >= 1 && d <= 5 && sl && cells[d + '|' + sl] === 1) map[s.id] = 1;",
+    to: "if (d >= 1 && d <= 5 && sl && cells[d + '|' + sl] === 1 && s.id === 339) map[s.id] = 1;" },
+  { name: '落库不校验 day 范围（可写越界格子）', probe: 'dayGuard', file: 'js',
+    from: 'if (!(day >= 1 && day <= 5) || !slot || (n !== 1 && n !== 2)) return;',
+    to: 'if (!slot || (n !== 1 && n !== 2)) return;' },
   { name: '一键生成不读规则（每场又回到 2 人）', probe: 'genWired', file: 'js',
-    apply: (src) => src.replace(/const ruleMap = await loadSlotRules\(conn, classId\);\s*\n\s*const slots = speechCore\.buildSlots\(sessions, wk, \{ override: ruleMap \}, week\);/,
+    apply: (src) => src.replace(/const cellMap = await loadSlotRules\(conn, classId, sessions\);\s*\n\s*const ruleMap = gridToSidMap\(cellMap, sessions\);\s*\n\s*const slots = speechCore\.buildSlots\(sessions, wk, \{ override: ruleMap \}, week\);/,
       'const slots = speechCore.buildSlots(sessions, wk, {}, week);') },
   { name: '智能排班不认已保存规则', probe: 'aiWired', file: 'js',
-    from: 'const override = Object.assign({}, await loadSlotRules(pool, classId));', to: 'const override = {};' },
-  { name: '设置页拿不到每场人数', probe: 'listWired', file: 'js',
-    apply: (src) => src.replace(/\n\s*slotRules,/, '') },
+    from: 'const override = gridToSidMap(cellMap, sessions);', to: 'const override = {};' },
+  { name: '设置页下发不再固定 10 格', probe: 'listWired', file: 'js',
+    apply: (src) => src.replace(/for \(let d = 1; d <= 5; d \+= 1\) \{\s*\n\s*\['AM', 'PM'\]\.forEach\(\(sl\) => \{[\s\S]*?\n\s*\}\);\s*\n\s*\}/, '') },
   { name: 'speechSetSlotRules 不挂演讲权限', probe: 'routeAuth', file: 'js',
     apply: (src) => src.replace(/(speechSetSlotRules: \{\s*\n\s*auth: \{ )speechAuth: true/, '$1needBind: true') },
   { name: '保存时漏掉规则（只存游标）', probe: 'feSave', file: 'pjs',
     from: "api.speechSetSlotRules({ rules: rules }, { toast: false })", to: 'Promise.resolve({})' },
-  { name: '切换按钮没接线', probe: 'feUi', file: 'pwxml',
-    /* 两个按钮各一处：只 replace 首处另一处还在 ⇒ 判据仍绿 ⇒ 假通过 */
-    apply: (src) => src.split('bindtap="onSpRuleNeed"').join('bindtap=""') }
+  { name: '切回独立的「智能排班」按钮（没合并）', probe: 'feMerge', file: 'pwxml',
+    apply: (src) => src.replace('bindtap="onSpGenOpen"', 'bindtap="onSpAiOpen"') }
 ];
 
 MUT.forEach((mu) => {
@@ -191,5 +216,5 @@ MUT.forEach((mu) => {
   check(evalAll(Object.assign({}, SRC, { [file]: nextSrc }))[mu.probe] === false, '变异被抓：' + mu.name);
 });
 
-console.log('\n' + (failed ? '✗ ' + failed + ' 项未通过' : '✓ 演讲「每场人数规则」检查全部通过'));
+console.log('\n' + (failed ? '✗ ' + failed + ' 项未通过' : '✓ 演讲「排班方式（周几×上下午）+ 一键生成合并」检查全部通过'));
 process.exit(failed ? 1 : 0);

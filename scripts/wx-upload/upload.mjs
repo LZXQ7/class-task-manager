@@ -3,16 +3,16 @@
  * 微信小程序无头上传（miniprogram-ci）—— 发布体验版/开发版本
  *
  * 用法：
- *   node upload.mjs 1.0.7.1                      # 备注自动取该版「版本更新公告」
+ *   node upload.mjs 1.0.7.1                      # 备注自动取该版「简短更新说明」
  *   node upload.mjs 1.0.7.1 "自定义备注"          # 位置参数：版本号 + 备注（显式指定时优先）
  *   node upload.mjs --version 1.0.7.1 --desc "备注"
  *
  * 项目备注（desc，mp 后台「版本管理」里显示的那列）来源优先级：
  *   1) --desc / 第二个位置参数（显式指定，最高优先）
- *   2) outputs/v<版本>-更新说明.md 的「版本 B 公告版」—— 即超管「我的 → 发送更新公告」
- *      时粘贴的原文（CHANGELOG.md 发版约定：每个版本必须产出该文件；版本 B 为纯文本、
- *      一条一句，正是「每次版本更新的公告」）
- *   3) 都找不到时回退「班级任务管理 <版本>」
+ *   2) outputs/v<版本>-更新说明.md 的「一句话 + 改了什么」—— 简短更新说明，面向开发者
+ *      （用户 2026-11-19 口径：备注列只写这一份，不转录需求口径/前端/门禁长文，避免 500 字截断）
+ *   3) 老版本文件没有这两节时，回退取「版本 B 公告版」（兼容历史更新说明）
+ *   4) 都找不到时回退「班级任务管理 <版本>」
  *
  * 环境变量（均可选，有默认值）：
  *   WX_APPID        小程序 AppID（默认 <YOUR_APPID>）
@@ -27,6 +27,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { parseShortNote } from './note-parser.mjs'
 
 // 环境兜底：Git Bash / 精简环境可能缺 APPDATA / HOME / USERPROFILE，
 // 会让 miniprogram-ci 的依赖 npm-conf 在 path.resolve(undefined) 处崩（ERR_INVALID_ARG_TYPE）
@@ -67,7 +68,22 @@ if (!version) {
 }
 
 /**
- * 读取「版本 B 公告版」正文，作为上传的项目备注（desc）。
+ * 读取「一句话 + 改了什么」作为项目备注（用户 2026-11-19 口径：简短、面向开发者）。
+ * 解析逻辑在 note-parser.mjs（纯函数，门禁可直接载入做变异自证）。
+ */
+function readShortNote(ver) {
+  const v = String(ver).replace(/^v/i, '');
+  const file = path.join(PROJECT_ROOT, 'outputs', `v${v}-更新说明.md`);
+  if (!fs.existsSync(file)) return null;
+  try {
+    return parseShortNote(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 读取「版本 B 公告版」正文，作为旧版更新说明的兜底备注（desc）。
  * 权威来源：outputs/v<version>-更新说明.md（CHANGELOG.md 约定的发版必备产物，
  * 版本 B = 超管「发送更新公告」时整段粘贴的纯文本，一条一句）。
  *
@@ -108,9 +124,15 @@ const DESC_MAX = 500 // 安全上限：mp 后台备注列展示空间有限，�
 let desc = getFlag('desc') || positionals[1]
 let descSource = '命令行显式指定'
 if (!desc) {
+  desc = readShortNote(version)
+  descSource = desc
+    ? `简短更新说明（outputs/v${String(version).replace(/^v/i, '')}-更新说明.md · 一句话 + 改了什么）`
+    : ''
+}
+if (!desc) {
   desc = readAnnouncement(version)
   descSource = desc
-    ? `版本更新公告（outputs/v${String(version).replace(/^v/i, '')}-更新说明.md · 版本 B）`
+    ? `版本 B 公告版兜底（outputs/v${String(version).replace(/^v/i, '')}-更新说明.md · 无简短说明节）`
     : ''
 }
 if (!desc) {

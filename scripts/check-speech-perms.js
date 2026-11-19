@@ -102,7 +102,9 @@ function audit(s) {
   if (!/canSpeech:\s*!!\(app && app\.canSpeech && app\.canSpeech\(\)\)/.test(s.dutyJ)) {
     out.push('值日页未把 canSpeech 放进 data（入口显隐没依据）');
   }
-  ['onSpClear', 'onSpGenerate', 'onSpAiOpen', 'onSpUnpublish', 'onSpPublish'].forEach((h) => {
+  /* v4（2026-11-20）：一键生成/智能排班合并为 onSpGenOpen；轮转/智能排班两个动作
+     收进弹层内部（弹层只有可排者能打开），顶部只校验 4 个按钮按 canSpeech 显隐。 */
+  ['onSpClear', 'onSpGenOpen', 'onSpUnpublish', 'onSpPublish'].forEach((h) => {
     const tag = new RegExp('<view[^>]*bindtap="' + h + '"[^>]*>').exec(s.dutyW);
     if (!tag) { out.push('值日页缺演讲按钮 ' + h); return; }
     if (!/wx:if="\{\{[^"]*canSpeech[^"]*\}\}"/.test(tag[0])) out.push('演讲按钮 ' + h + ' 未按 canSpeech 显隐');
@@ -185,11 +187,11 @@ mutant('变异4：auth 不下发 canSpeech', {
   auth: GOOD.auth.replace('canSpeech: !!guard.canSpeech(m),', '')
 }, 'auth.login 未下发 canSpeech');
 
-mutant('变异5：演讲按钮退回 canSchedule', {
-  dutyW: GOOD.dutyW.replace(/(bindtap="onSpGenerate"[^>]*>)/, '$1').replace(
-    'wx:if="{{canSpeech}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpGenerate"',
-    'wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpGenerate"')
-}, '演讲按钮 onSpGenerate 未按 canSpeech 显隐');
+mutant('变异5：演讲一键生成入口退回 canSchedule', {
+  dutyW: GOOD.dutyW.replace(
+    'wx:if="{{canSpeech}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpGenOpen"',
+    'wx:if="{{canSchedule}}" class="dt-admin-btn ghost" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onSpGenOpen"')
+}, '演讲按钮 onSpGenOpen 未按 canSpeech 显隐');
 
 mutant('变异6：后台删掉勾选框', {
   appJs: GOOD.appJs.replace('id="f-perm-speech"', 'id="f-perm-speech-x"')

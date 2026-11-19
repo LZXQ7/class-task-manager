@@ -1308,28 +1308,67 @@ async function loadSpeechSessions(db, classId, wk) {
 }
 
 /**
- * 解析 slot_rules → `{[sessionId]: 1}`（只认 need=1）。
+ * 解析 slot_rules →「格子 map」`{"day|slot": 1}`（只认 need=1，2 人=默认不落库）。
+ * v4（2026-11-20）：规则从「按课次 sid」升级为「周几 × 上午/下午」格子 —— 用户口径
+ *   「可单独设置周几的上午或下午课前演讲安排几个人」。一个格子命中该时段**所有**课次。
+ *   兼容旧格式 {sid,need:1}：借 sessions 把 sid 反查成其 day/period 再落格子，
+ *   这样升级前已配的「儿童文学周五下午 1 人」不会突然失效（无需动生产数据）。
  * ⚠️ 脏 JSON / 空值一律当「没有规则」：设置坏了不能让整周排不了班。
+ * @param {string|Array} raw    speech_setting.slot_rules
+ * @param {Array} sessions      本周课次（含 id/day_of_week/period），仅旧格式兼容时用
+ * @returns {{[cellKey:string]:1}} cells  key = `${day}|${'AM'|'PM'}`
  */
-function parseSlotRules(raw) {
-  const map = {};
-  if (!raw) return map;
+function parseSlotRules(raw, sessions) {
+  const cells = {};
+  if (!raw) return cells;
   let arr = raw;
   if (typeof raw === 'string') {
-    try { arr = JSON.parse(raw); } catch (e) { return map; }
+    try { arr = JSON.parse(raw); } catch (e) { return cells; }
   }
+  const sess = Array.isArray(sessions) ? sessions : [];
+  const cellOf = (s) => {
+    const d = Number(s && s.day_of_week);
+    const p = Number(s && s.period);
+    const sl = p === speechCore.AM_PERIOD ? 'AM' : (p === speechCore.PM_PERIOD ? 'PM' : '');
+    return (d >= 1 && d <= 5 && sl) ? (d + '|' + sl) : '';
+  };
   (Array.isArray(arr) ? arr : []).forEach(it => {
-    const sid = Number(it && it.sid);
-    const n = Number(it && it.need);
-    if (sid > 0 && n === 1) map[sid] = 1;
+    if (!it || Number(it.need) !== 1) return;   // 只认 need=1；need=2 是默认，不落库
+    const slot = it.slot === 'AM' || it.slot === 'PM' ? it.slot : '';
+    const day = Number(it.day);
+    if (day >= 1 && day <= 5 && slot) {          // 新格式：周几 + 上下午
+      cells[day + '|' + slot] = 1;
+      return;
+    }
+    const sid = Number(it.sid);                  // 旧格式：sid → 借 session 反查格子
+    if (sid > 0) {
+      const s = sess.filter(x => Number(x.id) === sid)[0];
+      const key = s ? cellOf(s) : '';
+      if (key) cells[key] = 1;
+    }
+  });
+  return cells;
+}
+
+/**
+ * 把「格子 map」展开成 buildSlots 需要的 `{[sessionId]:1}` override：
+ * 某课次所在格子命中 need=1 ⇒ 该课次排 1 人。规则按格子走，调课后仍跟周几时段。
+ */
+function gridToSidMap(cells, sessions) {
+  const map = {};
+  (Array.isArray(sessions) ? sessions : []).forEach(s => {
+    const d = Number(s.day_of_week);
+    const p = Number(s.period);
+    const sl = p === speechCore.AM_PERIOD ? 'AM' : (p === speechCore.PM_PERIOD ? 'PM' : '');
+    if (d >= 1 && d <= 5 && sl && cells[d + '|' + sl] === 1) map[s.id] = 1;
   });
   return map;
 }
 
-/** 读本班规则（无行 / 无列 / 脏值都返回空对象） */
-async function loadSlotRules(db, classId) {
+/** 读本班规则格子 map（无行 / 无列 / 脏值都返回空对象） */
+async function loadSlotRules(db, classId, sessions) {
   const [rows] = await db.query('SELECT slot_rules FROM speech_setting WHERE class_id = ?', [classId]);
-  return parseSlotRules(rows[0] && rows[0].slot_rules);
+  return parseSlotRules(rows[0] && rows[0].slot_rules, sessions);
 }
 
 /* ============================================================
@@ -2768,18 +2807,19 @@ const routes = {
         );
         roster = rm.map(m => ({ id: m.id, name: m.name, studentNo: m.student_no, seq: week.seqOf(m.student_no) }));
       }
-      /* 每场人数规则（设置页要显示）：本周场次 + 当前 need（没规则 = 2 人） */
+      /* 排班方式（设置页要显示）：固定「周几 × 上午/下午」10 格 + 当前 need（没规则 = 2 人）。
+         v4：按格子而非按课次 —— 用户口径「单独设置周几的上午或下午安排几个人」。
+         兼容旧 sid 规则：loadSlotRules 借本周场次把旧规则反查成格子。 */
       let slotRules = [];
       if (guard.canSpeech(ctx.member)) {
-        const ruleMap = await loadSlotRules(pool, classId);
         const weekSlots = await loadSpeechSessions(pool, classId, wk);
-        slotRules = weekSlots.map(sl => ({
-          sid: sl.id,
-          day: sl.day_of_week,
-          slot: sl.period === speechCore.AM_PERIOD ? 'AM' : 'PM',
-          courseName: sl.courseName,
-          need: ruleMap[sl.id] === 1 ? 1 : 2
-        }));
+        const cellMap = await loadSlotRules(pool, classId, weekSlots);
+        slotRules = [];
+        for (let d = 1; d <= 5; d += 1) {
+          ['AM', 'PM'].forEach((sl) => {
+            slotRules.push({ day: d, slot: sl, need: cellMap[d + '|' + sl] === 1 ? 1 : 2 });
+          });
+        }
       }
       if (!admin && !published) {
         return { status: 'DRAFT', unpublished: true, days: [], setting, canSpeech: false, roster: [], slotRules: [] };
@@ -2859,8 +2899,10 @@ const routes = {
           seqText: seq ? String(seq) : '·', scope
         });
       });
-      /* ④ 组成本周场次：一个 session = 一场（AM/PM），人挂在其 date|slot 下 */
-      const ruleMap = await loadSlotRules(pool, classId);
+      /* ④ 组成本周场次：一个 session = 一场（AM/PM），人挂在其 date|slot 下。
+             need 按「周几 × 上下午」格子取（v4）：格子规则覆盖该时段所有课次。 */
+      const cellMap = await loadSlotRules(pool, classId, sessions);
+      const ruleMap = gridToSidMap(cellMap, sessions);
       const dayMap = {};
       sessions.forEach(s => {
         const date = String(s.class_date).slice(0, 10);
@@ -2953,8 +2995,9 @@ const routes = {
         const [pubRows] = await conn.query('SELECT base_cursors FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]);
         const start = startCursorsOf(pubRows[0] && pubRows[0].base_cursors, current);
 
-        /* ④ 筛场次骨架 + 轮转选人（默认每场 2 人；「每场人数规则」里 need=1 的场次只排 1 人） */
-        const ruleMap = await loadSlotRules(conn, classId);
+        /* ④ 筛场次骨架 + 轮转选人（默认每场 2 人；「排班方式」里 need=1 的格子只排 1 人） */
+        const cellMap = await loadSlotRules(conn, classId, sessions);
+        const ruleMap = gridToSidMap(cellMap, sessions);
         const slots = speechCore.buildSlots(sessions, wk, { override: ruleMap }, week);
         if (!slots.length) throw new BizError(41004, '本周第1节/第3节没有集体课，无需排演讲');
         const plan = speechCore.assign(slots, roster, start.start, {});
@@ -3274,10 +3317,10 @@ const routes = {
   },
 
   /**
-   * 每场人数规则（v3，2026-11-17）：只存 need=1 的场次，2 人 = 默认不落库。
-   * 前端传全量 [{sid, need}]，归一后**整体覆盖写** —— 幂等，重复保存不会叠加。
-   * 「每周五下午的儿童文学只安排一个人」= 这条规则里 sid=儿童文学课次、need=1，
-   * 之后每周一键生成 / 智能排班都按它排。
+   * 排班方式 · 格子人数规则（v4，2026-11-20）：只存 need=1 的格子，2 人 = 默认不落库。
+   * 前端传全量 [{day, slot, need}]（周几 1-5 + AM/PM），归一后**整体覆盖写** —— 幂等。
+   * 「周五下午只安排一个人」= 这条规则里 {day:5, slot:'PM', need:1}，
+   * 该时段所有课次都按 1 人排，调课后仍跟周几时段走。
    */
   speechSetSlotRules: {
     auth: { speechAuth: true },
@@ -3285,16 +3328,16 @@ const routes = {
       const pool = getPool();
       const classId = guard.classIdOf(ctx);
       const list = Array.isArray(payload.rules) ? payload.rules : [];
-      /* 只能配本班的课次（防越权写别人班级的 session） */
-      const [own] = await pool.query('SELECT id FROM session WHERE class_id = ?', [classId]);
-      const ownSet = new Set(own.map(r => Number(r.id)));
+      /* 只认本班合法格子：day 1-5 / slot AM|PM / need 1|2；越权/脏值静默丢弃 */
       const kept = [];
       const seen = new Set();
       list.forEach(it => {
-        const sid = Number(it && it.sid);
+        const day = Number(it && it.day);
+        const slot = (it && it.slot) === 'AM' ? 'AM' : ((it && it.slot) === 'PM' ? 'PM' : '');
         const n = Number(it && it.need);
-        if (!ownSet.has(sid) || (n !== 1 && n !== 2)) return;
-        if (n === 1 && !seen.has(sid)) { seen.add(sid); kept.push({ sid, need: 1 }); }
+        if (!(day >= 1 && day <= 5) || !slot || (n !== 1 && n !== 2)) return;
+        const key = day + '|' + slot;
+        if (n === 1 && !seen.has(key)) { seen.add(key); kept.push({ day, slot, need: 1 }); }
       });
       await pool.query(
         `INSERT INTO speech_setting (class_id, slot_rules) VALUES (?, ?)
@@ -3394,9 +3437,11 @@ const routes = {
         if (!(day >= 1 && day <= 7) || !slot || !uniq.length) return;
         pins.push({ day, slot, seqs: uniq });
       });
-      /* 已保存的「每场人数规则」是本场的底；本次话里说的「XX课只安排1人」再盖上去
-         （指令优先，但**不写回**规则 —— 否则一次随口的话会变成永久规则）。 */
-      const override = Object.assign({}, await loadSlotRules(pool, classId));
+      /* 已保存的「排班方式」（周几×上下午格子）是本场的底；本次话里说的「XX课只安排1人」再盖上去
+         （指令优先，但**不写回**规则 —— 否则一次随口的话会变成永久规则）。
+         格子先展开成 sid override 交给 buildSlots，notes 仍按课次名展示。 */
+      const cellMap = await loadSlotRules(pool, classId, sessions);
+      const override = gridToSidMap(cellMap, sessions);
       const notes = [];
       Object.keys(override).forEach(sid => {
         const s = sessions.filter(x => String(x.id) === String(sid))[0];

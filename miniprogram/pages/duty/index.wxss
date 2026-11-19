@@ -934,6 +934,16 @@
 .sp-need-opt { padding: 6rpx 20rpx; border-radius: 999rpx; font-size: 22rpx; color: var(--text-3); }
 .sp-need-opt.on { background: var(--brand-light); color: var(--brand); font-weight: 600; }
 .sp-rules-note { font-size: 22rpx; color: var(--text-3); line-height: 1.6; margin-top: 8rpx; }
+/* 排班方式 · 周几×上下午 10 格（v4）：三列表格，行首周几 + 上午格 + 下午格 */
+.sp-grid-head, .sp-grid-row { display: flex; align-items: center; }
+.sp-grid-head { padding: 4rpx 0 8rpx; }
+.sp-grid-row { padding: 8rpx 0; border-bottom: 2rpx solid var(--fill-soft); }
+.sp-grid-cell { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; }
+.sp-grid-hd { font-size: 22rpx; color: var(--text-3); }
+.sp-grid-day { flex: 0 0 120rpx; justify-content: flex-start; font-size: 26rpx; color: var(--text-1); }
+/* 紧凑版人数分段（网格里每格一个）：比普通 sp-need-seg 更小的点击块 */
+.sp-seg-compact { padding: 3rpx; }
+.sp-seg-compact .sp-need-opt { padding: 8rpx 22rpx; font-size: 24rpx; }
 .sp-ai-input { width: 100%; box-sizing: border-box; min-height: 140rpx; padding: 16rpx 20rpx; border-radius: 12rpx; background: var(--fill-soft); color: var(--text-1); font-size: 26rpx; }
 .sp-ai-error { margin-top: 16rpx; padding: 16rpx 20rpx; border-radius: 12rpx; background: var(--danger-bg); color: var(--danger); font-size: 24rpx; line-height: 1.5; }
 .sp-ai-preview-title { margin: 24rpx 0 12rpx; font-size: 26rpx; font-weight: 600; color: var(--text-1); }

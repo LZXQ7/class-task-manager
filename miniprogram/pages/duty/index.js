@@ -92,6 +92,23 @@ function speechSlotGroups(list) {
 }
 
 /**
+ * 排班方式入口摘要（v4）：把 10 格网格压成一句人话，wxml 不做计算。
+ * 全是默认 2 人 → 「默认每场 2 人」；有个别 1 人格子 → 列出来（最多 2 个，超出用「等」）。
+ */
+function spGridSummaryOf(rows) {
+  const arr = Array.isArray(rows) ? rows : [];
+  const ones = [];
+  arr.forEach((r) => {
+    if (!r) return;
+    if (r.am === 1) ones.push(r.dayText + '上午');
+    if (r.pm === 1) ones.push(r.dayText + '下午');
+  });
+  if (!ones.length) return '默认每场 2 人';
+  const shown = ones.slice(0, 2).join('、');
+  return ones.length > 2 ? shown + ' 等 ' + ones.length + ' 格 1 人' : shown + ' 1 人';
+}
+
+/**
  * 写操作（生成 / 发布 / 撤回 / 清空）的 busy 看门狗上限。
  * ------------------------------------------------------------
  * 为什么要有它（2026-09-26 用户反馈「点『按序号轮转』后没有任何反应」）：
@@ -234,10 +251,12 @@ Page({
     spSettingShow: false,
     spCursorA: '',
     spCursorB: '',
-    /* 每场人数规则（speechList 下发）：[{sid,day,slot,courseName,need}]，need=1 才落库 */
+    /* 排班方式：周几×上下午 10 格人数（v4）。speechList 下发 [{day,slot,need}]（固定10格），
+       spGridRows 是弹层编辑副本 [{day,dayText,am,pm}]（点保存才落库，取消不污染） */
     spSlotRules: [],
-    spRuleEdit: [],            // 弹层里的编辑副本（改完点保存才落库，取消不污染）
-    /* 智能排班：输入 + 预览确认 + 红字错误 */
+    spGridRows: [],
+    spGridSummary: '',         // 「排班方式」入口的摘要文案（JS 算好，wxml 不计算）
+    /* 一键生成：序号轮转 / 智能排班 / 排班方式（v4 合并）；输入 + 预览确认 + 红字错误 */
     spAiShow: false,
     spAiText: '',
     spAiBusy: false,
@@ -721,16 +740,20 @@ Page({
           amGroups: speechSlotGroups(d.am),
           pmGroups: speechSlotGroups(d.pm)
         }));
-        /* 每场人数规则：day/slot 在这里拼成人话标签（wxml 里不做计算） */
+        /* 排班方式（v4）：speechList 下发固定 10 格 [{day,slot,need}]，重排成 5 行网格
+           [{day,dayText,am,pm}]，wxml 只渲染不计算。 */
         const slotRules = ((r && r.slotRules) || []).map((it) => ({
-          sid: it.sid,
-          day: it.day,
-          slot: it.slot,
-          courseName: it.courseName,
-          need: it.need === 1 ? 1 : 2,
-          label: '周' + (WEEKDAY[it.day] || '') + ' ' + (it.slot === 'AM' ? '上午第1节' : '下午第3节')
-            + (it.courseName ? ' · ' + it.courseName : '')
+          day: Number(it.day), slot: it.slot, need: it.need === 1 ? 1 : 2
         }));
+        const gridRows = [];
+        for (let d = 1; d <= 5; d += 1) {
+          const am = slotRules.filter(x => x.day === d && x.slot === 'AM')[0];
+          const pm = slotRules.filter(x => x.day === d && x.slot === 'PM')[0];
+          gridRows.push({
+            day: d, dayText: '周' + (WEEKDAY[d] || ''),
+            am: am ? am.need : 2, pm: pm ? pm.need : 2
+          });
+        }
         this.setData({
           speechLoading: false,
           speechStatus: (r && r.status) || 'DRAFT',
@@ -738,6 +761,8 @@ Page({
           speechDays: days,
           speechSetting: (r && r.setting) || this.data.speechSetting,
           spSlotRules: slotRules,
+          spGridRows: gridRows,
+          spGridSummary: spGridSummaryOf(gridRows),
           /* 换人弹层头像里显示「N 号」：后端 roster 给的是数字 seq，这里统一转成 String
              （avatar-tag 的 text 是 String 属性），渲染层不做计算。 */
           speechRoster: ((r && r.roster) || []).map(m => Object.assign({}, m, {
@@ -748,30 +773,37 @@ Page({
       .catch((e) => { this.setData({ speechLoading: false }); util.toast((e && e.errMsg) || '加载演讲安排失败'); });
   },
 
-  /* ---- 演讲：设置当前进度双游标 + 每场人数规则 ---- */
+  /* ---- 演讲：排班方式（进度双游标 + 周几×上下午 10 格人数，v4） ---- */
   onSpSettingOpen() {
     const s = this.data.speechSetting || {};
     /* 编辑副本：改了一半点「取消」不能污染原数据 */
-    const rules = (this.data.spSlotRules || []).map((r) => ({
-      sid: r.sid, day: r.day, slot: r.slot, courseName: r.courseName,
-      need: r.need === 1 ? 1 : 2, label: r.label
-    }));
+    const rows = (this.data.spGridRows || []).map(r => Object.assign({}, r));
     this.setData({
       spSettingShow: true,
       spCursorA: String(s.cursorA || 0),
       spCursorB: String(s.cursorB || 0),
-      spRuleEdit: rules
+      spGridRows: rows
     });
   },
+  /** 「一键生成」弹层 → 排班方式；关掉生成弹层再开设置，避免两层 bottom-sheet 叠一起 */
+  onSpGenSlotOpen() { this.setData({ spAiShow: false }); this.onSpSettingOpen(); },
   onSpSettingClose() { this.setData({ spSettingShow: false }); },
   onSpCursorA(e) { this.setData({ spCursorA: e.detail.value }); },
   onSpCursorB(e) { this.setData({ spCursorB: e.detail.value }); },
-  /** 每场人数切换（1 人 / 2 人）—— 只改编辑副本，保存时才落库 */
+  /** 格子人数切换（1 人 / 2 人）—— data-day + data-slot 定位格子，只改编辑副本 */
   onSpRuleNeed(e) {
-    const idx = Number(e.currentTarget.dataset.idx);
-    const need = Number(e.currentTarget.dataset.need) === 1 ? 1 : 2;
-    if (!(idx >= 0) || !this.data.spRuleEdit[idx]) return;
-    this.setData({ ['spRuleEdit[' + idx + '].need']: need });
+    const ds = e.currentTarget.dataset || {};
+    const day = Number(ds.day);
+    const slot = ds.slot === 'PM' ? 'pm' : (ds.slot === 'AM' ? 'am' : '');
+    const need = Number(ds.need) === 1 ? 1 : 2;
+    if (!(day >= 1 && day <= 5) || !slot) return;
+    const rows = (this.data.spGridRows || []).map((r) => {
+      if (!r || r.day !== day) return r;
+      const o = Object.assign({}, r);
+      o[slot] = need;
+      return o;
+    });
+    this.setData({ spGridRows: rows });
   },
   onSpSettingSave() {
     const a = String(this.data.spCursorA || '').trim();
@@ -780,27 +812,35 @@ Page({
     if (this._spBusy) return;
     this._spBusy = true;
     /* 先落规则、再落游标：规则决定"每场几个人"，游标决定"从谁开始"。
-       规则传全量（need=1 的才留），后端整体覆盖写 ⇒ 幂等。 */
-    const rules = (this.data.spRuleEdit || [])
-      .filter((r) => r && r.need === 1)
-      .map((r) => ({ sid: r.sid, need: 1 }));
+       格子传全量 10 格（need=1 的才留），后端整体覆盖写 ⇒ 幂等。 */
+    const rules = [];
+    (this.data.spGridRows || []).forEach((r) => {
+      if (!r) return;
+      if (r.am === 1) rules.push({ day: r.day, slot: 'AM', need: 1 });
+      if (r.pm === 1) rules.push({ day: r.day, slot: 'PM', need: 1 });
+    });
     api.speechSetSlotRules({ rules: rules }, { toast: false })
       .then(() => api.speechSetSettings({ cursorA: Number(a), cursorB: Number(b) }, { toast: false }))
       .then(() => {
         this._spBusy = false;
         this.setData({ spSettingShow: false });
-        util.toast('设置已保存');
+        util.toast('排班方式已保存');
         this.loadSpeech();
       }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '保存失败'); });
   },
 
-  /* ---- 演讲：一键生成 / 清空 / 发布 / 撤回 ---- */
+  /* ---- 演讲：一键生成（v4：入口打开合并弹层，里面再选轮转/智能排班/排班方式） ---- */
+  onSpGenOpen() {
+    this.setData({ spAiShow: true, spAiText: '', spAiError: '', spAiRows: [], spAiNotes: '', spAiBusy: false });
+  },
+  /* ---- 演讲：按序号轮转生成 / 清空 / 发布 / 撤回 ---- */
   onSpGenerate() {
     if (this._spBusy) return;
     this._spBusy = true;
     wx.showLoading({ title: '正在生成…', mask: true });
     api.speechGenerate({ week: this.data.week }, { toast: false }).then((r) => {
       this._spBusy = false; wx.hideLoading();
+      this.setData({ spAiShow: false });
       util.toast(r && r.created ? ('已排 ' + r.created + ' 人次' + (r.short ? '（有缺口）' : '')) : '本周无需排演讲');
       this.loadSpeech();
     }).catch((e) => { this._spBusy = false; wx.hideLoading(); util.toast((e && e.errMsg) || '生成失败'); });
@@ -833,9 +873,10 @@ Page({
     }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '撤回失败'); });
   },
 
-  /* ---- 演讲：智能排班（自然语言 → 预览确认） ---- */
-  onSpAiOpen() { this.setData({ spAiShow: true, spAiText: '', spAiError: '', spAiRows: [], spAiNotes: '' }); },
-  onSpAiClose() { this.setData({ spAiShow: false }); },
+  /* ---- 演讲：一键生成弹层内的智能排班（自然语言 → 预览确认） ---- */
+  /* onSpAiOpen 兼容别名：v4 起统一从 onSpGenOpen 进同一弹层，保留转发防外部旧调用 */
+  onSpAiOpen() { this.onSpGenOpen(); },
+  onSpAiClose() { this.setData({ spAiShow: false, spAiRows: [] }); },
   onSpAiInput(e) { this.setData({ spAiText: e.detail.value }); },
   onSpAiParse() {
     const text = String(this.data.spAiText || '').trim();
