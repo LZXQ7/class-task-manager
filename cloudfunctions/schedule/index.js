@@ -1291,6 +1291,10 @@ async function loadSpeechSessions(db, classId, wk) {
   rows.forEach(s => {
     const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
     if (!slot) return;
+    /* 1.0.8.68：课次本周是否生效（隔周课：单周课/双周课各一条 session，本周只该出一条）。
+       与生成端 speechCore.buildSlots 第 47 行同一口径 —— 少了这层，
+       speechBoard 会把单周+双周两条都列出来（用户看到的「同一时段两节课」）。 */
+    if (!week.matchesWeeks(s.weeks, wk, s.week_rule)) return;
     const p = Number(slot.period);
     if (p !== speechCore.AM_PERIOD && p !== speechCore.PM_PERIOD) return;
     const classDate = week.classDateOf(cfg, wk, slot.day, cal);
@@ -2778,16 +2782,20 @@ const routes = {
           WHERE sp.class_id = ? AND sp.week = ? AND sp.status <> 'SWAPPED_OUT'
           ORDER BY sp.class_date, sp.slot, m.student_no`, [classId, wk]
       );
-      /* ③ 按 (date|slot) 归组；组内的人带 seqText 给前端胶囊 */
+      /* ③ 按 (date|slot|scope) 归组；组内的人带 seqText 给前端胶囊。
+         1.0.8.68：key 必须带 scope —— 同一天同一时段可能既有全体课又有 A 组课
+         （如周三 afternoon 心理健康：单周全体 335 + 双周 A 组 336）。原来只按 date|slot
+         归组，两场会共享同一批人。scope 与 speech 表 / session.group_scope 同口径 A/B/ALL。 */
       const byKey = {};
       rows.forEach(r => {
         const date = String(r.class_date).slice(0, 10);
-        const key = date + '|' + r.slot;
+        const scope = r.scope === 'A' ? 'A' : (r.scope === 'B' ? 'B' : 'ALL');
+        const key = date + '|' + r.slot + '|' + scope;
         if (!byKey[key]) byKey[key] = [];
         const seq = week.seqOf(r.student_no);
         byKey[key].push({
           id: r.id, memberId: r.member_id, name: r.name || '',
-          seqText: seq ? String(seq) : '·', scope: r.scope || 'ALL'
+          seqText: seq ? String(seq) : '·', scope
         });
       });
       /* ④ 组成本周场次：一个 session = 一场（AM/PM），人挂在其 date|slot 下 */
@@ -2798,7 +2806,7 @@ const routes = {
         if (!dayMap[date]) dayMap[date] = { date, sessions: [] };
         const slot = s.period === speechCore.AM_PERIOD ? 'AM' : 'PM';
         const scope = s.group_scope === 'A' ? 'A' : (s.group_scope === 'B' ? 'B' : 'ALL');
-        const members = byKey[date + '|' + slot] || [];
+        const members = byKey[date + '|' + slot + '|' + scope] || [];
         const need = ruleMap[s.id] === 1 ? 1 : 2;
         dayMap[date].sessions.push({
           sessionId: s.id,
