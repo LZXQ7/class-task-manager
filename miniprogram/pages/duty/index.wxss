@@ -892,14 +892,20 @@
 .sp-line-tag { flex: 0 0 64rpx; text-align: center; border-radius: 8rpx; font-size: 20rpx; line-height: 32rpx; font-weight: 600; background: var(--brand-light); color: var(--brand); }
 .sp-line-tag.all { background: var(--fill-soft); color: var(--text-3); }
 .sp-persons { display: flex; flex-wrap: wrap; gap: 12rpx; flex: 1; }
-/* 姓名胶囊：胶囊宽度随姓名容器定宽而恒定 ⇒ 一行里第二个人的起始位置也齐 */
-.sp-person { display: flex; align-items: center; padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--fill-soft); }
+/* 姓名胶囊（1.0.8.67）：胶囊定宽 + 学号绝对定位钉在最右 —— 学号右边缘成一条竖线。
+   名字容器 .sp-name 定宽 78rpx（两字名 space-between 撑满），右侧留 58rpx 给学号，
+   于是 2 字 / 3 字名胶囊总宽一致；.sp-no absolute right:16rpx ⇒ 每颗胶囊的学号都在同一位置。
+   ⚠️ position:relative 是 .sp-no 绝对定位的基准，不能删。 */
+.sp-person { position: relative; display: flex; align-items: center; padding: 8rpx 58rpx 8rpx 16rpx; border-radius: 999rpx; background: var(--fill-soft); }
 /* 姓名分散对齐（1.0.8.58）：定宽 = 26rpx × 3 字，逐字当 flex item，
    space-between 把 2 字名的两个字推到两端，与 3 字名左右都齐。
    ⚠️ 改字号必须同步改这个宽度（约等于 字号 × 3） */
 .sp-name { display: flex; justify-content: space-between; align-items: center; width: 78rpx; }
 .sp-name.wide { width: auto; }
 .sp-char { font-size: 26rpx; color: var(--text-1); font-weight: 500; }
+/* 学号后两位（1.0.8.67 改绝对定位）：absolute 钉在胶囊最右，1/2 位号右边缘齐成竖线。
+   ⚠️ 空号也占位，不靠 wx:if 藏掉，保证所有胶囊的号位一致。 */
+.sp-no { position: absolute; right: 16rpx; top: 50%; transform: translateY(-50%); width: 34rpx; text-align: right; font-size: 20rpx; color: var(--text-3); }
 /* 仅「智能排班」预览用：那里是一人一行的流水账，行尾跟一个小字说明组别；
    卡片时段视图已改成一行的组别小标在前，不用这个 */
 .sp-scope { font-size: 20rpx; color: var(--text-3); }
@@ -939,10 +945,13 @@
 .sp-ai-name { flex: 1; font-size: 24rpx; color: var(--text-1); }
 /* 「指定」小标签：仅点名到号的预览行出现，提示这行不是轮转排的 */
 .sp-ai-pin { flex: 0 0 auto; padding: 0 10rpx; border-radius: 8rpx; font-size: 20rpx; line-height: 28rpx; color: var(--brand); background: var(--brand-light); }
-.sp-swap-list { max-height: 60vh; overflow-y: auto; }
-.sp-swap-row { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 8rpx; border-bottom: 2rpx solid var(--nav-line); }
-.sp-swap-name { font-size: 28rpx; color: var(--text-1); }
-.sp-swap-seq { font-size: 24rpx; color: var(--text-3); }
+/* 换人弹层（1.0.8.66）：与其他弹层的列表行（.dt-group-row）统一 ——
+   头像 + 姓名/学号 + 分隔线 + tap-hover 按下高亮；原来是朴素两列文字，像原生弹窗。 */
+/* 1.0.8.67：去掉 max-height/overflow-y —— 小程序 view 上这两个属性不产生滚动，
+   56 人名册滚不动。改由 bottom-sheet 传 height 固定面板，交给它的 spring-scroll 滚。 */
+.sp-swap-list { padding: 8rpx 0 24rpx; }
+.sp-swap-row { display: flex; align-items: center; min-height: 112rpx; padding: 16rpx 32rpx; border-bottom: 2rpx solid var(--bg-fill); }
+.sp-swap-row:last-child { border-bottom: none; }
 /* 弹层底部操作条（miniprogram-page-conventions 第 6 条：flex 两按钮等宽） */
 .f-actions { display: flex; gap: 20rpx; align-items: stretch; margin-top: 24rpx; }
 .f-cancel, .f-save { flex: 1; }

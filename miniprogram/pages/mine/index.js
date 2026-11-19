@@ -63,6 +63,9 @@ Page({
      * 只决定入口显隐，**不是安全边界**（真拦截在云函数 guard.requireScheduleAuth）。
      */
     canSchedule: false,
+    /* 演讲排班入口（1.0.8.67）：与 canSchedule 同源的独立能力位 —— 学习委员只排演讲，
+       值日仍归生活委员。真拦截在云函数 guard.requireSpeechAuth。 */
+    canSpeech: false,
     /* -------- 更多 / 班费总额（2026-10-14） --------
        showMore：只要有任一相关能力就给「更多」入口；弹层内部每行再按自己权限二次判定。
        ⚠️ 这里**不**写职位字面量，一律走 util.feeRights（与首页、后端 fee 云函数同一份口径）。 */
@@ -262,6 +265,7 @@ Page({
     /* 排班域（需求 D）：「待确认换班」与「手动排班」入口改为按 canSchedule 显隐 ——
        生活委员也进了排班域，继续用 isSuper 会让 TA 看不到自己该处理的换班申请。 */
     const canScheduleNow = !!(app && app.canSchedule && app.canSchedule());
+    const canSpeechNow = !!(app && app.canSpeech && app.canSpeech());
     const p = app.globalData.profile || null;
     this.setData(Object.assign({
       profile: p,
@@ -269,6 +273,7 @@ Page({
       isAdmin: !!(app && app.isAdmin && app.isAdmin()),
       isSuper: isSuperNow,
       canSchedule: canScheduleNow,
+      canSpeech: canSpeechNow,
       isCounselor: !!(p && p.groupTag === 'X'),
       switched: !!(app.globalData.switched),
       demo: !!(app.globalData.demo),
@@ -291,6 +296,7 @@ Page({
       app.ready().then(() => {
         const s = !!(app.isSuper && app.isSuper());
         const cs = !!(app.canSchedule && app.canSchedule());
+        const cp = !!(app.canSpeech && app.canSpeech());
         const p2 = app.globalData.profile || null;
         this.setData(Object.assign({
           profile: p2,
@@ -298,6 +304,7 @@ Page({
           isAdmin: !!(app.isAdmin && app.isAdmin()),
           isSuper: s,
           canSchedule: cs,
+          canSpeech: cp,
           isCounselor: !!(p2 && p2.groupTag === 'X'),
           switched: !!(app.globalData.switched),
           demo: !!(app.globalData.demo),
@@ -325,6 +332,7 @@ Page({
           isAdmin: !!(app.isAdmin && app.isAdmin()),
           isSuper: !!(app.isSuper && app.isSuper()),
           canSchedule: !!(app.canSchedule && app.canSchedule()),
+          canSpeech: !!(app.canSpeech && app.canSpeech()),
           isCounselor: !!(p3 && p3.groupTag === 'X'),
           switched: !!(app.globalData.switched),
           demo: !!(app.globalData.demo),
@@ -573,6 +581,7 @@ Page({
         /* 切换账号后权限整体变了（含排班域），canSchedule 必须一起补，
            否则从超管切到生活委员后「待确认换班」会沿用旧值不刷新 */
         canSchedule: !!(app.canSchedule && app.canSchedule()),
+        canSpeech: !!(app.canSpeech && app.canSpeech()),
         switched: !!(app.globalData.switched),
         demo: !!(app.globalData.demo),
         realIsSuper: !!(app.globalData.realIsSuper),
@@ -622,6 +631,7 @@ Page({
   onMoreSwitchDemo() { this._afterMoreClose(() => this.onSwitchDemo()); },
   onMoreAi() { this._afterMoreClose(() => this.openAiSetting()); },
   onMoreManual() { this._afterMoreClose(() => this.goManual()); },
+  onMoreSpeech() { this._afterMoreClose(() => this.goSpeech()); },
   _loadFeeSummary() {
     return api.feeSummary({}, { toast: false })
       .then((r) => {
@@ -1096,6 +1106,23 @@ Page({
     if (app && app.canSchedule && app.canSchedule()) {
       wx.navigateTo({
         url: '/pages/manual/index',
+        fail: () => wx.switchTab({ url: '/pages/duty/index' })
+      });
+      return;
+    }
+    wx.switchTab({ url: '/pages/duty/index' });
+  },
+
+  /**
+   * 演讲排班（1.0.8.67，唯一入口）：演讲权（超管 | 生活委员 | 学习委员 | 单独授予）
+   * 进「演讲排班」页，可增删/换人/发布本周演讲。学习委员有演讲权但无值日权，
+   * 故这里只用 canSpeech，不能用 canSchedule。真拦截在云函数 guard.requireSpeechAuth。
+   */
+  goSpeech() {
+    const app = getApp();
+    if (app && app.canSpeech && app.canSpeech()) {
+      wx.navigateTo({
+        url: '/pages/speech/index',
         fail: () => wx.switchTab({ url: '/pages/duty/index' })
       });
       return;

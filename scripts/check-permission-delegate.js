@@ -87,11 +87,11 @@ console.log('\n── ② 排班域（排班域路由必须声明 scheduleAuth�
  * 与 setRules 同域 —— 谁能排班，谁就能定自己班的制度。
  * 23 → 28（2026-11-16）：新增课前演讲 5 个写路由（speechGenerate/Reassign/
  * Clear/Publish/SetSettings），同属排班域；speechList 只读走 needBind 不计入。
- * 30 → **23**（2026-11-17 用户要求）：课前演讲 7 条写路由改用**独立** `speechAuth`
+ * 30 → **23**（2026-11-17 用户要求）：课前演讲写路由改用**独立** `speechAuth`
  *   （超管 | 生活委员 | **学习委员** | 后台单独授予），从 scheduleAuth 里移出。
  *   只给学习委员演讲权、值日仍归生活委员 ⇒ 两条线必须分开，合并即越权。
  *   演讲那一侧的覆盖由 check-speech-perms.js 逐条守。 */
-eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 23, '值日排班域路由数（演讲 7 条已移出，见 check-speech-perms）');
+eq(count(SCH, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 23, '值日排班域路由数（演讲写路由已移出，见 check-speech-perms）');
 eq(count(ADJ, /auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g), 2, 'adjust 排班域路由数');
 
 /** 派发器接线（源码入 → 失败码出） */

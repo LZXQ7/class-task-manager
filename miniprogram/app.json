@@ -8,6 +8,7 @@
     "pages/fee/index",
     "pages/bind/index",
     "pages/manual/index",
+    "pages/speech/index",
     "pages/doc/index",
     "pages/notice/index",
     "pages/webview/index",

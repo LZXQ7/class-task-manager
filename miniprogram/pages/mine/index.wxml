@@ -359,8 +359,16 @@
       </view>
       <view data-pressable wx:if="{{canSchedule}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreManual">
         <app-icon name="grid" variant="brand" size="{{40}}" />
-        <text class="mn-row-text">手动排班</text>
-        <view class="mn-mini-tag super">排班</view>
+        <text class="mn-row-text">值日排班</text>
+        <view class="mn-mini-tag super">手动</view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+      <!-- 演讲排班（1.0.8.67）：独立入口，按 canSpeech 显隐（学习委员只排演讲、不排值日）；
+           跳 pages/speech 独立页，与值日排班同款增删人/发布。 -->
+      <view data-pressable wx:if="{{canSpeech}}" class="mn-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onMoreSpeech">
+        <app-icon name="grid" variant="brand" size="{{40}}" />
+        <text class="mn-row-text">演讲排班</text>
+        <view class="mn-mini-tag super">手动</view>
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
       <!-- AI 排班设置：自带密钥（跟随本人，不是班）。密钥只回掩码，保存即覆盖，不回显明文 -->

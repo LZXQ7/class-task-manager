@@ -138,8 +138,11 @@ module.exports = {
 
   /* ---------- 课前演讲排班（2026-11-16，独立游标/发布态） ---------- */
   speechList: C('schedule', 'speechList'),
+  speechBoard: C('schedule', 'speechBoard'),
   speechGenerate: C('schedule', 'speechGenerate'),
   speechReassign: C('schedule', 'speechReassign'),
+  speechAdd: C('schedule', 'speechAdd'),
+  speechRemove: C('schedule', 'speechRemove'),
   speechClear: C('schedule', 'speechClear'),
   speechPublish: C('schedule', 'speechPublish'),
   speechSetSettings: C('schedule', 'speechSetSettings'),

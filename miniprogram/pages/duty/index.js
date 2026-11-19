@@ -46,7 +46,13 @@ function aggregateDutyStatus(statuses) {
 function speechNameCells(p) {
   const name = (p && p.name) || '';
   const chars = Array.from(name).map((c, k) => ({ c, k }));
-  return Object.assign({}, p, { chars, wide: chars.length > 3 });
+  /* 学号后两位（= 排班点名说的「N 号」，1.0.8.66 用户口径）：与 util.seqOf 同口径。
+     这里刻意内联、不 require util —— 门禁把本函数单独装进沙盒真跑，外部依赖会让它直接抛错。
+     0 / 空 / 脏学号都不出号，胶囊宽度由 .sp-no 定宽兜住，第二列依旧齐。 */
+  const raw = String((p && p.studentNo) == null ? '' : p.studentNo).replace(/\D/g, '');
+  const n = raw ? parseInt(raw.slice(-2), 10) : NaN;
+  const seqText = (!isNaN(n) && n > 0) ? String(n) : '';
+  return Object.assign({}, p, { chars, wide: chars.length > 3, seqText });
 }
 
 /**
@@ -240,7 +246,10 @@ Page({
     spAiShort: 0,
     /* 演讲换人弹层 */
     spSwapShow: false,
-    spSwapTarget: null
+    spSwapTarget: null,
+    /* 演讲点人名动作菜单（1.0.8.67）：取消该场 / 换人；不用原生 showActionSheet 以守深色 */
+    spActionShow: false,
+    spActionTarget: null
   },
 
   onLoad() {
@@ -705,7 +714,11 @@ Page({
           speechDays: days,
           speechSetting: (r && r.setting) || this.data.speechSetting,
           spSlotRules: slotRules,
-          speechRoster: (r && r.roster) || []
+          /* 换人弹层头像里显示「N 号」：后端 roster 给的是数字 seq，这里统一转成 String
+             （avatar-tag 的 text 是 String 属性），渲染层不做计算。 */
+          speechRoster: ((r && r.roster) || []).map(m => Object.assign({}, m, {
+            seqText: m.seq ? String(m.seq) : ''
+          }))
         });
       })
       .catch((e) => { this.setData({ speechLoading: false }); util.toast((e && e.errMsg) || '加载演讲安排失败'); });
@@ -831,11 +844,33 @@ Page({
       }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '应用失败'); });
   },
 
-  /* ---- 演讲：单场换人（完全自由） ---- */
+  /* ---- 演讲：点人名 → 动作菜单（取消该场 / 换人） ----
+     1.0.8.67：与值日排班页 onMemberTap 的两项操作对齐；用站内 bottom-sheet 而非
+     原生 showActionSheet（后者无法跟随深色主题）。真拦截在云函数 speechAuth。 */
   onSpSwapTap(e) {
     const d = e.currentTarget.dataset;
-    this.setData({ spSwapShow: true, spSwapTarget: { id: d.id, name: d.name } });
+    this.setData({ spActionShow: true, spActionTarget: { id: d.id, name: d.name } });
   },
+  onSpActionClose() { this.setData({ spActionShow: false }); },
+  onSpActionReassign() {
+    const t = this.data.spActionTarget;
+    if (!t) return;
+    // 关动作菜单、开换人名册（沿用原换人弹层）
+    this.setData({ spActionShow: false, spSwapShow: true, spSwapTarget: t });
+  },
+  onSpActionRemove() {
+    const t = this.data.spActionTarget;
+    if (!t) return;
+    const that = this;
+    this.setData({ spActionShow: false });
+    util.confirm('取消后该同学不再参与这场课前演讲', '取消演讲').then(ok => {
+      if (!ok) return;
+      api.speechRemove({ id: t.id }, { loading: '处理中' }).then(() => {
+        util.toast('已取消'); that.loadSpeech();
+      }).catch((e) => util.toast((e && e.errMsg) || '取消失败'));
+    });
+  },
+  /* ---- 演讲：单场换人（完全自由） ---- */
   onSpSwapClose() { this.setData({ spSwapShow: false }); },
   onSpSwapPick(e) {
     const mid = Number(e.currentTarget.dataset.mid);

@@ -138,8 +138,8 @@ const SCH_SRC = fs.readFileSync(path.join(ROOT, 'cloudfunctions', 'schedule', 'i
 const SQL_SRC = fs.readFileSync(path.join(ROOT, 'scripts', 'migrate-speech.sql'), 'utf8');
 console.log('── ⓐ 云函数接线与权限（静态）');
 check(/require\('\.\/common\/speech-core'\)/.test(SCH_SRC), 'schedule 引入 speech-core 真源码');
-['speechGenerate', 'speechReassign', 'speechClear', 'speechPublish', 'speechSetSettings',
- 'speechAiParse', 'speechAiApply'].forEach(a => {
+['speechGenerate', 'speechReassign', 'speechAdd', 'speechRemove', 'speechBoard', 'speechClear',
+ 'speechPublish', 'speechSetSettings', 'speechAiParse', 'speechAiApply'].forEach(a => {
   /* 2026-11-17：演讲写路由改为独立 speechAuth（超管 | 生活委员 | 学习委员 | 后台单独授予）；
      值日仍走 scheduleAuth —— 两者合并等于把值日权一并给学习委员，见 check-speech-perms.js。 */
   const re = new RegExp(a + ':\\s*\\{[\\s\\S]{0,80}auth:\\s*\\{\\s*speechAuth:\\s*true');

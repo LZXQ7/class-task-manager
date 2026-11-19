@@ -3,7 +3,7 @@
      表现就是「在值日详情里选择替补，滑到底后后面的『本周值日』跟着一起滑」。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(sheetShow || aiShow || groupShow || addShow || endedSheetShow || slotShow || spSettingShow || spAiShow || spSwapShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(sheetShow || aiShow || groupShow || addShow || endedSheetShow || slotShow || spSettingShow || spAiShow || spSwapShow || spActionShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <!-- 左右滑动切周：手势挂在页面根节点（覆盖整页），见 utils/swipe.js。
      弹层打开时在 onSwipeEnd 里挡掉（弹层 DOM 就在这个根节点里，touch 会冒泡上来）。 -->
@@ -260,10 +260,11 @@
             <view wx:for="{{item.amGroups}}" wx:for-item="grp" wx:key="scope" class="sp-line">
               <text class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
               <view class="sp-persons">
-                <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
+                <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-pressable hover-class="press-dim" hover-start-time="0" hover-stay-time="60" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
                   <view class="sp-name {{p.wide ? 'wide' : ''}}">
                     <text wx:for="{{p.chars}}" wx:for-item="c" wx:key="k" class="sp-char">{{c.c}}</text>
                   </view>
+                  <text class="sp-no">{{p.seqText}}</text>
                 </view>
               </view>
             </view>
@@ -276,10 +277,11 @@
             <view wx:for="{{item.pmGroups}}" wx:for-item="grp" wx:key="scope" class="sp-line">
               <text class="sp-line-tag {{grp.scope === 'ALL' ? 'all' : ''}}">{{grp.label}}</text>
               <view class="sp-persons">
-                <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
+                <view wx:for="{{grp.people}}" wx:for-item="p" wx:key="id" class="sp-person" data-pressable hover-class="press-dim" hover-start-time="0" hover-stay-time="60" data-id="{{p.id}}" data-name="{{p.name}}" bindtap="onSpSwapTap">
                   <view class="sp-name {{p.wide ? 'wide' : ''}}">
                     <text wx:for="{{p.chars}}" wx:for-item="c" wx:key="k" class="sp-char">{{c.c}}</text>
                   </view>
+                  <text class="sp-no">{{p.seqText}}</text>
                 </view>
               </view>
             </view>
@@ -287,7 +289,7 @@
           <view wx:else class="sp-none">—</view>
         </view>
       </view>
-      <view class="sp-foot">点姓名可换人（管理员）</view>
+      <view class="sp-foot">点姓名可取消 / 换人（管理员）</view>
     </view>
   </view>
   </block>
@@ -720,13 +722,38 @@
     </view>
   </bottom-sheet>
 
+  <!-- ===== 演讲：点人名动作菜单（1.0.8.67）：取消该场 / 换人 ===== -->
+  <bottom-sheet show="{{spActionShow}}" title="{{spActionTarget ? spActionTarget.name : '演讲安排'}}" tabbar="{{false}}" bind:close="onSpActionClose">
+    <view class="dt-group">
+      <view data-pressable class="dt-group-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onSpActionReassign">
+        <view class="dt-row-info"><text class="dt-row-name">换人</text><text class="dt-row-sub">从全班选一位同学替换</text></view>
+        <text class="dt-row-edit">›</text>
+      </view>
+      <view data-pressable class="dt-group-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onSpActionRemove">
+        <view class="dt-row-info"><text class="dt-row-name c-danger">取消该场</text><text class="dt-row-sub">该同学不再参与这场演讲</text></view>
+        <text class="dt-row-edit">›</text>
+      </view>
+    </view>
+  </bottom-sheet>
+
   <!-- ===== 演讲：单场换人 ===== -->
-  <bottom-sheet show="{{spSwapShow}}" title="{{spSwapTarget ? '换演讲人 · ' + spSwapTarget.name : '换演讲人'}}" bind:close="onSpSwapClose">
+  <bottom-sheet show="{{spSwapShow}}" title="{{spSwapTarget ? '换演讲人 · ' + spSwapTarget.name : '换演讲人'}}" height="{{1080}}" tabbar="{{false}}" bind:close="onSpSwapClose">
     <view wx:if="{{!speechRoster.length}}" class="sp-empty-sub">名册为空，无法换人</view>
     <view wx:else class="sp-swap-list">
-      <view wx:for="{{speechRoster}}" wx:for-item="m" wx:key="id" class="sp-swap-row" data-mid="{{m.id}}" bindtap="onSpSwapPick">
-        <text class="sp-swap-name">{{m.name}}</text>
-        <text class="sp-swap-seq">{{m.studentNo}}</text>
+      <view data-pressable
+        wx:for="{{speechRoster}}" wx:for-item="m" wx:key="id"
+        class="sp-swap-row"
+        hover-class="tap-hover"
+        hover-start-time="0"
+        hover-stay-time="60"
+        data-mid="{{m.id}}"
+        bindtap="onSpSwapPick"
+      >
+        <avatar-tag name="{{m.name}}" text="{{m.seqText}}" no-fallback="{{true}}" size="{{64}}" />
+        <view class="dt-row-info">
+          <text class="dt-row-name">{{m.name}}</text>
+          <text class="dt-row-sub">{{m.studentNo}}</text>
+        </view>
       </view>
     </view>
   </bottom-sheet>

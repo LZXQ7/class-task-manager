@@ -1,0 +1,159 @@
+/* 演讲排班（1.0.8.67）—— 版式与 pages/manual 同款，组件/令牌全复用 */
+.ms { min-height: 100vh; padding-bottom: 0; }
+
+.card {
+  background: var(--glass-bg);
+  border: 1rpx solid var(--glass-edge);
+  border-radius: var(--r-md);
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  overflow: hidden;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card { background: var(--bg-card, rgba(255, 255, 255, 0.9)); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .card { background: var(--bg-card); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+.ms-tip {
+  margin: 16rpx 32rpx 8rpx;
+  font-size: 23rpx;
+  line-height: 1.6;
+  color: var(--brand);
+}
+
+/* ---------- 日期卡 ---------- */
+.ms-day { margin: 16rpx 32rpx 24rpx; }
+.ms-dayhead {
+  height: 80rpx;
+  padding: 0 32rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2rpx solid var(--bg-fill);
+}
+.ms-daytitle { font-size: 30rpx; font-weight: 600; color: var(--text-1); }
+.ms-daysub { font-size: 24rpx; color: var(--text-3); }
+
+/* ---------- 场次 ---------- */
+.ms-sess {
+  padding: 20rpx 32rpx 4rpx;
+  border-bottom: 2rpx solid var(--bg-fill);
+}
+.ms-sess:last-child { border-bottom: none; }
+.ms-sesshead {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.ms-sess-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text-1);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ms-sess-group {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  font-size: 20rpx;
+  color: var(--purple);
+  background: var(--purple-bg);
+  border-radius: 6rpx;
+  padding: 2rpx 10rpx;
+}
+.ms-sess-group.all { color: var(--text-3); background: var(--fill-soft); }
+.ms-sess-count {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  font-size: 22rpx;
+  color: var(--text-3);
+}
+.ms-sess-count.ok { color: var(--success); }
+
+/* ---------- 已排同学 / 添加 ---------- */
+.ms-chips {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  padding: 16rpx 0 20rpx;
+}
+.ms-chip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 72rpx;
+  padding: 0 16rpx 0 8rpx;
+  margin: 0 16rpx 16rpx 0;
+  background: var(--fill-soft);
+  border: 2rpx solid var(--line-1);
+  border-radius: 999rpx;
+}
+.ms-chip-name {
+  margin: 0 4rpx 0 12rpx;
+  font-size: 26rpx;
+  color: var(--text-1);
+  max-width: 180rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ms-add {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 72rpx;
+  padding: 0 24rpx;
+  margin: 0 16rpx 16rpx 0;
+  border: 2rpx dashed var(--bg-fill);
+  border-radius: 999rpx;
+}
+.ms-add-text { margin-left: 8rpx; font-size: 26rpx; color: var(--text-3); }
+
+/* ---------- 底部固定条 ---------- */
+.ms .page-foot-space { height: 220rpx; }
+.ms-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));
+  background: var(--bg-card);
+  border-top: 2rpx solid var(--bg-fill);
+  box-shadow: 0 -4rpx 16rpx rgba(29,33,41,0.04);
+}
+.ms-bar-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: var(--text-3);
+}
+.ms-bar-btn {
+  flex-shrink: 0;
+  height: 80rpx;
+  padding: 0 40rpx;
+  border-radius: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+}
+.ms-bar-btn.primary { background: var(--brand); color: #FFFFFF; font-weight: 600; }
+.ms-bar-btn.ghost { background: var(--bg-fill); color: var(--text-2); }
+
+/* ---------- 选人弹层 ---------- */
+.pk { padding: 8rpx 32rpx 48rpx; }
+.pk-gap { padding: 16rpx 4rpx 8rpx; }
+.pk-gap-text { font-size: 22rpx; color: var(--text-3); line-height: 1.6; }

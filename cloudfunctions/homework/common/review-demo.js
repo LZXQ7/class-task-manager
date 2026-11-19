@@ -132,7 +132,10 @@ const DEMO_WRITE_ACTIONS = [
   /* —— schedule：排班生成 / 发布 / 换人 —— */
   'generate', 'publish', 'unpublish', 'clear', 'addManual', 'remove', 'reassign', 'reassignUndo',
   'setRules', 'setSlots',
-  'aiApply', 'aiSettingSave', 'aiSettingClear', 'aiSettingTest'
+  'aiApply', 'aiSettingSave', 'aiSettingClear', 'aiSettingTest',
+  /* —— schedule：课前演讲写路由（独立 speechAuth，但演示班同样只读）—— */
+  'speechGenerate', 'speechReassign', 'speechAdd', 'speechRemove', 'speechClear',
+  'speechPublish', 'speechSetSettings', 'speechSetSlotRules', 'speechAiApply'
 ];
 
 const DEMO_WRITE_SET = new Set(DEMO_WRITE_ACTIONS);

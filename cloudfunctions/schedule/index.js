@@ -2750,6 +2750,90 @@ const routes = {
     }
   },
 
+  /**
+   * 演讲排班页读接口（1.0.8.67）：列出本周**全部演讲场次**（含还没排人的空场），
+   * 供演讲排班页做「添加 / 取消 / 换人」——与值日 manualBoard 对齐。
+   * 场次骨架复用 loadSpeechSessions（与生成同源：调课/放假/第1·3节集体课口径一致），
+   * 再把本周 speech 行按 (class_date, slot) 挂到场次上。挂 speechAuth（与演讲写路由同权）。
+   * 草稿/已发布状态由 speech_publish 给出，前端同值日排班页展示徽章。
+   */
+  speechBoard: {
+    auth: { speechAuth: true },
+    handler: async (payload, ctx) => {
+      const wk = Number(payload.week);
+      if (!wk) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const [pubRows] = await pool.query(
+        'SELECT status FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]
+      );
+      const published = !!(pubRows[0] && pubRows[0].status === 'PUBLISHED');
+      /* ① 本周全部场次骨架（含空场） */
+      const sessions = await loadSpeechSessions(pool, classId, wk);
+      /* ② 本周已排的人（有效行） */
+      const [rows] = await pool.query(
+        `SELECT sp.id, sp.class_date, sp.slot, sp.scope, sp.member_id,
+                m.name, m.student_no, m.group_tag
+           FROM speech sp LEFT JOIN member m ON m.id = sp.member_id
+          WHERE sp.class_id = ? AND sp.week = ? AND sp.status <> 'SWAPPED_OUT'
+          ORDER BY sp.class_date, sp.slot, m.student_no`, [classId, wk]
+      );
+      /* ③ 按 (date|slot) 归组；组内的人带 seqText 给前端胶囊 */
+      const byKey = {};
+      rows.forEach(r => {
+        const date = String(r.class_date).slice(0, 10);
+        const key = date + '|' + r.slot;
+        if (!byKey[key]) byKey[key] = [];
+        const seq = week.seqOf(r.student_no);
+        byKey[key].push({
+          id: r.id, memberId: r.member_id, name: r.name || '',
+          seqText: seq ? String(seq) : '·', scope: r.scope || 'ALL'
+        });
+      });
+      /* ④ 组成本周场次：一个 session = 一场（AM/PM），人挂在其 date|slot 下 */
+      const ruleMap = await loadSlotRules(pool, classId);
+      const dayMap = {};
+      sessions.forEach(s => {
+        const date = String(s.class_date).slice(0, 10);
+        if (!dayMap[date]) dayMap[date] = { date, sessions: [] };
+        const slot = s.period === speechCore.AM_PERIOD ? 'AM' : 'PM';
+        const scope = s.group_scope === 'A' ? 'A' : (s.group_scope === 'B' ? 'B' : 'ALL');
+        const members = byKey[date + '|' + slot] || [];
+        const need = ruleMap[s.id] === 1 ? 1 : 2;
+        dayMap[date].sessions.push({
+          sessionId: s.id,
+          slot,
+          scope,
+          groupScope: s.group_scope || '',
+          whenText: slot === 'AM' ? '上午 · 课前 08:00-08:10' : '下午 · 课前 14:30-14:40',
+          courseName: s.courseName || '',
+          room: '',
+          need,
+          members,
+          countText: members.length + '/' + need,
+          full: members.length >= need
+        });
+      });
+      const days = Object.keys(dayMap).sort().map(k => dayMap[k]);
+      /* ⑤ 候选名册（加人/换人用，与 speechList 同口径） */
+      const [rm] = await pool.query(
+        "SELECT id, name, student_no, group_tag FROM member WHERE class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X' ORDER BY student_no",
+        [classId]
+      );
+      const roster = rm.map(m => ({
+        id: m.id, name: m.name, studentNo: m.student_no,
+        seq: week.seqOf(m.student_no), groupTag: m.group_tag || ''
+      }));
+      const total = days.reduce((n, d) => n + d.sessions.reduce((x, s) => x + s.members.length, 0), 0);
+      const people = new Set();
+      days.forEach(d => d.sessions.forEach(s => s.members.forEach(m => people.add(m.memberId))));
+      return {
+        published, days, roster,
+        stats: { total, people: people.size, sessions: sessions.length }
+      };
+    }
+  },
+
   /** 生成一周演讲（按序号轮转，消费一次起始设置；重排同周幂等） */
   speechGenerate: {
     auth: { speechAuth: true },
@@ -2875,6 +2959,70 @@ const routes = {
       } finally {
         conn.release();
       }
+    }
+  },
+
+  /**
+   * 单场添加演讲人（1.0.8.67，演讲排班页用）：把某同学加到某课次的演讲场次。
+   * 与 speechReassign「换人」互补 —— 这里处理「原本空着 / 想再加一人」。
+   * 场次由 sessionId + week 解析出 (class_date, slot, scope)，与 speechGenerate 同源
+   * （loadSpeechSessions 已处理调课/放假），保证手动加的人和可生成的人落在同一场。
+   * ⚠️ 不动游标（与换人一致）：手动增删不推进轮转，下次生成接着原进度排。
+   */
+  speechAdd: {
+    auth: { speechAuth: true },
+    handler: async (payload, ctx) => {
+      const sessionId = Number(payload.sessionId);
+      const wk = Number(payload.week);
+      const memberId = Number(payload.memberId);
+      if (!sessionId || !wk || !memberId) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      /* 从本班课次解析出本周的 class_date / slot / scope —— 与生成走同一份场次口径 */
+      const slots = await loadSpeechSessions(pool, classId, wk);
+      const sl = slots.find(s => s.id === sessionId);
+      if (!sl) throw new BizError(41001, '该课次本周没有演讲场次（可能已调课/放假，或非演讲时段）');
+      const slot = sl.period === speechCore.AM_PERIOD ? 'AM' : 'PM';
+      const scope = sl.group_scope === 'A' ? 'A' : (sl.group_scope === 'B' ? 'B' : 'ALL');
+      /* 目标人必须在本班可演讲名册内（排除教职工/测试号；不排值日的人照样能演讲） */
+      const [m] = await pool.query(
+        "SELECT id FROM member WHERE id = ? AND class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X'",
+        [memberId, classId]
+      );
+      if (!m.length) throw new BizError(41006, '所选同学不可排演讲');
+      /* 同一人同一场不重复（uq_speech 唯一键，先读后写给出友好文案） */
+      const [dup] = await pool.query(
+        "SELECT id FROM speech WHERE class_id = ? AND week = ? AND class_date = ? AND slot = ? AND member_id = ? AND status <> 'SWAPPED_OUT'",
+        [classId, wk, sl.class_date, slot, memberId]
+      );
+      if (dup.length) throw new BizError(41007, '该同学已在这场演讲名单里');
+      await pool.query(
+        `INSERT INTO speech (class_id, week, class_date, slot, member_id, scope, source, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'MANUAL', 'PENDING')`,
+        [classId, wk, sl.class_date, slot, memberId, scope]
+      );
+      console.log(JSON.stringify({ fn: 'schedule', action: 'speechAdd', member: ctx.member.id, classId, week: wk, sessionId, to: memberId, slot, scope }));
+      return {};
+    }
+  },
+
+  /**
+   * 单场取消演讲人（1.0.8.67，演讲排班页 / 课前演讲页点人名取消用）：真删这一行。
+   * ⚠️ 不动游标、不动发布态（与值日 remove 回滚 duty_count 不同 —— 演讲轮转只走游标，
+   *    手动增删不碰游标才不会让「取消后再生成」跳人）。
+   */
+  speechRemove: {
+    auth: { speechAuth: true },
+    handler: async (payload, ctx) => {
+      const id = Number(payload.id);
+      if (!id) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const [rows] = await pool.query('SELECT id, member_id FROM speech WHERE id = ? AND class_id = ?', [id, classId]);
+      if (!rows.length) throw new BizError(41005, '演讲安排不存在');
+      await pool.query('DELETE FROM speech WHERE id = ? AND class_id = ?', [id, classId]);
+      console.log(JSON.stringify({ fn: 'schedule', action: 'speechRemove', member: ctx.member.id, classId, id, from: rows[0].member_id }));
+      return {};
     }
   },
 

@@ -15,7 +15,7 @@
  *
  * 判据（后端守卫 + 能力位 + 前端入口 + 后台开关，四段成对）：
  *   ① guard：isStudyAdmin / hasSpeechPerm / canSpeech / requireSpeechAuth；
- *   ② schedule：7 条演讲写路由挂 speechAuth，值日路由仍是 scheduleAuth（计数不变）；
+ *   ② schedule：9 条演讲写路由挂 speechAuth（1.0.8.67 加 speechAdd/Remove），值日路由仍是 scheduleAuth（计数不变）；
  *      派发器必须接线，声明了不校验 = 裸奔；
  *   ③ auth.login 下发 canSpeech，小程序 app.js 提供 canSpeech()，演讲按钮按它显隐；
  *   ④ 后台成员编辑有 speech_perm 开关（读写 + 迁移脚本 + 列表回显）。
@@ -36,8 +36,10 @@ const bad = (m) => { failed += 1; console.log('  ✗ ' + m); };
 const chk = (c, m) => (c ? ok(m) : bad(m));
 
 /** 演讲写路由清单（与 check-speech-schedule.js 的接线段保持同一份口径） */
-const SPEECH_WRITES = ['speechGenerate', 'speechReassign', 'speechClear', 'speechPublish',
-  'speechSetSettings', 'speechAiParse', 'speechAiApply'];
+const SPEECH_WRITES = ['speechGenerate', 'speechReassign', 'speechAdd', 'speechRemove', 'speechClear',
+  'speechPublish', 'speechSetSettings', 'speechAiParse', 'speechAiApply'];
+/* speechBoard 是演讲排班页的读接口，但同样只允许排班者看（草稿态 + 名册），故挂 speechAuth */
+const SPEECH_BOARD = 'speechBoard';
 
 /** 取某路由块（从 `name: {` 到下一个同级路由声明之前），用于判权限声明。
  *  ⚠️ 不能按「第一个缩进 2 空格的换行」截断 —— 块内每行都缩进 4 空格，
@@ -81,6 +83,10 @@ function audit(s) {
     if (!/auth:\s*\{\s*speechAuth:\s*true\s*\}/.test(b)) out.push(a + ' 未挂 speechAuth（学习委员排不了）');
     if (/auth:\s*\{\s*scheduleAuth:\s*true\s*\}/.test(b)) out.push(a + ' 仍挂 scheduleAuth（值日权被一并放宽）');
   });
+  const boardB = routeBlock(s.sch, SPEECH_BOARD);
+  if (!boardB) out.push('schedule 缺路由 speechBoard（演讲排班页列不出空场次）');
+  else if (!/auth:\s*\{\s*speechAuth:\s*true\s*\}/.test(boardB)) out.push('speechBoard 未挂 speechAuth');
+
   const dutyAuthCount = (s.sch.match(/auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g) || []).length;
   if (dutyAuthCount !== 23) out.push('值日排班域路由数应为 23（实得 ' + dutyAuthCount + '）：演讲 7 条必须移出 scheduleAuth');
   if (!/if \(route\.auth && route\.auth\.speechAuth\) guard\.requireSpeechAuth\(ctx\);/.test(s.sch)) {
