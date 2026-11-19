@@ -128,7 +128,7 @@
         bind:pick="onPickAcMember"
       />
       <view class="pk-gap">
-        <text class="pk-gap-text">共 {{pickerCount}} 人，灰色为不可选（已在此场次 / 分组不符）。演讲名册与「不排值日」无关，卫生值日跳过的人照样能演讲。</text>
+        <text class="pk-gap-text">{{pickerMode === 'SWAP' ? '共 ' + pickerCount + ' 人，选一位已排在其它场次的同学双向对调：他去你原场次演讲，你去他场次演讲。' : '共 ' + pickerCount + ' 人，灰色为不可选（已在此场次 / 分组不符）。演讲名册与「不排值日」无关，卫生值日跳过的人照样能演讲。'}}</text>
       </view>
     </view>
   </bottom-sheet>

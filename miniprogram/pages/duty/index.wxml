@@ -3,7 +3,7 @@
      表现就是「在值日详情里选择替补，滑到底后后面的『本周值日』跟着一起滑」。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(sheetShow || aiShow || groupShow || addShow || endedSheetShow || slotShow || spSettingShow || spAiShow || spSwapShow || spActionShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(sheetShow || aiShow || groupShow || addShow || endedSheetShow || slotShow || spSettingShow || spAiShow || spSwapShow || spActionShow || spExchangeShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <!-- 左右滑动切周：手势挂在页面根节点（覆盖整页），见 utils/swipe.js。
      弹层打开时在 onSwipeEnd 里挡掉（弹层 DOM 就在这个根节点里，touch 会冒泡上来）。 -->
@@ -729,9 +729,33 @@
         <view class="dt-row-info"><text class="dt-row-name">换人</text><text class="dt-row-sub">从全班选一位同学替换</text></view>
         <text class="dt-row-edit">›</text>
       </view>
-      <view data-pressable class="dt-group-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onSpActionRemove">
-        <view class="dt-row-info"><text class="dt-row-name c-danger">取消该场</text><text class="dt-row-sub">该同学不再参与这场演讲</text></view>
+      <view data-pressable class="dt-group-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onSpActionExchange">
+        <view class="dt-row-info"><text class="dt-row-name">双向对调</text><text class="dt-row-sub">跟其它场次的同学互换演讲课次</text></view>
         <text class="dt-row-edit">›</text>
+      </view>
+      <view data-pressable class="dt-group-row" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onSpActionRemove">
+        <view class="dt-row-info"><text class="dt-row-name c-danger">取消该场</text><text class="dt-row-sub">只取消这一场，不影响后续一键排班</text></view>
+        <text class="dt-row-edit">›</text>
+      </view>
+    </view>
+  </bottom-sheet>
+
+  <!-- ===== 演讲：双向对调选人（1.0.8.69）：列本周已排在其它场次的人 ===== -->
+  <bottom-sheet show="{{spExchangeShow}}" title="双向对调 · 选另一位同学" height="{{1080}}" tabbar="{{false}}" bind:close="onSpExchangeClose">
+    <view wx:if="{{!spExchangeCandidates.length}}" class="sp-empty-sub">本周没有其它已排场次的同学</view>
+    <view wx:else class="sp-swap-list">
+      <view data-pressable
+        wx:for="{{spExchangeCandidates}}" wx:for-item="m" wx:key="id"
+        class="sp-swap-row"
+        hover-class="tap-hover" hover-start-time="0" hover-stay-time="60"
+        data-sid="{{m.id}}"
+        bindtap="onSpExchangePick"
+      >
+        <avatar-tag name="{{m.name}}" text="{{m.seqText}}" no-fallback="{{true}}" size="{{64}}" />
+        <view class="dt-row-info">
+          <text class="dt-row-name">{{m.name}}</text>
+          <text class="dt-row-sub">{{m.where}}</text>
+        </view>
       </view>
     </view>
   </bottom-sheet>

@@ -2424,6 +2424,67 @@ const routes = {
   },
 
   /**
+   * 双向对调值日（1.0.8.69）：A 这节课有事，跟其他课已排的 B 对调 ——
+   * A 去 B 的课、B 去 A 的课。两条 duty 行的 member_id 互换，不动游标/duty_count。
+   * ⚠️ uq_duty(session_id, week, member_id) 不含 status ⇒ 两行直接互换有中间态撞键，
+   *    先把 A 行临时挪到负值，再归位。全程事务，异常回滚。
+   * 分组校验：分组课（session.group_scope=A/B）双方必须都是对应组（对调后仍各守其组）。
+   */
+  dutySwap: {
+    auth: { scheduleAuth: true },
+    handler: async (payload, ctx) => {
+      const dutyIdA = Number(payload.dutyIdA);
+      const dutyIdB = Number(payload.dutyIdB);
+      if (!dutyIdA || !dutyIdB || dutyIdA === dutyIdB) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        const [duties] = await conn.query(
+          `SELECT d.*, s.group_scope FROM duty d JOIN session s ON s.id = d.session_id
+            WHERE d.id IN (?, ?) AND d.class_id = ? AND d.status IN ('PENDING','ONGOING','EXPIRED')`, [dutyIdA, dutyIdB, classId]
+        );
+        if (duties.length !== 2) throw new BizError(41001, '两条值日必须都在本班且可换人');
+        const a = duties.find(d => d.id === dutyIdA);
+        const b = duties.find(d => d.id === dutyIdB);
+        if (!a || !b) throw new BizError(41001, '值日不存在');
+        if (a.member_id === b.member_id) throw new BizError(41001, '两人相同，无需对调');
+        /* 分组校验：A 课只能换进 A 组的人、B 课换进 B 组的人（全体课不限） */
+        for (const pair of [[a, b.member_id], [b, a.member_id]]) {
+          const duty = pair[0], incoming = pair[1];
+          if ((duty.group_scope === 'A' || duty.group_scope === 'B')) {
+            const [m] = await conn.query(
+              "SELECT group_tag FROM member WHERE id = ? AND class_id = ? AND " + NOT_TEST(), [incoming, classId]);
+            if (!m.length || m[0].group_tag !== duty.group_scope) throw new BizError(41001, '对方与该课次分组不符');
+          }
+        }
+        /* 两阶段换人：① A 行临时负值 → ② B 行换成 A 原 member → ③ A 行换成 B 原 member */
+        const tmpMember = -dutyIdA;
+        await conn.query('UPDATE duty SET member_id = ? WHERE id = ? AND class_id = ?', [tmpMember, dutyIdA, classId]);
+        await conn.query('UPDATE duty SET member_id = ? WHERE id = ? AND class_id = ?', [a.member_id, dutyIdB, classId]);
+        await conn.query('UPDATE duty SET member_id = ? WHERE id = ? AND class_id = ?', [b.member_id, dutyIdA, classId]);
+        /* 只更新 last_duty_at（两人确实值了各自那天），不动 duty_count/游标 */
+        await conn.query('UPDATE member SET last_duty_at = ? WHERE id = ?', [a.class_date, b.member_id]);
+        await conn.query('UPDATE member SET last_duty_at = ? WHERE id = ?', [b.class_date, a.member_id]);
+        await conn.query('INSERT INTO duty_log (duty_id, operator_id, action, from_member, to_member) VALUES (?,?,?,?,?)',
+          [dutyIdA, ctx.member.id, 'SWAP', a.member_id, b.member_id]);
+        await conn.query('INSERT INTO duty_log (duty_id, operator_id, action, from_member, to_member) VALUES (?,?,?,?,?)',
+          [dutyIdB, ctx.member.id, 'SWAP', b.member_id, a.member_id]);
+        await conn.commit();
+        console.log(JSON.stringify({ fn: 'schedule', action: 'dutySwap', member: ctx.member.id, classId,
+          a: { id: dutyIdA, from: a.member_id, to: b.member_id }, b: { id: dutyIdB, from: b.member_id, to: a.member_id } }));
+        return {};
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
+      }
+    }
+  },
+
+  /**
    * 空槽手动添加（超级管理员）：把某成员安排到某节课值日。
    * 与 reassign 共用「分组课只在对应组内、请假不排」两条硬规则；
    * 「同一天/同一周不重复」已由手动排版放开（2026-10-21，见本函数内 busy 判据移除注释），
@@ -2960,6 +3021,64 @@ const routes = {
         );
         await conn.commit();
         console.log(JSON.stringify({ fn: 'schedule', action: 'speechReassign', member: ctx.member.id, classId, from: o.member_id, to: memberId }));
+        return {};
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
+      }
+    }
+  },
+
+  /**
+   * 双向对调演讲人（1.0.8.69）：A 这节课有事，跟其他课已排的 B 对调 ——
+   * A 去 B 的场次、B 去 A 的场次。两条 speech 行的 member_id 互换，不动游标/发布态。
+   * ⚠️ uq_speech(class_id,week,class_date,slot,member_id) 不含 status，
+   *    两行直接互换 member_id 会有中间态撞键 ⇒ 先把 A 行临时挪到负值，
+   *    再把 B 行设成 A 原 member、A 行设成 B 原 member。全程事务，异常回滚。
+   */
+  speechSwap: {
+    auth: { speechAuth: true },
+    handler: async (payload, ctx) => {
+      const idA = Number(payload.idA);
+      const idB = Number(payload.idB);
+      if (!idA || !idB || idA === idB) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const classId = guard.classIdOf(ctx);
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        const [rows] = await conn.query(
+          `SELECT sp.*, m.group_tag FROM speech sp LEFT JOIN member m ON m.id = sp.member_id
+            WHERE sp.id IN (?, ?) AND sp.class_id = ? AND sp.status <> 'SWAPPED_OUT'`, [idA, idB, classId]
+        );
+        if (rows.length !== 2) throw new BizError(41005, '两条演讲安排必须都在本班且有效');
+        const a = rows.find(r => r.id === idA);
+        const b = rows.find(r => r.id === idB);
+        if (!a || !b) throw new BizError(41005, '演讲安排不存在');
+        if (a.member_id === b.member_id) throw new BizError(41001, '两人相同，无需对调');
+        /* 分组校验：A 组/B 组的课只能换同组的人（ALL 全体课不限）。
+           换入方必须是本班可演讲名册内的人（活跃、非教职工/测试号）。 */
+        for (const pair of [[a, b.member_id], [b, a.member_id]]) {
+          const target = pair[0], incoming = pair[1];
+          const [m] = await conn.query(
+            "SELECT id, group_tag FROM member WHERE id = ? AND class_id = ? AND status = 'ACTIVE' AND " + NOT_TEST() + " AND group_tag <> 'X'",
+            [incoming, classId]
+          );
+          if (!m.length) throw new BizError(41006, '对方不可排演讲');
+          if ((target.scope === 'A' || target.scope === 'B') && m[0].group_tag !== target.scope) {
+            throw new BizError(41006, '对方与该场次分组不符');
+          }
+        }
+        /* 两阶段换人：① A 行临时负值挪开 → ② B 行换成 A 原 member → ③ A 行换成 B 原 member */
+        const tmpMember = -idA;
+        await conn.query('UPDATE speech SET member_id = ? WHERE id = ? AND class_id = ?', [tmpMember, idA, classId]);
+        await conn.query('UPDATE speech SET member_id = ? WHERE id = ? AND class_id = ?', [a.member_id, idB, classId]);
+        await conn.query('UPDATE speech SET member_id = ? WHERE id = ? AND class_id = ?', [b.member_id, idA, classId]);
+        await conn.commit();
+        console.log(JSON.stringify({ fn: 'schedule', action: 'speechSwap', member: ctx.member.id, classId,
+          a: { id: idA, from: a.member_id, to: b.member_id }, b: { id: idB, from: b.member_id, to: a.member_id } }));
         return {};
       } catch (e) {
         await conn.rollback();

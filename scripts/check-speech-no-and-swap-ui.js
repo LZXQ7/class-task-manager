@@ -176,19 +176,41 @@ const MUT = [
   { name: '人名胶囊去掉 press-dim 按下反馈', probe: 'personPress', file: 'wxml',
     apply: (src) => src.split(' hover-class="press-dim" hover-start-time="0" hover-stay-time="60"').join('') },
   { name: '换人弹层去掉头像（退回朴素文字行）', probe: 'swapAvatar', file: 'wxml',
-    from: '<avatar-tag name="{{m.name}}" text="{{m.seqText}}" no-fallback="{{true}}" size="{{64}}" />',
-    to: '' },
+    apply: (src) => {
+      const i = src.indexOf('show="{{spSwapShow}}"');
+      if (i < 0) return src;
+      const end = src.indexOf('</bottom-sheet>', i);
+      const block = src.slice(i, end);
+      const needle = '<avatar-tag name="{{m.name}}" text="{{m.seqText}}" no-fallback="{{true}}" size="{{64}}" />';
+      const j = block.indexOf(needle);
+      if (j < 0) return src;
+      return src.slice(0, i) + block.slice(0, j) + block.slice(j + needle.length) + src.slice(end);
+    } },
   { name: '换人弹层去掉 tap-hover（锚点限定在换人弹层内，页面别处也用它）', probe: 'swapHover', file: 'wxml',
     apply: (src) => {
-      const i = src.indexOf('class="sp-swap-row"');
+      const i = src.indexOf('show="{{spSwapShow}}"');
+      if (i < 0) return src;
+      const end = src.indexOf('</bottom-sheet>', i);
+      const block = src.slice(i, end);
+      const row = block.indexOf('class="sp-swap-row"');
       const needle = 'hover-class="tap-hover"';
-      const j = i < 0 ? -1 : src.indexOf(needle, i);
-      return j < 0 ? src : src.slice(0, j) + 'hover-class=""' + src.slice(j + needle.length);
+      const j = row < 0 ? -1 : block.indexOf(needle, row);
+      if (j < 0) return src;
+      const fixed = block.slice(0, j) + 'hover-class=""' + block.slice(j + needle.length);
+      return src.slice(0, i) + fixed + src.slice(end);
     } },
   { name: '换人弹层退回旧的两列文字样式', probe: 'rowStyled', file: 'wxss',
     from: 'min-height: 112rpx; padding: 16rpx 32rpx;', to: 'padding: 20rpx 8rpx;' },
   { name: '换人弹层去掉固定高（56 人又滚不动）', probe: 'swapScrollable', file: 'wxml',
-    from: 'height="{{1080}}" tabbar="{{false}}" ', to: '' },
+    apply: (src) => {
+      const i = src.indexOf('show="{{spSwapShow}}"');
+      if (i < 0) return src;
+      const gt = src.indexOf('>', i);
+      const tag = src.slice(i, gt + 1);
+      const fixed = tag.replace(/height="\{\{1080\}\}"\s*/, '');
+      if (fixed === tag) return src;
+      return src.slice(0, i) + fixed + src.slice(gt + 1);
+    } },
   { name: '换人弹层列表加回 overflow-y（view 上无效、假修复）', probe: 'swapScrollable', file: 'wxss',
     from: '.sp-swap-list { padding: 8rpx 0 24rpx; }',
     to: '.sp-swap-list { max-height: 60vh; overflow-y: auto; padding: 8rpx 0 24rpx; }' }

@@ -158,10 +158,11 @@ Page({
     const speechId = Number(ds.sid2);
     const that = this;
     wx.showActionSheet({
-      itemList: ['换人', '取消演讲'],
+      itemList: ['换人', '双向对调', '取消演讲'],
       success: (res) => {
         if (res.tapIndex === 0) that._openPicker('REASSIGN', ds.date, Number(ds.sid), speechId);
-        else if (res.tapIndex === 1) that._removeSpeech(speechId);
+        else if (res.tapIndex === 1) that._openPicker('SWAP', ds.date, Number(ds.sid), speechId);
+        else if (res.tapIndex === 2) that._removeSpeech(speechId);
       },
       fail: () => {}
     });
@@ -175,6 +176,34 @@ Page({
 
     const inSession = {};
     (session.members || []).forEach(m => { inSession[m.memberId] = true; });
+
+    /* 双向对调（1.0.8.69）：候选 = 本周已排在其他场次的人（带场次标注），
+       排除同一场次的人。候选项挂 speechId（后端要两条 speech.id）。 */
+    if (mode === 'SWAP') {
+      const byMember = {};
+      (this.data.days || []).forEach(d => {
+        (d.sessions || []).forEach(s => {
+          (s.members || []).forEach(m => {
+            if (!m.memberId) return;
+            if (!byMember[m.memberId]) {
+              byMember[m.memberId] = { id: m.memberId, name: m.name || '', speechId: m.id, where: (d.weekdayText || '') + ' ' + (s.whenText || s.slot || '') };
+            }
+          });
+        });
+      });
+      const all = Object.keys(byMember).map(k => byMember[k]).filter(x => x.speechId && x.speechId !== speechId);
+      this.pickerAll = all.map(x => Object.assign({}, x, { seqText: '', disabled: false, badge: '', badgeBad: false }));
+      this._swapCandidates = all;
+      this.setData({
+        pickerShow: true, pickerMode: mode, pickerSession: session, pickerSpeechId: speechId,
+        pickerCount: all.length,
+        pickerItems: all.map(x => ({ id: x.id, name: x.name, sub: x.where, disabled: false })),
+        pickerTitle: '双向对调 · ' + session.whenText,
+        kw: '', submitting: false
+      });
+      this._filter();
+      return;
+    }
 
     /* 候选：已在此场次的置灰不可选；分组课限对应组（与值日 _openPicker 同口径） */
     const all = this.data.roster.map(r => {
@@ -250,12 +279,23 @@ Page({
     const mode = this.data.pickerMode;
     this.setData({ submitting: true });
     this._invalidateSpeech();
-    const p = mode === 'REASSIGN'
-      ? api.speechReassign({ id: this.data.pickerSpeechId, memberId })
-      : api.speechAdd({ week: this.data.week, sessionId: session.sessionId, memberId });
+    let p;
+    if (mode === 'SWAP') {
+      const other = (this._swapCandidates || []).find(x => x.id === memberId);
+      if (!other || !other.speechId) {
+        this.setData({ submitting: false });
+        util.toast('对方场次信息缺失，请刷新重试');
+        return;
+      }
+      p = api.speechSwap({ idA: this.data.pickerSpeechId, idB: other.speechId });
+    } else if (mode === 'REASSIGN') {
+      p = api.speechReassign({ id: this.data.pickerSpeechId, memberId });
+    } else {
+      p = api.speechAdd({ week: this.data.week, sessionId: session.sessionId, memberId });
+    }
     p.then(() => {
       this.setData({ submitting: false, pickerShow: false });
-      util.toast(mode === 'REASSIGN' ? '已换人' : '已添加演讲');
+      util.toast(mode === 'SWAP' ? '已对调' : (mode === 'REASSIGN' ? '已换人' : '已添加演讲'));
       this.load();
     }).catch((e) => {
       this.setData({ submitting: false });
@@ -265,7 +305,7 @@ Page({
 
   _removeSpeech(speechId) {
     const that = this;
-    util.confirm('取消后该同学不再参与这场课前演讲', '取消演讲').then(ok => {
+    util.confirm('只取消这一场（如临时请假），不影响其它场次和后续一键排班。', '取消演讲').then(ok => {
       if (!ok) return;
       that._invalidateSpeech();
       api.speechRemove({ id: speechId }, { loading: '处理中' })

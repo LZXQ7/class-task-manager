@@ -247,9 +247,12 @@ Page({
     /* 演讲换人弹层 */
     spSwapShow: false,
     spSwapTarget: null,
-    /* 演讲点人名动作菜单（1.0.8.67）：取消该场 / 换人；不用原生 showActionSheet 以守深色 */
+    /* 演讲点人名动作菜单（1.0.8.67→1.0.8.69 加双向对调）：取消该场 / 换人 / 双向对调；不用原生 showActionSheet 以守深色 */
     spActionShow: false,
-    spActionTarget: null
+    spActionTarget: null,
+    /* 演讲双向对调选人弹层（1.0.8.69）：列已排其它场次的人 */
+    spExchangeShow: false,
+    spExchangeCandidates: []
   },
 
   onLoad() {
@@ -858,12 +861,43 @@ Page({
     // 关动作菜单、开换人名册（沿用原换人弹层）
     this.setData({ spActionShow: false, spSwapShow: true, spSwapTarget: t });
   },
+  /* 双向对调（1.0.8.69）：列本周已排在其它场次的人，选谁就跟谁换 */
+  onSpActionExchange() {
+    const t = this.data.spActionTarget;
+    if (!t) return;
+    const byMember = {};
+    (this.data.speechDays || []).forEach(d => {
+      ['am', 'pm'].forEach(slot => {
+        (d[slot] || []).forEach(m => {
+          if (!m.memberId || !m.id || m.id === t.id) return;
+          if (!byMember[m.memberId]) {
+            const seq = util.seqOf && util.seqOf(m.studentNo);
+            byMember[m.memberId] = Object.assign({}, m, {
+              seqText: seq ? String(seq) : '',
+              where: (d.weekdayText || '') + ' ' + (m.time ? '课前 ' + m.time : (slot === 'AM' ? '上午' : '下午'))
+            });
+          }
+        });
+      });
+    });
+    const candidates = Object.keys(byMember).map(k => byMember[k]);
+    this.setData({ spActionShow: false, spExchangeShow: true, spExchangeCandidates: candidates });
+  },
+  onSpExchangeClose() { this.setData({ spExchangeShow: false }); },
+  onSpExchangePick(e) {
+    const otherId = Number(e.currentTarget.dataset.sid);
+    const t = this.data.spActionTarget;
+    if (!otherId || !t) return;
+    api.speechSwap({ idA: t.id, idB: otherId }, { toast: false }).then(() => {
+      this.setData({ spExchangeShow: false }); util.toast('已对调'); this.loadSpeech();
+    }).catch((e) => util.toast((e && e.errMsg) || '对调失败'));
+  },
   onSpActionRemove() {
     const t = this.data.spActionTarget;
     if (!t) return;
     const that = this;
     this.setData({ spActionShow: false });
-    util.confirm('取消后该同学不再参与这场课前演讲', '取消演讲').then(ok => {
+    util.confirm('只取消这一场（如临时请假），不影响其它场次和后续一键排班。', '取消演讲').then(ok => {
       if (!ok) return;
       api.speechRemove({ id: t.id }, { loading: '处理中' }).then(() => {
         util.toast('已取消'); that.loadSpeech();

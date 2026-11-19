@@ -129,12 +129,12 @@ const DEMO_WRITE_ACTIONS = [
   'removeMember', 'setRole', 'setPosition', 'setStatus', 'updateGroup', 'unbind',
   'noteSave', 'noteDelete', 'pinToggle', 'importCsv', 'importExcel', 'importBatches',
   'revertImport', 'remindReopen',
-  /* —— schedule：排班生成 / 发布 / 换人 —— */
-  'generate', 'publish', 'unpublish', 'clear', 'addManual', 'remove', 'reassign', 'reassignUndo',
+  /* —— schedule：排班生成 / 发布 / 换人 / 双向对调 —— */
+  'generate', 'publish', 'unpublish', 'clear', 'addManual', 'remove', 'reassign', 'reassignUndo', 'dutySwap',
   'setRules', 'setSlots',
   'aiApply', 'aiSettingSave', 'aiSettingClear', 'aiSettingTest',
   /* —— schedule：课前演讲写路由（独立 speechAuth，但演示班同样只读）—— */
-  'speechGenerate', 'speechReassign', 'speechAdd', 'speechRemove', 'speechClear',
+  'speechGenerate', 'speechReassign', 'speechSwap', 'speechAdd', 'speechRemove', 'speechClear',
   'speechPublish', 'speechSetSettings', 'speechSetSlotRules', 'speechAiApply'
 ];
 

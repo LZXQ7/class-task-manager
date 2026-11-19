@@ -185,10 +185,11 @@ Page({
     const dutyId = Number(ds.dutyid);
     const that = this;
     wx.showActionSheet({
-      itemList: ['换人', '移除值日'],
+      itemList: ['换人', '双向对调', '移除值日'],
       success: (res) => {
         if (res.tapIndex === 0) that._openPicker('REASSIGN', ds.date, Number(ds.sid), dutyId);
-        else if (res.tapIndex === 1) that._removeDuty(dutyId);
+        else if (res.tapIndex === 1) that._openPicker('SWAP', ds.date, Number(ds.sid), dutyId);
+        else if (res.tapIndex === 2) that._removeDuty(dutyId);
       },
       fail: () => {}
     });
@@ -203,6 +204,34 @@ Page({
     const leaveIds = day.leaveIds || [];
     const inSession = {};
     (session.members || []).forEach(m => { inSession[m.memberId] = true; });
+
+    /* 双向对调（1.0.8.69）：候选 = 本周已排在其他场次的人（带场次标注），
+       排除同一课次的人（对调自己没意义）与本人。对调要拿到对方那条 duty.id，
+       所以候选项上挂 dutyId，选中后由 _submit 取出。 */
+    if (mode === 'SWAP') {
+      const byMember = {};
+      (this.data.days || []).forEach(d => {
+        (d.sessions || []).forEach(s => {
+          (s.members || []).forEach(m => {
+            if (!m.memberId) return;
+            const label = (d.weekdayText || '') + ' ' + util.whenText(s.kind, s.period);
+            if (!byMember[m.memberId]) byMember[m.memberId] = { id: m.memberId, name: m.name || '', dutyId: m.dutyId, where: label };
+          });
+        });
+      });
+      const all = Object.keys(byMember).map(k => byMember[k]).filter(x => x.dutyId && x.dutyId !== dutyId);
+      this.pickerAll = all.map(x => Object.assign({}, x, { seqText: '', disabled: false, badge: '', badgeBad: false }));
+      this._swapCandidates = all;
+      this.setData({
+        pickerShow: true, pickerMode: mode, pickerSession: session, pickerDutyId: dutyId,
+        pickerCount: all.length,
+        pickerItems: all.map(x => ({ id: x.id, name: x.name, sub: x.where, disabled: false })),
+        pickerTitle: '双向对调 · ' + day.weekdayText + ' ' + util.whenText(session.kind, session.period),
+        kw: '', submitting: false
+      });
+      this._filter();
+      return;
+    }
 
     const all = this.data.roster.map(r => {
       // 已在本课次的 → 不可选（换人时也不会把原值日生换回他自己）
@@ -292,12 +321,23 @@ Page({
     const mode = this.data.pickerMode;
     this.setData({ submitting: true });
     this._invalidateDuty();
-    const p = mode === 'REASSIGN'
-      ? api.scheduleReassign({ dutyId: this.data.pickerDutyId, toMemberId: memberId })
-      : api.scheduleAddManual({ sessionId: session.sessionId, week: this.data.week, memberId });
+    let p;
+    if (mode === 'SWAP') {
+      const other = (this._swapCandidates || []).find(x => x.id === memberId);
+      if (!other || !other.dutyId) {
+        this.setData({ submitting: false });
+        util.toast('对方场次信息缺失，请刷新重试');
+        return;
+      }
+      p = api.scheduleSwap({ dutyIdA: this.data.pickerDutyId, dutyIdB: other.dutyId });
+    } else if (mode === 'REASSIGN') {
+      p = api.scheduleReassign({ dutyId: this.data.pickerDutyId, toMemberId: memberId });
+    } else {
+      p = api.scheduleAddManual({ sessionId: session.sessionId, week: this.data.week, memberId });
+    }
     p.then(() => {
       this.setData({ submitting: false, pickerShow: false });
-      util.toast(mode === 'REASSIGN' ? '已换人' : '已安排值日');
+      util.toast(mode === 'SWAP' ? '已对调' : (mode === 'REASSIGN' ? '已换人' : '已安排值日'));
       this.load();
     }).catch((e) => {
       this.setData({ submitting: false });

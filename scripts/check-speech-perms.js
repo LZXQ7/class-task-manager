@@ -36,7 +36,7 @@ const bad = (m) => { failed += 1; console.log('  ✗ ' + m); };
 const chk = (c, m) => (c ? ok(m) : bad(m));
 
 /** 演讲写路由清单（与 check-speech-schedule.js 的接线段保持同一份口径） */
-const SPEECH_WRITES = ['speechGenerate', 'speechReassign', 'speechAdd', 'speechRemove', 'speechClear',
+const SPEECH_WRITES = ['speechGenerate', 'speechReassign', 'speechSwap', 'speechAdd', 'speechRemove', 'speechClear',
   'speechPublish', 'speechSetSettings', 'speechAiParse', 'speechAiApply'];
 /* speechBoard 是演讲排班页的读接口，但同样只允许排班者看（草稿态 + 名册），故挂 speechAuth */
 const SPEECH_BOARD = 'speechBoard';
@@ -88,7 +88,7 @@ function audit(s) {
   else if (!/auth:\s*\{\s*speechAuth:\s*true\s*\}/.test(boardB)) out.push('speechBoard 未挂 speechAuth');
 
   const dutyAuthCount = (s.sch.match(/auth:\s*\{\s*scheduleAuth:\s*true\s*\}/g) || []).length;
-  if (dutyAuthCount !== 23) out.push('值日排班域路由数应为 23（实得 ' + dutyAuthCount + '）：演讲 7 条必须移出 scheduleAuth');
+  if (dutyAuthCount !== 24) out.push('值日排班域路由数应为 24（含 dutySwap；实得 ' + dutyAuthCount + '）：演讲写路由必须移出 scheduleAuth');
   if (!/if \(route\.auth && route\.auth\.speechAuth\) guard\.requireSpeechAuth\(ctx\);/.test(s.sch)) {
     out.push('schedule 派发器未接线 speechAuth（声明了不校验 = 裸奔）');
   }
