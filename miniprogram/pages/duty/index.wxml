@@ -364,6 +364,7 @@
     show="{{sheetShow}}"
     duty-id="{{sheetDutyId}}"
     week="{{week}}"
+    swap-candidates="{{swapCandidates}}"
     bind:close="onSheetClose"
     bind:changed="onSheetChanged"
   />

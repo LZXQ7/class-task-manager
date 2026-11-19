@@ -34,7 +34,10 @@ Component({
   properties: {
     show: { type: Boolean, value: false },
     dutyId: { type: Number, value: 0 },
-    week: { type: Number, value: 0 }
+    week: { type: Number, value: 0 },
+    /** 本周其它场次已排的值日（1.0.8.70）：由值日页下发 [{id,memberId,name,dutyId,seq,groupTag,sessionScope,where}]。
+     *  组件自己不拉名单：首页也复用本弹层，那边没有整周数据就不显示对调入场。 */
+    swapCandidates: { type: Array, value: [] }
   },
   data: {
     /** 面板高度（rpx）= 78vh —— 并入前这里写死 78vh，换算过来保持一致 */
@@ -55,7 +58,10 @@ Component({
     reasons: REASONS,
     startDate: '',
     endDate: '',
-    submitting: false
+    submitting: false,
+    /** 文案在 JS 算好（1.0.8.70）：WXML 三元嵌套超过 3 层 wcc 会编译失败 */
+    adjustTitle: '',
+    submitLabel: '提交申请'
   },
   observers: {
     'show, dutyId': function (show, dutyId) {
@@ -68,6 +74,26 @@ Component({
     'canAct, adjusting, detail': function (canAct, adjusting, detail) {
       const need = !!(canAct || adjusting || (detail && detail.reassign));
       if (need !== this.data.showFoot) this.setData({ showFoot: need });
+    },
+    /* WXML 不做逻辑：弹层标题 / 提交按钮文案在这里算好（三元在 WXML 里会超 3 层） */
+    'adjusting, submitting': function (adjusting, submitting) {
+      const TITLES = {
+        DUAL: '跟哪位同学对调（他已排在其它场次）',
+        SWAP: '想换给谁（提交后由生活委员确认）',
+        LEAVE: '请假日期',
+        ADD: '添加谁',
+        REASSIGN: '选择替补（直接替换，无需对方确认）'
+      };
+      const LABELS = {
+        DUAL: '确认对调',
+        REASSIGN: '直接替换',
+        ADD: '添加值日',
+        SWAP: '提交申请'
+      };
+      this.setData({
+        adjustTitle: TITLES[adjusting] || '',
+        submitLabel: submitting ? '处理中' : (LABELS[adjusting] || '提交申请')
+      });
     }
   },
   lifetimes: {
@@ -135,6 +161,25 @@ Component({
 
     onClose() { this.triggerEvent('close'); },
 
+    /**
+     * 双向对调候选（1.0.8.70）：只用页面下发的「本周已排在其它场次」名单。
+     * 排除：本人 / 当前这条值日 / 与对方课次分组不符（双方都要满足对方课次的组别）。
+     * 后端 dutySwap 还会再校验一次，这里先滤一遍免得用户点了才被拒。
+     */
+    _dualCandidates() {
+      const d = this.data.detail && this.data.detail.duty;
+      if (!d) return [];
+      const seen = {};
+      return (this.data.swapCandidates || []).filter((x) => {
+        if (!x || !x.dutyId || x.dutyId === d.id || x.id === d.memberId) return false;
+        if (x.groupTag && d.groupScope && x.groupTag !== d.groupScope) return false;
+        if (d.groupTag && x.sessionScope && d.groupTag !== x.sessionScope) return false;
+        if (seen[x.id]) return false;
+        seen[x.id] = true;
+        return true;
+      }).map(x => Object.assign({}, x, { seqText: x.seq ? String(x.seq) : '·' }));
+    },
+
     /* ---------- 操作 ---------- */
     onRemoveDuty() {
       const d = this.data.detail && this.data.detail.duty;
@@ -156,6 +201,11 @@ Component({
       const type = String(e.currentTarget.dataset.type);
       const d = this.data.detail && this.data.detail.duty;
       if (!d) return;
+      if (type === 'DUAL') {
+        // 双向对调：候选来自值日页已加载的整周名单，不需要再发一次请求
+        this.setData({ adjusting: type, candidates: this._dualCandidates(), toMemberId: 0 });
+        return;
+      }
       if (type === 'SWAP' || type === 'REASSIGN' || type === 'ADD') {
         api.swapCandidates({ dutyId: d.id }, { loading: '加载中' })
           .then((list) => {
@@ -190,7 +240,16 @@ Component({
       const type = this.data.adjusting;
       this.setData({ submitting: true });
       let p;
-      if (type === 'SWAP') {
+      if (type === 'DUAL') {
+        const other = (this.data.candidates || []).find(x => x.id === this.data.toMemberId);
+        if (!other || !other.dutyId) {
+          this.setData({ submitting: false });
+          util.toast('请选择要互换的同学');
+          return;
+        }
+        // 两条 duty 行的 member_id 互换（两阶段事务在后端），不动游标 / duty_count
+        p = api.scheduleSwap({ dutyIdA: d.id, dutyIdB: other.dutyId });
+      } else if (type === 'SWAP') {
         if (!this.data.toMemberId) {
           this.setData({ submitting: false });
           util.toast('请选择换给哪位同学');
@@ -227,8 +286,15 @@ Component({
           LEAVE: '请假已提交',
           ADD: '已添加值日',
           REASSIGN: '已替换值日人',
+          DUAL: '已对调',
           SWAP: direct ? '已替换值日人' : '已提交，等待生活委员确认'
         }[type] || '已提交');
+        if (type === 'DUAL') {
+          // 这条 duty 已经换成对方了，详情内容失效；关掉弹层并让页面重拉整周
+          this.triggerEvent('changed');
+          this.triggerEvent('close');
+          return;
+        }
         this._load(d.id);
         this.triggerEvent('changed');
       }).catch(() => {

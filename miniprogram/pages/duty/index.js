@@ -147,6 +147,8 @@ Page({
 
     sheetShow: false,
     sheetDutyId: 0,
+    /** 本周已排值日（1.0.8.70）：供值日详情弹层「双向对调」选人，_paint 每次随整周名单重算 */
+    swapCandidates: [],
     /** 合并行点开后的「本课次成员」弹层（1.0.4.4 #27）：列出该节课每人一行，分别操作 */
     groupShow: false,
     groupMembers: [],
@@ -571,6 +573,24 @@ Page({
   /** 把服务端返回的名单铺到界面上（首次拉取 / 预热命中 / 缓存命中共用） */
   _paint(r) {
     const days = this._decorate((r && r.days) || []);
+    /* 双向对调候选（1.0.8.70）：整周已排的人 + 他在哪节课。
+       值日详情弹层复用在首页，那边没有整周数据 ⇒ 由本页下发，首页不显示对调入口。
+       ⚠️ 用 listWeek 的 days（后端权威），不要从 mergedDuties 合成行取——那只是展示层。 */
+    const swapCandidates = [];
+    const seenMember = {};
+    days.forEach(d => ((d.duties || [])).forEach(x => {
+      if (!x.memberId || seenMember[x.memberId]) return;
+      seenMember[x.memberId] = true;
+      swapCandidates.push({
+        id: x.memberId,
+        name: x.name,
+        dutyId: x.id,
+        seq: x.seq,
+        groupTag: x.groupTag,
+        sessionScope: x.groupScope,
+        where: (d.dateText || '') + ' ' + (x.whenText || '') + (x.courseName ? ' · ' + x.courseName : '')
+      });
+    }));
     /*
      * 「已结束」折叠（2026-10-04 需求）：只折**当前周里早于今天**的日子（今天整天留在主列表）。
      *  · 只有查看本周时才折 —— 切到历史周时正常显示全部（历史周本来就是回顾，不该被抽空）；
@@ -591,7 +611,8 @@ Page({
       archived: !!(r && r.archived),
       days,
       activeDays,
-      pastDays
+      pastDays,
+      swapCandidates
     }, () => { this._resizeMain(); });
   },
 
