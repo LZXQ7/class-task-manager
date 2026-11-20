@@ -8,6 +8,9 @@ const ENV_ID = '<YOUR_ENV_ID>';
 // 部分门禁在**无 require 的 vm 沙盒**里加载本文件（如 check-network-retry，只验重试逻辑），
 // 故做存在性判断：沙盒内 util=null，体验版守卫跳过；真机 / Node 下正常加载 util。
 const util = (typeof require === 'function') ? require('./util') : null;
+/* v1.0.8.75 全站请求缓存：读接口命中直接返回旧值、不发请求（TTL 控新鲜度）；
+   写接口成功后清空。门禁在**无 require 的 vm**里加载本文件 ⇒ 沙盒内 cache=null 全链路 no-op。 */
+const cache = (typeof require === 'function') ? require('./req-cache') : null;
 
 let inited = false;
 function cloudInit() {
@@ -79,10 +82,24 @@ function call(name, action, payload, opt) {
     if (needToast) util.toast(hint);
     return Promise.reject(mkErr(40099, hint));
   }
-  const defaultRetry = WRITE_ACTION.test(String(action)) ? 0 : 1;
+  const isWrite = WRITE_ACTION.test(String(action));
+  const defaultRetry = isWrite ? 0 : 1;
   const maxRetry = opt.retry === undefined
     ? defaultRetry
     : ((opt.retry > 0 && Number.isFinite(opt.retry)) ? Math.min(opt.retry, 3) : 0);
+
+  /* ---- 全站请求缓存（v1.0.8.75）------------------------------------------
+   * 读接口：命中缓存 ⇒ 直接返回旧值、不发云函数（切回页面秒显、不再转圈）；
+   *         未命中 / 过期 ⇒ 正常请求，成功后写缓存（内存 + Storage）。
+   * 写接口：成功 ⇒ 清空全部缓存（否则余额/名单/排班会显示改动前的旧值）。
+   * opt.cache=false 可强制绕过（如「重新加载」按钮）；cache=null 表示沙盒，全链路 no-op。
+   * ⚠️ 必须在 WRITE_ACTION 判定**之后**、invoke 之前查缓存，写接口绝不命中缓存。 */
+  const doCache = !!(cache && !isWrite && opt.cache !== false && cache.cacheable(name, action));
+  const cacheKey = doCache ? cache.makeKey(name, action, payload) : '';
+  if (doCache) {
+    const hit = cache.read(cacheKey, opt.cacheTtl);
+    if (hit !== null && hit !== undefined) return Promise.resolve(hit);
+  }
 
   function invoke() {
     return new Promise((resolve, reject) => {
@@ -94,7 +111,16 @@ function call(name, action, payload, opt) {
           if (loadingText) wx.hideLoading();
           const r = (res && res.result) || {};
           if (r.errCode === 0) {
-            resolve(r.data === undefined ? null : r.data);
+            const data = r.data === undefined ? null : r.data;
+            /* 写操作成功 ⇒ 清全部缓存；读操作命中缓存标记 ⇒ 写回（内存 + Storage）。
+               均在 resolve 之前同步完成，保证紧接着的页面 setData 读到的是一致状态。 */
+            if (cache) {
+              try {
+                if (isWrite) cache.clear();
+                else if (doCache) cache.write(cacheKey, data);
+              } catch (e) { console.error('[request] cache 写入失败（不影响本次结果）', e); }
+            }
+            resolve(data);
             return;
           }
           const err = mkErr(r.errCode, r.errMsg || '请求失败', r.data);

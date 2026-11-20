@@ -469,6 +469,10 @@ App({
       g.switched = !!(r && r.switched);   // 超管「切换测试账号」模拟态
       g.demo = !!(r && r.demo);           // 演示态标记由 login 权威下发（免绑定 reviewDemo / 超管 switchDemo）
       g.realIsSuper = !!(r && r.realIsSuper);   // 真实身份是超管（不受 impersonation 影响）
+      /* v1.0.8.76：本地缓存加密密钥由 auth.login 下发（HMAC(服务端secret, openid)），
+         **只存内存、绝不落 Storage** —— 落了就等于把锁和钥匙放一起。
+         req-cache 取不到它时自动跳过 Storage（只读内存），功能不受影响。 */
+      g.cacheKey = (r && r.cacheKey) || '';
       g.authChecked = true;
       writeCachedAuth(g.profile, g.switched, g.demo, g.realIsSuper);   // v0.7.32：落身份缓存（未绑定 → null 即清除）
 
@@ -485,6 +489,7 @@ App({
           g.switched = !!(r2 && r2.switched);
           g.demo = !!(r2 && r2.demo);
           g.realIsSuper = !!(r2 && r2.realIsSuper);
+          g.cacheKey = (r2 && r2.cacheKey) || '';   // v1.0.8.76：二次 login 同步刷新缓存密钥
           writeCachedAuth(g.profile, g.switched, g.demo, g.realIsSuper);
         } catch (e) {
           console.warn('[app] 体验版清理演示态失败', e);
@@ -588,6 +593,7 @@ App({
     g.switched = !!(r && r.switched);
     g.demo = !!(r && r.demo);   // 演示态标记由 login 权威下发，不再因非模拟态而被误清（2026-10-29）
     g.realIsSuper = !!(r && r.realIsSuper);   // 真实身份是超管（切换体验版 / 切换测试账号后可能变化）
+    g.cacheKey = (r && r.cacheKey) || '';   // v1.0.8.76：绑定/切账号后重登，同步刷新缓存密钥
     writeCachedAuth(g.profile, g.switched, g.demo, g.realIsSuper);   // v0.7.32：切换测试账号 / 恢复本人 后同步身份缓存
     return g;
   },

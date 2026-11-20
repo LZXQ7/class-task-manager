@@ -76,8 +76,14 @@
         <text class="fee-bal-sub">总额 ¥{{feeActive.totalText}} · 已消费 ¥{{feeActive.expenseText}}</text>
       </view>
 
-      <!-- 列表视图：消费明细 + 增加消费 -->
+      <!-- 列表视图：增加消费 + 消费明细
+           v1.0.8.73：把「增加消费」从记录列表最末尾移到余额卡正下方 ——
+           记录多了以后不用每次滑到底才能记一笔（用户口径）。 -->
       <block wx:if="{{feeView === 'list'}}">
+       <view class="fee-vp {{feeViewAnim}}">
+        <view class="np-actions fee-add-bar" wx:if="{{feeCanManage}}">
+          <view data-pressable class="np-btn primary" bindtap="onFeeAddOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">＋ 增加消费</view>
+        </view>
         <view class="fee-rec-head">消费明细</view>
         <!-- 每条记录 = 一张独立卡片（.card 已带圆角/玻璃/降级，自身即裁切层，不会出现四角色斑） -->
         <view class="card fee-rec {{feeCanManage ? 'has-ops' : ''}}" wx:for="{{feeActive.records}}" wx:key="id">
@@ -105,14 +111,12 @@
           </view>
         </view>
         <view class="fee-rec-empty" wx:if="{{!feeActive.records.length}}">还没有消费记录</view>
-
-        <view class="np-actions" wx:if="{{feeCanManage}}">
-          <view data-pressable class="np-btn primary" bindtap="onFeeAddOpen" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">增加消费</view>
-        </view>
+       </view>
       </block>
 
       <!-- 表单视图：金额 / 备注 / 凭证图片 + 提交 -->
       <block wx:if="{{feeView === 'form'}}">
+       <view class="fee-vp {{feeViewAnim}}">
         <view class="np-field">
           <view class="np-label">金额</view>
           <input class="np-input" type="digit" value="{{feeAmount}}" placeholder="消费金额（元）" placeholder-class="f-ph" bindinput="onFeeAmountInput" />
@@ -140,6 +144,7 @@
           <view data-pressable class="np-btn ghost" bindtap="onFeeFormBack" hover-class="press-dim" hover-start-time="0" hover-stay-time="60">返回</view>
           <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="np-btn primary {{feeBusy ? 'off' : ''}}" bindtap="onFeeSubmit">{{feeBusy ? '提交中…' : '提交消费'}}</view>
         </view>
+       </view>
       </block>
 
       <view class="page-foot-space"></view>

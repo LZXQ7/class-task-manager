@@ -1411,7 +1411,9 @@
       fld('结束时间', '<input type="time" id="lv-et" value="' + esc(r.endTime || '') + '">') +
       '</div>' +
       fld('状态', '<select id="lv-status2">' + statusOpts + '</select>') +
-      '<div class="muted-note">时段留空 = 整天请假。修改日期或状态会同步调整该成员对应日期的值日「请假」标记。</div>' +
+      /* v1.0.8.77：跨天时段的双口径提示 —— 跨天 = 首日开始→末日结束的连续区间；
+         单日仍是当天时段（am+pm 晚上回校）。只填一边时间 = 整天假。 */
+      '<div class="muted-note">时段留空 = 整天请假。<b>跨天时</b>：开始时间 = <b>首日</b>开始、结束时间 = <b>末日</b>结束，中间整天连续；只填一边 = 整天假。单日仍是当天时段。修改日期或状态会同步调整该成员对应日期的值日「请假」标记。</div>' +
       '</div>' +
       '<div class="dlg-ft">' +
       '<button class="btn" id="lv-cancel">取消</button>' +
@@ -1474,7 +1476,8 @@
         fld('结束时间（可空）', '<input type="time" id="lvc-et">') +
         '</div>' +
         fld('状态', '<select id="lvc-status">' + statusOpts + '</select>') +
-        '<div class="muted-note">时间留空 = 整天请假。后台代登记默认直接「通过」，如需走审批可改为「待审」。</div>' +
+        /* v1.0.8.77：跨天 = 首日开始→末日结束连续区间（见编辑弹层同款提示） */
+        '<div class="muted-note">时间留空 = 整天请假。<b>跨天时</b>：开始时间 = <b>首日</b>开始、结束时间 = <b>末日</b>结束，中间整天连续；只填一边 = 整天假。后台代登记默认直接「通过」，如需走审批可改为「待审」。</div>' +
         '</div><div class="dlg-ft">' +
         '<button class="btn" id="lvc-cancel">取消</button>' +
         '<button class="btn btn-primary" id="lvc-save">保存</button>' +

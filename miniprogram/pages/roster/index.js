@@ -96,12 +96,28 @@ function segmentOfFront(clock) {
   if (clock < '18:00') return 'pm';
   return 'eve';
 }
-/** 某行此刻是否在「请假中」（实时口径，与后端 inLeaveWindow 一致；空 periods 按起止时间兜底） */
-function inLeaveWindowFront(row, clock) {
-  const p = row && row.periods;
+/**
+ * 某行此刻是否在「请假中」（实时口径，与后端 adjust/inLeaveWindow 逐字同构）。
+ * v1.0.8.77 双口径：
+ *   · 跨天（startDate≠endDate）= 连续区间：首日只卡下界、末日只卡上界、中间整天；
+ *     periods 不权威；只填一边时间 ⇒ 整天假两端不卡。
+ *   · 单日 = 旧语义：periods 非空按时段档（am+pm 晚上回校），空则按起止时间兜底。
+ * @param today 今天 YYYY-MM-DD；缺省用 startDate（末日判定会退化，调用处务必传）
+ */
+function inLeaveWindowFront(row, clock, today) {
+  if (!row) return false;
+  const start = row.startDate || '', end = row.endDate || '';
+  const s = row.startTime || '', e = row.endTime || '';
+  const day = today || start;
+  if (start && end && start !== end) {
+    if (!s || !e) return true;                       // 半边时间 ⇒ 整天假
+    if (day <= start) return clock >= s;             // 首日只卡下界
+    if (day >= end) return clock <= e;               // 末日只卡上界
+    return true;                                     // 中间整天（含晚上）
+  }
+  const p = row.periods;
   const per = Array.isArray(p) ? p : (p != null && p !== '' ? parsePeriodsFront(p) : []);
   if (!per.length) {
-    const s = row && row.startTime, e = row && row.endTime;
     if (!s || !e) return true;
     return clock >= s && clock <= e;
   }
@@ -891,7 +907,8 @@ _clockNow() {
     const clock = this._clockNow();
     // 整天假（无时段）恒算「在请假」；多时段假则按 `inLeaveWindowFront`（此刻落在哪个时段档）判定，
     // 与后端 inLeaveWindow 同口径（如 am+pm 在晚上 18:00 后算回校，不再误挂「请假中」）。
-    const nowList = list.filter(x => inLeaveWindowFront(x, clock));
+    /* v1.0.8.77：传 today —— 跨天连续判定要区分首/中/末日，缺 today 会把末日当首日卡错 */
+    const nowList = list.filter(x => inLeaveWindowFront(x, clock, util.todayStr()));
     const map = {};
     nowList.forEach(x => { map[x.memberId] = true; });
     const st = backendStat || {};

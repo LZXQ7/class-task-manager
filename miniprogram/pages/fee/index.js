@@ -54,8 +54,11 @@ Page({
     feeClassList: [],
     feeViewClassId: 0,
 
-    /* 列表视图 / 表单视图（仅管理人可进表单） */
+    /* 列表视图 / 表单视图（仅管理人可进表单）
+       feeViewAnim：视图切换动画 class（v1.0.8.74）。首屏为空不播；每次切 list↔form
+       与 feeView 同一次 setData 置 'vp-anim'，新插入的 .fee-vp 节点带 class 播一次淡入上浮。 */
     feeView: 'list',
+    feeViewAnim: '',
     feeAmount: '',
     feeNote: '',
     feeImages: [],
@@ -236,14 +239,14 @@ Page({
     const type = e.detail.key;
     if (type !== 'class' && type !== 'league') return;
     if (type === this.data.feeType) return;
-    this.setData({ feeType: type, feeView: 'list', feeAmount: '', feeNote: '', feeImages: [] });
+    this.setData({ feeType: type, feeView: 'list', feeViewAnim: 'vp-anim', feeAmount: '', feeNote: '', feeImages: [] });
     this._syncActive();
     if (getApp().track) getApp().track.action('fee_open', type);
   },
   /** 列表视图 → 表单视图（点「增加消费」）；仅管理人可进 */
   onFeeAddOpen() {
     if (!this.data.feeCanManage) return;
-    this.setData({ feeView: 'form' });
+    this.setData({ feeView: 'form', feeViewAnim: 'vp-anim' });
   },
   /** 给「已有消费记录」补图（仅管理人；当前图数 < 9 才能补）。选图即上传追加，不进表单。 */
   onFeeAppendTap(e) {
@@ -291,7 +294,7 @@ Page({
   },
   /** 表单视图 → 列表视图（点「返回」）；已填的内容清空，避免返回后再填出现残留 */
   onFeeFormBack() {
-    this.setData({ feeView: 'list', feeAmount: '', feeNote: '', feeImages: [] });
+    this.setData({ feeView: 'list', feeViewAnim: 'vp-anim', feeAmount: '', feeNote: '', feeImages: [] });
   },
   onFeeAmountInput(e) { this.setData({ feeAmount: String(e.detail.value || '') }); },
   onFeeNoteInput(e) { this.setData({ feeNote: String(e.detail.value || '') }); },
@@ -369,7 +372,7 @@ Page({
         wx.hideLoading();
         util.toast('已登记消费');
         // 提交成功回到列表视图；force 立刻拉新值，不能被 2s 去重吃掉
-        this.setData({ feeBusy: false, feeView: 'list', feeAmount: '', feeNote: '', feeImages: [] });
+        this.setData({ feeBusy: false, feeView: 'list', feeViewAnim: 'vp-anim', feeAmount: '', feeNote: '', feeImages: [] });
         this._loadFee(true);
       })
       .catch((err) => {

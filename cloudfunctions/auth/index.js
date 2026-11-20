@@ -208,8 +208,16 @@ const routes = {
       const m = ctx.member;
       const classId = m ? (Number(m.class_id) || 1) : 1;
       const cfg = await week.getConfig(pool, classId);
+      /* v1.0.8.76：本地缓存加密密钥 —— HMAC(服务端 secret, openid) 前 16 字节，
+         对同一用户稳定（重启后能解密上次缓存）、按用户隔离、前端无法自己算出别人的 key。
+         ⚠️ 只在这里下发，前端**只存内存不落 Storage**；secret 走环境变量，兜底常量仅防未配置时功能失效
+         （真要防逆向，部署时务必设 CACHE_KEY_SECRET 环境变量）。 */
+      const cacheSecret = process.env.CACHE_KEY_SECRET || 'class-task-cache-v1';
+      const cacheKey = crypto.createHmac('sha256', cacheSecret)
+        .update(String(ctx.openid || '')).digest('hex').slice(0, 32); // 32 hex = 16 bytes = AES-128
       return {
         bound: !!m,
+        cacheKey,
         // 超管「切换测试账号」模拟态标记：true 时前端显示「恢复本人」入口
         switched: !!ctx.impersonated,
         // 演示态（体验版 / 免绑定预览）标记：true 时前端不显示「模拟中」横幅、按钮变为「切换正式版」。

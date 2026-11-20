@@ -87,12 +87,13 @@ function spanDays(a, b) {
   return Math.round((tb - ta) / 86400000) + 1;
 }
 
-/* ---------------- 请假 v2：半天假 + 假条图片（2026-10-08） ----------------
+/* ---------------- 请假 v2：半天假 + 假条图片（2026-10-08；跨天口径 1.0.8.77 更新） ----------------
  * 时段口径（唯一来源）：start_time / end_time 为 TIME 列，NULL = 整天请假。
- * ⚠️ 语义是「区间内**每天**的相同时段」——跨天请假也是每天这个时段（如连三天每天
- *    8:00–12:00），**不支持**「首日 14:00 才开始」这种错位写法（用户 2026-10-08 定）。
- * 「正在请假中」（实时口径）= 当天 ∈ [start_date,end_date] 且 此刻 ∈ [start_time,end_time]；
- *    整天假（两列 NULL）当天全算。
+ * ⚠️ **双口径**（2026-11-20 用户六问定稿，详见 inLeaveWindow 与 migrate-leave-v2.sql）：
+ *   · 单日（start_date=end_date）= 当天时段（periods am+pm 晚上回校；旧语义保留）。
+ *   · 跨天（start_date<end_date）= **连续区间**：首日只卡下界/末日只卡上界/中间整天连续；
+ *     periods 不权威；只填一边时间 ⇒ 整天假两端不卡。
+ *     旧语义「每天相同时段、不支持错位写法」已废止，勿再引用。
  * ⚠️ 值日标记**不看时段**：登记请假仍按现有整天逻辑把区间内已排值日置 LEAVE
  *    （半天假也整天标记，用户 2026-10-08 反转「解耦」决议后定的原样保留）。 */
 
@@ -114,17 +115,43 @@ function normTimePair(a, b) {
   return { start: s + ':00', end: e + ':00' };
 }
 
-/** 此刻是否落在请假时段内 —— 实时口径唯一判定处（2026-11-02 改用 periods）
- * 优先级：periods 非空 → 按「当前时刻落在哪个时段档」判定（am+pm 在晚上算回校）；
- *          periods 空/未设（整天假或旧记录）→ 按起止时间兜底（与旧口径一致）。 */
-function inLeaveWindow(row, clock) {
-  const p = row && row.periods;
+/**
+ * 此刻是否落在请假时段内 —— 实时口径唯一判定处。
+ *
+ * ⚠️ 双口径（v1.0.8.77 / 2026-11-20 用户六问定稿，别再合并成一套）：
+ *   · **单日**（start_date === end_date）：保持旧语义 —— periods 非空按「当前时段档」
+ *     判定（am+pm 晚上算回校）；periods 空按起止时间兜底；两端都空 = 整天。
+ *   · **跨天**（start_date !== end_date）：连续区间 —— 首日只卡下界（clock >= start_time）、
+ *     末日只卡上界（clock <= end_time）、中间整天（含晚上）连续；periods 不再权威。
+ *     **只填一边时间 ⇒ 整条视为整天假，两端都不卡**（如只有 end=20:00 的旧记录）。
+ *
+ * @param row   请假行：startDate/endDate/startTime/endTime/periods（camelCase，见 leaveBoard map）
+ * @param clock 当前时刻 'HH:mm'
+ * @param today 今天 'YYYY-MM-DD'；缺省时用 row 的日期自洽（门禁/单测可只传前两参）
+ */
+function inLeaveWindow(row, clock, today) {
+  if (!row) return false;
+  const start = week.dateStr(row.startDate != null ? row.startDate : row.start_date);
+  const end = week.dateStr(row.endDate != null ? row.endDate : row.end_date);
+  const s = normTime(row.startTime != null ? row.startTime : row.start_time);
+  const e = normTime(row.endTime != null ? row.endTime : row.end_time);
+  const day = today || start;
+
+  /* 跨天：首日 start_date、末日 end_date、中间整天 */
+  if (start && end && start !== end) {
+    /* 只填一边（含都空）⇒ 整天假，两端都不卡 */
+    if (!s || !e) return true;
+    if (day <= start) return clock >= s;   // 首日：只卡下界
+    if (day >= end) return clock <= e;     // 末日：只卡上界
+    return true;                           // 中间整天（含晚上）
+  }
+
+  /* 单日：旧语义原样保留 */
+  const p = row.periods;
   const per = Array.isArray(p)
     ? p
     : (p != null && p !== '' ? String(p).split(',').filter(Boolean) : []);
   if (!per.length) {
-    const s = normTime(row && (row.startTime != null ? row.startTime : row.start_time));
-    const e = normTime(row && (row.endTime != null ? row.endTime : row.end_time));
     if (!s || !e) return true;
     return clock >= s && clock <= e;
   }
@@ -700,7 +727,7 @@ const routes = {
         hasImage: !!r.leave_image,
         image: r.leave_image || ''
       }));
-      const nowList = list.filter(x => inLeaveWindow(x, clock));
+      const nowList = list.filter(x => inLeaveWindow(x, clock, date));
       return {
         date,
         list,
@@ -742,14 +769,16 @@ const routes = {
         for (const cid of ids) {
           const [c] = await pool.query('SELECT name FROM `class` WHERE id = ?', [cid]);
           const [r] = await pool.query(
-            `SELECT l.start_time, l.end_time, l.periods
+            /* v1.0.8.77：补 start_date/end_date —— 跨天连续判定要按「今天落在首/中/末哪天」
+               分别卡边界，缺日期列会退化成单日口径。 */
+            `SELECT l.start_date, l.end_date, l.start_time, l.end_time, l.periods
                FROM leave_request l JOIN member m ON m.id = l.member_id
               WHERE l.class_id = ? AND l.status = 'APPROVED' ${isDemo ? '' : 'AND l.start_date <= ? AND l.end_date >= ?'}
                 AND m.group_tag <> 'X' AND ${notTest('m')}`,
             isDemo ? [cid] : [cid, date, date]
           );
-          // 实时口径：此刻真在请假时段内（多时段下按「当前时段是否入选中集合」判定）
-          const n = r.filter(x => inLeaveWindow(x, clock)).length;
+          // 实时口径：此刻真在请假时段内（跨天按首/中/末日连续判定，需传 date）
+          const n = r.filter(x => inLeaveWindow(x, clock, date)).length;
           classes.push({ classId: cid, className: c.length ? c[0].name : ('班级' + cid), leave: n });
         }
         return { mode: 'counselor', date, classes };
@@ -786,7 +815,7 @@ const routes = {
         hasImage: !!r.leave_image,
         image: r.leave_image || ''
       }));
-      const nowList = list.filter(x => inLeaveWindow(x, clock2));
+      const nowList = list.filter(x => inLeaveWindow(x, clock2, date));
       return {
         mode: 'class',
         classId,
@@ -956,7 +985,7 @@ const routes = {
           // 🔴 **今天之内**的假：必须拿时刻比，否则上午的假下午仍显示「进行中」。
           //    `inLeaveWindow` 对「无时段」（start/end_time 为 NULL，即整天假）直接返回 true
           //    ⇒ 整天假保持 ONGOING，这是对的（整天假没有结束的那一刻）。
-          if (inLeaveWindow(r, clock)) {
+          if (inLeaveWindow(r, clock, today)) {
             state = 'ONGOING';
           } else {
             // 时段已过：对用户只呈现「已结束」（课表视角：上午那节课已经上了）。

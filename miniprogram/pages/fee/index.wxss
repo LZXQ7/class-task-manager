@@ -35,8 +35,26 @@
 /* 余额下方的只读小字（总额 / 已消费）：用来核对，不占地方 */
 .fee-bal-sub { margin-top: 10rpx; font-size: 22rpx; line-height: 30rpx; color: var(--text-3); }
 
-/* 消费明细 */
-.fee-rec-head { margin: 36rpx 0 0; font-size: 28rpx; font-weight: 600; color: var(--text-1); }
+/* 列表 ↔ 表单视图切换动画（v1.0.8.74，用户反馈「硬切、没动画」）：
+   照搬 duty 页 vp-anim 范式 —— .feeViewAnim 与 feeView 同一次 setData 下发，
+   新插入的 .fee-vp 节点带 class 播一次淡入上浮；首屏 feeViewAnim 为空不播（避免与入场叠）。
+   ⚠️ 只动 transform/opacity（合成层），不碰布局；位移 16rpx 与全站 st-item 同量级。 */
+@keyframes feeViewIn {
+  from { opacity: 0; transform: translateY(16rpx); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fee-vp.vp-anim { animation: feeViewIn .24s cubic-bezier(.23, 1, .32, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .fee-vp.vp-anim { animation: none; }
+}
+
+/* 「增加消费」按钮置顶（v1.0.8.73）：覆盖全局 .np-actions 的 margin-top:40rpx，
+   让它紧跟余额卡；记录再多也一眼可见、不用滑到底。 */
+.fee-add-bar { margin-top: 24rpx; }
+.fee-add-bar .np-btn { flex: 1; }   /* 整行一个主按钮，居中撑满 */
+
+/* 消费明细：按钮已移到标题之上，标题上间距收窄，避免两段大留白 */
+.fee-rec-head { margin: 32rpx 0 0; font-size: 28rpx; font-weight: 600; color: var(--text-1); }
 /* 每条记录 = 一张卡片。
    ⚠️ 直接复用 .card：它自己既是圆角层也是裁切层（overflow:hidden 与 border-radius 在同一元素上），
       不会出现 notice 那种「方形裁切边界 − 圆角」之间残留裸背景的四角色斑。 */

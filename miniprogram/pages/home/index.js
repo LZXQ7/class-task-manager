@@ -587,21 +587,33 @@ Page({
     const now = (r && r.now) || null;
     const markOver = (x) => {
       /*
-       * 🔴 2026-10-10 报障修复：多天假（10-10~10-11 每天 13:00-18:00）在 10-10 晚上被误标「已过时段」。
-       *    旧实现只比 `now2` 与 [startTime,endTime]，**完全丢了日期区间** —— 只要今天时钟过了
-       *    endTime 就标已过，压根没看 `endDate` 还有没有明天。
-       *    现按 endDate 收口：「已过时段」= 该请假**不再有任何未来时段**（整个区间都过去了）。
-       *    ⇒ 今天是区间中段（today < endDate）无论几点都不算已过（明天还要请，用户在报障里就是这么期望的）。
+       * over = 「此刻不在这条假的时段内」（弹层名单 rows.filter(!over) 与后端 now 同口径）。
+       * 🔴 2026-10-10 报障：多天假在首日晚上曾被误标已过（丢了日期区间）——已由下面的跨天分支彻底解决。
+       *
+       * v1.0.8.77 双口径（与后端 inLeaveWindow 逐字同构）：
+       *   · 跨天（startDate≠endDate）= 连续区间：首日只卡下界、末日只卡上界、中间整天（含晚上）；
+       *     只填一边时间 ⇒ 整天假两端不卡。
+       *   · 单日 = 旧语义：时钟越过 endTime 才算已过（今天晚些时候的假不算已过）。
        */
       const today = util.todayStr();
+      /* d1 写法保持门禁 check-leave-realtime-courseinfo 的锚点（原样，不改写法） */
       const d1 = String(x.endDate || x.startDate || today);
+      const d0 = String(x.startDate || '');
+      const s = String(x.startTime || ''), e = String(x.endTime || '');
+      if (d0 && d1 && d0 !== d1) {
+        /* 跨天连续 */
+        if (!s || !e) return Object.assign({}, x, { over: false });           // 半边/无时段 ⇒ 整天
+        const now2 = util.clockNow();
+        if (today <= d0) return Object.assign({}, x, { over: now2 < s });      // 首日：只卡下界
+        if (today >= d1) return Object.assign({}, x, { over: now2 > e });      // 末日：只卡上界
+        return Object.assign({}, x, { over: false });                          // 中间整天
+      }
+      /* 单日：旧语义原样保留（写法也保持门禁 check-leave-realtime-courseinfo 的锚点） */
       if (today < d1) return Object.assign({}, x, { over: false });   // 区间还有未来天数
-      if (today > d1) return Object.assign({}, x, { over: true });    // 区间整体已过去（防御：leaveBoard 只回覆盖今天的行）
-      // 今天 = 最后一天：整天假今天还没过完 ⇒ 不算已过
-      if (!x.startTime && !x.endTime) return Object.assign({}, x, { over: false });
-      // 有时段：时钟越过 endTime 才算「已过时段」（不再用「不在区间内」——那会把「今天晚些时候的假」也算已过）
+      if (today > d1) return Object.assign({}, x, { over: true });    // 区间整体已过去
+      if (!x.startTime && !x.endTime) return Object.assign({}, x, { over: false });   // 整天假今天还没过完
       const now2 = util.clockNow();
-      return Object.assign({}, x, { over: now2 > String(x.endTime) });
+      return Object.assign({}, x, { over: now2 > String(x.endTime) });   // 越过结束时刻才算已过
     };
     const rows = list.map(markOver);
     const a = rows.filter(x => x.groupTag === 'A');
@@ -667,6 +679,8 @@ Page({
      *            ∪ 当天请假记录各时段的开始/结束时刻（startTime/endTime）。
      * startTime/endTime 由后端 normTime() 归一为「HH:MM」（空串 = 整天假，不产生边界）。
      * 归一成 HH:MM 再比较：不补零的 '9:00' 与 '12:00' 直接比字符串会错序。
+     * v1.0.8.77：跨天改成首日只卡下界/末日只卡上界后，这里仍把每条假的 start/end 都当候选点
+     * ——只会「多刷新几次」（中间日多两个无关边界），不会显示错，故不动定时器逻辑。
      */
     const cands = ['12:00', '18:00', '00:00'];
     const push = (t) => {
