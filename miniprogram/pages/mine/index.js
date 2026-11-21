@@ -11,15 +11,11 @@ const impersonate = require('../../utils/impersonate');
 const theme = require('../../utils/theme');
 
 /**
- * AI 排班常用接口预设（点一下即填好接口地址 + 一个默认模型名）。
- * 之后仍可用「获取」从服务商拉回**真实**模型列表覆盖默认。
- * base_url 走 OpenAI 兼容端点；默认模型名是各家的常用款，拿不准就以「获取」为准。
+ * AI 排班固定 DeepSeek（2026-11-21 收敛）：不再提供多服务商预设 / 接口地址输入，
+ * 密钥与模型之外的一切都走 ai-proxy 默认 https://api.deepseek.com。
+ * 保存/测试/获取模型时显式传空 baseUrl，强制回落官方默认，顺带冲掉历史自定义地址。
  */
-const AI_PROVIDERS = {
-  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
-  glm: { label: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
-  qwen: { label: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-turbo' }
-};
+const AI_DEFAULTS = { provider: 'deepseek', baseUrl: '' };
 
 /** 数据新鲜度窗口：切换回「我的」时，只要在这个窗口内拉过数据，就直接复用、不再发起请求 */
 
@@ -96,18 +92,16 @@ Page({
     feeInputClass: '',
     feeInputLeague: '',
     feeTotalBusy: false,
-    /* AI 排班设置（需求 D：自带密钥，跟随本人）。
-       ⚠️ aiKey 只用于**输入**，永不回填服务端明文（接口只回掩码）。 */
+    /* AI 排班设置（自带密钥，跟随本人；仅 DeepSeek，2026-11-21 收敛）。
+       ⚠️ aiKey 只用于**输入**，永不回填服务端明文（接口只回掩码）。
+       接口地址不再展示/输入：固定走 ai-proxy 默认 DeepSeek（见 AI_DEFAULTS）。 */
     aiShow: false,
-    aiBaseUrl: '',
     aiModel: '',
     aiKey: '',
     aiKeyMask: '',
     aiConfigured: false,
     aiBusy: false,
     aiTestResult: '',
-    /** 当前选中的预设服务商（''=未选 / 自定义），用于高亮 */
-    aiProvider: '',
     /** 「获取」拉回的可用模型列表（点击某条即填进 aiModel） */
     aiModels: [],
     isCounselor: false,
@@ -983,21 +977,13 @@ Page({
     this._loadAiSetting();
   },
   onAiClose() { this.setData({ aiShow: false }); },
-  onAiBaseUrl(e) { this.setData({ aiBaseUrl: e.detail.value }); },
   onAiModel(e) { this.setData({ aiModel: e.detail.value }); },
   onAiKey(e) { this.setData({ aiKey: e.detail.value }); },
-  /** 一键填好预设服务商的接口地址 + 默认模型名（之后可再「获取」覆盖） */
-  onAiPreset(e) {
-    const key = e.currentTarget.dataset.p;
-    const p = AI_PROVIDERS[key];
-    if (!p) return;
-    this.setData({ aiProvider: key, aiBaseUrl: p.baseUrl, aiModel: p.model, aiModels: [] });
-  },
-  /** 输入密钥后点「获取」：从服务商拉回可用模型列表，供直接点选（避免手敲拼错） */
+  /** 获取模型列表：强制 DeepSeek 官方默认地址，带（新填或已存）密钥 */
   onAiFetchModels() {
     if (this.data.aiBusy) return;
     this.setData({ aiBusy: true, aiTestResult: '', aiModels: [] });
-    const p = { baseUrl: this.data.aiBaseUrl };
+    const p = { baseUrl: AI_DEFAULTS.baseUrl };
     if (this.data.aiKey) p.apiKey = this.data.aiKey;
     api.aiSettingModels(p, { loading: '获取模型' })
       .then((d) => {
@@ -1025,7 +1011,6 @@ Page({
         this.setData({
           aiConfigured: !!d.configured,
           aiKeyMask: d.keyMask || '',
-          aiBaseUrl: d.baseUrl || '',
           aiModel: d.model || ''
         });
       })
@@ -1035,7 +1020,8 @@ Page({
     if (this.data.aiBusy) return;
     this.setData({ aiBusy: true, aiTestResult: '' });
     const p = {
-      baseUrl: this.data.aiBaseUrl,
+      baseUrl: AI_DEFAULTS.baseUrl,
+      provider: AI_DEFAULTS.provider,
       model: this.data.aiModel
     };
     if (this.data.aiKey) p.apiKey = this.data.aiKey;
@@ -1055,7 +1041,8 @@ Page({
     if (this.data.aiBusy) return;
     this.setData({ aiBusy: true, aiTestResult: '' });
     const p = {
-      baseUrl: this.data.aiBaseUrl,
+      baseUrl: AI_DEFAULTS.baseUrl,
+      provider: AI_DEFAULTS.provider,
       model: this.data.aiModel
     };
     // 留空 = 不改；填了才覆盖
@@ -1085,7 +1072,7 @@ Page({
         this.setData({ aiBusy: true });
         api.aiSettingClear({}, { loading: '清除中' })
           .then(() => {
-            this.setData({ aiBusy: false, aiConfigured: false, aiKeyMask: '', aiKey: '', aiBaseUrl: '', aiModel: '', aiTestResult: '' });
+            this.setData({ aiBusy: false, aiConfigured: false, aiKeyMask: '', aiKey: '', aiModel: '', aiTestResult: '' });
             util.toast('已清除');
           })
           .catch((e) => {

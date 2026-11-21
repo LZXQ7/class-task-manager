@@ -46,13 +46,16 @@ function extractFn(src, name) {
   return src.slice(m.index, i);
 }
 
-/** 把三个时间函数从真实源码加载进桩环境 */
+/** 把时间/班级函数从真实源码加载进桩环境（2026-11-21：buildFilter 依赖 parseClassId/STAFF_CLASS） */
 function loadTimeFns(modSrc) {
-  const parts = ['parseDays', 'daysCond', 'buildFilter']
+  const parts = ['parseDays', 'daysCond', 'parseClassId', 'buildFilter']
     .map((n) => extractFn(modSrc, n)).join('\n');
   const y = /const YESTERDAY = (-?\d+);/.exec(modSrc);
   const YESTERDAY = y ? Number(y[1]) : undefined;
-  return new Function('YESTERDAY', parts + '\nreturn { parseDays, daysCond, buildFilter };')(YESTERDAY);
+  const sc = /const STAFF_CLASS = (-?\d+);/.exec(modSrc);
+  const STAFF_CLASS = sc ? Number(sc[1]) : undefined;
+  return new Function('YESTERDAY', 'STAFF_CLASS',
+    parts + '\nreturn { parseDays, daysCond, parseClassId, buildFilter };')(YESTERDAY, STAFF_CLASS);
 }
 
 /** 跑真实时间函数，断言生成的 SQL 与参数 */
@@ -84,6 +87,11 @@ function behavior(modSrc, need) {
   need(b.args.length === 1 && b.args[0] === 3, 'filterArgsNoMinusOne');
   const b0 = f.buildFilter({ days: '-1' });
   need(b0.args.length === 0, 'filterArgsNoClass');
+  // 辅导员范围：-2 哨兵归一后落 class_id = 0（不带参数），不能绑成 class_id = -2
+  need(f.parseClassId('-2') === -2, 'staffParseSentinel');
+  need(f.parseClassId('abc') === 0, 'staffParseGarbage');
+  const bs = f.buildFilter({ days: '1', classId: '-2' });
+  need(bs.classId === -2 && bs.args.length === 0 && bs.where[0] === 'class_id = 0', 'staffFilterNoParam');
 }
 
 /** 对比相关纯函数/查询从真实源码加载（不抄实现），喂桩 pool 断言生成的 SQL 与 args */
@@ -92,7 +100,9 @@ async function behaviorCmp(modSrc, need) {
   try {
     const parts = ['parseCmpDate', 'spanDays', 'normalizeCmpSeg', 'cmpSegment']
       .map((n) => extractFn(modSrc, n)).join('\n');
-    f = new Function(parts + '\nreturn { parseCmpDate, spanDays, normalizeCmpSeg, cmpSegment };')();
+    const scM = /const STAFF_CLASS = (-?\d+);/.exec(modSrc);
+    const STAFF_CLASS_CMP = scM ? Number(scM[1]) : undefined;
+    f = new Function('STAFF_CLASS', parts + '\nreturn { parseCmpDate, spanDays, normalizeCmpSeg, cmpSegment };')(STAFF_CLASS_CMP);
   } catch (e) { need(false, 'cmpFnsLoad:' + e.message); return; }
 
   // ① 日期归一：纠序 / 单日 / 非法 / 超长
@@ -166,7 +176,7 @@ async function audit(X) {
   need(has(codeOnly, "iConds.push('class_id = ?')"), 'hourlyClassFilter');
   need(has(codeOnly, "sConds.push('class_id = ?')"), 'summaryClassFilter');
   need(has(codeOnly, "kConds.push('class_id = ?')"), 'kindClassFilter');
-  need(has(codeOnly, "const cWhere = classId ? 'WHERE class_id = ?' : '';"), 'cumulativeClassFilter');
+  need(has(codeOnly, "const cWhere = classId === STAFF_CLASS ? 'WHERE class_id = 0'"), 'cumulativeClassFilter');
   need(has(codeOnly, "iWhere = 'WHERE ' + iConds.join(' AND ')"), 'noDanglingWhere');
   need(has(codeOnly, "kWhere = kConds.length ? 'WHERE ' + kConds.join(' AND ') : ''"), 'kindEmptyWhere');
 

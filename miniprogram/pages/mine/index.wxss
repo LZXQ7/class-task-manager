@@ -621,25 +621,45 @@
   margin-bottom: 20rpx;
 }
 
-/* 预设服务商 chips：点选即填好接口地址 + 默认模型 */
-.an-presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
+/* AI 排班接入方式引导（仅 DeepSeek）：步骤卡片，深色走令牌 */
+.an-guide {
+  background: rgba(236, 72, 153, 0.05);
+  border: 2rpx solid rgba(236, 72, 153, 0.16);
+  border-radius: 20rpx;
+  padding: 22rpx 24rpx;
+  margin-bottom: 24rpx;
 }
-.an-preset {
-  padding: 12rpx 30rpx;
-  border-radius: 28rpx;
+.an-guide-hd {
+  display: block;
   font-size: 26rpx;
-  color: #8B5CF6;
-  background: rgba(236, 72, 153, 0.08);
-  border: 2rpx solid rgba(236, 72, 153, 0.22);
-  box-sizing: border-box;
+  font-weight: 600;
+  color: #EC4899;
+  margin-bottom: 16rpx;
 }
-.an-preset.on {
-  color: #FFFFFF;
-  background: linear-gradient(135deg, #EC4899, #8B5CF6);
-  border-color: transparent;
+.an-guide-step {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 12rpx;
+}
+.an-guide-step:last-child { margin-bottom: 0; }
+.an-guide-no {
+  flex: none;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 18rpx;
+  background: rgba(236, 72, 153, 0.14);
+  color: #EC4899;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 36rpx;
+  text-align: center;
+  margin-right: 16rpx;
+}
+.an-guide-tx {
+  flex: 1;
+  font-size: 24rpx;
+  color: var(--text-2);
+  line-height: 1.5;
 }
 
 /* 模型名输入 + 「获取」按钮 同一行 */

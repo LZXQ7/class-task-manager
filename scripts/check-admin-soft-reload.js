@@ -63,7 +63,7 @@ const entries = [
   [/state\.memberScope = b\.dataset\.scope;[\s\S]{0,500}softReload\(\);/, '成员 scope 筛选'],
   [/state\.memberPageSize = Number\(this\.value\);[\s\S]{0,60}softReload\(\);/, '每页条数'],
   [/state\.usageDays = Number\(b\.dataset\.rg\);[\s\S]{0,80}softReload\(\);/, '使用统计时间范围'],
-  [/state\.usageAll = b\.dataset\.ua === '1';[\s\S]{0,80}softReload\(\);/, '使用统计班级范围'],
+  [/state\.usageScope = b\.dataset\.ua;[\s\S]{0,80}softReload\(\);/, '使用统计班级范围'],
   [/state\.cmpOn = b\.dataset\.cmp === '1';[\s\S]{0,200}softReload\(\);/, '对比开关'],
   [/if \(state\.view === 'member'\) \{ state\.memberPage = Number\(b\.dataset\.pg\); softReload\(\); \}/, '全局分页代理-成员'],
   [/else if \(state\.view === 'audit'\) \{ state\.auditPage = Number\(b\.dataset\.pg\); softReload\(\); \}/, '全局分页代理-审计']

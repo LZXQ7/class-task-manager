@@ -24,8 +24,10 @@
        空数组 = 还没拿到登录态；拿到后由 showMain 写入并渲染导航。
        **前端只做「不给入口」，真正的拦截在后端 requirePerm** —— 前端过滤不是安全边界。 */
     perms: [],
-    // 使用统计：默认「全部班级」总览（2026-10-18 用户要求直接看全部账号）
-    usageAll: true,
+    // 使用统计范围三态：all=全部班级 / class=仅当前班级 / staff=仅辅导员(全校账号 class_id=0)
+    // 2026-11-21 加 staff：辅导员埋点记在 class_id=0，此前任何班级视图都看不到，
+    //       全部班级看到的 37 次里有 15 次其实是辅导员 ⇒ 分班看对不上（用户报）。
+    usageScope: 'all',
     // 使用统计：三个板块各自的指标筛选（纯本地重绘，不重拉 API）
     usageTrendMetric: 'visitUsers',
     usageSourceMetric: 'pv',
@@ -408,7 +410,8 @@
    * 包 try/catch：门禁 mock 环境没有 localStorage，隐私模式下 setItem 会抛。 */
   var LS_VIEW = 'admin.web.view';
   var LS_CLASS = 'admin.web.classId';
-  var LS_USAGE_ALL = 'admin.web.usageAll';
+  var LS_USAGE_SCOPE = 'admin.web.usageScope';
+  var LS_USAGE_ALL = 'admin.web.usageAll'; // 旧键：仅用于一次性迁移到 usageScope
   var LS_USAGE_DAYS = 'admin.web.usageDays';
   var LS_CMP_ON = 'admin.web.cmpOn';
   var LS_CMP_GRAN = 'admin.web.cmpGran';
@@ -3467,7 +3470,7 @@
     'fee-add': function () { var b = $('#fee-add'); if (b) b.click(); },
     /* 「后台账号」页自己的开通按钮（id=acc-open），不是跳到别的页签 */
     'account-add': function () { var b = $('#acc-open'); if (b) b.click(); },
-    'usage-reset': function () { state.usageDays = 0; state.usageAll = true; softReload(); },
+    'usage-reset': function () { state.usageDays = 0; state.usageScope = 'all'; softReload(); },
     /* 系统配置页只能看到账号列表、开不了账号 ⇒ 跳到「后台账号」页 */
     'account-open': function () { go('accounts'); },
     /* 错误态出路：把当前视图重新拉一遍（云函数冷启动/瞬断是一过性的） */
@@ -4075,8 +4078,16 @@
 
   function renderUsage(host) {
     // 统计范围刷新后保留；默认「全部班级」（不分班总览，2026-10-18 用户要求）
-    var savedAll = lsGet(LS_USAGE_ALL);
-    if (savedAll !== null) state.usageAll = savedAll === '1';
+    var savedScope = lsGet(LS_USAGE_SCOPE);
+    if (savedScope === 'all' || savedScope === 'class' || savedScope === 'staff') state.usageScope = savedScope;
+    else {
+      // 旧版只有 usageAll 布尔键：一次性迁移（true→all，false→class），迁移后写回三态键
+      var savedAll = lsGet(LS_USAGE_ALL);
+      if (savedAll !== null) {
+        state.usageScope = savedAll === '1' ? 'all' : 'class';
+        lsSet(LS_USAGE_SCOPE, state.usageScope);
+      }
+    }
     // 时间范围也持久化（0=全部）。⚠️ 不能用 `!state.usageDays` 判默认值：
     // 0 是 falsy，会把用户点的「全部」当场改回 30（2026-10-18 实反馈：
     // 「点击全部没用，蓝色还在近 30 天上面」）
@@ -4112,7 +4123,9 @@
     state.cmpB1 = lsGet(LS_CMP_B1) || ymd(_dB1);
     state.cmpB2 = lsGet(LS_CMP_B2) || ymd(_dB2);
     var days = state.usageDays;
-    var classPart = state.usageAll ? '' : '&classId=' + state.classId;
+    // staff → classId=-2（后端 mod-usage 认这个哨兵，翻成 class_id=0 = 全校账号）
+    var classPart = state.usageScope === 'staff' ? '&classId=-2'
+      : (state.usageScope === 'all' ? '' : '&classId=' + state.classId);
     // 对比参数始终带上：cmpOn=0 时后端不查，但保留日期便于下次开启时直接生效
     var cmpPart = '&cmpOn=' + (state.cmpOn ? '1' : '0') + '&cmpGran=' + state.cmpGran +
       '&cmpA1=' + encodeURIComponent(state.cmpA1) + '&cmpA2=' + encodeURIComponent(state.cmpA2) +
@@ -4194,9 +4207,12 @@
         });
       }
       function memRowHtml(r) {
+        // 辅导员=全校账号 class_id=0，JOIN class 匹配不到 ⇒ 后端 className='—'；
+        // 显示成「全校账号」比破折号清楚（2026-11-21 加辅导员范围）。
+        var clsLabel = Number(r.classId) === 0 ? '全校账号' : shortClassName(r.className);
         return '<tr>' +
           '<td>' + esc(r.memberName) + (r.studentNo ? '<span class="ev-key">' + esc(r.studentNo) + '</span>' : '') + '</td>' +
-          '<td>' + esc(shortClassName(r.className)) + '</td>' +
+          '<td>' + esc(clsLabel) + '</td>' +
           '<td class="td-no">' + r.pv + '</td>' +
           '<td class="td-no">' + r.activeDays + '</td>' +
           // ⚠️ .ev-list 是 display:flex，不能直接挂在 <td> 上（flex 覆盖 table-cell
@@ -4228,11 +4244,14 @@
             }) + '</td></tr>') +
         '</tbody></table></div></div>';
 
-      // 班级范围：全部班级 / 仅当前班级（与右上角班级选择器解耦，刷新后保留）
+      // 班级范围：全部班级 / 仅当前班级 / 辅导员账号（与右上角班级选择器解耦，刷新后保留）
       // ⚠️ 标签不缀具体班名——右上角选择器已经显示当前班，再写一遍是冗余（2026-10-18 用户要求）
+      // 辅导员账号 = 全校账号 member.class_id=0，埋点记在 class_id=0，任何班级视图都看不到；
+      //   单独给一档，让「全部 37 = 3班 22 + 辅导员 15」能对上（2026-11-21 用户要求）。
       var scopeBtns =
-        '<button class="btn' + (state.usageAll ? ' btn-primary' : '') + '" data-ua="1">全部班级</button>' +
-        '<button class="btn' + (state.usageAll ? '' : ' btn-primary') + '" data-ua="0">仅当前班级</button>';
+        '<button class="btn' + (state.usageScope === 'all' ? ' btn-primary' : '') + '" data-ua="all">全部班级</button>' +
+        '<button class="btn' + (state.usageScope === 'class' ? ' btn-primary' : '') + '" data-ua="class">仅当前班级</button>' +
+        '<button class="btn' + (state.usageScope === 'staff' ? ' btn-primary' : '') + '" data-ua="staff">辅导员账号</button>';
       // 页面级对比控件（2026-11-09）：对比的是**整个使用统计**，开关放在工具条，
       // 不再藏在分时卡里。单日模式只显示 A/B 各一个日期；区间模式各显示起止。
       var isRange = state.cmpGran === 'range';
@@ -4386,8 +4405,8 @@
       });
       $$('[data-ua]', host).forEach(function (b) {
         b.onclick = function () {
-          state.usageAll = b.dataset.ua === '1';
-          lsSet(LS_USAGE_ALL, state.usageAll ? '1' : '0');
+          state.usageScope = b.dataset.ua;
+          lsSet(LS_USAGE_SCOPE, state.usageScope);
           softReload();
         };
       });

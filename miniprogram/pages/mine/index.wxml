@@ -254,38 +254,39 @@
     </view>
   </bottom-sheet>
 
-  <!-- 需求 D：AI 排班设置（自带密钥，跟随本人） -->
+  <!-- 需求 D：AI 排班设置（自带密钥，跟随本人；仅 DeepSeek）
+       入口受 canSchedule 控（有 AI 排班权限才显示）。接入方式引导 → 密钥 → 模型，
+       密钥在模型上方；不展示接口地址（固定走 ai-proxy 默认 https://api.deepseek.com）。 -->
   <bottom-sheet show="{{aiShow}}" title="AI 排班设置" bind:close="onAiClose">
     <view class="an-wrap">
-      <view class="an-tip">填写你自己的大模型接口与密钥，AI 生成值日表时使用「你」的额度。密钥只存一份、不会回显，保存即覆盖。</view>
+      <view class="an-tip">填写你自己的 DeepSeek 密钥，AI 生成值日表时使用「你」的额度。密钥只存一份、不会回显，保存即覆盖。</view>
 
-      <view class="an-field">
-        <text class="an-label">常用接口预设（点一下自动填好地址与默认模型）</text>
-        <view class="an-presets">
-          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-preset {{aiProvider === 'deepseek' ? 'on' : ''}}" data-p="deepseek" bindtap="onAiPreset">DeepSeek</view>
-          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-preset {{aiProvider === 'glm' ? 'on' : ''}}" data-p="glm" bindtap="onAiPreset">智谱 GLM</view>
-          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-preset {{aiProvider === 'qwen' ? 'on' : ''}}" data-p="qwen" bindtap="onAiPreset">通义千问</view>
-        </view>
+      <!-- 接入方式引导：找到 DeepSeek 开放平台 → 充值 → 生成 API KEY → 填入下方 -->
+      <view class="an-guide">
+        <text class="an-guide-hd">如何获取密钥</text>
+        <view class="an-guide-step"><text class="an-guide-no">1</text><text class="an-guide-tx">打开 DeepSeek 开放平台 platform.deepseek.com，注册并登录</text></view>
+        <view class="an-guide-step"><text class="an-guide-no">2</text><text class="an-guide-tx">在「充值」页充值（按量计费，几元即可用很久）</text></view>
+        <view class="an-guide-step"><text class="an-guide-no">3</text><text class="an-guide-tx">进入「API Keys」，点「创建 API key」，生成后复制</text></view>
+        <view class="an-guide-step"><text class="an-guide-no">4</text><text class="an-guide-tx">粘贴到下方「密钥」并保存（格式 sk-…）</text></view>
       </view>
 
+      <!-- 密钥（在模型上方） -->
       <view class="an-field">
-        <text class="an-label">接口地址（可留空）</text>
-        <input class="an-input" value="{{aiBaseUrl}}" placeholder="留空=官方默认 https://api.deepseek.com" placeholder-class="f-ph" bindinput="onAiBaseUrl" />
+        <text class="an-label">密钥</text>
+        <input class="an-input" password="{{true}}" value="{{aiKey}}" placeholder="{{aiKeyMask ? '已保存 ' + aiKeyMask + '，留空则不改' : 'sk-…'}}" placeholder-class="f-ph" bindinput="onAiKey" />
       </view>
+
+      <!-- 模型选择（可留空=默认 deepseek-chat；填密钥后点「获取」拉官方列表） -->
       <view class="an-field">
-        <text class="an-label">模型名（可留空；填了密钥点「获取」从服务商拉列表）</text>
+        <text class="an-label">模型（可留空=默认 deepseek-chat）</text>
         <view class="an-model-row">
-          <input class="an-input" value="{{aiModel}}" placeholder="留空=默认 deepseek-chat" placeholder-class="f-ph" bindinput="onAiModel" />
+          <input class="an-input" value="{{aiModel}}" placeholder="deepseek-chat" placeholder-class="f-ph" bindinput="onAiModel" />
           <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-fetch {{aiBusy ? 'busy' : ''}}" bindtap="onAiFetchModels">获取</view>
         </view>
         <scroll-view wx:if="{{aiModels.length}}" scroll-y class="an-models-scroll">
           <view class="an-models-hint">点击选择模型（共 {{aiModels.length}} 个）</view>
           <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:for="{{aiModels}}" wx:key="*this" class="an-model {{aiModel === item ? 'on' : ''}}" data-m="{{item}}" bindtap="onPickModel">{{item}}</view>
         </scroll-view>
-      </view>
-      <view class="an-field">
-        <text class="an-label">密钥</text>
-        <input class="an-input" password="{{true}}" value="{{aiKey}}" placeholder="{{aiKeyMask ? '已保存 ' + aiKeyMask + '，留空则不改' : 'sk-…'}}" placeholder-class="f-ph" bindinput="onAiKey" />
       </view>
 
       <view wx:if="{{aiConfigured && !aiKey}}" class="an-tip">当前已保存：{{aiKeyMask}}（不填密钥保存则保持原值不变）</view>

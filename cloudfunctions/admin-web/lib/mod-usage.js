@@ -12,6 +12,21 @@ const { NOT_TEST } = require('../common/test-account');
 
 /** -1 是「昨天」的专用哨兵值：0 已被「全部」占用，正数才是「近 N 天」 */
 const YESTERDAY = -1;
+/** -2 是「辅导员/全校账号」专用哨兵：class_id=0（全校账号）与「全部班级」的 0 冲突，
+ *  故统计接口用 classId=-2 代表"只看辅导员账号"，buildFilter 归一成 WHERE class_id = 0。
+ *  🔴 只在统计服务内部用，绝不外泄到其它接口；所有班级过滤点都要认这个哨兵，否则口径不齐。 */
+const STAFF_CLASS = -2;
+
+/**
+ * 把 query.classId 归一成仓储口径：'0'/空 → 0（全部）；'-2' → STAFF_CLASS（-2，仅辅导员）；
+ * 其它正数 → 具体班级。返回 -2 时调用方必须拼 `class_id = 0`（而不是 `class_id = -2`）。
+ */
+function parseClassId(v) {
+  const n = parseInt(v || '0', 10);
+  if (!isFinite(n)) return 0;
+  if (n === STAFF_CLASS) return STAFF_CLASS;
+  return n > 0 ? n : 0;
+}
 
 /** 解析时间范围：0 表示不限；-1 表示昨天；正数上限 365 天防止误传超大值 */
 function parseDays(v) {
@@ -41,13 +56,14 @@ function daysCond(days, col) {
   return { sql: '', args: [] };
 }
 
-/** 构造 WHERE 与参数（classId=0 表示全部班级） */
+/** 构造 WHERE 与参数（classId=0 表示全部班级；-2 表示仅辅导员/全校账号，落 SQL = class_id=0） */
 function buildFilter(query) {
   const days = parseDays(query && query.days);
-  const classId = parseInt((query && query.classId) || '0', 10) || 0;
+  const classId = parseClassId((query && query.classId) || '0');
   const where = [];
   const args = [];
-  if (classId) { where.push('class_id = ?'); args.push(classId); }
+  if (classId === STAFF_CLASS) { where.push('class_id = 0'); }
+  else if (classId) { where.push('class_id = ?'); args.push(classId); }
   const dc = daysCond(days, 'ts');
   if (dc.sql) { where.push(dc.sql); args.push(...dc.args); }
   return { days, classId, where, args };
@@ -99,7 +115,8 @@ function normalizeCmpSeg(a1, a2) {
 async function cmpSegment(pool, classId, from, to) {
   const conds = [];
   const sArgs = [];
-  if (classId) { conds.push('class_id = ?'); sArgs.push(classId); }
+  if (classId === STAFF_CLASS) { conds.push('class_id = 0'); }
+  else if (classId) { conds.push('class_id = ?'); sArgs.push(classId); }
   conds.push('ts >= ?', 'ts < DATE_ADD(?, INTERVAL 1 DAY)');
   sArgs.push(from, to);
   const w = 'WHERE ' + conds.join(' AND ');
@@ -234,7 +251,8 @@ async function usage(query) {
   //    必须自建带 `e.` 前缀的条件（2026-10-18 实踩：classId=0 时不触发，一选班级就 500）。
   const memberConds = [];
   const memberArgs = [];
-  if (classId) { memberConds.push('e.class_id = ?'); memberArgs.push(classId); }
+  if (classId === STAFF_CLASS) { memberConds.push('e.class_id = 0'); }
+  else if (classId) { memberConds.push('e.class_id = ?'); memberArgs.push(classId); }
   const dcM = daysCond(days, 'e.ts');
   if (dcM.sql) { memberConds.push(dcM.sql); memberArgs.push(...dcM.args); }
   memberConds.push('(m.id IS NULL OR ' + NOT_TEST('m') + ')');
@@ -268,7 +286,8 @@ async function usage(query) {
   if (topOpenids.length) {
     const bc = ['e.openid IN (?)'];
     const ba = [topOpenids];
-    if (classId) { bc.push('e.class_id = ?'); ba.push(classId); }
+    if (classId === STAFF_CLASS) { bc.push('e.class_id = 0'); }
+    else if (classId) { bc.push('e.class_id = ?'); ba.push(classId); }
     const dcB = daysCond(days, 'e.ts');
     if (dcB.sql) { bc.push(dcB.sql); ba.push(...dcB.args); }
     bc.push('(m.id IS NULL OR ' + NOT_TEST('m') + ')');
@@ -306,7 +325,8 @@ async function usage(query) {
   //    固定三天对比，不跟随时间范围（截图里的「1 天前 / 7 天前」是固定参照线）。
   const iConds = [];
   const iArgs = [];
-  if (classId) { iConds.push('class_id = ?'); iArgs.push(classId); }
+  if (classId === STAFF_CLASS) { iConds.push('class_id = 0'); }
+  else if (classId) { iConds.push('class_id = ?'); iArgs.push(classId); }
   iConds.push('DATEDIFF(CURDATE(), DATE(ts)) IN (0, 1, 7)');
   const iWhere = 'WHERE ' + iConds.join(' AND ');
   const [hourlyRows] = await pool.query(
@@ -322,7 +342,8 @@ async function usage(query) {
   // ② 活跃概况：目标日 / 前一日 / 7 日前。选「昨天」时目标日整体后移一天。
   const sConds = [];
   const sArgs = [];
-  if (classId) { sConds.push('class_id = ?'); sArgs.push(classId); }
+  if (classId === STAFF_CLASS) { sConds.push('class_id = 0'); }
+  else if (classId) { sConds.push('class_id = ?'); sArgs.push(classId); }
   sConds.push('DATEDIFF(CURDATE(), DATE(ts)) IN (?, ?, ?)');
   sArgs.push(insightOffset, insightOffset + 1, insightOffset + 7);
   const sWhere = 'WHERE ' + sConds.join(' AND ');
@@ -339,8 +360,9 @@ async function usage(query) {
   // ③ 三个时点的累计用户数（截至该日出现过的去重 openid）。
   //    ⚠️ 参数顺序按 SQL 文本里 ? 的先后：SELECT 里的三个 ? 在 WHERE class_id=? 之前，
   //       所以日期偏移必须排在 classId 前面，否则 mysql2 会把班级号绑进第一个 >= 比较。
-  const cWhere = classId ? 'WHERE class_id = ?' : '';
-  const cArgs = classId ? [classId] : [];
+  const cWhere = classId === STAFF_CLASS ? 'WHERE class_id = 0'
+    : (classId ? 'WHERE class_id = ?' : '');
+  const cArgs = classId === STAFF_CLASS ? [] : (classId ? [classId] : []);
   const offsets = [insightOffset, insightOffset + 1, insightOffset + 7];
   const [cumRows] = await pool.query(
     `SELECT COUNT(DISTINCT CASE WHEN DATEDIFF(CURDATE(), DATE(ts)) >= ? THEN openid END) AS u0,
@@ -353,7 +375,8 @@ async function usage(query) {
   // ④ 访问类型分布（页面浏览 / 功能点击）：跟随当前时间范围与班级范围。
   const kConds = [];
   const kArgs = [];
-  if (classId) { kConds.push('class_id = ?'); kArgs.push(classId); }
+  if (classId === STAFF_CLASS) { kConds.push('class_id = 0'); }
+  else if (classId) { kConds.push('class_id = ?'); kArgs.push(classId); }
   const dk = daysCond(days, 'ts');
   if (dk.sql) { kConds.push(dk.sql); kArgs.push(...dk.args); }
   const kWhere = kConds.length ? 'WHERE ' + kConds.join(' AND ') : '';
