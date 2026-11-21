@@ -691,30 +691,34 @@
 }
 .an-fetch.busy { opacity: 0.6; }
 
-/* 「获取」拉回的模型列表（可滚动，点击即选） */
-.an-models-scroll {
-  max-height: 320rpx;
-  margin-top: 16rpx;
+/* 模型原生下拉（picker）：占满输入行左侧，点开系统滚轮选择，列表不铺开、选完不消失 */
+.an-model-picker {
+  flex: 1;
+  width: auto;
+  margin-right: 16rpx;
+}
+.an-model-pick-view {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.an-model-pick-tx {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.an-model-pick-arrow {
+  flex: none;
+  margin-left: 16rpx;
+  color: var(--text-3);
+  font-size: 28rpx;
 }
 .an-models-hint {
   font-size: 22rpx;
   color: var(--text-3);
-  margin-bottom: 12rpx;
-}
-.an-model {
-  padding: 16rpx 22rpx;
-  border-radius: 16rpx;
-  font-size: 26rpx;
-  color: var(--text-1);
-  background: rgba(31, 38, 135, 0.05);
-  border: 2rpx solid transparent;
-  margin-bottom: 12rpx;
-  word-break: break-all;
-}
-.an-model.on {
-  color: #EC4899;
-  background: rgba(236, 72, 153, 0.08);
-  border-color: rgba(236, 72, 153, 0.5);
+  margin-top: 12rpx;
+  line-height: 1.5;
 }
 .an-btn {
   height: 88rpx;

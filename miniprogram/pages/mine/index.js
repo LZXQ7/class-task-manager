@@ -102,8 +102,10 @@ Page({
     aiConfigured: false,
     aiBusy: false,
     aiTestResult: '',
-    /** 「获取」拉回的可用模型列表（点击某条即填进 aiModel） */
-    aiModels: [],
+    /** 模型下拉项（始终至少 deepseek-chat；点「获取」后灌官方列表，选完不清空，可反复选） */
+    aiModelOptions: ['deepseek-chat'],
+    /** 当前选中项在 aiModelOptions 里的下标（picker value） */
+    aiModelIndex: 0,
     isCounselor: false,
     /** 个人卡职位头衔（来自登录 profile.position；超管金 / 班委蓝 / 辅导员青） */
     selfTag: '',
@@ -973,45 +975,64 @@ Page({
    * 所以这里只做「覆盖写入」：留空 = 不改，填了 = 覆盖。
    */
   openAiSetting() {
-    this.setData({ aiShow: true, aiBusy: false, aiTestResult: '', aiKey: '' });
+    this.setData({
+      aiShow: true, aiBusy: false, aiTestResult: '', aiKey: '',
+      aiModelOptions: ['deepseek-chat'], aiModelIndex: 0
+    });
     this._loadAiSetting();
   },
   onAiClose() { this.setData({ aiShow: false }); },
-  onAiModel(e) { this.setData({ aiModel: e.detail.value }); },
   onAiKey(e) { this.setData({ aiKey: e.detail.value }); },
+  /** 把拉回的模型列表灌进 picker：始终含 deepseek-chat 作默认项；选中项下标跟随当前 aiModel */
+  _setModelOptions(models) {
+    const list = Array.isArray(models) ? models.slice() : [];
+    const opts = list.indexOf('deepseek-chat') >= 0 ? list : ['deepseek-chat'].concat(list);
+    const cur = this.data.aiModel || 'deepseek-chat';
+    const idx = Math.max(0, opts.indexOf(cur));
+    this.setData({ aiModelOptions: opts, aiModelIndex: idx });
+  },
   /** 获取模型列表：强制 DeepSeek 官方默认地址，带（新填或已存）密钥 */
   onAiFetchModels() {
     if (this.data.aiBusy) return;
-    this.setData({ aiBusy: true, aiTestResult: '', aiModels: [] });
+    this.setData({ aiBusy: true, aiTestResult: '' });
     const p = { baseUrl: AI_DEFAULTS.baseUrl };
     if (this.data.aiKey) p.apiKey = this.data.aiKey;
     api.aiSettingModels(p, { loading: '获取模型' })
       .then((d) => {
         const models = (d && d.models) || [];
-        this.setData({ aiBusy: false, aiModels: models });
+        this.setData({ aiBusy: false });
         if (!models.length) {
           this.setData({ aiTestResult: (d && d.error) || '该接口未返回可用模型（可能不支持 /models）' });
+        } else {
+          this._setModelOptions(models);
         }
       })
       .catch((e) => {
-        this.setData({ aiBusy: false, aiModels: [] });
+        this.setData({ aiBusy: false });
         util.toast(String((e && e.errMsg) || e || '获取失败'));
       });
   },
-  /** 从拉回的模型列表里点选一个，填进 aiModel */
+  /** picker 选中：e.detail.value 是下标，回填 aiModel；列表保留，随时可再点重选 */
   onPickModel(e) {
-    const m = e.currentTarget.dataset.m;
-    if (!m) return;
-    this.setData({ aiModel: m, aiModels: [] });
+    const idx = Number(e.detail.value);
+    const opts = this.data.aiModelOptions;
+    if (!opts.length || idx < 0 || idx >= opts.length) return;
+    this.setData({ aiModelIndex: idx, aiModel: opts[idx] });
   },
   _loadAiSetting() {
     api.aiSettingGet({}, { toast: false })
       .then((r) => {
         const d = r || {};
+        // 已存模型要能在下拉里高亮：不在默认项里就补进去（历史自定义模型不丢）
+        const stored = d.model || '';
+        const opts = this.data.aiModelOptions.slice();
+        if (stored && opts.indexOf(stored) < 0) opts.push(stored);
         this.setData({
           aiConfigured: !!d.configured,
           aiKeyMask: d.keyMask || '',
-          aiModel: d.model || ''
+          aiModel: stored,
+          aiModelOptions: opts,
+          aiModelIndex: Math.max(0, opts.indexOf(stored || 'deepseek-chat'))
         });
       })
       .catch(() => {});
@@ -1072,7 +1093,7 @@ Page({
         this.setData({ aiBusy: true });
         api.aiSettingClear({}, { loading: '清除中' })
           .then(() => {
-            this.setData({ aiBusy: false, aiConfigured: false, aiKeyMask: '', aiKey: '', aiModel: '', aiTestResult: '' });
+            this.setData({ aiBusy: false, aiConfigured: false, aiKeyMask: '', aiKey: '', aiModel: '', aiTestResult: '', aiModelOptions: ['deepseek-chat'], aiModelIndex: 0 });
             util.toast('已清除');
           })
           .catch((e) => {

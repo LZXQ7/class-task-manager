@@ -276,17 +276,20 @@
         <input class="an-input" password="{{true}}" value="{{aiKey}}" placeholder="{{aiKeyMask ? '已保存 ' + aiKeyMask + '，留空则不改' : 'sk-…'}}" placeholder-class="f-ph" bindinput="onAiKey" />
       </view>
 
-      <!-- 模型选择（可留空=默认 deepseek-chat；填密钥后点「获取」拉官方列表） -->
+      <!-- 模型选择：点模型栏弹原生下拉，列表拉回后一直保留，选错可随时重选（不再下方铺开） -->
       <view class="an-field">
         <text class="an-label">模型（可留空=默认 deepseek-chat）</text>
         <view class="an-model-row">
-          <input class="an-input" value="{{aiModel}}" placeholder="deepseek-chat" placeholder-class="f-ph" bindinput="onAiModel" />
+          <picker class="an-model-picker" mode="selector" range="{{aiModelOptions}}" value="{{aiModelIndex}}" bindchange="onPickModel">
+            <view class="an-input an-model-pick-view">
+              <text class="an-model-pick-tx">{{aiModel || 'deepseek-chat（默认）'}}</text>
+              <text class="an-model-pick-arrow">▾</text>
+            </view>
+          </picker>
           <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="an-fetch {{aiBusy ? 'busy' : ''}}" bindtap="onAiFetchModels">获取</view>
         </view>
-        <scroll-view wx:if="{{aiModels.length}}" scroll-y class="an-models-scroll">
-          <view class="an-models-hint">点击选择模型（共 {{aiModels.length}} 个）</view>
-          <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:for="{{aiModels}}" wx:key="*this" class="an-model {{aiModel === item ? 'on' : ''}}" data-m="{{item}}" bindtap="onPickModel">{{item}}</view>
-        </scroll-view>
+        <view wx:if="{{aiModelOptions.length > 1}}" class="an-models-hint">共 {{aiModelOptions.length}} 个可选 · 点模型栏随时重选</view>
+        <view wx:else class="an-models-hint">填好密钥点「获取」可拉官方模型列表</view>
       </view>
 
       <view wx:if="{{aiConfigured && !aiKey}}" class="an-tip">当前已保存：{{aiKeyMask}}（不填密钥保存则保持原值不变）</view>

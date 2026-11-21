@@ -60,6 +60,14 @@ function audit(X) {
   need('providerPinned', (J.match(/provider: AI_DEFAULTS\.provider/g) || []).length >= 2);
   need('noAiBaseUrl', !has(J, 'this.data.aiBaseUrl') && !has(J, 'aiBaseUrl:'));
 
+  /* ⑥ 模型下拉：picker 承载、列表保留可重选、不再下方铺开、默认项保底 */
+  need('modelIsPicker', has(W, 'mode="selector"') && has(W, 'range="{{aiModelOptions}}"') && has(W, 'bindchange="onPickModel"'));
+  need('noInlineModelList', !has(W, 'wx:for="{{aiModels}}"') && !has(W, 'an-models-scroll'));
+  need('pickByIndex', has(J, 'Number(e.detail.value)') && has(J, 'aiModelIndex: idx, aiModel: opts[idx]'));
+  need('listKept', !/aiModel:\s*m,\s*aiModels:\s*\[\]/.test(J) && has(J, "aiModelOptions: ['deepseek-chat']"));
+  need('optionsComputed', has(J, '_setModelOptions(models)') && has(J, "['deepseek-chat'].concat(list)"));
+  need('pickerCss', has(C, '.an-model-picker {') && has(C, '.an-model-pick-arrow'));
+
   /* 样式：引导块有定义，且文字色走令牌（深色可读） */
   need('guideCss', has(C, '.an-guide {') && has(C, '.an-guide-tx') && has(C, 'color: var(--text-2)'));
   return bad;
@@ -72,6 +80,9 @@ const MUTANTS = [
   { key: 'defaultsDeepSeek', file: 'js', from: "const AI_DEFAULTS = { provider: 'deepseek', baseUrl: '' };", to: "const AI_DEFAULTS = { provider: 'glm', baseUrl: '' };" },
   { key: 'noGLM', file: 'js', from: "const AI_DEFAULTS = { provider: 'deepseek', baseUrl: '' };", to: "const AI_DEFAULTS = { provider: 'deepseek', baseUrl: '' };\nconst LEGACY = 'glm-4-flash';" },
   { key: 'noAiBaseUrl', file: 'js', from: 'baseUrl: AI_DEFAULTS.baseUrl,', to: 'baseUrl: this.data.aiBaseUrl,' },
+  { key: 'modelIsPicker', file: 'wxml', from: 'range="{{aiModelOptions}}"', to: 'range="{{aiModels}}"' },
+  { key: 'pickByIndex', file: 'js', from: 'aiModelIndex: idx, aiModel: opts[idx]', to: 'aiModelIndex: idx, aiModel: e.currentTarget.dataset.m' },
+  { key: 'listKept', file: 'js', from: "aiModelOptions: ['deepseek-chat']", to: "aiModelOptions: ['glm-4-flash']" },
   { key: 'guideCss', file: 'wxss', from: '.an-guide {', to: '.an-guide-x {' }
 ];
 
