@@ -768,9 +768,15 @@ Page({
     };
   },
 
-  /** 全班课次 + 个人选修课 合并（选修课带 group_tag → 仅本人所在组视图显示；旧数据无 group_tag 兜底全显示） */
+  /** 全班课次 + 个人选修课 合并（选修课带 group_tag → 仅本人所在组视图显示；旧数据无 group_tag 兜底全显示）
+   *  🔴 个人选修课也必须按当前周过滤：classCourses 已经过 sessionsOfWeek(wk) 的 matchesWeeks，
+   *     但选修课不走那一步。早前这里无条件 concat，导致「上课周次设为 7-10」的选修课
+   *     在第 11 周照常显示（2026-11-22 用户实拍）。这里补齐同口径过滤。 */
   _mergePersonal(classCourses) {
-    const pc = (this._personal || []).map(p => this._personalToCell(p));
+    const wk = this.data.week;
+    const pc = (this._personal || [])
+      .filter(p => tt.matchesWeeks(p.weeks || '', wk))
+      .map(p => this._personalToCell(p));
     return classCourses.concat(pc);
   },
 

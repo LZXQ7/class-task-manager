@@ -230,7 +230,45 @@ console.log('\n【3】_ensureDuties 拉完值日名单后不得抹掉选修课')
     (src.match(/this\._build\([^\n]*/) || ['(未找到)'])[0]);
 }
 
-console.log('\n【4】变异自证（内存副本，不写盘）');
+console.log('\n【4】个人选修课必须按当前周 weeks 过滤（2026-11-22 用户报：设 7-10 周，11 周仍显示）');
+{
+  function mergedAt(week, weeks) {
+    const page = loadPage();
+    if (!page) return null;
+    page.data.week = week;
+    page._personal = [{ id: 1, name: '周次测试课', dayOfWeek: 5, period: 5, weeks }];
+    return page._mergePersonal([]).filter(c => c.personal).map(c => c.name);
+  }
+  const w11 = mergedAt(11, '7,8,9,10');
+  ok(!!w11 && w11.indexOf('周次测试课') < 0,
+    '第11周不显示 weeks=7,8,9,10 的选修课', JSON.stringify(w11));
+  const w8 = mergedAt(8, '7,8,9,10');
+  ok(!!w8 && w8.indexOf('周次测试课') >= 0,
+    '第8周正常显示同一门课', JSON.stringify(w8));
+  const wAll = mergedAt(11, '');
+  ok(!!wAll && wAll.indexOf('周次测试课') >= 0,
+    '空 weeks（每周都上）第11周仍显示', JSON.stringify(wAll));
+  const wArr = mergedAt(11, [7, 8, 9, 10]);
+  ok(!!wArr && wArr.indexOf('周次测试课') < 0,
+    '数组格式 weeks 第11周同样过滤', JSON.stringify(wArr));
+
+  // 变异：把过滤去掉（回到无条件 concat）⇒ 上面四条必须翻红
+  const FILTER_LINE = "      .filter(p => tt.matchesWeeks(p.weeks || '', wk))\n";
+  const mutNoFilter = JS.replace(FILTER_LINE, '');
+  ok(mutNoFilter !== JS, '变异锚点命中（过滤行在源码中）');
+  const pageMut = loadPage({ [JS_PATH]: mutNoFilter });
+  if (pageMut) {
+    pageMut.data.week = 11;
+    pageMut._personal = [{ id: 1, name: '周次测试课', dayOfWeek: 5, period: 5, weeks: '7,8,9,10' }];
+    const bad = pageMut._mergePersonal([]).filter(c => c.personal).map(c => c.name);
+    ok(bad.indexOf('周次测试课') >= 0,
+      '变异：去掉周次过滤 ⇒ 第11周又显示（判据翻红）', JSON.stringify(bad));
+  } else {
+    ok(false, '变异页加载失败');
+  }
+}
+
+console.log('\n【5】变异自证（内存副本，不写盘）');
 {
   // 变异 A：把 key 退回旧写法（丢掉选修课身份前缀）
   const mutA = JS.replace(
