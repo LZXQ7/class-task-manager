@@ -46,6 +46,21 @@ function fmtDT(v) {
 }
 
 /**
+ * 时段校验（2026-11-22 修）：口径是「开始时间=起始日的开始，结束时间=结束日的结束」。
+ *  · 单日请假（startDate===endDate）：两个时刻落在同一天，必须 start < end；
+ *  · 跨天请假（startDate<endDate）：首日晚上开始、末日早上结束（如 19:00→08:00）完全合法，
+ *    此时 start >= end 反而才是常态，**绝不能拦**。
+ * 早前两处（update/create）无条件 `start>=end → 抛错`，导致后台编辑跨天假一保存就报
+ * 「开始时间须早于结束时间」（用户实拍 11/22 19:00 ~ 11/24 08:00），与小程序 adjust
+ * 的跨天连续口径（1.0.8.77）矛盾。
+ */
+function assertTimeOrder(startTime, endTime, startDate, endDate) {
+  if (startTime && endTime && startDate === endDate && startTime >= endTime) {
+    throw new BizError(40001, '开始时间须早于结束时间');
+  }
+}
+
+/**
  * 请假列表。
  * @param {object} q
  * @param {number} q.classId   必填：班级（后台显式按班级查，不做小程序那套跨班隔离）
@@ -126,7 +141,7 @@ async function updateLeave(payload, session, req) {
   let endTime = old.end_time;
   if (payload.startTime !== undefined) startTime = normTime(payload.startTime);
   if (payload.endTime !== undefined) endTime = normTime(payload.endTime);
-  if (startTime && endTime && startTime >= endTime) throw new BizError(40001, '开始时间须早于结束时间');
+  assertTimeOrder(startTime, endTime, startDate, endDate);
 
   let status = old.status;
   if (payload.status !== undefined) {
@@ -221,7 +236,7 @@ async function createLeave(payload, session, req) {
 
   const startTime = normTime(payload.startTime);
   const endTime = normTime(payload.endTime);
-  if (startTime && endTime && startTime >= endTime) throw new BizError(40001, '开始时间须早于结束时间');
+  assertTimeOrder(startTime, endTime, startDate, endDate);
 
   let status = 'APPROVED';
   if (payload.status !== undefined) {

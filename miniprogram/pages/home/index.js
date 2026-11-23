@@ -929,6 +929,17 @@ Page({
       // ⚠️ 课次没拿到时段（periodTime 为 null）⇒ 退化为「当天请假就算」，
       //    比"什么都不算"更接近真相（宁可多算，不可漏算——漏算会让班长把缺席的人报成全勤）。
       if (!cs || !ce) return true;
+      /* v1.0.8.81 跨天连续区间（与后端 inLeaveWindow / 请假卡 markOver 同构）：
+       *   首日只卡下界、末日只卡上界、中间整天（含晚上）连续。
+       *   课堂情况问「这节课谁没来」，跨天假判「课程时段 [cs,ce] 与连续区间有无交集」：
+       *     首日 ⇒ 课程结束 ≥ 请假开始；末日 ⇒ 课程开始 ≤ 请假结束；中间 ⇒ 恒命中。
+       *   ⚠️ 单日仍走下方旧语义（时段交集），写法一字不动守门禁的变异自证。 */
+      if (d0 && d1 && d0 !== d1) {
+        const s = String(x.startTime), e = String(x.endTime);
+        if (day <= d0) return ce >= s;   // 首日：只看下界（课程结束 ≥ 请假开始）
+        if (day >= d1) return cs <= e;   // 末日：只看上界（课程开始 ≤ 请假结束）
+        return true;                     // 中间整天（含晚上）连续
+      }
       // 有交集：leaveStart <= courseEnd 且 leaveEnd >= courseStart
       return String(x.startTime) <= ce && String(x.endTime) >= cs;
     };
