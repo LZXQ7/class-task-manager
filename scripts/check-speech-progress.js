@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 /**
- * 离线自检：课前演讲「进度显示」（轮转位置 + 本周完成，1.0.8.82）
+ * 离线自检：课前演讲「逐行进度」（已演讲 / 未演讲，1.0.8.83）
  * ============================================================
- * 用户口径：「课前演讲增加和值日一样的进度，现在只有安排，没有具体显示」。
- * 值日页有「值日 N 次」的进度感，演讲视图此前只有每天上午/下午谁讲，
- * 看不到「轮到几号了 / 本周排了多少」。本门禁钉死三件事：
- *   ① 页内有纯函数 speechProgressOf(setting, days)，真跑它验数字与文案：
- *      - 轮转位置取 setting.cursorA/cursorB（speech_cursor 双游标）；
- *      - 本周人次 = days[].am/pm 人数之和；场数按 date|slot 去重；
- *      - 0 是合法游标值，文案照显数字，不能当空吞掉；脏入参不崩。
- *   ② loadSpeech 真把 speechList 的 setting/days 接线到 speechProgress；
- *   ③ wxml 顶部进度卡渲染 positionText / 人次 / 场数，wxss 走令牌（深色安全）。
+ * 用户口径纠正：「是像值日一样在后面显示，已演讲、未演讲这样的」——
+ * 不要顶部汇总卡（1.0.8.82 做错了），要在**每一行姓名后面**跟一枚状态 pill。
  *
- * 变异自证：改坏函数/接线/文案/样式，对应判据必须翻红。
+ * 判据：
+ *   ① 页内纯函数 `speechDoneOf(date, slot, now)` 真跑：
+ *      - 上午场 08:10 结束、下午场 14:40 结束；过了结束时刻 = 已演讲；
+ *      - 同一时刻：上午已讲但下午未讲（时段边界正确）；
+ *      - 脏日期 / 非法 now 不崩、回落「未演讲」；
+ *   ② loadSpeech 按 day×slot 派生 done 写到每个 group 上（不改分组数组本身）；
+ *   ③ wxml 上午/下午两处 sp-line 行尾都有 status-pill，文案「已演讲 / 未演讲」；
+ *   ④ 顶部汇总卡 .sp-progress 已移除（用户明确不要）。
+ *
+ * 变异自证：改坏函数/接线/文案/把汇总卡加回来，对应判据必须翻红。
  *
  * 用法：node scripts/check-speech-progress.js
  */
@@ -38,9 +40,8 @@ const F = {
 const SRC = {};
 Object.keys(F).forEach((k) => { SRC[k] = read(F[k]); });
 
-const FN = 'speechProgressOf';
+const FN = 'speechDoneOf';
 
-/** 抽顶层 `function <name>(...) {...}` 整段（花括号配对） */
 function fnSource(js, name) {
   const i = js.indexOf('function ' + name + '(');
   if (i < 0) return '';
@@ -56,7 +57,6 @@ function fnSource(js, name) {
   return '';
 }
 
-/** 真跑纯函数（变异改内存里的源码字符串，这里跟着读改后的副本） */
 function loadFn(js, name) {
   const src = fnSource(stripJs(js), name);
   if (!src) return null;
@@ -68,7 +68,6 @@ function loadFn(js, name) {
   }
 }
 
-/** 取页面方法体（锚 \n 两空格缩进，避开调用点） */
 function methodBody(js, name) {
   let i = js.indexOf('\n  ' + name + '(');
   if (i < 0) i = js.indexOf(name + '(');
@@ -82,124 +81,103 @@ function methodBody(js, name) {
 function evalAll(s) {
   const w = stripXml(s.wxml);
   const j = stripJs(s.js);
-  const css = s.wxss;
   const fn = loadFn(j, FN);
 
-  let normal = null;
-  let zero = null;
-  let dirty = null;
-  let oneCell = null;
+  let amDoneBefore = null;
+  let pmNotDoneAt9 = null;
+  let notDoneAt730 = null;
+  let bothDoneAt15 = null;
+  let dirtyDate = null;
+  let dirtyNow = null;
   if (fn) {
     try {
-      /* 生产口径：A41/B40，一周三天：周一上午 2 人、周三上午 2 人、周五下午 1 人 */
-      normal = fn({ cursorA: 41, cursorB: 40 }, [
-        { date: '2026-11-23', am: [{ name: 'a' }, { name: 'b' }], pm: [] },
-        { date: '2026-11-25', am: [{ name: 'c' }, { name: 'd' }], pm: [] },
-        { date: '2026-11-27', am: [], pm: [{ name: 'e' }] }
-      ]);
-      /* 0 是合法游标值（从头开始），不能当空吞掉 */
-      zero = fn({ cursorA: 0, cursorB: 0 }, []);
+      /* 2026-11-25 09:00：上午 08:10 已过、下午 14:40 未到 */
+      amDoneBefore = fn('2026-11-25', 'am', new Date(2026, 10, 25, 9, 0).getTime());
+      pmNotDoneAt9 = fn('2026-11-25', 'pm', new Date(2026, 10, 25, 9, 0).getTime());
+      /* 14:30 下午场还没结束 */
+      notDoneAt730 = fn('2026-11-25', 'pm', new Date(2026, 10, 25, 14, 30).getTime());
+      /* 15:00 两场都过了结束时刻 */
+      bothDoneAt15 = fn('2026-11-25', 'am', new Date(2026, 10, 25, 15, 0).getTime())
+        && fn('2026-11-25', 'pm', new Date(2026, 10, 25, 15, 0).getTime());
       /* 脏入参不崩 */
-      dirty = fn(null, null);
-      /* 同一天上午两人 + 下午一人 = 2 场（按 date|slot 去重，人次 3） */
-      oneCell = fn({ cursorA: 3, cursorB: 4 }, [
-        { date: '2026-11-24', am: [{ id: 1 }, { id: 2 }], pm: [{ id: 3 }] }
-      ]);
+      dirtyDate = fn('not-a-date', 'am', Date.now());
+      dirtyNow = fn('2026-11-25', 'am', NaN);
     } catch (e) {
-      normal = null;
+      amDoneBefore = null;
     }
   }
 
   const load = methodBody(j, 'loadSpeech');
-  const progressCard = (w.match(/class="sp-progress"/g) || []).length === 1;
-  const posBind = /\{\{speechProgress\.positionText\}\}/.test(w);
-  const peopleBind = (w.match(/\{\{speechProgress\.people\}\}/g) || []).length === 1;
-  const sessBind = (w.match(/\{\{speechProgress\.sessions\}\}/g) || []).length === 1;
-  const cssProg = /\.sp-progress\s*\{[^}]*\}/.test(css);
-  const cssNum = /\.sp-progress-done-num\s*\{[^}]*color:\s*var\(--brand\)/.test(css);
-  const cssFill = /\.sp-progress\s*\{[^}]*background:\s*var\(--fill-soft\)/.test(css);
-  /* 进度卡不许写死浅底 / 深字（深色会翻不回来） */
-  const hardLight = /\.sp-progress[^{}]*\{[^}]*#(?:F7F8FA|FFFFFF|1D2129|4E5969|86909C)/i.test(css);
+  /* wxml：两处 sp-line 行尾的 status-pill（用 text 属性给「已演讲 / 未演讲」文案） */
+  const pills = w.match(/<status-pill[^>]*\/>/g) || [];
+  const rowPills = pills.filter((p) => /grp\.done \? 'DONE' : 'PENDING'/.test(p));
+  const noSummaryCard = !/class="sp-progress"/.test(w) && !/\.sp-progress\s*\{/.test(s.wxss);
+  /* 派生接线：保留原 amGroups/pmGroups 两行（既有门禁的变异锚点），另起一步写 done */
+  const keepsGroups = /amGroups:\s*speechSlotGroups\(d\.am\)/.test(load)
+    && /pmGroups:\s*speechSlotGroups\(d\.pm\)/.test(load);
+  const amWired = /\(d\.amGroups \|\| \[\]\)\.forEach\(\(g\) => \{ g\.done = amDone/.test(load);
+  const pmWired = /\(d\.pmGroups \|\| \[\]\)\.forEach\(\(g\) => \{ g\.done = pmDone/.test(load);
+  const deriveAm = /speechDoneOf\(d\.date, 'am', nowMs\)/.test(load);
+  const derivePm = /speechDoneOf\(d\.date, 'pm', nowMs\)/.test(load);
 
   return {
     fnOk: !!fn,
-    /* 轮转游标取对 */
-    cursorA: !!(normal && normal.cursorA === 41),
-    cursorB: !!(normal && normal.cursorB === 40),
-    /* 本周 5 人次 / 3 场 */
-    people: !!(normal && normal.people === 5),
-    sessions: !!(normal && normal.sessions === 3),
-    /* 文案含数字，0 也照显 */
-    posText: !!(normal && /A组已排到 41 号/.test(normal.positionText) && /B组已排到 40 号/.test(normal.positionText)),
-    doneText: !!(normal && /本周已排 5 人次 · 3 场/.test(normal.doneText)),
-    zeroKeep: !!(zero && zero.cursorA === 0 && zero.cursorB === 0 && /0 号/.test(zero.positionText)),
-    dirtySafe: !!(dirty && dirty.people === 0 && dirty.sessions === 0 && dirty.cursorA === 0),
-    /* 场数按 date|slot 去重（同一天上午两人仍算 1 场） */
-    dedupSessions: !!(oneCell && oneCell.people === 3 && oneCell.sessions === 2),
-    /* 接线：loadSpeech 里派生并写进 data */
-    wired: /speechProgress:\s*speechProgressOf\(/.test(load),
-    dataInit: /speechProgress:\s*speechProgressOf\(\{ cursorA: 0, cursorB: 0 \}, \[\]\)/.test(stripJs(j)),
-    /* wxml / wxss */
-    card: progressCard,
-    posBind: posBind,
-    binds: peopleBind && sessBind,
-    css: cssProg,
-    cssNum: cssNum,
-    cssFill: cssFill,
-    noHardLight: !hardLight
+    amDoneBefore: amDoneBefore === true,
+    pmNotDoneAt9: pmNotDoneAt9 === false,
+    notDoneAt730: notDoneAt730 === false,
+    bothDoneAt15: bothDoneAt15 === true,
+    dirtyDate: dirtyDate === false,
+    dirtyNow: dirtyNow === false,
+    pills: rowPills.length === 2,
+    pillText: rowPills.length === 2 && rowPills.every((p) => /已演讲/.test(p) && /未演讲/.test(p)),
+    noSummaryCard: noSummaryCard,
+    keepsGroups: keepsGroups,
+    wired: amWired && pmWired && deriveAm && derivePm
   };
 }
 
 const S = evalAll(SRC);
 
-console.log('\n── ① 纯函数真跑（speechProgressOf）');
-check(S.fnOk, '页内存在可执行的 speechProgressOf 纯函数');
-check(S.cursorA, '轮转位置 A 组游标取 setting.cursorA（=41）');
-check(S.cursorB, '轮转位置 B 组游标取 setting.cursorB（=40）');
-check(S.people, '本周人次 = days[].am/pm 人数之和（5 人次）');
-check(S.sessions, '本周场数按 date|slot 去重（3 场）');
-check(S.dedupSessions, '同一天上午两人+下午一人 = 3 人次 / 2 场（场按 date|slot 去重）');
-check(S.posText, '位置文案含双游标数字「A组已排到 41 号 · B组已排到 40 号」');
-check(S.doneText, '完成文案含「本周已排 5 人次 · 3 场」');
-check(S.zeroKeep, '0 是合法游标：A/B 都是 0 时文案照显「0 号」，不当空吞掉');
-check(S.dirtySafe, 'setting/days 传 null 不崩，回落全 0');
+console.log('\n── ① 纯函数真跑（speechDoneOf）');
+check(S.fnOk, '页内存在可执行的 speechDoneOf 纯函数');
+check(S.amDoneBefore, '上午场 09:00 已过 08:10 ⇒ 已演讲');
+check(S.pmNotDoneAt9, '同一时刻下午场 14:40 未到 ⇒ 未演讲（时段边界正确）');
+check(S.notDoneAt730, '下午 14:30 场未结束 ⇒ 未演讲');
+check(S.bothDoneAt15, '15:00 两场均已结束 ⇒ 都已演讲');
+check(S.dirtyDate, '脏日期不崩，回落未演讲');
+check(S.dirtyNow, '非法 now 不崩，回落未演讲');
 
 console.log('\n── ② 页面接线');
-check(S.wired, 'loadSpeech 把 speechList 的 setting/days 接进 speechProgress');
-check(S.dataInit, 'data 初值用 speechProgressOf 派生（首帧不空、无 undefined）');
+check(S.keepsGroups, '保留 amGroups/pmGroups 原样（既有分组门禁的变异锚点不被破坏）');
+check(S.wired, 'loadSpeech 按 day×slot 派生 done 并写到每组');
 
-console.log('\n── ③ 渲染与样式');
-check(S.card, 'wxml 有且仅有一块 .sp-progress 进度卡');
-check(S.posBind, '进度卡渲染 speechProgress.positionText');
-check(S.binds, '进度卡渲染人次与场数两个数字');
-check(S.css, '.sp-progress 样式有定义');
-check(S.cssNum, '进度数字走 var(--brand)（深浅色自动翻）');
-check(S.cssFill, '进度卡底板走 var(--fill-soft) 令牌');
-check(S.noHardLight, '进度卡未写死浅底/深字');
+console.log('\n── ③ 渲染');
+check(S.pills, '上午/下午两处 sp-line 行尾各有一枚 status-pill');
+check(S.pillText, 'pill 文案为「已演讲 / 未演讲」');
+check(S.noSummaryCard, '1.0.8.82 的顶部汇总卡已移除（用户明确不要）');
 
 console.log('\n── ④ 变异自证（改坏 → 判据必须翻红）');
 const MUT = [
-  { name: '轮转游标改读别的字段（丢掉 setting.cursorA）', probe: 'cursorA', file: 'js',
-    from: 'const a = Number(s.cursorA) || 0;', to: 'const a = 0;' },
-  { name: '本周人次改恒 0（不累加 am/pm）', probe: 'people', file: 'js',
-    from: '      people += arr.length;', to: '      people += 0;' },
-  { name: '场数不去重（每人都算一场）', probe: 'dedupSessions', file: 'js',
-    from: '  const sessions = Object.keys(slots).length;', to: '  const sessions = people;' },
-  { name: '0 游标被当空吞掉（文案改成「未开始」）', probe: 'zeroKeep', file: 'js',
-    from: "positionText: 'A组已排到 ' + a + ' 号 · B组已排到 ' + b + ' 号',",
-    to: "positionText: (a ? 'A组已排到 ' + a + ' 号' : 'A组未开始') + ' · ' + (b ? 'B组已排到 ' + b + ' 号' : 'B组未开始')," },
-  { name: '完成文案数字被去掉', probe: 'doneText', file: 'js',
-    from: "doneText: '本周已排 ' + people + ' 人次 · ' + sessions + ' 场'",
-    to: "doneText: '本周已排'" },
-  { name: 'loadSpeech 不再接线 speechProgress', probe: 'wired', file: 'js',
-    apply: (src) => src.replace(/\n\s*speechProgress: speechProgressOf\(\(r && r\.setting\) \|\| \{\}, \(r && r\.days\) \|\| \[\]\),/, '') },
-  { name: 'wxml 去掉进度卡', probe: 'card', file: 'wxml',
-    apply: (src) => src.replace(/<view class="sp-progress">[\s\S]*?<\/view>\s*<\/view>\n/, '') },
-  { name: 'wxml 去掉位置文案绑定', probe: 'posBind', file: 'wxml',
-    from: '{{speechProgress.positionText}}', to: '演讲进度' },
-  { name: 'wxss 数字改回写死深色', probe: 'cssNum', file: 'wxss',
-    from: '.sp-progress-done-num { font-size: 34rpx; font-weight: 700; color: var(--brand); line-height: 1.1; }',
-    to: '.sp-progress-done-num { font-size: 34rpx; font-weight: 700; color: #1D2129; line-height: 1.1; }' }
+  { name: '把结束时刻判断改成恒 false（永远未演讲）', probe: 'amDoneBefore', file: 'js',
+    from: '  return t >= end;', to: '  return false;' },
+  { name: '上午结束时刻改成 23:59（上午场永远未演讲）', probe: 'amDoneBefore', file: 'js',
+    from: '  const hh = pm ? 14 : 8;', to: '  const hh = pm ? 14 : 23;' },
+  { name: '下午结束时刻改成 08:10（下午场 09:00 就被误判已讲）', probe: 'pmNotDoneAt9', file: 'js',
+    from: '  const hh = pm ? 14 : 8;', to: '  const hh = pm ? 8 : 8;' },
+  { name: '下午分也改成 10（14:30 被误判已讲）', probe: 'notDoneAt730', file: 'js',
+    from: '  const mm = pm ? 40 : 10;', to: '  const mm = pm ? 10 : 10;' },
+  { name: '脏日期返回 true（脏数据被当已演讲）', probe: 'dirtyDate', file: 'js',
+    from: '  if (!m) return false;', to: '  if (!m) return true;' },
+  { name: '去掉上午场派生（amDone 恒 false）', probe: 'wired', file: 'js',
+    from: "          const amDone = speechDoneOf(d.date, 'am', nowMs);", to: '          const amDone = false;' },
+  { name: '下午组不再写 done（下午行永远未演讲）', probe: 'wired', file: 'js',
+    from: '          (d.pmGroups || []).forEach((g) => { g.done = pmDone; });', to: '          /* dropped */' },
+  { name: 'wxml 去掉下午场 pill', probe: 'pills', file: 'wxml',
+    apply: (src) => src.replace(/\s*<!-- 演讲进度（1\.0\.8\.83）：下午场同上午，行尾一枚 status-pill -->\s*<status-pill[^>]*\/>/, '') },
+  { name: 'pill 文案写回「已值日/待值日」（值日口径）', probe: 'pillText', file: 'wxml',
+    apply: (src) => src.split("'已演讲' : '未演讲'").join("'已值日' : '待值日'") },
+  { name: '把顶部汇总卡加回来（用户明确不要）', probe: 'noSummaryCard', file: 'wxml',
+    apply: (src) => src.replace('<view class="sp-legend">', '<view class="sp-progress">汇总</view>\n    <view class="sp-legend">') }
 ];
 
 MUT.forEach((mu) => {
@@ -220,5 +198,5 @@ MUT.forEach((mu) => {
   check(evalAll(next)[mu.probe] === false, '变异被抓：' + mu.name);
 });
 
-console.log('\n' + (failed ? '✗ ' + failed + ' 项未通过' : '✓ 演讲进度显示检查全部通过'));
+console.log('\n' + (failed ? '✗ ' + failed + ' 项未通过' : '✓ 演讲逐行进度检查全部通过'));
 process.exit(failed ? 1 : 0);

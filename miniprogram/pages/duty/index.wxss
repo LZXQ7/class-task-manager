@@ -874,15 +874,6 @@
 .sp-legend { display: flex; justify-content: space-between; padding: 12rpx 28rpx; }
 .sp-leg { font-size: 22rpx; color: var(--text-3); }
 .sp-tip { padding: 4rpx 24rpx 12rpx; font-size: 22rpx; color: var(--text-3); }
-/* 演讲进度条（1.0.8.82）：轮转位置 + 本周完成。走令牌，深浅色自动翻；
-   整条是一块弱底 + 上方一行位置说明 + 右侧两个大数字，与值日「值日 N 次」同一套对齐口径。 */
-.sp-progress { margin: 4rpx 24rpx 8rpx; padding: 18rpx 24rpx; border-radius: 16rpx; background: var(--fill-soft); }
-.sp-progress-pos { display: flex; align-items: center; gap: 10rpx; }
-.sp-progress-pos-text { font-size: 24rpx; color: var(--text-2); }
-.sp-progress-done { display: flex; align-items: baseline; gap: 6rpx; margin-top: 10rpx; }
-.sp-progress-done-num { font-size: 34rpx; font-weight: 700; color: var(--brand); line-height: 1.1; }
-.sp-progress-done-unit { font-size: 22rpx; color: var(--text-3); }
-.sp-progress-done-sep { font-size: 22rpx; color: var(--text-4, #C9CDD4); margin: 0 8rpx; }
 .sp-days { padding: 8rpx 24rpx 40rpx; }
 .sp-day { margin-bottom: 20rpx; padding: 20rpx 24rpx; }
 .sp-day-head { display: flex; align-items: baseline; gap: 14rpx; margin-bottom: 14rpx; }

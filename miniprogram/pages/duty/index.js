@@ -109,46 +109,28 @@ function spGridSummaryOf(rows) {
 }
 
 /**
- * 演讲进度汇总（1.0.8.82）：把「轮转位置 + 本周完成」压成一句可读文案 + 数字，wxml 不做计算。
+ * 演讲「已演讲 / 未演讲」状态（1.0.8.83）：像值日一样在每行尾部显示一枚状态 pill。
  * ------------------------------------------------------------
- * 用户口径：「课前演讲增加和值日一样的进度，现在只有安排，没有具体显示」。
- * 值日页有「值日 N 次 / 轮到谁」的进度感，演讲此前只有场次安排。这里给演讲视图顶部补两点：
- *   ① 轮转位置：speech_cursor 的 A/B 双游标 = 「A组已排到 X 号 / B组已排到 Y 号」，
- *      数据源 speechList 下发的 setting.cursorA/cursorB（管理员与同学都能看到）；
- *   ② 本周完成：本周已排人次 + 已排场数，由 speechList 下发的 days 派生
- *      （days[].am/pm 里的人即本周已排；按 date|slot 去重算场次）。
- * 纯函数：全部入参来自 speechList 返回值，不读全局、不发请求，门禁可脱离页面真跑。
- * 0 是合法游标值（从头开始），文案恒显示数字，不用 !x 吞掉。
- * @param {object} setting speechList.setting {cursorA,cursorB}
- * @param {Array}  days    speechList.days [{date,am:[],pm:[]}]
- * @returns {{cursorA:number,cursorB:number,people:number,sessions:number,positionText:string,doneText:string}}
+ * speech 表没有「已讲完」标记（status 只有 PENDING / SWAPPED_OUT，是换人态不是完成态），
+ * 所以完成与否只能按课次时间推断：该天该时段的演讲时间过了 ⇒ 已演讲，否则未演讲。
+ * 演讲时段固定：上午 08:00-08:10（结束 08:10）、下午 14:30-14:40（结束 14:40）。
+ * 同一场的所有人状态相同（一场一起讲），故按 day × slot 算一次、行尾共用一枚 pill。
+ * 纯函数：不读全局、不发请求，now 由调用方传入，门禁可注入固定时刻真跑。
+ * @param {string} dateStr 形如 '2026-11-25' 的日期
+ * @param {string} slot    'am' | 'pm'
+ * @param {number|Date} now 当前时刻（Date.now() 或 Date 实例）
+ * @returns {boolean} true = 已演讲（该场结束时间已过）
  */
-function speechProgressOf(setting, days) {
-  const s = setting || {};
-  const a = Number(s.cursorA) || 0;
-  const b = Number(s.cursorB) || 0;
-  const list = Array.isArray(days) ? days : [];
-  let people = 0;
-  const slots = {};
-  list.forEach((d) => {
-    if (!d) return;
-    const date = String(d.date || '');
-    ['am', 'pm'].forEach((slot) => {
-      const arr = Array.isArray(d[slot]) ? d[slot] : [];
-      if (!arr.length) return;
-      people += arr.length;
-      slots[date + '|' + slot] = 1;
-    });
-  });
-  const sessions = Object.keys(slots).length;
-  return {
-    cursorA: a,
-    cursorB: b,
-    people: people,
-    sessions: sessions,
-    positionText: 'A组已排到 ' + a + ' 号 · B组已排到 ' + b + ' 号',
-    doneText: '本周已排 ' + people + ' 人次 · ' + sessions + ' 场'
-  };
+function speechDoneOf(dateStr, slot, now) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr || ''));
+  if (!m) return false;
+  const pm = slot === 'pm';
+  const hh = pm ? 14 : 8;
+  const mm = pm ? 40 : 10;
+  const end = new Date(+m[1], +m[2] - 1, +m[3], hh, mm, 0, 0).getTime();
+  const t = now instanceof Date ? now.getTime() : Number(now);
+  if (!isFinite(end) || !isFinite(t)) return false;
+  return t >= end;
 }
 
 /**
@@ -289,8 +271,6 @@ Page({
     speechLoading: false,
     speechDays: [],
     speechSetting: { cursorA: 0, cursorB: 0 },
-    /* 演讲进度（1.0.8.82）：轮转位置 + 本周完成，由 speechProgressOf 派生，wxml 只渲染 */
-    speechProgress: speechProgressOf({ cursorA: 0, cursorB: 0 }, []),
     speechRoster: [],          // 换人候选（speechList 下发）
     /* 演讲设置弹层：当前进度双游标 */
     spSettingShow: false,
@@ -785,6 +765,17 @@ Page({
           amGroups: speechSlotGroups(d.am),
           pmGroups: speechSlotGroups(d.pm)
         }));
+        /* 演讲进度（1.0.8.83）：每组行尾标「已演讲/未演讲」。同一场所有人状态相同，
+           按 day × slot 算一次后写到该组上。时段固定 08:00-08:10 / 14:30-14:40，
+           过了结束时刻即已讲完。拆成独立一步，保持上面的 amGroups/pmGroups 原样
+           （既有门禁按那两行的原文做变异自证）。 */
+        const nowMs = Date.now();
+        days.forEach((d) => {
+          const amDone = speechDoneOf(d.date, 'am', nowMs);
+          const pmDone = speechDoneOf(d.date, 'pm', nowMs);
+          (d.amGroups || []).forEach((g) => { g.done = amDone; });
+          (d.pmGroups || []).forEach((g) => { g.done = pmDone; });
+        });
         /* 排班方式（v4）：speechList 下发固定 10 格 [{day,slot,need}]，重排成 5 行网格
            [{day,dayText,am,pm}]，wxml 只渲染不计算。 */
         const slotRules = ((r && r.slotRules) || []).map((it) => ({
@@ -805,8 +796,6 @@ Page({
           speechUnpublished: !!(r && r.unpublished),
           speechDays: days,
           speechSetting: (r && r.setting) || this.data.speechSetting,
-          /* 演讲进度：轮转游标 + 本周已排人次/场次（纯派生，与设置弹层读同一份 setting） */
-          speechProgress: speechProgressOf((r && r.setting) || {}, (r && r.days) || []),
           spSlotRules: slotRules,
           spGridRows: gridRows,
           spGridSummary: spGridSummaryOf(gridRows),
