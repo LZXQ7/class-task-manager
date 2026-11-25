@@ -151,29 +151,39 @@
            移除 hover-class/data-pressable（全局按压机制），保留 bindtap=onHero：
            有值日时点击仍可打开值日详情（onHero 内部有 myDuty 判空，无值日时点击无副作用）。 -->
       <view class="hero {{hero ? hero.cls : 'plain small'}} st-item st-2" bindtap="onHero">
-        <block wx:if="{{myDuty}}">
+        <block wx:if="{{myDuty || tomorrowDuty}}">
           <view class="hero-top">
             <view class="hero-chip">{{periodText}}</view>
             <view class="hero-chip right">
               {{hero.status}}
-              <view wx:if="{{myDuty.status === 'ONGOING'}}" class="hero-dot"></view>
+              <view wx:if="{{myDuty && myDuty.status === 'ONGOING'}}" class="hero-dot"></view>
             </view>
           </view>
           <view class="hero-title" style="color:{{hero.titleColor}}">{{hero.title}}</view>
           <view class="hero-sub" style="color:{{hero.subColor}}">{{heroSub}}</view>
           <view class="hero-bottom">
             <view class="hero-peers">
-              <text class="hero-peer-text" wx:if="{{myDuty.peers.length}}">
+              <text class="hero-peer-text" wx:if="{{myDuty && myDuty.peers.length}}">
                 和 {{myDuty.peers[0].name}}<block wx:if="{{myDuty.peers.length > 1}}">、{{myDuty.peers[1].name}}</block> 一起
               </text>
             </view>
-            <text class="hero-more" style="color:{{hero.subColor}}">查看详情 ›</text>
+            <text wx:if="{{myDuty}}" class="hero-more" style="color:{{hero.subColor}}">查看详情 ›</text>
           </view>
         </block>
         <block wx:else>
           <view class="hero-title noduty">今天没有你的值日</view>
           <view class="hero-sub noduty-sub">可在「值日」页查看本周安排</view>
         </block>
+        <!-- 课前演讲（1.0.8.84）：同一张 Hero 卡里显示今天/明天的演讲场次与进度。
+             后端只回已发布场次，dayText/slotText/doneText 由 JS 派生，wxml 不计算。 -->
+        <view wx:if="{{mySpeech.length}}" class="hero-speech">
+          <text class="hero-speech-label">课前演讲</text>
+          <view wx:for="{{mySpeech}}" wx:key="id" class="hero-speech-row">
+            <text class="hero-speech-day">{{item.dayText}}</text>
+            <text class="hero-speech-time">{{item.slotText}} {{item.time}}</text>
+            <text class="hero-speech-done {{item.done ? 'done' : ''}}">{{item.doneText}}</text>
+          </view>
+        </view>
       </view>
       </tilt-card>
 

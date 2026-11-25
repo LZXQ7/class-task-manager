@@ -109,26 +109,46 @@ function spGridSummaryOf(rows) {
 }
 
 /**
- * 演讲「已演讲 / 未演讲」状态（1.0.8.83）：像值日一样在每行尾部显示一枚状态 pill。
+ * 演讲「已演讲 / 未演讲」状态（1.0.8.84）：像值日一样在每行尾部显示一枚状态 pill。
  * ------------------------------------------------------------
  * speech 表没有「已讲完」标记（status 只有 PENDING / SWAPPED_OUT，是换人态不是完成态），
  * 所以完成与否只能按课次时间推断：该天该时段的演讲时间过了 ⇒ 已演讲，否则未演讲。
  * 演讲时段固定：上午 08:00-08:10（结束 08:10）、下午 14:30-14:40（结束 14:40）。
- * 同一场的所有人状态相同（一场一起讲），故按 day × slot 算一次、行尾共用一枚 pill。
- * 纯函数：不读全局、不发请求，now 由调用方传入，门禁可注入固定时刻真跑。
+ * 用户口径：「课前演讲是课前十分钟，所以上课后就可以改为已演讲」——
+ *   上课 = 第1节 08:10 / 第3节 14:40 开始，正好等于演讲时段结束时刻，故以结束时刻为界。
+ *
+ * 🔴 1.0.8.84 根治「过去的日子还显示未演讲」：判定口径改为**服务端时钟**优先。
+ *    旧版用客户端 Date.now()，真机/模拟器时钟一偏（用户手机时间没同步、系统时区错）
+ *    就把已经过去的场次算成未来 ⇒ 一律「未演讲」。现在 speechList 下发服务端东八区
+ *    { today:'YYYY-MM-DD', hhmm:'HH:mm' }，本函数按**字符串比较**（日期整体、时分整体），
+ *    零时区解析歧义、零设备时钟依赖。服务端时钟缺失时才回落客户端时间（兼容旧缓存）。
+ *
+ * 纯函数：不读全局、不发请求，clock 由调用方传入，门禁可注入固定时刻真跑。
  * @param {string} dateStr 形如 '2026-11-25' 的日期
  * @param {string} slot    'am' | 'pm'
- * @param {number|Date} now 当前时刻（Date.now() 或 Date 实例）
- * @returns {boolean} true = 已演讲（该场结束时间已过）
+ * @param {object|number|Date} clock 服务端 {today,hhmm}；或兼容传入时刻（Date/毫秒）
+ * @returns {boolean} true = 已演讲
  */
-function speechDoneOf(dateStr, slot, now) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr || ''));
+function speechDoneOf(dateStr, slot, clock) {
+  const d = String(dateStr || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const c = clock || {};
+  const srvToday = String(c.today || '');
+  const srvHHmm = String(c.hhmm || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(srvToday)) {
+    /* 服务端时钟：日期字符串按字典序比较即时间序（YYYY-MM-DD），时分同理（HH:mm） */
+    if (d < srvToday) return true;
+    if (d > srvToday) return false;
+    const endHHmm = slot === 'pm' ? '14:40' : '08:10';
+    return /^\d{2}:\d{2}$/.test(srvHHmm) ? srvHHmm >= endHHmm : false;
+  }
+  /* 兼容回落：无服务端时钟时用调用方传入的 Date / 毫秒，按本地时刻算 */
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
   if (!m) return false;
-  const pm = slot === 'pm';
-  const hh = pm ? 14 : 8;
-  const mm = pm ? 40 : 10;
+  const hh = slot === 'pm' ? 14 : 8;
+  const mm = slot === 'pm' ? 40 : 10;
   const end = new Date(+m[1], +m[2] - 1, +m[3], hh, mm, 0, 0).getTime();
-  const t = now instanceof Date ? now.getTime() : Number(now);
+  const t = c instanceof Date ? c.getTime() : Number(c);
   if (!isFinite(end) || !isFinite(t)) return false;
   return t >= end;
 }
@@ -765,14 +785,15 @@ Page({
           amGroups: speechSlotGroups(d.am),
           pmGroups: speechSlotGroups(d.pm)
         }));
-        /* 演讲进度（1.0.8.83）：每组行尾标「已演讲/未演讲」。同一场所有人状态相同，
+        /* 演讲进度（1.0.8.84）：每组行尾标「已演讲/未演讲」。同一场所有人状态相同，
            按 day × slot 算一次后写到该组上。时段固定 08:00-08:10 / 14:30-14:40，
-           过了结束时刻即已讲完。拆成独立一步，保持上面的 amGroups/pmGroups 原样
-           （既有门禁按那两行的原文做变异自证）。 */
-        const nowMs = Date.now();
+           过了结束时刻即已讲完。🔴 时钟优先取服务端 speechList.clock（东八区墙钟），
+           避免设备时钟漂移把过去场次误判成「未演讲」；旧缓存无 clock 才回落客户端。
+           拆成独立一步，保持上面的 amGroups/pmGroups 原样（既有门禁按那两行做变异自证）。 */
+        const speechClock = (r && r.clock) || Date.now();
         days.forEach((d) => {
-          const amDone = speechDoneOf(d.date, 'am', nowMs);
-          const pmDone = speechDoneOf(d.date, 'pm', nowMs);
+          const amDone = speechDoneOf(d.date, 'am', speechClock);
+          const pmDone = speechDoneOf(d.date, 'pm', speechClock);
           (d.amGroups || []).forEach((g) => { g.done = amDone; });
           (d.pmGroups || []).forEach((g) => { g.done = pmDone; });
         });

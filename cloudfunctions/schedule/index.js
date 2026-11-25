@@ -2847,6 +2847,10 @@ const routes = {
         unpublished: false,
         days,
         setting,
+        /* 1.0.8.84：演讲「已演讲/未演讲」的权威时钟。
+           客户端设备时间可能被改 / 模拟器时间漂移 ⇒ 过去的日子仍显示「未演讲」。
+           这里用服务端东八区墙钟下发，前端只做字符串比较，零时区歧义。 */
+        clock: { today: week.todayStr(), hhmm: week.nowHHmm() },
         canSchedule: guard.isSuper(ctx.member) || guard.isDutyAdmin(ctx.member),
         canSpeech: guard.canSpeech(ctx.member),
         slotRules,

@@ -91,6 +91,9 @@ const routes = {
       const cfg = await week.getConfig(pool, classId);
       const periods = week.periodMap(cfg);
       const today = week.todayStr();
+      /* 1.0.8.84：明天日期在这里就算好——首页 Hero 要在「今天没值日」时显示「明天值日」，
+         下方的 tomorrowSessions 也复用同一个值（避免两次 Date.now() 跨零点漂移）。 */
+      const tomorrow = week.fmtDate(new Date(Date.now() + DAY_MS));
       const wk = week.currentWeek({ term_start: cfg.termStart, total_weeks: cfg.totalWeeks });
       // 临时调课：某节课这一周可能被取消或挪到别的日子 / 节次。
       // duty 表只存日期，节次与星期都要靠 resolveSlot 解析才准。
@@ -140,6 +143,66 @@ const routes = {
           peers: peers.map(p => ({ name: p.name, groupTag: p.group_tag }))
         };
       }
+
+      /* 1.0.8.84 首页 Hero ①「明天值日」：今天没值日时，若明天有则显示明天安排。
+         与 myDuty 同一张 duty 表、同一套 resolveSlot / effectiveStatus 口径，
+         只把日期换成 tomorrow；前端据此把卡片改成「明天你值日」。 */
+      let myTomorrowDuty = null;
+      {
+        const [tRows] = await pool.query(
+          `SELECT d.*, s.day_of_week, s.period, s.group_scope, s.kind AS sessionKind, c.name AS courseName, c.room, c.teacher
+             FROM duty d
+             JOIN session s ON s.id = d.session_id
+             JOIN course c ON c.id = s.course_id
+            WHERE d.member_id = ? AND d.class_id = ? AND d.class_date = ?
+            ORDER BY s.period LIMIT 1`, [me.id, classId, tomorrow]
+        );
+        if (tRows.length) {
+          const d = tRows[0];
+          const slot = week.dutySlotOf(d, shifts, d.week)
+            || { day: d.day_of_week, period: d.period };
+          const [peers] = await pool.query(
+            `SELECT m.name, m.group_tag FROM duty d JOIN member m ON m.id = d.member_id
+              WHERE d.session_id = ? AND d.week = ? AND d.member_id != ? AND d.status != 'SWAPPED_OUT'`,
+            [d.session_id, d.week, me.id]
+          );
+          myTomorrowDuty = {
+            id: d.id, dutyId: d.id, sessionId: d.session_id,
+            classDate: tomorrow, period: slot.period, courseName: d.courseName,
+            room: d.room || '', groupScope: d.group_scope,
+            kind: d.sessionKind || 'COURSE',
+            status: week.effectiveStatus(d, periods),
+            periodTime: (d.sessionKind === 'CLEAN') ? null : (periods[slot.period] || null),
+            peers: peers.map(p => ({ name: p.name, groupTag: p.group_tag }))
+          };
+        }
+      }
+
+      /* 1.0.8.84 首页 Hero ②「课前演讲」：本人今天/明天的演讲场次。
+         只回**已发布**的周（草稿不给同学看）；已演讲判定用服务端东八区时钟，
+         与值日页 speechList.clock 同口径（上午 08:10 / 下午 14:40 为界）。 */
+      const [speechRows] = await pool.query(
+        `SELECT sp.id, sp.class_date, sp.slot, sp.scope,
+                pu.status AS publishStatus
+           FROM speech sp
+           LEFT JOIN speech_publish pu ON pu.class_id = sp.class_id AND pu.week = sp.week
+          WHERE sp.class_id = ? AND sp.member_id = ? AND sp.class_date IN (?, ?)
+            AND sp.status <> 'SWAPPED_OUT'
+          ORDER BY sp.class_date, sp.slot`, [classId, me.id, today, tomorrow]
+      );
+      const nowHHmm = week.nowHHmm();
+      const mySpeech = speechRows
+        .filter(r => r.publishStatus === 'PUBLISHED')
+        .map((r) => {
+          const date = String(r.class_date).slice(0, 10);
+          const slot = r.slot === 'AM' ? 'am' : 'pm';
+          const endHHmm = slot === 'pm' ? '14:40' : '08:10';
+          return {
+            id: r.id, date, slot, scope: r.scope || 'ALL',
+            time: slot === 'am' ? '08:00' : '14:30',
+            done: date < today || (date === today && nowHHmm >= endHHmm)
+          };
+        });
 
       // 今日 / 明日全部课次（按周次 + 临时调课 + 校历 + 分组可见性过滤）
       // 排除保洁课次（kind='CLEAN'）：「打扫 410」不属于课程，只在值日页 / 手动排班板出现，
@@ -204,7 +267,6 @@ const routes = {
       };
 
       const todaySessions = sessionsOnDate(today);
-      const tomorrow = week.fmtDate(new Date(Date.now() + DAY_MS));
       const tomorrowSessions = sessionsOnDate(tomorrow);
 
       // 待办：待我确认的换班 + 我发起进行中的。
@@ -266,6 +328,9 @@ const routes = {
         // 班级全称（2026-10-09）：首页课堂情况弹层用。空串兜底（查不到就让前端显示占位）。
         className,
         myDuty,
+        /* 1.0.8.84 首页 Hero：明天值日 + 我的课前演讲（今天/明天，已发布） */
+        myTomorrowDuty,
+        mySpeech,
         sessions: todaySessions,
         tomorrowSessions,
         pendingSwapCount: Number(pending[0].n) || 0,

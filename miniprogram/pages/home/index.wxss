@@ -700,3 +700,20 @@
   line-height: 1.7;
   color: var(--text-3);
 }
+
+/* ---------- 课前演讲（1.0.8.84）：Hero 卡内的演讲进度区 ----------
+   白底卡走 --text-* 令牌；蓝底卡（进行中）文字改白色系，与 .hero-peer-text 同口径。
+   全部走令牌/白系，深浅色自动翻，不写死浅底深字。 */
+.hero-speech { margin-top: 16rpx; padding-top: 14rpx; border-top: 1rpx solid var(--fill-soft); }
+.hero-speech-label { font-size: 22rpx; color: var(--text-3); }
+.hero-speech-row { display: flex; align-items: center; gap: 12rpx; margin-top: 8rpx; }
+.hero-speech-day { font-size: 22rpx; font-weight: 600; color: var(--brand); }
+.hero-speech-time { flex: 1; font-size: 24rpx; color: var(--text-2); }
+.hero-speech-done { font-size: 22rpx; color: var(--text-3); }
+.hero-speech-done.done { color: var(--success, #00B42A); }
+.hero.blue .hero-speech { border-top-color: rgba(255, 255, 255, 0.28); }
+.hero.blue .hero-speech-label,
+.hero.blue .hero-speech-time,
+.hero.blue .hero-speech-done { color: rgba(255, 255, 255, 0.80); }
+.hero.blue .hero-speech-day { color: #FFFFFF; }
+.hero.blue .hero-speech-done.done { color: #FFFFFF; }

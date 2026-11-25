@@ -77,6 +77,10 @@ Page({
     dateText: '',
     weekText: '',
     myDuty: null,
+    /** 1.0.8.84：明天的值日（今天没值日时 Hero 改显示「明天值日」） */
+    tomorrowDuty: null,
+    /** 1.0.8.84：我的课前演讲（今天/明天，已发布）；[{id,date,slot,scope,time,done}] */
+    mySpeech: [],
     sessions: [],
     /** 明日课次（后端按「实际上课日期」算，放假 / 调课 / 跨周都已考虑） */
     tomorrowSessions: [],
@@ -1183,6 +1187,17 @@ Page({
     return Promise.all([pToday, pPersonal])
       .then(([r]) => {
         const myDuty = r.myDuty || null;
+        const tomorrowDuty = r.myTomorrowDuty || null;
+        /* 1.0.8.84 首页 Hero：今天有值日 → 今天；今天没有但明天有 → 明天；
+           两天都没有 → 维持「今天没有你的值日」。今天优先，明天只是补位。 */
+        const heroDuty = myDuty || tomorrowDuty;
+        const heroTomorrow = !myDuty && !!tomorrowDuty;
+        /* 1.0.8.84 课前演讲：后端只回今天/明天已发布的场次，文案在 JS 算好，wxml 不计算 */
+        const mySpeech = (r.mySpeech || []).map(x => Object.assign({}, x, {
+          dayText: x.date === r.today ? '今天' : (x.date === r.tomorrow ? '明天' : x.date),
+          slotText: x.slot === 'am' ? '上午' : '下午',
+          doneText: x.done ? '已演讲' : '未演讲'
+        }));
         // 分组可见性用的「本组」取**本次 dutyToday 返回的 member.groupTag**（后端 me.group_tag 的权威值），
         // 而不是 globalData.profile.groupTag —— 后者在「切换测试账号」模拟态下仍是超管本人，
         // 会拿超管的组去过滤被模拟账号的课次，导致 A/B 组错乱（班长/副班长看串组）。
@@ -1190,13 +1205,14 @@ Page({
         let hero = null;
         let heroSub = '';
         let periodText = '';
-        if (myDuty) {
-          hero = HERO[myDuty.status] || HERO.PENDING;
-          heroSub = [util.fmtRoom(myDuty.room), myDuty.courseName, myDuty.groupScope ? myDuty.groupScope + ' 组' : '全体']
+        if (heroDuty) {
+          hero = HERO[heroDuty.status] || HERO.PENDING;
+          if (heroTomorrow) hero = Object.assign({}, hero, { title: '明天你值日' });
+          heroSub = [util.fmtRoom(heroDuty.room), heroDuty.courseName, heroDuty.groupScope ? heroDuty.groupScope + ' 组' : '全体']
             .filter(Boolean).join(' · ');
           // 保洁（kind='CLEAN'）显示「18点前」；它没有 periodTime（后端已置空），
           // 避免出现「18点前 · 16:00」这种自相矛盾的组合
-          periodText = util.whenText(myDuty.kind, myDuty.period) + (myDuty.periodTime ? ' · ' + myDuty.periodTime.start : '');
+          periodText = util.whenText(heroDuty.kind, heroDuty.period) + (heroDuty.periodTime ? ' · ' + heroDuty.periodTime.start : '');
         }
         this._hasData = true;
         this._lastLoad = Date.now();
@@ -1205,6 +1221,10 @@ Page({
           failed: false,
           unbound: false,
           myDuty,
+          /* 1.0.8.84 Hero 补位/演讲：明天值日 + 我的课前演讲 */
+          tomorrowDuty,
+          heroTomorrow,
+          mySpeech,
           hero,
           heroSub,
           periodText,
@@ -1233,6 +1253,7 @@ Page({
         // 冷启动瞬时缓存（2026-11-01）：成功即落盘，下次进首页秒显，不再等云函数冷启动
         this._writeHomeCache({
           myDuty: patch.myDuty, hero: patch.hero, heroSub: patch.heroSub, periodText: patch.periodText,
+          tomorrowDuty: patch.tomorrowDuty, heroTomorrow: patch.heroTomorrow, mySpeech: patch.mySpeech,
           sessions: patch.sessions, tomorrowSessions: patch.tomorrowSessions, tomorrowText: patch.tomorrowText,
           pendingSwapCount: patch.pendingSwapCount, unreadNotice: patch.unreadNotice, isAdmin: patch.isAdmin,
           classFullName: patch.classFullName, member: patch.member, currentWeek: patch.currentWeek, weekText: patch.weekText

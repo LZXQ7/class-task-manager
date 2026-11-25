@@ -83,25 +83,39 @@ function evalAll(s) {
   const j = stripJs(s.js);
   const fn = loadFn(j, FN);
 
+  /* 服务端时钟口径（1.0.8.84）：clock = {today, hhmm}，与设备时钟无关 */
+  const C = (today, hhmm) => ({ today, hhmm });
   let amDoneBefore = null;
   let pmNotDoneAt9 = null;
   let notDoneAt730 = null;
   let bothDoneAt15 = null;
+  let pastDayDone = null;      // 用户报的问题：过去的日期必须已演讲（哪怕时钟 hhmm 很早）
+  let futureDayNot = null;
   let dirtyDate = null;
   let dirtyNow = null;
+  let fallbackOk = null;
   if (fn) {
     try {
-      /* 2026-11-25 09:00：上午 08:10 已过、下午 14:40 未到 */
-      amDoneBefore = fn('2026-11-25', 'am', new Date(2026, 10, 25, 9, 0).getTime());
-      pmNotDoneAt9 = fn('2026-11-25', 'pm', new Date(2026, 10, 25, 9, 0).getTime());
+      /* 同一天 2026-11-25 09:00：上午 08:10 已过、下午 14:40 未到 */
+      amDoneBefore = fn('2026-11-25', 'am', C('2026-11-25', '09:00'));
+      pmNotDoneAt9 = fn('2026-11-25', 'pm', C('2026-11-25', '09:00'));
       /* 14:30 下午场还没结束 */
-      notDoneAt730 = fn('2026-11-25', 'pm', new Date(2026, 10, 25, 14, 30).getTime());
+      notDoneAt730 = fn('2026-11-25', 'pm', C('2026-11-25', '14:30'));
       /* 15:00 两场都过了结束时刻 */
-      bothDoneAt15 = fn('2026-11-25', 'am', new Date(2026, 10, 25, 15, 0).getTime())
-        && fn('2026-11-25', 'pm', new Date(2026, 10, 25, 15, 0).getTime());
+      bothDoneAt15 = fn('2026-11-25', 'am', C('2026-11-25', '15:00'))
+        && fn('2026-11-25', 'pm', C('2026-11-25', '15:00'));
+      /* 🔴 用户报障核心：11-23 是过去的日子，即使今天 00:01（hhmm 更早）也必须已演讲 */
+      pastDayDone = fn('2026-11-23', 'am', C('2026-11-26', '00:01'))
+        && fn('2026-11-23', 'pm', C('2026-11-26', '00:01'))
+        && fn('2026-11-25', 'pm', C('2026-11-26', '00:01'));
+      /* 未来日子未演讲 */
+      futureDayNot = fn('2026-11-27', 'am', C('2026-11-26', '23:59')) === false;
       /* 脏入参不崩 */
-      dirtyDate = fn('not-a-date', 'am', Date.now());
-      dirtyNow = fn('2026-11-25', 'am', NaN);
+      dirtyDate = fn('not-a-date', 'am', C('2026-11-26', '09:00'));
+      dirtyNow = fn('2026-11-25', 'am', C('', ''));
+      /* 兼容回落：无服务端时钟时用 Date 毫秒，仍按本地时刻判定 */
+      fallbackOk = fn('2026-11-25', 'am', new Date(2026, 10, 25, 9, 0).getTime()) === true
+        && fn('2026-11-25', 'pm', new Date(2026, 10, 25, 9, 0).getTime()) === false;
     } catch (e) {
       amDoneBefore = null;
     }
@@ -117,8 +131,9 @@ function evalAll(s) {
     && /pmGroups:\s*speechSlotGroups\(d\.pm\)/.test(load);
   const amWired = /\(d\.amGroups \|\| \[\]\)\.forEach\(\(g\) => \{ g\.done = amDone/.test(load);
   const pmWired = /\(d\.pmGroups \|\| \[\]\)\.forEach\(\(g\) => \{ g\.done = pmDone/.test(load);
-  const deriveAm = /speechDoneOf\(d\.date, 'am', nowMs\)/.test(load);
-  const derivePm = /speechDoneOf\(d\.date, 'pm', nowMs\)/.test(load);
+  const deriveAm = /speechDoneOf\(d\.date, 'am', speechClock\)/.test(load);
+  const derivePm = /speechDoneOf\(d\.date, 'pm', speechClock\)/.test(load);
+  const srvClock = /const speechClock = \(r && r\.clock\) \|\| Date\.now\(\)/.test(load);
 
   return {
     fnOk: !!fn,
@@ -128,11 +143,14 @@ function evalAll(s) {
     bothDoneAt15: bothDoneAt15 === true,
     dirtyDate: dirtyDate === false,
     dirtyNow: dirtyNow === false,
+    pastDayDone: pastDayDone === true,
+    futureDayNot: futureDayNot === true,
+    fallbackOk: fallbackOk === true,
     pills: rowPills.length === 2,
     pillText: rowPills.length === 2 && rowPills.every((p) => /已演讲/.test(p) && /未演讲/.test(p)),
     noSummaryCard: noSummaryCard,
     keepsGroups: keepsGroups,
-    wired: amWired && pmWired && deriveAm && derivePm
+    wired: amWired && pmWired && deriveAm && derivePm && srvClock
   };
 }
 
@@ -144,12 +162,15 @@ check(S.amDoneBefore, '上午场 09:00 已过 08:10 ⇒ 已演讲');
 check(S.pmNotDoneAt9, '同一时刻下午场 14:40 未到 ⇒ 未演讲（时段边界正确）');
 check(S.notDoneAt730, '下午 14:30 场未结束 ⇒ 未演讲');
 check(S.bothDoneAt15, '15:00 两场均已结束 ⇒ 都已演讲');
+check(S.pastDayDone, '🔴 过去的日子（11-23/24/25）即便今天 00:01 也全部已演讲');
+check(S.futureDayNot, '未来日子未演讲');
+check(S.fallbackOk, '无服务端时钟时按 Date 毫秒回落仍正确（兼容旧缓存）');
 check(S.dirtyDate, '脏日期不崩，回落未演讲');
-check(S.dirtyNow, '非法 now 不崩，回落未演讲');
+check(S.dirtyNow, '空服务端时钟不崩，回落未演讲');
 
 console.log('\n── ② 页面接线');
 check(S.keepsGroups, '保留 amGroups/pmGroups 原样（既有分组门禁的变异锚点不被破坏）');
-check(S.wired, 'loadSpeech 按 day×slot 派生 done 并写到每组');
+check(S.wired, 'loadSpeech 优先取服务端 clock 按 day×slot 派生 done 写到每组');
 
 console.log('\n── ③ 渲染');
 check(S.pills, '上午/下午两处 sp-line 行尾各有一枚 status-pill');
@@ -158,18 +179,22 @@ check(S.noSummaryCard, '1.0.8.82 的顶部汇总卡已移除（用户明确不�
 
 console.log('\n── ④ 变异自证（改坏 → 判据必须翻红）');
 const MUT = [
-  { name: '把结束时刻判断改成恒 false（永远未演讲）', probe: 'amDoneBefore', file: 'js',
-    from: '  return t >= end;', to: '  return false;' },
-  { name: '上午结束时刻改成 23:59（上午场永远未演讲）', probe: 'amDoneBefore', file: 'js',
-    from: '  const hh = pm ? 14 : 8;', to: '  const hh = pm ? 14 : 23;' },
-  { name: '下午结束时刻改成 08:10（下午场 09:00 就被误判已讲）', probe: 'pmNotDoneAt9', file: 'js',
-    from: '  const hh = pm ? 14 : 8;', to: '  const hh = pm ? 8 : 8;' },
-  { name: '下午分也改成 10（14:30 被误判已讲）', probe: 'notDoneAt730', file: 'js',
-    from: '  const mm = pm ? 40 : 10;', to: '  const mm = pm ? 10 : 10;' },
+  { name: '把服务端时钟分支的日期比较改成恒 false（过去日子又变未演讲）', probe: 'pastDayDone', file: 'js',
+    from: '    if (d < srvToday) return true;', to: '    if (d < srvToday) return false;' },
+  { name: '上午结束时刻改成 23:59（当天的上午场永远未演讲）', probe: 'amDoneBefore', file: 'js',
+    from: "    const endHHmm = slot === 'pm' ? '14:40' : '08:10';", to: "    const endHHmm = slot === 'pm' ? '14:40' : '23:59';" },
+  { name: '下午结束时刻改成 08:10（当天 09:00 下午场被误判已讲）', probe: 'pmNotDoneAt9', file: 'js',
+    from: "    const endHHmm = slot === 'pm' ? '14:40' : '08:10';", to: "    const endHHmm = slot === 'pm' ? '08:10' : '08:10';" },
+  { name: '下午结束时刻改成 14:00（14:30 被误判已讲）', probe: 'notDoneAt730', file: 'js',
+    from: "    const endHHmm = slot === 'pm' ? '14:40' : '08:10';", to: "    const endHHmm = slot === 'pm' ? '14:00' : '08:10';" },
+  { name: '未来日期也被当已演讲', probe: 'futureDayNot', file: 'js',
+    from: '    if (d > srvToday) return false;', to: '    if (d > srvToday) return true;' },
   { name: '脏日期返回 true（脏数据被当已演讲）', probe: 'dirtyDate', file: 'js',
-    from: '  if (!m) return false;', to: '  if (!m) return true;' },
+    from: "  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(d)) return false;", to: "  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(d)) return true;" },
+  { name: '不再用服务端时钟（回退成设备时钟，用户报障重现）', probe: 'wired', file: 'js',
+    from: '        const speechClock = (r && r.clock) || Date.now();', to: '        const speechClock = Date.now();' },
   { name: '去掉上午场派生（amDone 恒 false）', probe: 'wired', file: 'js',
-    from: "          const amDone = speechDoneOf(d.date, 'am', nowMs);", to: '          const amDone = false;' },
+    from: "          const amDone = speechDoneOf(d.date, 'am', speechClock);", to: '          const amDone = false;' },
   { name: '下午组不再写 done（下午行永远未演讲）', probe: 'wired', file: 'js',
     from: '          (d.pmGroups || []).forEach((g) => { g.done = pmDone; });', to: '          /* dropped */' },
   { name: 'wxml 去掉下午场 pill', probe: 'pills', file: 'wxml',
