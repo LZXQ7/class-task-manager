@@ -674,8 +674,22 @@ const NOTICE_PAGE = 'pages/notice/index';
  *     `check-home-hero-speech.js`（补位逻辑真跑 + 8 变异全抓）。全量 173 过/19 存量红（零新增）。
  *   ⚠️ 需部署 `schedule`（时钟）与 `duty`（明天值日/演讲）两个云函数。
  * ---------------------------------------------------------------------------
+ * v1.0.8.85（2026-11-26）· 全站危险按钮二次确认（站内 dialog，深色安全）
+ *   用户口径：「值日和课前演讲页，清空按钮这种危险按钮要增加二次确认，小程序所有危险按钮都要二次确认」。
+ *   根因：值日页清空/撤回发布共四处原用原生 `wx.showModal`（项目 1.0.8.42 已判定深色下纯白、
+ *   全站弃用），撤回发布两处甚至没有任何确认，点了直接生效。
+ *   `pages/duty/index.js` 新增统一 `DANGER_ACTIONS`（clearDuty / clearSpeech /
+ *   unpublishDuty / unpublishSpeech）：四处 handler 只 `onDanger` 开站内 <dialog>，
+ *   真实请求只在 `onDangerConfirm` 确认回调的 `run(that)` 里执行；文案讲清「删除后不可恢复 /
+ *   全班可见性 / 进度回滚」。`duty/index.json` 注册 dialog 组件，wxml 末尾挂统一弹层。
+ *   同步补齐其它页真缺口：roster 停用成员（util.confirmStrict，恢复不弹）、
+ *   notice 左滑删除（站内 dialog，软删可恢复）、mine 换班同意/拒绝四处（_swapConfirm 统一）。
+ *   门禁新增 `check-danger-confirm.js`：四处 handler 只开弹窗 / 请求只在 run / 文案后果 /
+ *   wxml+json 接线 / 全站裸奔扫描（危险 handler 直接发请求无确认即红）+ 7 变异全抓。
+ *   纯前端改动，云函数/DB 不动。
+ * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.84';
+const APP_VERSION = '1.0.8.85';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

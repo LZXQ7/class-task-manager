@@ -11,6 +11,7 @@
     "notice-bar": "../../components/notice-bar/index",
     "avatar-tag": "../../components/avatar-tag/index",
     "status-pill": "../../components/status-pill/index",
+    "dialog": "../../components/dialog/index",
     "duty-sheet": "../../components/duty-sheet/index",
     "spring-scroll": "../../components/spring-scroll/index",
     "class-picker": "../../components/class-picker/index"

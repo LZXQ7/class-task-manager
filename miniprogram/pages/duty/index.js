@@ -207,6 +207,15 @@ Page({
     /** 左右滑动切周的方向性动画 class：由 utils/swipe.js 下发，写进数据区容器 */
     swipeCls: '',
 
+    /* 危险操作二次确认（1.0.8.85）：清空值日 / 清空演讲 / 撤回值日发布 / 撤回演讲发布
+       四处共用一个站内 <dialog>——原生 wx.showModal 深色下是纯白卡片（项目 1.0.8.42 已全站弃用）。
+       dangerAct 取值 clearDuty | clearSpeech | unpublishDuty | unpublishSpeech，确认时按它分派。 */
+    dangerShow: false,
+    dangerAct: '',
+    dangerTitle: '',
+    dangerContent: '',
+    dangerConfirmText: '确定',
+
     sheetShow: false,
     sheetDutyId: 0,
     /** 本周已排值日（1.0.8.70）：供值日详情弹层「双向对调」选人，_paint 每次随整周名单重算 */
@@ -902,19 +911,76 @@ Page({
       this.loadSpeech();
     }).catch((e) => { this._spBusy = false; wx.hideLoading(); util.toast((e && e.errMsg) || '生成失败'); });
   },
-  onSpClear() {
-    if (this._spBusy) return;
-    wx.showModal({
-      title: '清空本周演讲', content: '确定清空本周全部演讲安排？（不推进轮转进度，重新生成还是同一批人）',
-      confirmColor: '#E34D59', success: (res) => {
-        if (!res.confirm) return;
-        this._spBusy = true;
-        api.speechClear({ week: this.data.week }, { toast: false }).then(() => {
-          this._spBusy = false; util.toast('已清空'); this.loadSpeech();
-        }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '清空失败'); });
+  /* ---- 危险操作二次确认（1.0.8.85）----
+     清空 / 撤回发布一律先弹站内 dialog，确认回调里才发请求。
+     🔴 文案必须把「不可恢复 / 影响范围」讲清楚：用户点了就能看懂后果，
+        不是只有一句「确定吗」。原生 wx.showModal 深色下白板，已全站弃用。 */
+  DANGER_ACTIONS: {
+    clearDuty: {
+      title: '清空本周全部值日？',
+      content: '将删除本周所有值日（含手动调整）并重置轮转计数，删除后不可恢复；可重新生成，但手动调整不会回来。',
+      confirmText: '清空',
+      run(that) {
+        if (that._busyGate()) return;
+        that._busyStart();
+        that._invalidateManual();
+        api.scheduleClear({ week: that.data.week }, { loading: '清空中' })
+          .then(() => { that._busyEnd(); util.toast('已清空，可重新生成'); that.load(true); })
+          .catch((e) => { that._busyEnd(); util.toast(that._errText(e)); });
       }
-    });
+    },
+    clearSpeech: {
+      title: '清空本周全部演讲？',
+      content: '将删除本周所有演讲安排（含手动换人），删除后不可恢复；轮转进度不变，重新生成还是这一批人。',
+      confirmText: '清空',
+      run(that) {
+        if (that._spBusy) return;
+        that._spBusy = true;
+        api.speechClear({ week: that.data.week }, { toast: false }).then(() => {
+          that._spBusy = false; util.toast('已清空'); that.loadSpeech();
+        }).catch((e) => { that._spBusy = false; util.toast((e && e.errMsg) || '清空失败'); });
+      }
+    },
+    unpublishDuty: {
+      title: '撤回值日发布？',
+      content: '撤回后全班将看不到本周值日安排，班级需要重新发布才能再次可见。',
+      confirmText: '撤回发布',
+      run(that) {
+        if (that._busyGate()) return;
+        that._busyStart();
+        that._invalidateManual();
+        api.scheduleUnpublish({ week: that.data.week }, { loading: '处理中' })
+          .then(() => { that._busyEnd(); util.toast('已撤回发布'); that.load(true); })
+          .catch((e) => { that._busyEnd(); util.toast(that._errText(e)); });
+      }
+    },
+    unpublishSpeech: {
+      title: '撤回演讲发布？',
+      content: '撤回后全班将看不到本周演讲安排，且轮转进度会回滚到本周生成之前。',
+      confirmText: '撤回发布',
+      run(that) {
+        if (that._spBusy) return;
+        that._spBusy = true;
+        api.speechPublish({ week: that.data.week, status: 'DRAFT' }, { toast: false }).then(() => {
+          that._spBusy = false; util.toast('已撤回，进度已回滚'); that.loadSpeech();
+        }).catch((e) => { that._spBusy = false; util.toast((e && e.errMsg) || '撤回失败'); });
+      }
+    }
   },
+  onDanger(e) {
+    const act = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.act) || '';
+    const cfg = this.DANGER_ACTIONS[act];
+    if (!cfg) return;
+    this.setData({ dangerShow: true, dangerAct: act, dangerTitle: cfg.title, dangerContent: cfg.content, dangerConfirmText: cfg.confirmText });
+  },
+  onDangerCancel() { this.setData({ dangerShow: false, dangerAct: '' }); },
+  onDangerConfirm() {
+    const act = this.data.dangerAct;
+    const cfg = this.DANGER_ACTIONS[act];
+    this.setData({ dangerShow: false, dangerAct: '' });
+    if (cfg && cfg.run) cfg.run(this);
+  },
+  onSpClear() { this.onDanger({ currentTarget: { dataset: { act: 'clearSpeech' } } }); },
   onSpPublish() {
     if (this._spBusy) return;
     this._spBusy = true;
@@ -922,13 +988,7 @@ Page({
       this._spBusy = false; util.toast('已发布给全班'); this.loadSpeech();
     }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '发布失败'); });
   },
-  onSpUnpublish() {
-    if (this._spBusy) return;
-    this._spBusy = true;
-    api.speechPublish({ week: this.data.week, status: 'DRAFT' }, { toast: false }).then(() => {
-      this._spBusy = false; util.toast('已撤回，进度已回滚'); this.loadSpeech();
-    }).catch((e) => { this._spBusy = false; util.toast((e && e.errMsg) || '撤回失败'); });
-  },
+  onSpUnpublish() { this.onDanger({ currentTarget: { dataset: { act: 'unpublishSpeech' } } }); },
 
   /* ---- 演讲：一键生成弹层内的智能排班（自然语言 → 预览确认） ---- */
   /* onSpAiOpen 兼容别名：v4 起统一从 onSpGenOpen 进同一弹层，保留转发防外部旧调用 */
@@ -1732,37 +1792,10 @@ Page({
       .catch((e) => { this._busyEnd(); util.toast(this._errText(e)); });
   },
 
-  onUnpublish() {
-    if (this._busyGate()) return;
-    this._busyStart();
-    this._invalidateManual();
-    api.scheduleUnpublish({ week: this.data.week }, { loading: '处理中' })
-      .then(() => {
-        this._busyEnd();
-        util.toast('已撤回发布');
-        this.load(true);
-      })
-      .catch((e) => { this._busyEnd(); util.toast(this._errText(e)); });
-  },
+  onUnpublish() { this.onDanger({ currentTarget: { dataset: { act: 'unpublishDuty' } } }); },
 
-  /** 清空本周：删除全部值日（含手动）并重置轮转计数，便于一键重新生成 */
-  onClear() {
-    if (this._busyGate()) return;
-    util.confirmStrict('将清空本周全部值日（含手动调整）并重置轮转计数，之后可一键重新生成', '清空本周')
-      .then((act) => {
-        if (act === 'fail') { util.toast('确认弹窗没打开，请退出重进本页再试'); return; }
-        if (act !== 'confirm') return;
-        this._busyStart();
-        this._invalidateManual();
-        api.scheduleClear({ week: this.data.week }, { loading: '清空中' })
-          .then(() => {
-            this._busyEnd();
-            util.toast('已清空，可重新生成');
-            this.load(true);
-          })
-          .catch((e) => { this._busyEnd(); util.toast(this._errText(e)); });
-      });
-  },
+  /** 清空本周：删除全部值日（含手动）并重置轮转计数，走站内 dialog 二次确认 */
+  onClear() { this.onDanger({ currentTarget: { dataset: { act: 'clearDuty' } } }); },
 
   /* ---------------- 合并行成员弹层（1.0.4.4 #27，替代原「导出」） ---------------- */
 

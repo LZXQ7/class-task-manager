@@ -858,29 +858,39 @@ Page({
       })
       .catch(() => this.setData({ pendingSwaps: [], pendingCount: 0 }));
   },
+  /** 换班审批二次确认（1.0.8.85）：同意/拒绝会改动双方值日安排，统一先弹确认。 */
+  _swapConfirm(id, agree, after) {
+    if (!id) return;
+    util.confirmStrict(
+      agree ? '同意后两位同学的值日安排会互换，之后需重新发起换班申请才能再改。' : '拒绝后该换班申请会关闭，双方值日维持原样。',
+      agree ? '同意这次换班？' : '拒绝这次换班？'
+    ).then((act) => {
+      if (act === 'fail') { util.toast('确认弹窗没打开，请重试'); return; }
+      if (act !== 'confirm') return;
+      api.adjustConfirm({ swapId: id, agree: agree }, { loading: '处理中' })
+        .then(() => { util.toast(agree ? '已确认换班' : '已拒绝'); if (after) after(); })
+        .catch(() => {});
+    });
+  },
   onPendingAgree(e) {
     const id = Number(e.currentTarget.dataset.id);
-    api.adjustConfirm({ swapId: id, agree: true }, { loading: '处理中' })
-      .then(() => { util.toast('已确认换班'); this._loadApps(); this._loadPending(); this.load(); this._syncSwapDot(); })
-      .catch(() => {});
+    const that = this;
+    this._swapConfirm(id, true, () => { that._loadApps(); that._loadPending(); that.load(); that._syncSwapDot(); });
   },
   onPendingReject(e) {
     const id = Number(e.currentTarget.dataset.id);
-    api.adjustConfirm({ swapId: id, agree: false }, { loading: '处理中' })
-      .then(() => { util.toast('已拒绝'); this._loadApps(); this._loadPending(); this._syncSwapDot(); })
-      .catch(() => {});
+    const that = this;
+    this._swapConfirm(id, false, () => { that._loadApps(); that._loadPending(); that._syncSwapDot(); });
   },
   onSwapAgree(e) {
     const id = Number(e.currentTarget.dataset.id);
-    api.adjustConfirm({ swapId: id, agree: true }, { loading: '处理中' })
-      .then(() => { util.toast('已确认换班'); this._loadApps(); this.load(); this._syncSwapDot(); })
-      .catch(() => {});
+    const that = this;
+    this._swapConfirm(id, true, () => { that._loadApps(); that.load(); that._syncSwapDot(); });
   },
   onSwapReject(e) {
     const id = Number(e.currentTarget.dataset.id);
-    api.adjustConfirm({ swapId: id, agree: false }, { loading: '处理中' })
-      .then(() => { util.toast('已拒绝'); this._loadApps(); this._syncSwapDot(); })
-      .catch(() => {});
+    const that = this;
+    this._swapConfirm(id, false, () => { that._loadApps(); that._syncSwapDot(); });
   },
   onSwapCancel(e) {
     const id = Number(e.currentTarget.dataset.id);

@@ -222,4 +222,19 @@
       <view wx:for="{{viewerImages}}" wx:key="*this" class="nt-vdot {{index === viewerIndex ? 'on' : ''}}"></view>
     </view>
   </view>
+
+  <!-- 左滑删除的二次确认（1.0.8.85）：软删进回收站可恢复，但仍统一弹确认 -->
+  <dialog
+    show="{{delShow}}"
+    title="删除这条通知？"
+    content="删除后会移入回收站，可随时恢复；清空回收站后将不可恢复。"
+    icon="warn"
+    icon-variant="orange"
+    cancel-text="取消"
+    confirm-text="删除"
+    confirm-color="#F53F3F"
+    bind:confirm="onDeleteConfirm"
+    bind:cancel="onDeleteCancel"
+    bind:close="onDeleteCancel"
+  />
 </view>

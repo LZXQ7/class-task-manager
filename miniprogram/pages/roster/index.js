@@ -1801,7 +1801,21 @@ _clockNow() {
     if (!m) return;
     if (this.data.mDetailIsSelf) return;        // 自保：不给启停
     const status = m.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
-    api.setMemberStatus(this._payload({ memberId: m.id, status }), { loading: '处理中' })
+    /* 1.0.8.85：停用 = 断掉这位同学的小程序登录，属破坏性操作，必须二次确认。
+       恢复是无害的，不弹窗，避免每次恢复都多点一下。 */
+    if (status !== 'DISABLED') {
+      this._doToggleStatus(m.id, status);
+      return;
+    }
+    util.confirmStrict('停用后「' + m.name + '」将无法登录小程序，其账号与班级绑定保留；确认停用？', '停用成员')
+      .then((act) => {
+        if (act === 'fail') { util.toast('确认弹窗没打开，请重试'); return; }
+        if (act !== 'confirm') return;
+        this._doToggleStatus(m.id, status);
+      });
+  },
+  _doToggleStatus(memberId, status) {
+    api.setMemberStatus(this._payload({ memberId, status }), { loading: '处理中' })
       .then(() => {
         util.toast(status === 'DISABLED' ? '已停用' : '已恢复');
         this.setData({ mDetailShow: false });

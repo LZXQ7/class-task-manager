@@ -813,4 +813,21 @@
     </view>
   </bottom-sheet>
 
+  <!-- 危险操作二次确认（1.0.8.85）：清空值日 / 清空演讲 / 撤回值日发布 / 撤回演讲发布
+       共用一个站内 <dialog>。文案讲清「删除后不可恢复 / 全班可见性 / 进度回滚」，
+       act 由 data-act 指定，确认后 onDangerConfirm 按 act 分派到对应请求。 -->
+  <dialog
+    show="{{dangerShow}}"
+    title="{{dangerTitle}}"
+    content="{{dangerContent}}"
+    icon="warn"
+    icon-variant="orange"
+    cancel-text="取消"
+    confirm-text="{{dangerConfirmText}}"
+    confirm-color="#F53F3F"
+    bind:confirm="onDangerConfirm"
+    bind:cancel="onDangerCancel"
+    bind:close="onDangerCancel"
+  />
+
 </view>

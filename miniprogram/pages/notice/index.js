@@ -65,6 +65,11 @@ Page({
     loading: true,
     failed: false,
     list: [],
+    /* 1.0.8.85：左滑删除二次确认。删除是软删（进回收站可恢复），但仍是 destructive
+       入口，统一弹确认；确认后才播飞入回收站动画。 */
+    delShow: false,
+    delId: 0,
+    delIndex: -1,
     remindOn: false,
     /**
      * 顶部标题（2026-10-28）：从班级信息页按班进来时显示「示例班级C 通知」，
@@ -283,10 +288,22 @@ Page({
    *   · Promise.all 等「动画播完」+「删除请求回来」两件事**都**完成，才把卡片从数据源摘掉；
    *   · 请求失败 → 把卡片飞回来（保留过渡，不是硬弹），提示重试。
    */
+  /** 左滑点「删除」→ 先弹站内确认（1.0.8.85），确认后才飞入回收站 */
   onDelete(e) {
     const id = Number(e.currentTarget.dataset.id);
     const index = Number(e.currentTarget.dataset.index);
-    if (this._deleting) return;
+    if (!id || this._deleting) return;
+    this.setData({ delShow: true, delId: id, delIndex: index });
+  },
+  onDeleteCancel() { this.setData({ delShow: false, delId: 0, delIndex: -1 }); },
+  onDeleteConfirm() {
+    const id = Number(this.data.delId);
+    const index = Number(this.data.delIndex);
+    this.setData({ delShow: false, delId: 0, delIndex: -1 });
+    if (!id || index < 0 || this._deleting) return;
+    this._doDelete(id, index);
+  },
+  _doDelete(id, index) {
     this._deleting = true;
     const req = api.msgDelete(this._noticeArg(id), { toast: false });
     Promise.all([
