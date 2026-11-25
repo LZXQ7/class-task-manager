@@ -643,8 +643,19 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   断言从「必须有括号」改成「必须没有括号」，后者新增首行加回括号的变异自证。
  *   **纯前端改动，adjust 云函数无需重新部署。**
  * ---------------------------------------------------------------------------
+ * v1.0.8.82（2026-11-25）· 课前演讲「进度显示」（用户：「增加和值日一样的进度，现在只有安排，没有具体显示」）
+ *   用户选两项：①轮转位置展示 ②本周完成进度。纯前端，云函数/库结构均不动。
+ *   `pages/duty/index.js` 新增纯函数 `speechProgressOf(setting, days)`：
+ *     - 轮转位置 = speechList.setting.cursorA/cursorB（speech_cursor 双游标），
+ *       文案「A组已排到 N 号 · B组已排到 N 号」；0 是合法值照显数字；
+ *     - 本周完成 = days[].am/pm 人数之和 + 按 date|slot 去重的场数，
+ *       文案「本周已排 N 人次 · N 场」；脏入参回落全 0 不崩。
+ *   `loadSpeech()` 派生写进 data.speechProgress；wxml 顶部进度卡渲染（走令牌，深色安全）；
+ *   wxss 新增 .sp-progress* 一套。门禁新增 `check-speech-progress.js`（真跑纯函数 +
+ *   9 变异全抓）；全量门禁零新增红（19 项存量红经干净 HEAD worktree 逐项复核）。
+ * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.81';
+const APP_VERSION = '1.0.8.82';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

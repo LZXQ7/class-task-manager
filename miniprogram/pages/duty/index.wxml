@@ -234,6 +234,22 @@
     </view>
     <view wx:if="{{canSpeech && speechStatus !== 'PUBLISHED'}}" class="sp-tip">当前为草稿，发布后全班可见</view>
 
+    <!-- 演讲进度（1.0.8.82）：轮转位置 + 本周完成。和值日一样给一个「排到哪、排了多少」的
+         具体显示，文案与数字全部由 JS 的 speechProgressOf 派生（wxml 不做计算）。 -->
+    <view class="sp-progress">
+      <view class="sp-progress-pos">
+        <app-icon name="refresh" variant="brand" size="{{26}}" />
+        <text class="sp-progress-pos-text">{{speechProgress.positionText}}</text>
+      </view>
+      <view class="sp-progress-done">
+        <text class="sp-progress-done-num">{{speechProgress.people}}</text>
+        <text class="sp-progress-done-unit">人次</text>
+        <text class="sp-progress-done-sep">·</text>
+        <text class="sp-progress-done-num">{{speechProgress.sessions}}</text>
+        <text class="sp-progress-done-unit">场</text>
+      </view>
+    </view>
+
     <view wx:if="{{speechUnpublished}}" class="sp-empty">
       <view class="sp-empty-title">本周演讲尚未发布</view>
       <view class="sp-empty-sub">发布后这里会显示每天的演讲安排</view>
