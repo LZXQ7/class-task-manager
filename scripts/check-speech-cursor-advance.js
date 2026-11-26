@@ -100,8 +100,11 @@ function collect(js) {
     hasFn: !!fnSource(stripJs(js), 'startCursorsOf'),
     mig: /ADD\s+COLUMN\s+base_cursors/i.test(SRC.mig) && /speech_publish/i.test(SRC.mig),
 
+    /* v4（2026-11-26）：生成改走 generationStartOf(base, prevPending, current)，
+     * 权威起点取「上一已生成周」的 pending；v3 旧调用仍算通过（兼容旧版判定）。 */
     genReadsBase: /SELECT\s+base_cursors\s+FROM\s+speech_publish/i.test(gen),
-    genBaseWins: /startCursorsOf\(pubRows\[0\]\s*&&\s*pubRows\[0\]\.base_cursors,\s*current\)/.test(gen),
+    genBaseWins: /generationStartOf\([^)]*base_cursors[^)]*prevRows\[0\][^)]*pending_cursors[^)]*current\)/.test(gen)
+      || /startCursorsOf\(pubRows\[0\]\s*&&\s*pubRows\[0\]\.base_cursors,\s*current\)/.test(gen),
     genAssignUsesStart: /speechCore\.assign\(slots,\s*roster,\s*start\.start/.test(gen),
     genSavesCursor: /saveSpeechCursors\(conn,\s*classId,\s*plan\.cursors\)/.test(gen),
     genSavesBase: /base_cursors\s*=\s*VALUES\(base_cursors\)/.test(gen),
@@ -113,9 +116,10 @@ function collect(js) {
     publishLegacy: /!snap\.reuse\s*&&\s*pending/.test(pub),
 
     aiAdvance: /saveSpeechCursors\(conn,\s*classId,\s*\{\s*A:\s*Number\(pending\.A\)/.test(app),
-    aiBase: /startCursorsOf\(pubRows\[0\]\s*&&\s*pubRows\[0\]\.base_cursors,\s*current\)/.test(app),
+    aiBase: /generationStartOf\([^)]*base_cursors[^)]*prevRows\[0\][^)]*pending_cursors[^)]*current\)/.test(app)
+      || /startCursorsOf\(pubRows\[0\]\s*&&\s*pubRows\[0\]\.base_cursors,\s*current\)/.test(app),
 
-    setClearsBase: /UPDATE\s+speech_publish\s+SET\s+base_cursors\s*=\s*NULL/i.test(set),
+    setClearsBase: /UPDATE\s+speech_publish\s+SET\s+base_cursors\s*=\s*NULL(?:\s*,\s*pending_cursors\s*=\s*NULL)?/i.test(set),
 
     firstGenStart: firstGen && firstGen.start && firstGen.start.A === 27 && firstGen.start.B === 20,
     firstGenFresh: firstGen && firstGen.reuse === false && firstGen.base && firstGen.base.A === 27,
@@ -170,7 +174,10 @@ check(S.mig, 'scripts/migrate-speech-base-cursors.sql 给 speech_publish 加 bas
 console.log('\n── ⑥ 变异自证（改坏 → 判据必须翻红）');
 const MUT = [
   { name: '生成不读 base（每周都从当前游标重排 ⇒ 又重复）', probe: ['genBaseWins', 'aiBase'],
-    apply: (s) => s.split('startCursorsOf(pubRows[0] && pubRows[0].base_cursors, current)')
+    apply: (s) => s
+      .replace(/generationStartOf\([^)]*base_cursors[^)]*prevRows\[0\][^)]*pending_cursors[^)]*current\)/g,
+        'generationStartOf(null, null, current)')
+      .split('startCursorsOf(pubRows[0] && pubRows[0].base_cursors, current)')
       .join('startCursorsOf(null, current)') },
   { name: '生成后不推进游标（回到「发布才落」的老口径）', probe: ['genSavesCursor'],
     apply: (s) => s.replace('await saveSpeechCursors(conn, classId, plan.cursors);', '') },
@@ -182,8 +189,8 @@ const MUT = [
     apply: (s) => s.replace('startCursorsOf(pub[0] && pub[0].base_cursors, before)', 'startCursorsOf(null, before)') },
   { name: '智能排班落库不推进游标', probe: ['aiAdvance'],
     apply: (s) => s.replace('await saveSpeechCursors(conn, classId, { A: Number(pending.A) || 0, B: Number(pending.B) || 0 });', '') },
-  { name: '手工改起点不作废 base（重排本周仍从旧 base 起跑）', probe: ['setClearsBase'],
-    apply: (s) => s.replace('UPDATE speech_publish SET base_cursors = NULL WHERE class_id = ?', '') },
+  { name: '手工改起点不作废 base/pending（重排仍从旧位置起跑）', probe: ['setClearsBase'],
+    apply: (s) => s.replace('UPDATE speech_publish SET base_cursors = NULL, pending_cursors = NULL WHERE class_id = ?', '') },
   { name: '起点函数忽略 base（恒用当前游标）', probe: ['reuseStart', 'idempotent'],
     apply: (s) => s.replace('return { start: base, base, reuse: true };', 'return { start: cur, base: cur, reuse: true };') },
   { name: 'base 坏 JSON 直接抛（排班整个挂掉）', probe: ['dirtySafe'],

@@ -1413,6 +1413,49 @@ function startCursorsOf(baseRaw, current) {
   return { start: base, base, reuse: true };
 }
 
+/** 解析游标 JSON（脏值一律 null，不让坏数据把整周排班搞挂） */
+function parseCursorPair(raw) {
+  if (!raw) return null;
+  try {
+    const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!o || typeof o === 'object' !== true) return null;
+    return { A: Math.max(0, Number(o.A) || 0), B: Math.max(0, Number(o.B) || 0) };
+  } catch (e) { return null; }
+}
+
+/**
+ * 生成起点（v4，2026-11-26）：用「上一已生成周」的 pending 纠正陈旧 base。
+ * --------------------------------------------------------------------------------
+ * `startCursorsOf` 只看 base 是否存在 —— 这对**清空/撤回回滚**是对的（见其注释），
+ * 但对**生成**不够：某周被提前生成（用户翻到未来周点了一次）时，它的 base 会被写死；
+ * 之后再按周次顺序排了别的周、游标已经前进，回头再生成这一周时，旧 base 会
+ * 把游标拽回几周前，排出完全不相干的人（2026-11-26 实测：应接 A5/B52，却从 A47/B20
+ * 起跑 ⇒ B22/A49，且把真实游标倒改成 A5/B40）。
+ *
+ * 权威起点 = **周次小于本周、且已生成过的最大那周** 的 pending_cursors（= 那一周排完后的
+ * 游标）；没有上一周时退回本周自身 base（首周幂等），两者都没有才用当前游标。
+ * 为什么不用「current === 本周 pending」：那样在本周之后又生成了别的周时，重排本周会
+ * 从后一周的游标起跑 —— 破坏「同周重排还是同一批人」。用上一周的 pending 则与
+ * 「当前游标走到哪」无关，重复生成、跨周续排、倒回去重排旧周都稳定。
+ *
+ * @param {string|object} baseRaw  本周 speech_publish.base_cursors（可能被提前生成写脏）
+ * @param {string|object} prevRaw  上一已生成周的 pending_cursors（权威起点）
+ * @param {object} current         当前 speech_cursor（兜底）
+ */
+function generationStartOf(baseRaw, prevRaw, current) {
+  const cur = {
+    A: Math.max(0, Number(current && current.A) || 0),
+    B: Math.max(0, Number(current && current.B) || 0)
+  };
+  const prev = parseCursorPair(prevRaw);
+  if (prevRaw && !prev) return { start: cur, base: cur, reuse: false, stale: true };
+  const base = parseCursorPair(baseRaw);
+  const expected = prev || base;
+  if (!expected) return { start: cur, base: cur, reuse: false, stale: false };
+  const stale = !!(prev && base && (prev.A !== base.A || prev.B !== base.B));
+  return { start: expected, base: expected, reuse: true, stale };
+}
+
 /** 写双游标（幂等 upsert）。conn 可以是 pool 或事务连接。 */
 async function saveSpeechCursors(db, classId, cursors) {
   const c = cursors || {};
@@ -2997,7 +3040,13 @@ const routes = {
         const current = { A: 0, B: 0 };
         curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') current[c.grp] = Number(c.cursor_val) || 0; });
         const [pubRows] = await conn.query('SELECT base_cursors FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]);
-        const start = startCursorsOf(pubRows[0] && pubRows[0].base_cursors, current);
+        /* v4：权威起点取「上一已生成周」的 pending（不是本周可能被提前生成写脏的 base） */
+        const [prevRows] = await conn.query(
+          'SELECT pending_cursors FROM speech_publish WHERE class_id = ? AND week < ? AND pending_cursors IS NOT NULL ORDER BY week DESC LIMIT 1',
+          [classId, wk]
+        );
+        const start = generationStartOf(pubRows[0] && pubRows[0].base_cursors, prevRows[0] && prevRows[0].pending_cursors, current);
+        if (start.stale) console.log(JSON.stringify({ fn: 'schedule', action: 'speechGenerate', classId, week: wk, staleBase: true, ignoredBase: pubRows[0].base_cursors, usedPrev: prevRows[0].pending_cursors, current }));
 
         /* ④ 筛场次骨架 + 轮转选人（默认每场 2 人；「排班方式」里 need=1 的格子只排 1 人） */
         const cellMap = await loadSlotRules(conn, classId, sessions);
@@ -3311,8 +3360,9 @@ const routes = {
             [classId, g, g === 'A' ? a : b]
           );
         }
-        /* v3：手动改起点后，旧的 base 快照全部作废 —— 否则重排本周仍从旧 base 起跑，手动设置白设。 */
-        await conn.query('UPDATE speech_publish SET base_cursors = NULL WHERE class_id = ?', [classId]);
+        /* v3：手动改起点后，旧的 base 快照全部作废 —— 否则重排本周仍从旧 base 起跑，手动设置白设。
+         * v4：同理由一并清 pending_cursors —— 否则「上一已生成周 pending」会把手动起点冲掉。 */
+        await conn.query('UPDATE speech_publish SET base_cursors = NULL, pending_cursors = NULL WHERE class_id = ?', [classId]);
         await conn.commit();
       } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
       console.log(JSON.stringify({ fn: 'schedule', action: 'speechSetSettings', member: ctx.member.id, classId, cursorA: a, cursorB: b }));
@@ -3580,7 +3630,12 @@ const routes = {
         const current = { A: 0, B: 0 };
         curRows.forEach(c => { if (c.grp === 'A' || c.grp === 'B') current[c.grp] = Number(c.cursor_val) || 0; });
         const [pubRows] = await conn.query('SELECT base_cursors FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]);
-        const start = startCursorsOf(pubRows[0] && pubRows[0].base_cursors, current);
+        const [prevRows] = await conn.query(
+          'SELECT pending_cursors FROM speech_publish WHERE class_id = ? AND week < ? AND pending_cursors IS NOT NULL ORDER BY week DESC LIMIT 1',
+          [classId, wk]
+        );
+        const start = generationStartOf(pubRows[0] && pubRows[0].base_cursors, prevRows[0] && prevRows[0].pending_cursors, current);
+        if (start.stale) console.log(JSON.stringify({ fn: 'schedule', action: 'speechAiApply', classId, week: wk, staleBase: true, ignoredBase: pubRows[0].base_cursors, usedPrev: prevRows[0].pending_cursors, current }));
         await conn.query("DELETE FROM speech WHERE class_id = ? AND week = ? AND source = 'AUTO'", [classId, wk]);
         for (const r of rows) {
           if (!r || !r.memberId || !r.date || !r.slot) continue;

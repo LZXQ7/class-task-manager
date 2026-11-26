@@ -688,8 +688,22 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   wxml+json 接线 / 全站裸奔扫描（危险 handler 直接发请求无确认即红）+ 7 变异全抓。
  *   纯前端改动，云函数/DB 不动。
  * ---------------------------------------------------------------------------
+ * v1.0.8.86（2026-11-26）· 课前演讲轮转游标「未来周陈旧 base」修复（固定版）
+ *   用户口径：第 11 周结束 A 组到 3 号、B 组到 54 号（12-04 下午自动排出 5 号，
+ *   用户手动改成 54 号）；再下一周却从 B22 / A49 开始。
+ *   根因：未来周被提前生成时留下陈旧的 speech_publish.base_cursors（wk13 为
+ *   A47/B20，来自 wk10 的旧 pending）；startCursorsOf() 无条件信任本周 base，
+ *   把已经推进到 wk12 的游标拽回旧位置，才排出截图里的 B22/B24 + A49/A51。
+ *   `schedule` 新增纯函数 `generationStartOf(base, prevPending, current)`：
+ *   生成起点改为「周次小于本周、且已生成过的最大那周」的 pending_cursors，
+ *   同周重排仍幂等、跨周继续续排、未来周的旧 base 不再劫持游标；
+ *   `speechSetSettings` 手工改起点时同时清 base 与 pending（否则下一周被 pending 冲掉）。
+ *   清空/撤回回滚仍走 startCursorsOf，口径不变。
+ *   门禁新增 `check-speech-stale-base.js`（生产回放 16 判据 + 5 变异全抓），
+ *   并同步 `check-speech-cursor-advance.js` 到 v4。生产 wk13 数据已按 A3/B54 重排。
+ * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.85';
+const APP_VERSION = '1.0.8.86';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

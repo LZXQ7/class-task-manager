@@ -10,8 +10,11 @@
  *     由 common/round-robin.js 的 pickBySeq/buildState 承载 —— 与值日游标完全隔离。
  *   · **起点 = 当前进度双游标**（管理员设 A/B 已排到号）：v2 已撤掉"每场人数/起始周几/
  *     起始时段/起始学号"四项固定设置；默认每场 2 人，智能排班可指定单场 1 人。
- *   · ⚠️ **assign 只预演不落库**：返回的 cursors 由云函数 speechPublish 在发布时才写
- *     speech_cursor，撤回回滚到发布前快照 —— 清空后重排不会跳过清空前的人。
+ *   · ⚠️ cursors 由 assign 返回、**云函数在生成落库时即写回** speech_cursor（v3 起，
+ *     2026-11-17）；撤回/清空按 speech_publish.base_cursors 回滚到本周之前的游标 ——
+ *     清空后重排不会跳过清空前的人。生成起点由调用方用
+ *     schedule/generationStartOf(base, prevPending, current) 决策：权威来源是
+ *     「上一已生成周」的 pending，避免未来周提前生成留下的陈旧 base 把游标拽回旧位置。
  *
  * 本文件是纯函数层：不读库、不碰云环境，输入全是普通对象，便于门禁 vm/require 真跑。
  * ⚠️ 改完必须 `node scripts/sync-common.js` 同步到各云函数的 common 副本再重部署。
@@ -79,7 +82,7 @@ function buildSlots(sessions, wk, options, week) {
  *                            「从周三上午开始，b组12号14号，周三下午a组17号19号」。
  * @returns {{rows:Array, cursors:object, short:number}}
  *          rows = [{date, slot, scope, memberId, seq, group, source:'AUTO'}]
- *          cursors = 本次预演后的游标 —— ⚠️ 只返回，不落库；由 speechPublish 在发布时才写入
+ *          cursors = 本次排完后的游标 —— 由调用方在生成落库时写回 speech_cursor（v3 起）
  */
 function assign(slots, roster, cursors, options) {
   const opt = options || {};
