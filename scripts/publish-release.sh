@@ -107,7 +107,7 @@ if git -C "$PUBLIC_DIR" ls-files | grep -iqE '\.(xlsx|xls)$'; then
 fi
 # 4b 原始令牌 / AppID / 姓名 / 学号 / 班级名 / 教师名 / ICP / 品牌
 if grep -rI -n -E \
-  "<YOUR_ENV_ID>|<YOUR_APPID>|<TENCENT_DOCS_APPID>|0000000000|0000000003|0000000002|0000000001|00000000|209903030101|209903020101|示例成员57|示例成员01|<INVITE_CODE>|<INVITE_CODE>|<INVITE_CODE>|admin|admin|班级任务管理|<ICP_NO>|示例老师01|示例老师02|示例老师04|示例老师05|示例老师07|示例老师08|示例老师09|示例老师10|示例老师11|示例老师12|示例老师06|示例老师03|示例专业|示例专业简称|示例班级A|示例班级B|示例班级C" \
+  "cloudbase-d6g2y3jfee925f8be|wx43f61be0199f50ac|wxd45c635d754dbf59|2608057499|2608057403|2608057402|2608057401|26080574|260803030101|260803020101|罗翊瑄|宋艾霖|CLS26A01|CLS26A02|CLS26A03|songyilin|songailin|林钟序七|豫ICP备2026049393号|孙拥军|张震坤|任永瑞|张璐|李月鹏|刘亚|郑蕊|刘子慧|芦露|王意涵|李华|马丽|小学教育（专升本）|小教260|2603班|2602班|2601班" \
   "$PUBLIC_DIR" --exclude-dir=.git >/dev/null 2>&1; then
   echo "❌ 公开树命中原始 PII 词，已中止（请检查 scrub.js 规则是否覆盖新增 PII）" >&2
   exit 1
@@ -124,6 +124,13 @@ if grep -rI -n -E "\b260[0-9]{9}\b" "$PUBLIC_DIR" --exclude-dir=.git >/dev/null 
   echo "❌ 公开树疑似含真实学号(12 位 260 开头)，已中止" >&2
   exit 1
 fi
+# 4c-2 API 密钥形状兜底：sk- 后跟 20 位以上字母数字（DeepSeek / OpenAI 经典格式）
+#      ⚠️ 正则必须写在 .sh 文件里执行：交互式命令行会吃掉 {} 量词导致假阴性（同 4b-2 教训）。
+#      ⚠️ 这里只扫公开树；私有仓全部受跟踪文件由 check-no-api-key.js 门禁兜底。
+if grep -rI -n -E 'sk-[A-Za-z0-9]{20,}' "$PUBLIC_DIR" --exclude-dir=.git >/dev/null 2>&1; then
+  echo "❌ 公开树疑似含真实 API 密钥（sk- 形状），已中止" >&2
+  exit 1
+fi
 # 4d 内部文件不得进公开树（防止排除项被误删后静默回灌）
 for internal in HANDOFF.md CHANGELOG-DETAIL.md outputs; do
   if git -C "$PUBLIC_DIR" ls-files | grep -qx "$internal" || git -C "$PUBLIC_DIR" ls-files | grep -q "^$internal/"; then
@@ -131,7 +138,7 @@ for internal in HANDOFF.md CHANGELOG-DETAIL.md outputs; do
     exit 1
   fi
 done
-echo "    ✓ 自检通过（0 命中原始 PII，无 .xlsx，无内部文件）"
+echo "    ✓ 自检通过（0 命中原始 PII，无 .xlsx，无内部文件，无明文 API 密钥）"
 
 echo "==> [5/6] 公开仓库：提交 + 推送"
 cd "$PUBLIC_DIR"
