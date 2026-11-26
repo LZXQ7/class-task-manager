@@ -13,6 +13,7 @@
  *      （用户 2026-11-19 口径：备注列只写这一份，不转录需求口径/前端/门禁长文，避免 500 字截断）
  *   3) 老版本文件没有这两节时，回退取「版本 B 公告版」（兼容历史更新说明）
  *   4) 都找不到时回退「班级任务管理 <版本>」
+ * 所有来源（含 --desc 显式指定）统一压到 200 字以内（NOTE_MAX）。
  *
  * 环境变量（均可选，有默认值）：
  *   WX_APPID        小程序 AppID（默认 <YOUR_APPID>）
@@ -27,7 +28,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { parseShortNote } from './note-parser.mjs'
+import { parseShortNote, NOTE_MAX } from './note-parser.mjs'
 
 // 环境兜底：Git Bash / 精简环境可能缺 APPDATA / HOME / USERPROFILE，
 // 会让 miniprogram-ci 的依赖 npm-conf 在 path.resolve(undefined) 处崩（ERR_INVALID_ARG_TYPE）
@@ -120,7 +121,7 @@ function readAnnouncement(ver) {
 }
 
 // ---- 确定项目备注（desc）----
-const DESC_MAX = 500 // 安全上限：mp 后台备注列展示空间有限，超长按整段截断
+const DESC_MAX = NOTE_MAX // 用户 2026-11-26 定：上传备注不超过 200 字（含命令行显式指定的备注）
 let desc = getFlag('desc') || positionals[1]
 let descSource = '命令行显式指定'
 if (!desc) {
