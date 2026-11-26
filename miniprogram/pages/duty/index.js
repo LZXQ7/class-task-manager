@@ -16,6 +16,13 @@ const theme = require('../../utils/theme');
 const STALE_MS = 20000;
 
 /**
+ * 使用统计（1.0.8.87）：值日页已并入「值日 / 课前演讲」两段，埋点键按当前段落走，
+ * 后台使用统计才能把同一个 Tab 拆成两项（否则只报 duty，演讲侧永远看不见）。
+ * 纯函数、未知值兜底 duty；onShow 与 onViewMode 两个上报点共用，避免两处口径漂移。
+ */
+function dutyViewEvent(mode) { return mode === 'speech' ? 'speech' : 'duty'; }
+
+/**
  * 合并行汇总状态（1.0.4.4 #27）：同一节课的若干人合成一行，右侧只放一个汇总 pill。
  * 取「最未完成」者为准：待值日(PENDING) > 进行中(ONGOING) > 已值日(DONE) > 已结束(EXPIRED)。
  * 纯前端展示聚合，不改库、不影响单条 duty 的状态。
@@ -359,7 +366,8 @@ Page({
 
   onShow() {
     const app = getApp();
-    if (app.track) app.track.pageView('duty');
+    // 按当前分段上报：停留在「课前演讲」段再切回本页时仍算演讲，不被算成值日。
+    if (app.track) app.track.pageView(dutyViewEvent(this.data.viewMode));
     app.setTabBar(3);
     // v0.7.31：不再立即播 —— 等「身份(app.ready) + 首屏数据(loading=false)」就绪、或 READY_MS 兜底超时再统一开播
     pageAnim.playReady(this, getApp());
@@ -778,6 +786,9 @@ Page({
     const mode = (e.currentTarget.dataset.mode === 'speech') ? 'speech' : 'duty';
     if (mode === this.data.viewMode) return;
     this.setData({ viewMode: mode, viewAnim: 'vp-anim' });
+    // Tab 页常驻不销毁：用户只在段间切换时不会触发 onShow，这里必须自己上报新段。
+    const app = getApp();
+    if (app.track) app.track.pageView(dutyViewEvent(mode));
     if (mode === 'speech') this.loadSpeech();
   },
 

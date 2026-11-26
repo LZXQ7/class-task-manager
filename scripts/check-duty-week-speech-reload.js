@@ -103,7 +103,10 @@ function evalAll(js) {
     /* ① 换周必须让「屏幕上这份已过期」的标记复位（否则静默复用旧数据） */
     applyResetsFresh: !!(speechMode && speechMode.hasData === false),
     /* ③ onShow：周次被纠回 / 换班后，演讲视图要跟着重拉 */
-    showReloads: /viewMode/.test(show) && /loadSpeech\s*\(/.test(show),
+    /* ⚠️ 必须判「守卫与 loadSpeech 同行/紧邻」，不能用宽泛的 /viewMode/：
+       1.0.8.87 给 onShow 加了按分段上报埋点（也引用 viewMode），宽判据会让
+       「删掉演讲重拉」的变异被埋点里的 viewMode 掩盖成假通过。 */
+    showReloads: /viewMode\s*===\s*['"]speech['"][^\n]{0,120}loadSpeech\s*\(/.test(show),
     /* ③ 辅导员切班同理 */
     classReloads: /loadSpeech\s*\(/.test(cls),
     /* ④ 换周仍然只有一条路 */

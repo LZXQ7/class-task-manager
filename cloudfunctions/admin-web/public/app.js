@@ -3505,7 +3505,9 @@
   /* ---------------- 使用统计（2026-10-16） ---------------- */
   // event → 中文名：页面类来自各页 onShow(pageView)，入口类来自 track.action(key)
   var EVENT_LABEL = {
-    home: '首页', mine: '我的', duty: '值日', manual: '手动排班',
+    /* 值日页已并入「值日 / 课前演讲」两段（1.0.8.87）：duty=值日段，speech=演讲段
+       （独立的演讲排班页也上报 speech，两者同属「课前演讲」这项业务）。 */
+    home: '首页', mine: '我的', duty: '值日', speech: '课前演讲', manual: '手动排班',
     timetable: '课程表', timetable_apply: '调课申请', classes: '班级',
     roster: '名册', notice: '通知', bind: '班级绑定', webview: '网页', doc: '文档',
     fee_open: '班费/团费', notice_open: '打开通知', notice_publish: '发布通知',

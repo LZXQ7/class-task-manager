@@ -702,8 +702,15 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   门禁新增 `check-speech-stale-base.js`（生产回放 16 判据 + 5 变异全抓），
  *   并同步 `check-speech-cursor-advance.js` 到 v4。生产 wk13 数据已按 A3/B54 重排。
  * ---------------------------------------------------------------------------
+ * v1.0.8.87（2026-11-26）· 使用统计把「值日页」细分为 值日 / 课前演讲
+ *   值日页已并入两段，但埋点 onShow 写死 pageView('duty')，后台使用统计只能看到
+ *   一个「值日」大类。改为纯函数 dutyViewEvent(mode) 统一两处上报：onShow 按当前段、
+ *   onViewMode 按切换后的段（Tab 页常驻，段间切换不会触发 onShow）。
+ *   后台 EVENT_LABEL 补 speech:'课前演讲'（顺带修掉 check-admin-web 的漏翻历史红）。
+ *   门禁 `check-usage-duty-speech-split.js` 真跑纯函数 + 5 变异全抓。
+ * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.86';
+const APP_VERSION = '1.0.8.87';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。
