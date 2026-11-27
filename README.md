@@ -244,4 +244,10 @@ git add -A && git commit -m "..." && git tag vx.y.z && git push origin main --ta
 
 ---
 
+## 15. 复发模式规则
+
+开发纪律与高频踩坑的防止办法见 [`RULES-RECURRENCE.md`](./RULES-RECURRENCE.md)：六类复发模式（同源漏改 / 门禁假绿 / 静默失败 / 口径未钉死 / 状态语义漂移 / 发版边界）及「规则必须自动化承载」的升级路径。全量门禁 runner 已内置行尾归一化，避免变异自证假绿。
+
+---
+
 *本 README 不含任何密钥、令牌、openid 或学生隐私数据。*
