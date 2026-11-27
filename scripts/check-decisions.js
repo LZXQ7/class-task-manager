@@ -38,13 +38,20 @@ const DECISIONS = path.join(ROOT, 'DECISIONS.md');
 
 function read(p) { try { return fs.readFileSync(p, 'utf8'); } catch (e) { return ''; } }
 
-/** 取改动文件：工作区相对 HEAD 的改动 ∪ 最近一次提交的改动。
- *  两者取并集，避免「提交后工作区干净 ⇒ 永远绿」的假绿。 */
+/** 取改动文件：三路信号并集——
+ *   ① 工作区相对 HEAD 的已跟踪改动；
+ *   ② 最近一次提交的改动（避免「提交后工作区干净 ⇒ 永远绿」）；
+ *   ③ **未跟踪文件**（`git ls-files --others --exclude-standard`）。
+ * ① 的 git diff 看不见未跟踪文件，而「口径未钉死就动手」最高发场景恰恰是
+ *   新建页面/新交互（返回 untracked）——防护若只挂 git diff 就会在最该触发时假绿。
+ *   这不是再叠一层门禁，而是修正检测信号源本身（表征 ≠ 实体）。
+ *   .gitignore 命中的临时文件（如 .wb_tmp/）由 --exclude-standard 自动排除。 */
 function changedFiles() {
   const out = [];
   const cmds = [
     ['diff', '--name-only', 'HEAD'],
-    ['diff', '--name-only', 'HEAD~1', 'HEAD']
+    ['diff', '--name-only', 'HEAD~1', 'HEAD'],
+    ['ls-files', '--others', '--exclude-standard']
   ];
   cmds.forEach(args => {
     try {
@@ -102,6 +109,8 @@ function audit(X) {
   const bad = [];
   const need = (name, cond) => { if (!cond) bad.push(name); };
 
+  // 检测层守卫：未跟踪文件那一路若被移除，新建页面假绿 ⇒ 直接翻红
+  need('signalUntracked', X.signalUntracked === true);
   need('decisionsFile', X.decisions.length > 800);
   need('decisionsHeader', X.decisions.indexOf('# 口径决策记录') >= 0);
   need('formatDoc', X.decisions.indexOf('能力边界') >= 0 && X.decisions.indexOf('check-decisions.js') >= 0);
@@ -135,6 +144,11 @@ function collect() {
 }
 
 const S = collect();
+// 信号源守卫：`changedFiles()` 必须包含未跟踪文件那一路，否则新建页面会假绿。
+// 读自身源码断言那一路仍在位——避免它像 CRLF 那样被改回去而无人察觉（M2 假绿）。
+const UNTRACKED_SIGNAL = "['ls-files', '--others', '--exclude-standard']";
+S.signalUntracked = fs.readFileSync(__filename, 'utf8').indexOf(UNTRACKED_SIGNAL) >= 0;
+
 const problems = audit(S);
 if (!problems.length) {
   console.log('  ✓ 口径门禁：DECISIONS.md 结构完好，' + S.changedFiles.length + ' 个改动文件中呈现类均被覆盖');
@@ -161,7 +175,10 @@ const M = [
   { name: '删掉「能力边界」说明（弱化自我约束）', patch: { decisions: S.decisions.replace('能力边界', '说明') }, judge: b => b.some(x => /formatDoc/.test(x)) },
   { name: '改了呈现文件但无记录覆盖', patch: { changedFiles: ['miniprogram/pages/duty/index.wxml'], added: {} }, judge: b => b.some(x => /covered::miniprogram\/pages\/duty\/index\.wxml/.test(x)) },
   { name: '改了后台呈现文件但无记录覆盖', patch: { changedFiles: ['cloudfunctions/admin-web/public/app.js'], added: {} }, judge: b => b.some(x => /covered::cloudfunctions/.test(x)) },
-  { name: '改了页面 js 的导航 API 但无记录覆盖', patch: { changedFiles: ['miniprogram/pages/mine/index.js'], added: { 'miniprogram/pages/mine/index.js': 'wx.navigateTo({url:...})' } }, judge: b => b.some(x => /covered::miniprogram\/pages\/mine\/index\.js/.test(x)) }
+  { name: '改了页面 js 的导航 API 但无记录覆盖', patch: { changedFiles: ['miniprogram/pages/mine/index.js'], added: { 'miniprogram/pages/mine/index.js': 'wx.navigateTo({url:...})' } }, judge: b => b.some(x => /covered::miniprogram\/pages\/mine\/index\.js/.test(x)) },
+  // 第一性原理实例：新建页面（未跟踪呈现文件）无记录必须翻红——这是本次本质修复的回归测试
+  { name: '新建未跟踪 wxml 页面无记录覆盖', patch: { changedFiles: ['miniprogram/pages/newfeature/index.wxml'], added: {} }, judge: b => b.some(x => /covered::miniprogram\/pages\/newfeature\/index\.wxml/.test(x)) },
+  { name: '删掉未跟踪文件信号源（假绿命门）', patch: { signalUntracked: false }, judge: b => b.some(x => /signalUntracked/.test(x)) }
 ];
 M.forEach(mu => {
   const X = Object.assign({}, S, mu.patch);
