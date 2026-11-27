@@ -26,6 +26,8 @@ const F = {
   rules: path.join(ROOT, 'RULES-RECURRENCE.md'),
   runner: path.join(ROOT, 'scripts/run_all_gates.sh'),
   keygate: path.join(ROOT, 'scripts/check-no-api-key.js'),
+  decgate: path.join(ROOT, 'scripts/check-decisions.js'),
+  decisions: path.join(ROOT, 'DECISIONS.md'),
   publish: path.join(ROOT, 'scripts/publish-release.sh'),
   memory: path.join(ROOT, '.workbuddy/memory/MEMORY.md'),
   readme: path.join(ROOT, 'README.md')
@@ -48,6 +50,10 @@ function audit(X) {
   need('runnerFatalGuard', /normalize-eol 失败/.test(X.runner));
   need('keygateExists', X.keygate.length > 1000);
   need('publishKeyGuard', X.publish.indexOf(PATTERN_LITERAL) >= 0);
+  // M4 的自动化承载（2026-11-27 补）：口径门禁 + 决策记录 + 规则文件里的指向，三者缺一即 M4 退回「无承载」
+  need('decGateExists', X.decgate.length > 2000 && X.decgate.indexOf('isPresentation') >= 0);
+  need('decisionsFile', X.decisions.length > 800 && X.decisions.indexOf('# 口径决策记录') >= 0);
+  need('rulesPointToDecGate', X.rules.indexOf('check-decisions.js') >= 0);
   // 双仓索引入口不同：私有仓 .workbuddy/memory/MEMORY.md，公开仓不含 .workbuddy ⇒ README.md
   const indexSrc = X.memory.length > 0 ? X.memory : X.readme;
   need('indexEntry', indexSrc.indexOf('RULES-RECURRENCE.md') >= 0);
@@ -75,7 +81,10 @@ const M = [
   { name: '删掉元根因节', patch: { rules: S.rules.split('元根因').join('上游原因') }, judge: b => b.some(x => /metaRootCause/.test(x)) },
   { name: '删掉 runner 的 normalize-eol 调用', patch: { runner: S.runner.replace('node scripts/normalize-eol.js >/dev/null 2>&1', 'true') }, judge: b => b.some(x => /runnerNormalize/.test(x)) },
   { name: '删掉发布脚本的密钥拦截', patch: { publish: S.publish.split(PATTERN_LITERAL).join('sk-[a-z]{4}') }, judge: b => b.some(x => /publishKeyGuard/.test(x)) },
-  { name: '删掉索引里的规则入口', patch: { memory: S.memory.split('RULES-RECURRENCE.md').join('RECURRENCE-RULES.md'), readme: S.readme.split('RULES-RECURRENCE.md').join('RECURRENCE-RULES.md') }, judge: b => b.some(x => /indexEntry/.test(x)) }
+  { name: '删掉索引里的规则入口', patch: { memory: S.memory.split('RULES-RECURRENCE.md').join('RECURRENCE-RULES.md'), readme: S.readme.split('RULES-RECURRENCE.md').join('RECURRENCE-RULES.md') }, judge: b => b.some(x => /indexEntry/.test(x)) },
+  { name: '删掉口径门禁', patch: { decgate: '' }, judge: b => b.some(x => /decGateExists/.test(x)) },
+  { name: '删掉 DECISIONS.md', patch: { decisions: '' }, judge: b => b.some(x => /decisionsFile/.test(x)) },
+  { name: '删掉规则里指向口径门禁的承载说明', patch: { rules: S.rules.split('check-decisions.js').join('decision-check.js') }, judge: b => b.some(x => /rulesPointToDecGate/.test(x)) }
 ];
 M.forEach(mu => {
   const X = Object.assign({}, S, mu.patch);

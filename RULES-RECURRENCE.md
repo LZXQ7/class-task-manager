@@ -105,7 +105,11 @@
 2. 涉及动画/转场，先问「是否需要真机验证」；静态门禁绿 ≠ 效果有。
 3. 回退时保留与该口径无关的其他修复，按文件/按块精确回退，不整仓 `checkout`。
 
-**自动化承载**：无（需流程约束）。已回退的特性用**反向门禁**钉死（如 `check-leave-no-morph`），防止被好心接回。
+**自动化承载**：
+1. `DECISIONS.md` + `scripts/check-decisions.js`（2026-11-27 落地）：呈现类文件改动（wxml/wxss、admin-web public、含导航 API 的页面 js）必须在 `DECISIONS.md` 有当日口径记录（需求原话/我理解的口径/触发文件/确认结果），否则门禁红。**只查可追溯性，不查内容对不对**——正确性靠用户动手前点头，伪装成自动检查只会制造 M2 假绿。
+2. 已回退的特性用**反向门禁**钉死（如 `check-leave-no-morph`），防止被好心接回。
+
+⚠️ 若这条承载被删（门禁文件消失、`DECISIONS.md` 清空、四要素被改），`check-recurrence-rules.js` 与 `check-decisions.js` 自身变异自证都会翻红。
 
 ---
 
