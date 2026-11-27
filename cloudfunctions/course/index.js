@@ -1700,18 +1700,6 @@ const routes = {
     }
   },
 
-  /**
-   * 🔍 自诊断（2026-10-05 排查「网络异常 / -504005」临时加的，定位后请删）。
-   * 真因定位靠它：`fn log` 拉不到（环境未开通 CLS），所以**把耗时直接算好返回给前端**。
-   *
-   * ⚠️ 已知结论（2026-10-05 23:09 实测）：**数据库不是瓶颈** ——
-   *   start 0ms / getPool 0ms / queryMember 4ms / queryClass 2ms / query3x 7ms
-   *   ⇒ 一次导入要走的 4~6 次库往返总共十几毫秒，`connectTimeout` 从 8s 降到 3s 毫无必要。
-   *   剩下唯一没量到的一步就是 **`cloud.downloadFile`（从云存储拉文件）** ⇒ 本 action 新增了
-   *   ① 用**当前时间戳当 fileID**（必然失败，但能测出「失败要多久」）② 真传 fileID 时测下载+解析。
-   *   ⚠️ 若「下载失败耗时」接近 20s，就是它 —— 说明云函数连云存储的通道有问题（网络/权限），
-   *      而**不是**代码逻辑慢。
-   */
   /* ================================================================
    * 个人课表（2026-10-06）
    * ------------------------------------------------------------
@@ -2210,53 +2198,6 @@ const routes = {
       } finally {
         conn.release();
       }
-    }
-  },
-
-  diag: {
-    auth: { needBind: true },
-    handler: async (payload, ctx) => {
-      const steps = [];
-      let t = Date.now();
-      const mark = (name, extra) => {
-        const s = { step: name, ms: Date.now() - t };
-        if (extra !== undefined) s.info = String(extra).slice(0, 120);
-        steps.push(s);
-        t = Date.now();
-      };
-      mark('start');
-      const pool = getPool();
-      mark('getPool');
-      const [m1] = await pool.query('SELECT id, class_id FROM member WHERE id = ? LIMIT 1', [ctx.member.id]);
-      mark('queryMember');
-      const [c1] = await pool.query('SELECT id, total_weeks FROM `class` WHERE id = ? LIMIT 1', [ctx.member.class_id || 1]);
-      mark('queryClass');
-      for (let i = 0; i < 3; i++) await pool.query('SELECT 1 AS n');
-      mark('query3x');
-
-      // ① 云存储连通性探测（2026-10-05 修：上一版用「不存在的 fileID」去 downloadFile，
-      //    SDK 会为无效路径反复重试 → 探针自己就耗掉 20s，把整个 diag 拖超时，纯属自伤）。
-      //    现在改成**自己掐表**：无论成功失败，超过 3000ms 立刻放弃并如实记录。
-      //    这样既能看出「下载慢」，又不会把诊断本身变成 20 秒超时。
-      const withTimeout = (p, ms, tag) => Promise.race([
-        Promise.resolve(p).then((v) => ({ ok: true, v })).catch((e) => ({ ok: false, e })),
-        new Promise((r) => setTimeout(() => r({ ok: false, timeout: true }), ms))
-      ]).then((r) => { mark(tag, r.timeout ? ('超时 >' + ms + 'ms') : (r.ok ? 'ok' : ((r.e && (r.e.errMsg || r.e.message)) || 'err'))); return r; });
-
-      await withTimeout(cloud.downloadFile({ fileID: 'cloud://probe-' + Date.now() + '.xlsx' }), 3000, 'downloadProbe(3s上限)');
-
-      // ② 真传 fileID 时测下载 + 解析（同样 8s 上限）
-      if (payload.fileID) {
-        const r = await withTimeout(cloud.downloadFile({ fileID: String(payload.fileID) }), 8000, 'download(8s上限)');
-        const dl = r && r.ok ? r.v : null;
-        if (dl && dl.fileContent) {
-          mark('bytes', dl.fileContent.length);
-          try { const x = parseTimetableXlsx(dl.fileContent, 16); mark('parseXlsx', 'sessions=' + x.sessions.length); }
-          catch (e) { mark('parseXlsx(失败)', (e && e.message) || 'unknown'); }
-        }
-      }
-      console.log(JSON.stringify({ fn: 'course', action: 'diag', steps }));
-      return { steps, member: ctx.member.id, classId: ctx.member.class_id, classRow: c1.length, memberRow: m1.length };
     }
   },
 

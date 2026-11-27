@@ -16,9 +16,6 @@
  */
 const SUBSCRIBE_TEMPLATE_ID = 'jU9_n9F15wuTab9dQyehEGrd9fprneyXTiYt3dm0xok';
 
-/** 被提醒的消息要跳转到的小程序页面 */
-const SUBSCRIBE_PAGE = 'pages/duty/index';
-
 /**
  * 订阅消息模板 ID（班级通知）。
  *
@@ -709,8 +706,20 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   后台 EVENT_LABEL 补 speech:'课前演讲'（顺带修掉 check-admin-web 的漏翻历史红）。
  *   门禁 `check-usage-duty-speech-split.js` 真跑纯函数 + 5 变异全抓。
  * ---------------------------------------------------------------------------
+ * v1.0.8.88（2026-11-27）· 历史包袱清理 + 收尾体检假绿修复（零功能变动）
+ *   跨领域分析 + Git 历史考古后按结论清理：删 course 云函数 diag 自诊断端点
+ *   （10-05 排查 -504005 临时加，注释原文「定位后请删」，真因已改前端直传）、
+ *   config.js 的 SUBSCRIBE_PAGE 死常量、duty 页 onSpAiOpen 兼容别名（v4 后零调用），
+ *   修正 DARK_MODE_ENABLED 过时注释（值 11-03 已改 true，注释仍写 false）。
+ *   `check_closeout.sh` 重写：REL 从 APP_VERSION 动态读取（杜绝 bump 忘改两行的
+ *   M1 温床）、废弃停更 33 版的 MIN 内部迭代号、D1/D2/D3/D7 按当前更新说明格式
+ *   重设、D4 改为「零新增红」基线比对（原「失败=0」在 16 存量红下恒假红）。
+ *   REL 动态化后体检从 14过/2红（D2/D3/D7 其实在验 1.0.8.0 旧文件=假绿）变为
+ *   13过/0红真绿；D1 首行判据经真实变异自证（改坏→红、还原→绿）。
+ *   门禁 182 过 / 16 存量红（清单一致、零新增）；wcsc/src-bytes/release-docs 全过。
+ * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.87';
+const APP_VERSION = '1.0.8.88';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。
@@ -741,22 +750,20 @@ const TIMETABLE_CLASS_ID = 3;
 /**
  * 深色模式总开关（C-4）。
  * ============================================================
- * 当前 = **false（关闭）**：2026-10-07 用户要求「暂时隐藏深色模式相关的按钮」。
+ * 当前 = **true（已开启）**：2026-11-03 用户确认恢复，由 `93f1075` 把值从 false 改为 true。
+ * 历史：2026-10-07 曾要求「暂时隐藏深色模式相关的按钮」，故一度为 false；
+ * 期间完成页面 wxss 令牌迁移与真机核验，已具备全量开启条件。
  *
- * 关闭时三件事同时生效（缺一不可，否则就是「藏了按钮但还是深色」）：
- *   ① `nav-bar` 左上角的主题切换按钮不渲染；
- *   ② 「我的」页的「外观」三态设置卡不渲染；
- *   ③ **渲染一律锁浅色** —— 不再跟随系统（`utils/theme` 的 resolve 强制 'light'）。
+ * 开启态三件事同时生效（缺一不可，否则就是「有按钮但切不动」）：
+ *   ① `nav-bar` 左上角的主题切换按钮渲染；
+ *   ② 「我的」页的「外观」三态设置卡渲染；
+ *   ③ 渲染按用户所选档位 / 系统设置解析（`utils/theme` 的 resolve 不再强制 'light'）。
  *
- * 🔴 为什么必须带上 ③：默认档是「跟随系统」，只藏按钮的话，手机处于深色模式时
- *    页面**照样会变深色**；而页面 wxss 里还有 1000+ 处硬编码浅色没迁到令牌，
- *    深色下观感未核验（见「下轮遗留」）。另外已手动切到「深色」的人会**没有回头路**。
- *
- * 🔴 恢复上线时只改这一处为 `true` 即可：
- *    - 已存的手动档**保留在 storage**（关闭期间 setMode 不被调用、也不清档），
- *      所以用户的原选择会原样恢复；
- *    - 但请**先做完页面 wxss 的令牌迁移 + 真机核验**（尤其：与系统「降低透明度」
- *      同开、弹层开着时切主题、iPad/折叠屏上主题按钮的垂直对齐）。
+ * 🔴 主题真源只能是 JS 算 class（页面 data 的 `tClass: theme.rootClass()`），
+ *    禁止 `@media prefers-color-scheme`：否则用户手动档与系统档会互相打架。
+ *    页面根节点禁写 `background`（含 `var(--bg)` 未定义也会盖掉 `.t-dark`），
+ *    改底色只能用 `background-color`，且底色真源只在 `.t-light`/`.t-dark`。
+ *    详见 MEMORY 铁律 2 与 `check-dark-*` 系列门禁。
  *
  * ⚠️ 改这个开关后必跑 `node scripts/check-dark-mode.js`：该门禁是**开关感知**的
  *    （关闭时验「入口已隐藏 + 锁浅色」，开启时验「入口在场 + 三态可用」），
@@ -766,7 +773,6 @@ const DARK_MODE_ENABLED = true;
 
 module.exports = {
   SUBSCRIBE_TEMPLATE_ID,
-  SUBSCRIBE_PAGE,
   NOTICE_TEMPLATE_ID,
   NOTICE_PAGE,
   APP_VERSION,

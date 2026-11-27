@@ -1002,8 +1002,6 @@ Page({
   onSpUnpublish() { this.onDanger({ currentTarget: { dataset: { act: 'unpublishSpeech' } } }); },
 
   /* ---- 演讲：一键生成弹层内的智能排班（自然语言 → 预览确认） ---- */
-  /* onSpAiOpen 兼容别名：v4 起统一从 onSpGenOpen 进同一弹层，保留转发防外部旧调用 */
-  onSpAiOpen() { this.onSpGenOpen(); },
   onSpAiClose() { this.setData({ spAiShow: false, spAiRows: [] }); },
   onSpAiInput(e) { this.setData({ spAiText: e.detail.value }); },
   onSpAiParse() {
