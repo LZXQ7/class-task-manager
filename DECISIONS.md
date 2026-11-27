@@ -39,3 +39,13 @@
 - **修复后回路复测**：A/B 均 exit 1 并命中 `covered::`；门禁 11/11 自证全抓，零误报。
 
 ---
+
+## 2026-11-27 · 二阶推演后发现「信号源修了、判定通道没修」，抽共享原语收口
+
+- **需求原话**：「不要只考虑这个改动产生的直接效果。继续推演它的二阶、三阶影响，尤其关注对其他模块、用户行为、系统复杂度和长期维护成本的潜在影响。」→「我点错了，没看到选项，按推荐来」→ 选「抽共享原语并修残留 (Recommended)」。
+- **我理解的口径**：不是继续叠门禁，而是把反复出现的同一根因（表征≠实体的信号源错配）收敛到一个实现。推演实证：① `git diff HEAD -- <未跟踪文件>` 输出 0 字节，而 `ls-files --others` 能看到它 ⇒ 上一轮虽然把未跟踪文件纳入 `changedFiles()`，但 `addedLinesOf()` 仍走 `git diff` ⇒ **新建 js 含 `wx.navigateTo` 依旧假绿**；② `check-no-api-key.js` 只用 `git ls-files -z`（受跟踪），未跟踪文件里硬编码 key 在私有仓门禁假绿；③ `normalize-eol.js` 早在 11-16 自行补过 `--others`，同根因第三次各写各的。经用户确认按推荐执行。
+- **触发文件**：`scripts/lib/changed-files.js`（新建共享原语）、`scripts/check-decisions.js`、`scripts/check-no-api-key.js`、`scripts/normalize-eol.js`、`scripts/check-recurrence-rules.js`（守卫三处接入）。
+- **确认结果**：「我点错了，没看到选项，按推荐来」→ 选择「抽共享原语并修残留 (Recommended)」。
+- **落地与回路**：A/B 真实文件系统验证 —— 新建未跟踪导航 js ⇒ 口径门禁翻红且命中 `covered::`，删除后转绿；新建未跟踪硬编码 key 文件 ⇒ 密钥门禁红且命中文件，删除后转绿。三门禁自证 13/13、13/13、5/5 全抓。
+
+---

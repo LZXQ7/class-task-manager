@@ -244,12 +244,4 @@ git add -A && git commit -m "..." && git tag vx.y.z && git push origin main --ta
 
 ---
 
-## 15. 复发模式规则
-
-开发纪律与高频踩坑的防止办法见 [`RULES-RECURRENCE.md`](./RULES-RECURRENCE.md)：六类复发模式（同源漏改 / 门禁假绿 / 静默失败 / 口径未钉死 / 状态语义漂移 / 发版边界）及「规则必须自动化承载」的升级路径。全量门禁 runner 已内置行尾归一化，避免变异自证假绿。
-
-其中 M4（口径未钉死）的承载是 [`DECISIONS.md`](./DECISIONS.md) + `scripts/check-decisions.js`：呈现类改动须先留一条口径记录（需求原话 / 我理解的口径 / 触发文件 / 确认结果），否则门禁红。该门禁**只查记录可追溯性，不查内容正确性**——正确性靠动手前与需求方确认，把不可自动化的判断伪装成自动检查只会制造假绿。
-
----
-
 *本 README 不含任何密钥、令牌、openid 或学生隐私数据。*

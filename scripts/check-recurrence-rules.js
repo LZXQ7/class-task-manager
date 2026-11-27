@@ -12,9 +12,11 @@
  *   ② 元根因节仍在（否则退化为流水账，失去「规则必须自动化」的约束）；
  *   ③ run_all_gates.sh 开头强制调用 normalize-eol（CRLF 假绿防线）；
  *   ④ check-no-api-key.js 存在且 publish-release.sh 保留密钥形状拦截；
- *   ⑤ 项目 MEMORY.md 顶部指向 RULES-RECURRENCE.md（入口不断链）。
+ *   ⑤ 项目 MEMORY.md 顶部指向 RULES-RECURRENCE.md（入口不断链）；
+ *   ⑥ 共享原语 scripts/lib/changed-files.js 在位且三处门禁都从它取信号源
+ *      （防各自改回本地 git 命令，重演 M1 同源多点漏改）。
  *
- * 自证：5 组内存变异 —— 删任一节 / 删归一化调用 / 删密钥拦截 / 删索引，必须翻红。
+ * 自证：删任一节 / 删归一化调用 / 删密钥拦截 / 删索引 / 删共享原语接入，必须翻红。
  * 用法：node scripts/check-recurrence-rules.js
  */
 'use strict';
@@ -27,6 +29,8 @@ const F = {
   runner: path.join(ROOT, 'scripts/run_all_gates.sh'),
   keygate: path.join(ROOT, 'scripts/check-no-api-key.js'),
   decgate: path.join(ROOT, 'scripts/check-decisions.js'),
+  shared: path.join(ROOT, 'scripts/lib/changed-files.js'),
+  eolgate: path.join(ROOT, 'scripts/normalize-eol.js'),
   decisions: path.join(ROOT, 'DECISIONS.md'),
   publish: path.join(ROOT, 'scripts/publish-release.sh'),
   memory: path.join(ROOT, '.workbuddy/memory/MEMORY.md'),
@@ -52,6 +56,11 @@ function audit(X) {
   need('publishKeyGuard', X.publish.indexOf(PATTERN_LITERAL) >= 0);
   // M4 的自动化承载（2026-11-27 补）：口径门禁 + 决策记录 + 规则文件里的指向，三者缺一即 M4 退回「无承载」
   need('decGateExists', X.decgate.length > 2000 && X.decgate.indexOf('isPresentation') >= 0);
+  need('sharedSourceExists', X.shared.length > 1500 && X.shared.indexOf('function changedFiles(') >= 0 && X.shared.indexOf('function sourceFiles(') >= 0);
+  // 三处消费者必须都从共享原语取文件集；任一处退回本地 git 命令即 M1 复发。
+  need('sharedWired', X.decgate.indexOf('cf.changedFiles(ROOT)') >= 0 &&
+    X.keygate.indexOf('cf.sourceFiles(ROOT)') >= 0 &&
+    X.eolgate.indexOf('cf.sourceFiles(ROOT)') >= 0);
   need('decisionsFile', X.decisions.length > 800 && X.decisions.indexOf('# 口径决策记录') >= 0);
   need('rulesPointToDecGate', X.rules.indexOf('check-decisions.js') >= 0);
   // 双仓索引入口不同：私有仓 .workbuddy/memory/MEMORY.md，公开仓不含 .workbuddy ⇒ README.md
@@ -84,7 +93,11 @@ const M = [
   { name: '删掉索引里的规则入口', patch: { memory: S.memory.split('RULES-RECURRENCE.md').join('RECURRENCE-RULES.md'), readme: S.readme.split('RULES-RECURRENCE.md').join('RECURRENCE-RULES.md') }, judge: b => b.some(x => /indexEntry/.test(x)) },
   { name: '删掉口径门禁', patch: { decgate: '' }, judge: b => b.some(x => /decGateExists/.test(x)) },
   { name: '删掉 DECISIONS.md', patch: { decisions: '' }, judge: b => b.some(x => /decisionsFile/.test(x)) },
-  { name: '删掉规则里指向口径门禁的承载说明', patch: { rules: S.rules.split('check-decisions.js').join('decision-check.js') }, judge: b => b.some(x => /rulesPointToDecGate/.test(x)) }
+  { name: '删掉规则里指向口径门禁的承载说明', patch: { rules: S.rules.split('check-decisions.js').join('decision-check.js') }, judge: b => b.some(x => /rulesPointToDecGate/.test(x)) },
+  { name: '删掉共享原语', patch: { shared: '' }, judge: b => b.some(x => /sharedSourceExists/.test(x)) },
+  { name: '口径门禁改回本地 git 命令（绕过共享原语）', patch: { decgate: S.decgate.split('cf.changedFiles(ROOT)').join('localGitChanged()') }, judge: b => b.some(x => /sharedWired/.test(x)) },
+  { name: '密钥门禁改回本地 git 命令（绕过共享原语）', patch: { keygate: S.keygate.split('cf.sourceFiles(ROOT)').join('localGitFiles()') }, judge: b => b.some(x => /sharedWired/.test(x)) },
+  { name: '行尾归一化改回本地 git 命令（绕过共享原语）', patch: { eolgate: S.eolgate.split('cf.sourceFiles(ROOT)').join('localGitFiles()') }, judge: b => b.some(x => /sharedWired/.test(x)) }
 ];
 M.forEach(mu => {
   const X = Object.assign({}, S, mu.patch);

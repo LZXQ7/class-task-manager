@@ -31,49 +31,19 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const cp = require('child_process');
+const cf = require('./lib/changed-files');
 
 const ROOT = path.resolve(__dirname, '..');
 const DECISIONS = path.join(ROOT, 'DECISIONS.md');
 
 function read(p) { try { return fs.readFileSync(p, 'utf8'); } catch (e) { return ''; } }
 
-/** 取改动文件：三路信号并集——
- *   ① 工作区相对 HEAD 的已跟踪改动；
- *   ② 最近一次提交的改动（避免「提交后工作区干净 ⇒ 永远绿」）；
- *   ③ **未跟踪文件**（`git ls-files --others --exclude-standard`）。
- * ① 的 git diff 看不见未跟踪文件，而「口径未钉死就动手」最高发场景恰恰是
- *   新建页面/新交互（返回 untracked）——防护若只挂 git diff 就会在最该触发时假绿。
- *   这不是再叠一层门禁，而是修正检测信号源本身（表征 ≠ 实体）。
- *   .gitignore 命中的临时文件（如 .wb_tmp/）由 --exclude-standard 自动排除。 */
-function changedFiles() {
-  const out = [];
-  const cmds = [
-    ['diff', '--name-only', 'HEAD'],
-    ['diff', '--name-only', 'HEAD~1', 'HEAD'],
-    ['ls-files', '--others', '--exclude-standard']
-  ];
-  cmds.forEach(args => {
-    try {
-      const txt = cp.execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-      txt.split('\n').forEach(f => { if (f && out.indexOf(f) < 0) out.push(f); });
-    } catch (e) {
-      console.error('  [warn] git ' + args.join(' ') + ' 失败: ' + e.message);
-    }
-  });
-  return out;
-}
-
-/** 取指定文件的 diff 新增行（含 + 前缀去掉），用于判定 .js 是否改了呈现行为。 */
-function addedLinesOf(file) {
-  try {
-    const txt = cp.execFileSync('git', ['diff', 'HEAD', '--', file], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    return txt.split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).map(l => l.slice(1)).join('\n');
-  } catch (e) {
-    console.error('  [warn] git diff ' + file + ' 失败: ' + e.message);
-    return '';
-  }
-}
+/** 改动文件集与新增行均取自共享原语（检测信号源唯一真源）：
+ *   ① 工作区已跟踪改动 ∪ 最近一次提交 ∪ 未跟踪文件；
+ *   ② 新建 js 的「新增行」= 全文（git diff 对未跟踪返回 0 字节，曾致导航 API 判定假绿）。
+ * 本门禁不再自行拼 git 命令——新信号形态只改 scripts/lib/changed-files.js 一处。 */
+function changedFiles() { return cf.changedFiles(ROOT); }
+function addedLinesOf(file) { return cf.addedLinesOf(file, ROOT); }
 
 const NAV_APIS = /navigateTo|redirectTo|switchTab|reLaunch|navigateBack|showModal|showActionSheet|showToast|showLoading|setNavigationBar|setTabBar/;
 
@@ -111,6 +81,8 @@ function audit(X) {
 
   // 检测层守卫：未跟踪文件那一路若被移除，新建页面假绿 ⇒ 直接翻红
   need('signalUntracked', X.signalUntracked === true);
+  // 判定层守卫：未跟踪 js 若退回 git diff（返回空串），导航 API 判定假绿 ⇒ 翻红
+  need('untrackedJsFullText', X.untrackedJsFullText === true);
   need('decisionsFile', X.decisions.length > 800);
   need('decisionsHeader', X.decisions.indexOf('# 口径决策记录') >= 0);
   need('formatDoc', X.decisions.indexOf('能力边界') >= 0 && X.decisions.indexOf('check-decisions.js') >= 0);
@@ -144,10 +116,19 @@ function collect() {
 }
 
 const S = collect();
-// 信号源守卫：`changedFiles()` 必须包含未跟踪文件那一路，否则新建页面会假绿。
-// 读自身源码断言那一路仍在位——避免它像 CRLF 那样被改回去而无人察觉（M2 假绿）。
+// 信号源守卫（两处缺一即翻红）：
+//   ① 共享原语里未跟踪那一路仍在位（数组字面量，防被改回去）；
+//   ② 本门禁确实从共享原语取信号（防有人改回本地 git diff、绕过原语）。
+// 不再只读自身源码——信号实现已下沉，守卫必须跟着下沉，否则就是新的 M2 假绿。
 const UNTRACKED_SIGNAL = "['ls-files', '--others', '--exclude-standard']";
-S.signalUntracked = fs.readFileSync(__filename, 'utf8').indexOf(UNTRACKED_SIGNAL) >= 0;
+const sharedSrc = read(require.resolve('./lib/changed-files'));
+S.signalUntracked =
+  sharedSrc.indexOf(UNTRACKED_SIGNAL) >= 0 &&
+  fs.readFileSync(__filename, 'utf8').indexOf("cf.changedFiles(ROOT)") >= 0;
+// 判定层守卫：addedLinesOf 必须先问 isUntracked、再读全文；删任一步则新建 js 的导航 API 判定失效。
+S.untrackedJsFullText =
+  sharedSrc.indexOf('isUntracked(file, cwd)') >= 0 &&
+  sharedSrc.indexOf("fs.readFileSync(path.join(cwd, file), 'utf8')") >= 0;
 
 const problems = audit(S);
 if (!problems.length) {
@@ -178,7 +159,9 @@ const M = [
   { name: '改了页面 js 的导航 API 但无记录覆盖', patch: { changedFiles: ['miniprogram/pages/mine/index.js'], added: { 'miniprogram/pages/mine/index.js': 'wx.navigateTo({url:...})' } }, judge: b => b.some(x => /covered::miniprogram\/pages\/mine\/index\.js/.test(x)) },
   // 第一性原理实例：新建页面（未跟踪呈现文件）无记录必须翻红——这是本次本质修复的回归测试
   { name: '新建未跟踪 wxml 页面无记录覆盖', patch: { changedFiles: ['miniprogram/pages/newfeature/index.wxml'], added: {} }, judge: b => b.some(x => /covered::miniprogram\/pages\/newfeature\/index\.wxml/.test(x)) },
-  { name: '删掉未跟踪文件信号源（假绿命门）', patch: { signalUntracked: false }, judge: b => b.some(x => /signalUntracked/.test(x)) }
+  { name: '新建未跟踪 js 含导航 API 无记录覆盖（判定残留回归）', patch: { changedFiles: ['miniprogram/pages/newfeature/index.js'], added: { 'miniprogram/pages/newfeature/index.js': 'wx.navigateTo({url:...})' } }, judge: b => b.some(x => /covered::miniprogram\/pages\/newfeature\/index\.js/.test(x)) },
+  { name: '删掉未跟踪文件信号源（假绿命门）', patch: { signalUntracked: false }, judge: b => b.some(x => /signalUntracked/.test(x)) },
+  { name: '删掉未跟踪 js 读全文判定（新增回归）', patch: { untrackedJsFullText: false }, judge: b => b.some(x => /untrackedJsFullText/.test(x)) }
 ];
 M.forEach(mu => {
   const X = Object.assign({}, S, mu.patch);

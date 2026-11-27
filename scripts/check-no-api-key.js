@@ -8,7 +8,8 @@
  *   换句话说：将来谁把 key 硬编码进代码，现存流程不会拦。
  *
  * 本门禁守两条线（缺一不可）：
- *   ① 私有仓全部受跟踪文本文件不得含 sk- 后跟 20 位以上字母数字的明文密钥；
+ *   ① 私有仓受跟踪 + 未跟踪文本文件不得含 sk- 后跟 20 位以上字母数字的明文密钥
+ *      （2026-11-27 推演补：只扫受跟踪文件时，新建未跟踪文件里硬编码 key 会假绿）；
  *   ② publish-release.sh 必须保留那道 grep 自检（防止被删 / 被弱化）。
  *
  * ⚠️ 两个必须知道的点：
@@ -25,7 +26,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const cf = require('./lib/changed-files');
 
 const ROOT = path.resolve(__dirname, '..');
 const PUBLISH = path.join(ROOT, 'scripts/publish-release.sh');
@@ -58,13 +59,12 @@ function audit(files, publishSrc) {
   return probs;
 }
 
-/** git 受跟踪文件清单（-z 规避中文 / 空格路径） */
-function listTracked() {
-  const r = spawnSync('git', ['ls-files', '-z'], {
-    cwd: ROOT, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024
-  });
-  if (r.status !== 0) return null;
-  return String(r.stdout || '').split('\0').filter(Boolean);
+/** 源文件清单：受跟踪 ∪ 未跟踪，走共享原语（-z 规避中文/空格路径）。
+ *  只扫受跟踪文件是同一「表征≠实体」错配：新建未跟踪文件里硬编码 key 会假绿。
+ *  --exclude-standard 自动排除 .gitignore 命中的临时文件，避免误报。 */
+function listSources() {
+  const files = cf.sourceFiles(ROOT);
+  return files.length ? files : null;
 }
 
 function readTextFiles(paths) {
@@ -81,17 +81,17 @@ function readTextFiles(paths) {
 }
 
 /* ================= 跑门禁 ================= */
-const tracked = listTracked();
-if (!tracked) {
-  console.log('✗ 无法读取 git 受跟踪文件清单（非 git 环境？）—— 本门禁按失败处理');
+const sources = listSources();
+if (!sources) {
+  console.log('✗ 无法读取 git 源文件清单（非 git 环境？）—— 本门禁按失败处理');
   process.exit(1);
 }
-const realFiles = readTextFiles(tracked);
+const realFiles = readTextFiles(sources);
 const publishSrc = fs.readFileSync(PUBLISH, 'utf8');
 const problems = audit(realFiles, publishSrc);
 
 if (!problems.length) {
-  console.log('  ✓ 密钥门禁：' + realFiles.length + ' 个受跟踪文本文件无明文 API 密钥，发布自检在位');
+  console.log('  ✓ 密钥门禁：' + realFiles.length + ' 个源文件（受跟踪+未跟踪）无明文 API 密钥，发布自检在位');
 } else {
   console.log('  ✗ 密钥门禁未通过（' + problems.length + ' 项）：');
   problems.forEach(p => console.log('    · ' + p));
