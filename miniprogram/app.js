@@ -499,7 +499,9 @@ App({
       if (!g.bound && !g.demo) {
         this._goBind();
       } else {
-        this._prefetchTabs();
+        /* 错峰到首帧渲染后预热：避免 12 路读请求与首页首屏 + recheckAuth 同时打向冷容器
+           （check-startup-race 守的「连接失败」竞态）。延迟 0 即下一事件循环，不阻塞 onShow。 */
+        setTimeout(() => this._prefetchTabs(), 0);
       }
       return g;
     } catch (e) {
@@ -528,32 +530,63 @@ App({
    * 失败一律吞掉：预热是纯优化，绝不能影响启动。
    */
   _prefetchTabs() {
+    /* 五 Tab 首屏数据预热（2026-11-28，用户「打开后五个页面都开始加载」）
+     * ---------------------------------------------------------------
+     * 登录后把五个 tab 页首屏读接口各打一遍，结果由 request.js 成功分支自动写进
+     * req-cache（读接口 + 白名单 + cache.write）。用户进到对应页时 payload 一致 ⇒
+     * req-cache 直接返回旧值、不再发云函数 ⇒ 切页秒显，不再「点开才转圈」。
+     *
+     * ⚠️ payload 必须与页面首开**逐字对齐**：req-cache key = 接口 + 身份 + stable(payload)，
+     *    多/少一个键（例如把 classId:undefined 写成不传）都算不同 key、预热白做。
+     * ⚠️ 全部失败吞掉、toast:false、不 await —— 纯优化，绝不阻塞登录与首屏。
+     * 由 _bootstrap 在首帧后用 setTimeout(0) 调用，避开启动期的请求风暴。 */
     try {
-      const week = (this.globalData.config && this.globalData.config.currentWeek) || 1;
-      const key = mem.keys.duty(week);
-      if (!mem.read(key)) {
-        api.scheduleListWeek({ week }, { toast: false })
-          .then((r) => { mem.write(key, r); })
-          .catch(() => {});
-      }
-      // 预热通知列表：让「首页 → 查看通知」一进去就有内容，连 media 冷启动都不用等
-      // （解决「点击通知到打开通知页很慢」：首屏直接渲染缓存，后台静默刷新）。
+      const gd = this.globalData || {};
+      const p = gd.profile || {};
+      const cfg = gd.config || {};
+      const week = cfg.currentWeek || 1;
+      const ownCid = (p.classId || cfg.classId || 0);
+      // 冷启动 viewClassId 恒 0；跨班切换由页面自己重拉（needClassReload），预热只覆盖「本班」
+      const viewCid = Number(gd.viewClassId) || 0;
+      const isStaff = p.groupTag === 'X' || !!(this.isSuper && this.isSuper());
+      // 每路独立兜底：一路抛错不影响其余预热
+      const warm = (fn) => {
+        try { Promise.resolve(fn()).catch(() => {}); } catch (e) { /* 预热失败不影响主流程 */ }
+      };
+
+      /* ---- 首页 home：viewClassId() = viewCid || profile.classId ---- */
+      const homeCid = viewCid || ownCid;
+      if (homeCid) warm(() => api.dutyToday({ classId: homeCid }, { toast: false }));
+      warm(() => api.electiveList({}, { toast: false }));
+      if (homeCid) warm(() => api.homeworkFeed({ classId: homeCid }, { toast: false }));
+      // 通知（首页角标 / 信息页通知入口共用），写入 notice 缓存供首帧秒显
       if (!notice.read(0)) {
-        api.msgList({}, { toast: false })
-          .then((list) => { notice.write(list); })
-          .catch(() => {});
+        warm(() => api.msgList({}, { toast: false }).then((list) => { notice.write(list); }));
       }
-      // 预热 dutyToday（2026-11-01 修「首页冷启动慢」）：首页首屏门控依赖它，
-      // 冷启动容器是冷的会 1~3s。登录后趁热预发一次把它暖起来，用户真正进首页再调就命中热容器。
-      // 失败一律吞掉（纯优化，绝不影响启动/首屏）。
-      try {
-        /* v1.0.8.72 修真 bug：这里原写 `g.profile / g.config`，但本作用域没有 g
-           （g 只存在于其它方法），每次都抛 ReferenceError 被下面的 catch 吞掉 ⇒
-           dutyToday 预热从未真正执行，首页冷启动多等一次云函数。改用 this.globalData。 */
-        const gd = this.globalData || {};
-        const cid = (gd.profile && gd.profile.classId) || (gd.config && gd.config.classId) || 0;
-        if (cid) api.dutyToday({ classId: cid }, { toast: false }).catch(() => {});
-      } catch (e) { /* 预热失败不影响主流程 */ }
+
+      /* ---- 课表 timetable：_loadTimetableClasses + _syncFromCloud ---- */
+      warm(() => api.classList({}, { toast: false }));
+      if (homeCid) warm(() => api.courseAllSessions({ classId: homeCid }, { toast: false }));
+
+      /* ---- 信息 classinfo：普通成员 arg={}，教职工带 classId ---- */
+      const infoArg = isStaff && homeCid ? { classId: homeCid } : {};
+      warm(() => api.memberStats(infoArg, { toast: false }));
+      warm(() => api.feeSummary(infoArg, { toast: false }));
+      warm(() => api.classList({ all: true }, { toast: false }));
+      warm(() => api.countdownList({}, { toast: false }));
+
+      /* ---- 值日 duty：页面 payload = { week, classId: cid || undefined } ---- */
+      // 冷启动 cid=0 ⇒ 必须带 undefined 键，否则 req-cache key 与页面首开对不上、预热白做
+      const dutyPayload = viewCid ? { week, classId: viewCid } : { week, classId: undefined };
+      const dutyKey = mem.keys.duty(week);
+      if (!mem.read(dutyKey)) {
+        warm(() => api.scheduleListWeek(dutyPayload, { toast: false })
+          .then((r) => { mem.write(dutyKey, r); }));
+      }
+      warm(() => api.speechList(dutyPayload, { toast: false }));
+
+      /* ---- 我的 mine ---- */
+      warm(() => api.dutyMyStats({}, { toast: false }));
     } catch (e) {
       console.warn('[app] 预热跳过', e);
     }
