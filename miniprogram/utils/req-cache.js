@@ -53,7 +53,6 @@ const ALLOW = {
   'media.msgList': 1, 'media.msgRecycleList': 1,
   'class.list': 1, 'class.detail': 1,
   'fee.getSummary': 1,
-  'homework.list': 1, 'homework.feed': 1,
   'config.get': 1
 };
 

@@ -13,7 +13,7 @@
  * ✅ 本门禁钉的不变式：
  *   ① common/review-demo.js 导出 gateDemoWrite + DEMO_WRITE_ACTIONS；
  *   ② 读操作零开销：`!DEMO_WRITE_SET.has(a)` 的 return 必须早于任何查库；
- *   ③ 名单含全部关键写 action（请假/作业/班费/排班/成员/通知）；
+ *   ③ 名单含全部关键写 action（请假/班费/排班/成员/通知）；
  *   ④ 名单**不得**含必须放行项（login / reviewDemo / switchDemo / switchAccount）——
  *      拦了 login 就进不去，拦了 switchAccount 就卡在演示班出不来；
  *   ⑤ 10 个业务云函数 main 都 require 并调用了 gateDemoWrite；
@@ -33,13 +33,13 @@ const read = (p) => {
 };
 
 /** 必须挂闸的业务云函数（小程序端会调用且含写操作的） */
-const GATED_FNS = ['adjust', 'auth', 'class', 'course', 'duty', 'fee', 'homework', 'media', 'member', 'schedule'];
+const GATED_FNS = ['adjust', 'auth', 'class', 'course', 'duty', 'fee', 'media', 'member', 'schedule'];
 
 /** 必须出现在写名单里的关键 action（跨模块抽查，防被人删空） */
 const MUST_DENY = [
   'leaveApply', 'leaveImageSet', 'leaveApprove', 'leaveMyCancel',   // 请假（本次漏洞）
   'countdownAdd',
-  'submit', 'publish', 'review',                                     // 作业
+  'publish',                                                         // 通用写 action（class/schedule）
   'feeAppendImages', 'setTotal', 'addExpense',                       // 班费
   'electiveSave', 'shiftSet', 'saveHoliday',                         // 课表/调课
   'removeMember', 'setRole', 'setPosition', 'staffDelete', 'staffCode', // 成员/教职工

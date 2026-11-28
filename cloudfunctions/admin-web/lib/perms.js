@@ -25,7 +25,7 @@
 
 /** 页签定义。
  * **顺序口径（2026-11-16 用户要求）：标题字数越少越靠上，同字数保持原相对顺序**——
- *   2 字（概览/成员/请假/班费/通知/作业）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
+ *   2 字（概览/成员/请假/班费/通知）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
  *   账号班级/排班规则/使用统计/课前演讲/操作审计/后台账号）。前端实际导航顺序由
  *   `public/app.js` 的 VIEWS 对象声明顺序决定（那里另有「系统配置」共用 class 权限），
  *   本数组主要供权限解析/navFor 使用，两处顺序须保持一致，改一处必改另一处。 */
@@ -35,7 +35,6 @@ const VIEWS = [
   { key: 'leave',     label: '请假',     desc: '请假记录、代登记、审批' },
   { key: 'fee',       label: '班费',     desc: '班费 / 团费总额与消费流水' },
   { key: 'notice',    label: '通知',     desc: '班级通知发布、删除与回执统计' },
-  { key: 'homework',  label: '作业',     desc: '作业发布、批改与删除' },
   { key: 'countdown', label: '倒数日',   desc: '谁添加了哪些日子（只读）' },
   { key: 'course',    label: '课程表',   desc: '课程与课次维护' },
   { key: 'duty',      label: '值日记录', desc: '值日明细、状态与换人' },
@@ -142,15 +141,14 @@ function isProtectedSuper(member) {
  */
 const POSITION_PERMS = {
   // 辅导员：看全局、管人管请假管钱，但不参与班委的值日排班，也看不到审计
-  '辅导员': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'usage', 'notice', 'homework'],
+  '辅导员': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'usage', 'notice'],
   // 班长兼团支书：班里实际的总负责人，班委能做的事他都要能兜底
-  '班长兼团支书': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'rules', 'usage', 'homework'],
-  '班长': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'rules', 'usage', 'homework'],
-  '团支书': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'rules', 'usage', 'homework'],
+  '班长兼团支书': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'rules', 'usage'],
+  '班长': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'rules', 'usage'],
+  '团支书': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'rules', 'usage'],
   // 副班长：管人与临时调换；**不碰钱、不改排班规则**（规则改动影响所有人的轮次）
   '副班长': ['overview', 'members', 'leave', 'course', 'duty', 'swap', 'countdown'],
   // 学习委员：学业相关（成员、请假、课程表），不碰值与钱
-  // 学习委员不列 homework：小程序 homework.canReview 只认超管 / 班委，后台页签不能突破端上能力
   '学习委员': ['overview', 'members', 'leave', 'course', 'countdown', 'speech'],
   // 生活委员：用户点名——班费 + 排班规则 + 值日记录（顺带给换班，他要知道谁跟谁换了）
   '生活委员': ['overview', 'fee', 'duty', 'rules', 'swap', 'speech'],

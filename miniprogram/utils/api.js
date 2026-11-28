@@ -277,23 +277,6 @@ module.exports = {
   /** 给已有记录补图（管理人；当前 <9 张时才能补；班费/团费都支持） */
   feeAppendImages: C('fee', 'feeAppendImages'),
 
-  /* ---------- 作业提交与管理（2026-10-24） ----------
-   * 🔴 文件一律**不经云函数**：小程序端 `request.uploadFile()` 直传云存储拿 fileID，
-   *    再把 fileID 当字符串交给下面的 action 落库（绕开 256MB 内存 / 60s 超时）。
-   *    大小与格式限制：前端 `utils/homework-limits.js` 提前拦（说人话），
-   *    后端 `common/homework-limit.js` 再判一次（防绕过），两处数值由门禁比对。 */
-  homeworkPublish: C('homework', 'publish'),
-  homeworkList: C('homework', 'list'),
-  homeworkDetail: C('homework', 'detail'),
-  homeworkSubmit: C('homework', 'submit'),
-  homeworkReview: C('homework', 'review'),
-  homeworkDelete: C('homework', 'delete'),
-  /** 首页顶部「提交播报」数据源（2026-10-28）：最近 24h 谁交了哪份作业。
-   *  只有班委 / 超管 / 辅导员拿得到内容，普通成员后端静默回空数组（不报错）。 */
-  homeworkFeed: C('homework', 'feed'),
-  /* ⚠️ 没有 `homeworkPurge`（2026-10-28 删除）：homework 云函数**没有** purge action，
-   *    过期附件清理是 cron-weekly 里的 `purgeHomeworkFiles(pool)` 定时跑的（PURGE 7 天）。
-   *    留一条不存在的映射 = 谁哪天顺手一调就拿到「未知操作」，且错误里看不出是前端写错。 */
   /** 前端远程配置下发（2026-10-26）：公开读 app_config 全表 → {k:v}，超管改库即生效、免审 */
   configGet: C('config', 'get')
 };

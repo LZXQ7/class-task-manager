@@ -76,17 +76,15 @@ if (pullCount >= 2) ok('pullRemoteConfig 至少两处调用（onLaunch + onShow�
 else bad('pullRemoteConfig 调用点不足（期望 ≥2，实际 ' + pullCount + '）');
 
 /* ============================================================
- * ⑤ 首页消费方已迁移（2026-10-28）
+ * ⑤ 首页消费方已下线（2026-10-28 起不再消费 homeBanner，2026-11-28 作业播报也下线）
  * ------------------------------------------------------------
- * 首页顶部原来是远程配置下发的静态欢迎语 homeBanner。用户 2026-10-28 要求把它
- * 换成「作业提交播报」，因此：
- *   · 首页**不再** require remote-config、也不再渲染 homeBanner
- *     （两条横幅叠在一起 = 一进首页两块蓝条，很难看）；
+ * 首页顶部原来是远程配置下发的静态欢迎语 homeBanner，2026-10-28 换成作业提交播报；
+ * 2026-11-28 作业功能整体下线，播报一并删除，首页顶部恢复无横幅。因此：
+ *   · 首页**不再** require remote-config、也不再渲染 homeBanner（避免两条横幅叠加）；
  *   · 远程配置机制**没有停用** —— app.js 仍在 onLaunch / onShow 拉取（见 ④），
  *     以后要做别的免审文案仍可用，只是当前没有页面消费 homeBanner。
- * 播报自身的完整逻辑（游标 / 不重播 / 定时器清理）由 scripts/check-home-feed.js 守。
  * ============================================================ */
-console.log('\n── ⑤ 首页消费方迁移（homeBanner → 作业提交播报）');
+console.log('\n── ⑤ 首页消费方已下线（homeBanner / 作业播报均不渲染）');
 const homeJs = read('miniprogram/pages/home/index.js');
 const homeWxml = read('miniprogram/pages/home/index.wxml');
 const homeWxss = read('miniprogram/pages/home/index.wxss');
@@ -94,17 +92,19 @@ const homeWxss = read('miniprogram/pages/home/index.wxss');
 if (!/require\('\.\.\/\.\.\/utils\/remote-config'\)/.test(homeJs)) {
   ok('首页已不 require remote-config（不再消费 homeBanner）');
 } else {
-  bad('首页仍在 require remote-config —— 静态欢迎语会与作业播报抢同一个位置，删掉');
+  bad('首页仍在 require remote-config —— 静态欢迎语会与顶部内容抢同一个位置，删掉');
 }
 if (!/\{\{homeBanner\}\}/.test(homeWxml)) {
   ok('首页 wxml 不再渲染 homeBanner（静态欢迎语已下线）');
 } else {
   bad('首页 wxml 仍在渲染 homeBanner —— 那是被替换掉的静态欢迎语');
 }
-has(homeWxml, /class="home-feed/, '首页 wxml 有作业提交播报条 .home-feed');
-has(homeJs, /api\.homeworkFeed\(/, '首页通过 api.homeworkFeed 取播报数据');
-has(homeWxss, /\.home-feed\s*\{/, 'home wxss 定义 .home-feed 样式');
-has(homeWxss, /\.home-feed-line\s*\{/, 'home wxss 定义 .home-feed-line 样式');
+if (!/class="home-feed/.test(homeWxml)) ok('首页 wxml 不再有作业播报条 .home-feed');
+else bad('首页 wxml 仍有作业播报条（功能已下线）');
+if (!/api\.homeworkFeed\(/.test(homeJs)) ok('首页不再调用 api.homeworkFeed');
+else bad('首页仍在拉作业播报数据（云函数已删除）');
+if (!/\.home-feed[\s-]/.test(homeWxss)) ok('home wxss 不再定义 .home-feed 系列样式');
+else bad('home wxss 仍有作业播报样式残留');
 
 /* ============================================================
  * ⑥ cloudbaserc.json 已登记 config（部署路径）

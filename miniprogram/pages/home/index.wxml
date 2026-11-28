@@ -31,31 +31,6 @@
     bind:action="onRecoverSelf"
   />
 
-  <!-- 作业提交播报（2026-10-28）：取代原「远程配置横幅」。
-       有同学交了作业 → 逐条滚动展示「张三 提交了《XXX》」，播完自动淡出收起；
-       已播过的用本地游标记着（键含 成员+班级），不会每次进首页重播。
-       点一下进作业页。数据与口径见 index.js 的 _loadHwFeed 注释块。 -->
-  <view data-pressable
-    wx:if="{{hwFeedShow}}"
-    class="home-feed {{hwFeedOut ? 'home-feed-out' : ''}}"
-    hover-class="home-feed-hover"
-    hover-start-time="0"
-    hover-stay-time="60"
-    bindtap="onHwFeedTap"
-  >
-    <app-icon name="bell" variant="brand" size="{{28}}" />
-    <!-- body 定高 + overflow:hidden，track 靠 translateY 上移 = 真正的「滚动」，
-         比逐条做入场动画省节点，也不会因为 wx:for 复用节点导致动画不重播 -->
-    <view class="home-feed-body">
-      <view class="home-feed-track" style="transform: translateY(-{{hwFeedIdx * 40}}rpx)">
-        <view class="home-feed-line" wx:for="{{hwFeedQueue}}" wx:key="key">
-          <text class="home-feed-name">{{item.memberName}}</text>
-          <text class="home-feed-text"> 提交了《{{item.homeworkTitle}}》</text>
-        </view>
-      </view>
-    </view>
-  </view>
-
   <!-- 主内容滚动（v0.7.19 需求④）：spring-scroll 提供边界阻尼回弹；flex:1 填满导航栏以下区域 -->
   <spring-scroll style="display:block;flex:1;min-height:0" class="home-scroll" id="homeMain" bindrefresh="onRefresh">
   <!-- 未绑定 -->

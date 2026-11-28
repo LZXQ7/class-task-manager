@@ -11,7 +11,7 @@
  *    ⚠️ 这个坑特别隐蔽：代码里两段注释都写着「别在这里再写一个 onHide」，还是写了。
  *
  * ② api 映射指向不存在的云函数 action
- *    前端 `api.foo: C('homework','purge')`，后端 homework 里根本没有 purge
+ *    前端 `api.foo: C('fee','notAnAction')`，后端 fee 里根本没有 notAnAction
  *    （真实清理挂在 cron-weekly 的 purgeHomeworkFiles）—— 谁调谁拿到「未知操作」，
  *    而错误文案里看不出是前端写错了名字。2026-10-28 清掉了这条死映射。
  *
@@ -130,8 +130,8 @@ if (!miss) ok('② ' + seen.size + ' 条映射全部能在对应云函数里找�
 
 /* 自证：故意查一个不存在的 action，必须是 false */
 ok('② 自证：hasAction 对不存在的名字返回 false',
-  hasAction(fnSrc('homework') || '', 'definitelyNotAnAction') === false
-  && hasAction(fnSrc('homework') || '', 'publish') === true);
+  hasAction(fnSrc('fee') || '', 'definitelyNotAnAction') === false
+  && hasAction(fnSrc('fee') || '', 'addExpense') === true);
 
 console.log('');
 console.log('通过=' + pass + ' 失败=' + fail);

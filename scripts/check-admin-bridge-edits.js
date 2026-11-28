@@ -5,7 +5,7 @@
  *   S1 票据层真行为 —— 过期 / 换人 / 停用 / 非超管跨班必须验票失败（真跑函数体）；
  *   S2 同源复用 —— 13 个云函数入口都把 event 传给 guard，公共副本无漂移；
  *   S3 权限与二次确认 —— 每条新写路由挂 requirePerm，高危额外挂超管+confirm；
- *   S4 前端入口 —— 六个既有页签 + 新增作业页确有按钮，且提交带 confirm:true。
+ *   S4 前端入口 —— 六个既有页签确有按钮，且提交带 confirm:true。
  *
  * 变异自证见文件末尾：把守卫改坏，判据必须转红。
  */
@@ -92,7 +92,7 @@ t('缺 memberId 不签发', bridgeMod.issueTicket('raw-sid-abc', 0, 2604) === nu
   t('guard 验票失败抛 40001', /后台票据无效或已过期/.test(guardSrc));
 
   const fns = ['adjust', 'auth', 'class', 'stat', 'course', 'member', 'poster',
-    'schedule', 'fee', 'export', 'homework', 'media', 'duty'];
+    'schedule', 'fee', 'export', 'media', 'duty'];
   fns.forEach(function (fn) {
     const src = read('cloudfunctions/' + fn + '/index.js');
     t(fn + ' 入口传 event 给 guard', src.indexOf('await guard.getContext(event)') >= 0);
@@ -115,10 +115,6 @@ t('缺 memberId 不签发', bridgeMod.issueTicket('raw-sid-abc', 0, 2604) === nu
     ['/api/notice/recycle/clear', 'notice'],
     ['/api/notice/:id/delete', 'notice'],
     ['/api/notice/:id/restore', 'notice'],
-    ['/api/homework', 'homework'],
-    ['/api/homework/:id', 'homework'],
-    ['/api/homework/:id/review', 'homework'],
-    ['/api/homework/:id/delete', 'homework'],
     ['/api/speech/generate', 'speech'],
     ['/api/speech/reassign', 'speech'],
     ['/api/speech/swap', 'speech'],
@@ -148,7 +144,7 @@ t('缺 memberId 不签发', bridgeMod.issueTicket('raw-sid-abc', 0, 2604) === nu
   ];
   routes.forEach(function (r) {
     const line = adminIndex.split('\n').filter(function (l) {
-      return l.indexOf("app." + (r[0].indexOf('/api/homework') === 0 && r[0] === '/api/homework' || r[0] === '/api/homework/:id' ? 'get' : 'post') + "('" + r[0] + "'") >= 0;
+      return l.indexOf("app.post('" + r[0] + "'") >= 0;
     })[0] || '';
     t('路由存在 ' + r[0], !!line);
     t('路由挂权限 ' + r[0], line.indexOf("requirePerm('" + r[1] + "')") >= 0);
@@ -164,16 +160,8 @@ t('缺 memberId 不签发', bridgeMod.issueTicket('raw-sid-abc', 0, 2604) === nu
   });
   t('非超管班级覆盖被挡（票据层 S5）', /只有超管（role=ADMIN 且 is_super=1）能覆盖/.test(bridgeSrc));
 
-  // 权限位：作业页签存在且默认给学业相关角色
-  t('perms 含 homework 页签', /key: 'homework'/.test(permsSrc));
-  t('辅导员有作业权限', /'辅导员': \[[^\]]*'homework'/.test(permsSrc));
-  t('学习委员无作业权限（与 homework.canReview 同口径）', !/'学习委员': \[[^\]]*'homework'/.test(permsSrc));
-  t('生活委员无作业权限', !/'生活委员': \[[^\]]*'homework'/.test(permsSrc));
-
   /* ---------------- S4 前端入口 ---------------- */
-  t('前端 VIEWS 含作业页', /homework:\s*\{ title: '作业'/.test(appSrc));
-  t('导航分组含作业', /'notice', 'homework', 'countdown'/.test(appSrc));
-  t('index 注释含作业', /→ 作业 → 倒数日/.test(htmlSrc));
+  t('index 注释已移除作业页', !/→ 作业 →/.test(htmlSrc));
   t('postEdit 强制 confirm:true', /confirm: true, classId: state\.classId/.test(appSrc));
   t('二次确认走站内弹层', /postEdit[\s\S]{0,200}confirmDialog/.test(appSrc));
   t('通知页有发布入口', /id="nt-add"/.test(appSrc) && /api\('\/api\/notice'/.test(appSrc));
@@ -188,7 +176,6 @@ t('缺 memberId 不签发', bridgeMod.issueTicket('raw-sid-abc', 0, 2604) === nu
   t('班级页有口令重置', /data-c-token/.test(appSrc) && /\/token'/.test(appSrc));
   t('成员页有备注入口', /data-m-note/.test(appSrc) && /\/note'/.test(appSrc));
   t('成员页有解绑入口', /data-m-unbind/.test(appSrc) && /\/unbind'/.test(appSrc));
-  t('作业页有发布/批改/删除', /id="hw-add"/.test(appSrc) && /data-hw-review/.test(appSrc) && /data-hw-del/.test(appSrc));
 
   /* ---------------- 变异自证：把守卫改坏，判据必须转红 ---------------- */
   function hasExpiry(src) { return /age > MAX_AGE_MS/.test(src); }

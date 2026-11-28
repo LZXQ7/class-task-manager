@@ -206,7 +206,7 @@ function toast(title, duration) {
  * 进入的 class 104），不是微信的 envVersion === 'trial'。
  *
  * 为什么必须拦：演示班虽是全虚拟数据，但**所有体验者共享同一个班**——
- *   谁传的假条 / 作业附件，后来的体验者都能在列表里看见（违规图事件即由此而来）。
+ *   谁传的假条等附件，后来的体验者都能在列表里看见（违规图事件即由此而来）。
  *
  * 真源：app.globalData.demo，由 auth.login 的 demo 位权威下发（guard.isDemoMember：
  *   生效身份属演示班）、口令页「一键体验」置 true、「切换正式版」清 false。

@@ -42,7 +42,6 @@ const FILES = {
   leave: 'miniprogram/pages/leave/index.js',
   home: 'miniprogram/pages/home/index.js',
   fee: 'miniprogram/pages/fee/index.js',
-  homework: 'miniprogram/pages/homework/detail.js',
   mine: 'miniprogram/pages/mine/index.js',
   roster: 'miniprogram/pages/roster/index.js',
   classes: 'miniprogram/pages/classes/index.js'
@@ -103,9 +102,6 @@ function judge(f) {
   push(hasGuard(f.fee, 'onFeeSubmit() {'), 'fee.onFeeSubmit 入口守卫（不登记消费）');
   push(hasGuard(f.fee, 'onFeePickImage() {'), 'fee.onFeePickImage 入口守卫（不选图）');
   push(hasGuard(f.fee, 'onFeeAppendTap(e) {'), 'fee.onFeeAppendTap 入口守卫');
-  push(hasGuard(f.homework, 'onSubmit() {'), 'homework.onSubmit 入口守卫（不提交）');
-  push(hasGuard(f.homework, 'onChooseFile() {'), 'homework.onChooseFile 入口守卫（不选图）');
-  push(hasGuard(f.homework, 'onChooseDoc() {'), 'homework.onChooseDoc 入口守卫（不选文件）');
   push(hasGuard(f.mine, 'onPickAvatar() {'), 'mine.onPickAvatar 入口守卫（不上传头像）');
   push(hasGuard(f.roster, '_uploadLeaveImage(leaveId) {'), 'roster._uploadLeaveImage 入口守卫');
   push(hasGuard(f.roster, 'onImportPickFile() {'), 'roster.onImportPickFile 入口守卫（不导入）');
@@ -143,9 +139,7 @@ function selfTest() {
     ['删 util.isDemo 定义', 'util',
       (s) => s.replace(/function isDemo\s*\(/, 'function isDemo_BROKEN(')],
     ['去掉 leave.onPickImage 守卫', 'leave',
-      (s) => s.replace(/(onPickImage\(\) \{\s*\n)\s*if \(util\.readonlyBlocked\(\)\) return;[^\n]*\n/, '$1')],
-    ['去掉 homework.onSubmit 守卫', 'homework',
-      (s) => s.replace(/(onSubmit\(\) \{\s*\n)\s*if \(util\.readonlyBlocked\(\)\) return;[^\n]*\n/, '$1')]
+      (s) => s.replace(/(onPickImage\(\) \{\s*\n)\s*if \(util\.readonlyBlocked\(\)\) return;[^\n]*\n/, '$1')]
   ];
   let bad = 0;
   muts.forEach((it) => {

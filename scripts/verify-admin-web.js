@@ -490,7 +490,7 @@ function usageEventMock(s, args) {
       ['fee_open', 'action', 'class', 4, 3], ['fee_open', 'action', 'league', 3, 2],
       ['roster', 'page_view', '', 3, 3], ['notice_open', 'action', '', 2, 2],
       ['timetable', 'page_view', '', 2, 2], ['mine', 'page_view', '', 1, 1],
-      ['about', 'action', '', 1, 1], ['homework_open', 'action', '', 1, 1]
+      ['about', 'action', '', 1, 1], ['fee_open', 'action', '', 1, 1]
     ];
     return [defs.map((d) => ({ event: d[0], kind: d[1], ref: d[2], pv: d[3], uv: d[4], lastTs: '2026-11-08 23:00' })), []];
   }

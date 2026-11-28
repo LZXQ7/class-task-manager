@@ -558,7 +558,6 @@ App({
       const homeCid = viewCid || ownCid;
       if (homeCid) warm(() => api.dutyToday({ classId: homeCid }, { toast: false }));
       warm(() => api.electiveList({}, { toast: false }));
-      if (homeCid) warm(() => api.homeworkFeed({ classId: homeCid }, { toast: false }));
       // 通知（首页角标 / 信息页通知入口共用），写入 notice 缓存供首帧秒显
       if (!notice.read(0)) {
         warm(() => api.msgList({}, { toast: false }).then((list) => { notice.write(list); }));

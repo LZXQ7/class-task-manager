@@ -541,23 +541,6 @@ app.post('/api/notice/:id/restore', requirePerm('notice'), (req, res) => handle(
   bridge.call(req, 'media', 'msgRestore', Object.assign({ noticeId: Number(req.params.id) }, req.body || {}), bridgeClass(req))
 ));
 
-/* ---------- 作业：列表 / 发布 / 批改 / 删除（新增独立页签） ---------- */
-app.get('/api/homework', requirePerm('homework'), (req, res) => handle(res, () =>
-  bridge.call(req, 'homework', 'list', req.query || {}, bridgeClass(req))
-));
-app.get('/api/homework/:id', requirePerm('homework'), (req, res) => handle(res, () =>
-  bridge.call(req, 'homework', 'detail', { id: Number(req.params.id) }, bridgeClass(req))
-));
-app.post('/api/homework', requirePerm('homework'), (req, res) => handle(res, () =>
-  bridge.call(req, 'homework', 'publish', req.body || {}, bridgeClass(req))
-));
-app.post('/api/homework/:id/review', requirePerm('homework'), (req, res) => handle(res, () =>
-  bridge.call(req, 'homework', 'review', Object.assign({ homeworkId: Number(req.params.id) }, req.body || {}), bridgeClass(req))
-));
-app.post('/api/homework/:id/delete', requirePerm('homework'), requireConfirm, (req, res) => handle(res, () =>
-  bridge.call(req, 'homework', 'delete', { homeworkId: Number(req.params.id) }, bridgeClass(req))
-));
-
 /* ---------- 课前演讲：名单编辑 + 设置；清空仅超管 ---------- */
 app.post('/api/speech/generate', requirePerm('speech'), (req, res) => handle(res, () =>
   bridge.call(req, 'schedule', 'speechGenerate', Object.assign({}, req.body || {}), bridgeClass(req))

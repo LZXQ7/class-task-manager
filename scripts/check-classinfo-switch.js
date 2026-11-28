@@ -13,7 +13,7 @@
  *   ② 切班：参数真的换了、班名/人数/班费跟着换、isOtherClass 置位
  *   ③ 🔴 onShow 再跑 load 不被弹回主班（keep 分支）
  *   ④ 看别班时 roster / fee / notice 三个子卡 URL 都带 classId；作业子卡已于
- *      2026-11-02 移除，点 homework 不再跳转（通知于 2026-11-28 恢复）
+ *      2026-11-02 移除、2026-11-28 作业功能整体下线，点 homework 不再跳转（通知已恢复）
  *   ⑤ 🔴 看本班时 URL 必须干净 —— roster 里 `otherClass: classId > 0`，
  *      带自己班 id 会被当成「查看别班」，语义就错了
  *   ⑥ 普通成员：不拉班级列表、请求不带 classId、无 chips
@@ -194,12 +194,12 @@ async function runAll(src, quiet) {
     page.load(); await settle();
     page.onClassPick({ currentTarget: { dataset: { id: 1 } } }); await settle();
     calls.nav.length = 0;
-    ['roster', 'fee', 'notice', 'homework'].forEach((k) =>
+    ['roster', 'fee', 'notice'].forEach((k) =>
       page.onOpen({ currentTarget: { dataset: { key: k } } }));
     ok(calls.nav[0] === '/pages/roster/index?classId=1', '成员页带 classId=1 → ' + calls.nav[0]);
     ok(calls.nav[1] === '/pages/fee/index?classId=1', '班费页带 classId=1 → ' + calls.nav[1]);
     ok(calls.nav[2] === '/pages/notice/index?classId=1', '通知页带 classId=1 → ' + calls.nav[2]);
-    /* 作业子卡仍为移除态；通知已于 2026-11-28 恢复，且按班深链 */
+    /* 作业子卡随功能下线彻底移除；通知已于 2026-11-28 恢复，且按班深链 */
     ok(calls.nav.length === 3, '恢复通知入口后仅 roster/notice/fee 三个子卡跳转（共 ' + calls.nav.length + ' 条）');
   }
 

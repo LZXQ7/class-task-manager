@@ -130,3 +130,12 @@
 - **确认结果**：链路安全口径 = 票据只由后台服务端用 HttpOnly Cookie 中的 sid 签发、60 秒过期、验票回查 admin_session/admin_user/member 三表、票据 memberId 必须与会话一致、非超管不能跨班覆盖 class_id；权限判定仍在后台路由 requirePerm / requireSuperSession，云函数侧只负责「这是一个有效后台账号」。后台页签权限与小程序内部角色判定不一致时，按小程序端真实能力收敛按钮可见性（学习委员不列作业页、调课与备注仅相应角色可见），避免「可点却 403」。
 
 ---
+
+## 2026-11-28 · 作业功能彻底下线 + 新增编辑按钮统一到现有 UI
+
+- **需求原话**：「新 ui、按钮那些和现有 ui 统一；删掉作业，包括小程序。」
+- **我理解的口径**：上一轮 1.0.8.98 给后台新增的编辑入口中，表格行内操作误用了 `btn btn-sm` / `btn btn-sm btn-danger`，而 `admin.css` 从未定义 `.btn-sm`，导致渲染成常规填充按钮，与全站表格操作列的 `.link` / `.link-danger` 文字按钮不一致 ⇒ 统一为 link 体系。作业是用户明确要删的整条产品线，经 AskUserQuestion 定口径：①小程序作业页 + 首页播报/入口 + 后台作业页签 + `homework` 云函数 + 公共限制模块 + `cron-weekly` 的附件回收逻辑全部删除，**数据库历史作业记录与云存储附件保留不清理**（不可逆操作不做）；②首页「张三 提交了《XXX》」播报一并删除；③走完整发版闭环。删除采用「先建判红门禁 → 断后端依赖 → 删前端 → 清门禁断言 → 全量回归」，避免漏改运行时死引用与门禁新红。
+- **触发文件**：`miniprogram/pages/homework/`（整个目录）、`miniprogram/pages/home/index.js`（播报与快捷入口）、`miniprogram/pages/home/index.wxml`、`miniprogram/pages/home/index.wxss`、`miniprogram/app.json`、`miniprogram/app.js`、`miniprogram/app.wxss`、`miniprogram/utils/api.js`、`miniprogram/utils/homework-limits.js`、`miniprogram/utils/req-cache.js`、`cloudfunctions/admin-web/public/app.js`（作业页/VIEWS/埋点标签 + 按钮统一）、`cloudfunctions/admin-web/public/index.html`、`cloudfunctions/admin-web/index.js`、`cloudfunctions/admin-web/lib/perms.js`、`cloudfunctions/homework/`（整个目录）、`cloudfunctions/common/homework-limit.js`、`cloudfunctions/common/review-demo.js`、`cloudfunctions/cron-weekly/index.js`、`scripts/check-homework-removed.js`（新建）、`scripts/check-admin-ui-consistency.js`（新建）、6 个作业专项门禁与 8 处断言修改。
+- **确认结果**：先建 `check-homework-removed.js`（67 红）与 `check-admin-ui-consistency.js`（7 红）判红，再逐项修绿。三个最高风险点已纳入判据：`cron-weekly` 对已删 `homework-limit.js` 的 require、`sync-common.js` 只复制不删除旧副本（16 份需手清）、`check-admin-web.js` 用 `homework_open` 行做变异锚点（删后必须换锚）。历史版本记录（CHANGELOG/HANDOFF/DECISIONS 旧条目）保留不回改。
+
+---

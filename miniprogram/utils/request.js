@@ -209,7 +209,7 @@ function call(name, action, payload, opt) {
 /** 上传本地文件到云存储 */
 function uploadFile(cloudPath, filePath) {
   // 只读预览态（**仅演示班级 demo**，2026-11-16 起不再含 trial 环境）：文件一律不真正上传云存储，
-  // 避免假条、作业附件等违规内容进入共享桶被后续体验者看到。
+  // 避免假条等违规内容进入共享桶被后续体验者看到。
   // 直传云存储不经过云函数，后端无权拦截 —— 这里是唯一闸口。
   if (util && util.isReadonly()) {
     return Promise.reject(mkErr(40099, '演示班级仅预览，图片/文件不会真正上传'));

@@ -10,7 +10,7 @@
  *   A. 从 app.js 提取 _prefetchTabs 函数体，mock api/mem/notice 在 vm 里真跑，
  *      记录所有 api.* 预热调用（方法名 + payload + opt）。
  *   B. 五页首屏数据都必须被预热：
- *      首页  dutyToday / electiveList / homeworkFeed / msgList
+ *      首页  dutyToday / electiveList / msgList（作业播报 2026-11-28 下线）
  *      课表  classList / courseAllSessions / electiveList
  *      信息  memberStats / feeSummary / classList / countdownList
  *      值日  scheduleListWeek / speechList（且 classId 与页面同口径）
@@ -55,7 +55,7 @@ function runPrefetch(appSrc, opt) {
   const calls = [];
   const api = {};
   const API_METHODS = [
-    'dutyToday', 'electiveList', 'homeworkFeed', 'classList',
+    'dutyToday', 'electiveList', 'classList',
     'courseAllSessions', 'memberStats', 'feeSummary', 'countdownList',
     'scheduleListWeek', 'speechList', 'dutyMyStats', 'adjustPending',
     'aiSettingGet', 'testAccountList', 'msgList', 'leaveBoard',
@@ -122,7 +122,6 @@ console.log('');
 /* ---- B. 五页首屏数据覆盖 ---- */
 check('首页 dutyToday 已预热', has('dutyToday'));
 check('首页 electiveList 已预热', has('electiveList'));
-check('首页 homeworkFeed 已预热', has('homeworkFeed'));
 check('首页 msgList 已预热（通知角标/弹窗）', has('msgList'));
 
 check('课表 classList 已预热', has('classList'));
@@ -170,7 +169,6 @@ try {
   // [标签, name, action, 预热 payload, 页面首开 payload] —— 冷启动普通成员口径(viewClassId=0)
   const KEY_PAIRS = [
     ['首页 dutyToday', 'duty', 'today', { classId: 3 }, { classId: 3 }],
-    ['首页 homeworkFeed', 'homework', 'feed', { classId: 3 }, { classId: 3 }],
     ['课表 courseAllSessions', 'course', 'allSessions', { classId: 3 }, { classId: 3 }],
     ['信息 memberStats(普通成员)', 'member', 'stats', {}, {}],
     ['信息 feeSummary(普通成员)', 'fee', 'getSummary', {}, {}],

@@ -565,62 +565,6 @@
   border-radius: 999rpx;
 }
 
-/* ---------- 作业提交播报（2026-10-28，取代原远程配置横幅） ----------
- * 一条浅蓝提示条：左边小铃铛，右边一行滚动文字。
- * 生命周期：出现 → 逐条上滚 → 播完淡出并塌陷高度（.home-feed-out）→ wx:if 整体移除。
- * 🔴 左右 32rpx（全站标准，见 .wrap），绝不贴边。 */
-.home-feed {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12rpx;
-  margin: 16rpx 32rpx 0;
-  padding: 18rpx 28rpx;
-  background: var(--brand-light);
-  border: 2rpx solid var(--brand-light-hover);
-  border-radius: 24rpx;
-  overflow: hidden;
-  /* 收起靠 max-height 塌陷 —— 不能写 height:auto（WXSS 里 auto 不参与过渡）。
-     80rpx = padding 18×2 + 行高 40 + border 2×2，写实测值，写大了收尾会先「空一段」。 */
-  max-height: 80rpx;
-  opacity: 1;
-  /* ⚠️ 必须写**一行**：check-wxss 把「属性值换行」判成「漏了分号」（它对多行 transition
-     的值不友好）。下面 .home-feed-track 的单属性过渡同理只写一行。 */
-  transition: max-height 0.28s ease, margin-top 0.28s ease, padding 0.28s ease, opacity 0.22s ease, border-width 0.28s ease;
-}
-.home-feed-out {
-  max-height: 0;
-  margin-top: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-width: 0;
-  opacity: 0;
-}
-.home-feed-hover { background: var(--brand-light); }
-
-/* 只装一行的高度窗口：多出来的裁掉，track 上移时上一条自然滚出去 */
-.home-feed-body {
-  flex: 1;
-  min-width: 0;
-  height: 40rpx;
-  overflow: hidden;
-}
-.home-feed-track {
-  transition: transform 0.42s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-.home-feed-line {
-  height: 40rpx;
-  line-height: 40rpx;
-  font-size: 26rpx;
-  color: var(--brand-press);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* 人名加粗、「提交了《…》」常规 —— 一眼分得清「谁」和「交了什么」 */
-.home-feed-name { font-weight: 600; }
-.home-feed-text { font-weight: 400; }
-
 /* ===== 关注的学生（2026-11-14 从成员页迁回首页顶部，仅辅导员）=====
  * ⚠️ 这些类是**首页私有**：WXSS 页面级作用域，成员页的同名样式不会跨页生效。
  * 2026-11-14 二次调整：由「头像 + 两行文字」收成单行；

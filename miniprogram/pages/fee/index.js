@@ -5,7 +5,7 @@
  * 设计：顶端 segmented 切换 班费 / 团费（团费仅有权限者可见）；
  *       下方为当前选中经费的 余额 + 消费明细 + 增加消费（管理人）/ 仅查看。
  * ⚠️ 本页是二级页（navigateTo），走系统转场，不用 st-item 入场（见门禁 check-tab-enter ④）。
- *     结构：nav-bar（带回退） + 原生滚动（仿 homework，无 bottom-sheet，无需 page-meta 锁滚动）+ theme 挂卸。
+ *     结构：nav-bar（带回退） + 原生滚动（无 bottom-sheet，无需 page-meta 锁滚动）+ theme 挂卸。
  */
 const api = require('../../utils/api');
 const util = require('../../utils/util');

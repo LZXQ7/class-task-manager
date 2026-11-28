@@ -1157,8 +1157,6 @@ button::after { border: none; }
 .m-press .seg-hover,
 .m-press .tab-item-hover,
 .m-press .np-abtn-hover,
-.m-press .home-feed-hover,
-.m-press .hw-del-hover,
 .m-press .nt-del-hover,
 .m-press .lv-cell-hover,
 .m-press .tt-cell-hover {
@@ -1176,7 +1174,7 @@ button::after { border: none; }
  *    check-wxss 的「跨页借类」保护靠「app.wxss 里出现的类名 = 全局类」来判定，
  *    而这些宿主类大多只存在于**页面级 wxss**（WXSS 是页面作用域）。
  *    若在 app.wxss 里写 `.mb-row { … }`，等于把页面级类**提升成全局**，
- *    破坏「A 页用 B 页定义的类」这条事故防线（作业详情页就栽过：名单竖排堆叠）。
+ *    破坏「A 页用 B 页定义的类」这条事故防线（历史跨页借类曾致名单竖排堆叠）。
  *    `[class~="mb-row"]` 匹配语义与 `.mb-row` 完全一致（class 列表含该词即命中），
  *    但它**不是类定义**，不会污染全局作用域。
  *    ⚠️ WXSS 支持属性选择器（项目规范第 5 条：`+` 与 `[attr~=value]` 可用，
@@ -1210,7 +1208,6 @@ button::after { border: none; }
 .m-press [class~="fee-rec-append"],
 .m-press [class~="fee-rec-del"],
 .m-press [class~="fee-rec-img"],
-.m-press [class~="hw-card"],
 .m-press [class~="im-cancel"],
 .m-press [class~="lh-body"],
 .m-press [class~="lh-cls"],

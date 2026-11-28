@@ -339,7 +339,7 @@
    *    `config`（系统配置）与 `class`（账号班级）同属「班级/系统管理」，共用一个权限。
    */
   /* 导航顺序口径（2026-11-16 用户要求）：**标题字数越少越靠上，同字数保持原相对顺序**。
-   * 即 2 字（概览/成员/请假/班费/通知/作业）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
+   * 即 2 字（概览/成员/请假/班费/通知）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
    * 账号班级/系统配置/排班规则/使用统计/课前演讲/操作审计/后台账号）。「值日记录/换班申请」自然
    * 落在「课程表」下面。⚠️ 只调整声明顺序，key 是 localStorage 里的 state.view，不可改。
    * 改顺序须同步 lib/perms.js 的 VIEWS 数组 + index.html 注释 + check-admin-nav-order。 */
@@ -349,7 +349,6 @@
     leave:     { title: '请假',     perm: 'leave',     render: renderLeave },
     fee:       { title: '班费',     perm: 'fee',       render: renderFee },
     notice:    { title: '通知',     perm: 'notice',    render: renderNotice },
-    homework:  { title: '作业',     perm: 'homework',  render: renderHomework },
     countdown: { title: '倒数日',   perm: 'countdown', render: renderCountdown },
     timetable: { title: '课程表',   perm: 'course',    render: renderTimetable },
     duty:      { title: '值日记录', perm: 'duty',      render: renderDuty },
@@ -402,7 +401,7 @@
    *   日常 8 项（2/2/2/2/3/3/4/4）→ 管理 4 项（4/4/4/4）→ 审计 2 项（4/4）
    */
   var NAV_GROUPS = [
-    { label: '日常', views: ['overview', 'member', 'leave', 'fee', 'notice', 'homework', 'countdown', 'timetable', 'duty', 'swap'] },
+    { label: '日常', views: ['overview', 'member', 'leave', 'fee', 'notice', 'countdown', 'timetable', 'duty', 'swap'] },
     { label: '管理', views: ['class', 'config', 'rules', 'usage', 'speech'] },
     { label: '审计与账号', views: ['audit', 'accounts'] }
   ];
@@ -2173,9 +2172,9 @@
             '<td>' + esc(scope) + '</td>' +
             '<td>' + esc(r.name) + '<span class="muted-note"> · 尾号 ' + esc(r.studentNoTail) + '</span></td>' +
             '<td>' + esc(src) + '</td>' +
-            '<td><button class="btn btn-sm" data-sp-swap="' + r.id +
+            '<td><button class="link" data-sp-swap="' + r.id +
               '" data-sp-name="' + esc(r.name) + '">换人</button> ' +
-            '<button class="btn btn-sm btn-danger" data-sp-del="' + r.id +
+            '<button class="link link-danger" data-sp-del="' + r.id +
               '" data-sp-name="' + esc(r.name) + '">删除</button></td>' +
             '</tr>';
         }).join('') : '<tr><td colspan="6">' + emptyHtml({
@@ -2343,7 +2342,7 @@
             '<td>' + esc(r.scopeText) + '</td>' +
             '<td>' + esc(r.publisherName) + '</td>' +
             '<td>' + ack + '</td>' +
-            '<td><button class="btn btn-sm btn-danger" data-nt-del="' + r.id +
+            '<td><button class="link link-danger" data-nt-del="' + r.id +
               '" data-nt-title="' + esc(r.title) + '">删除</button></td>' +
             '</tr>';
         }).join('') : '<tr><td colspan="6">' + emptyHtml({
@@ -2431,154 +2430,6 @@
           dlg.remove(); toast('已发布'); load();
         });
       };
-    }
-
-    load();
-  }
-
-  /* ---------------- 作业（后台编辑入口，2026-11-28） ----------------
-   * 发布 / 批改 / 删除全部调用小程序 homework 云函数的同名 action，
-   * 经服务端票据桥接执行 —— 后台不另写一份作业表 SQL。
-   */
-  function renderHomework(host) {
-    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
-
-    function load() {
-      api('/api/homework?classId=' + state.classId).then(function (d) {
-        if (!d.ok) { host.innerHTML = errHtml(d); return; }
-        var rows = (d.data && d.data.list) || [];
-        var canReview = !!(d.data && d.data.canReview) || superOnly();
-        var body = rows.length ? rows.map(function (r) {
-          var groups = (r.groups || []).join(' / ');
-          var op = (canReview ? '<button class="btn btn-sm" data-hw-review="' + r.id + '">批改</button> ' : '') +
-            (r.canDelete ? '<button class="btn btn-sm btn-danger" data-hw-del="' + r.id +
-              '" data-hw-name="' + esc(r.title) + '">删除</button>' : '');
-          return '<tr>' +
-            '<td>' + esc(r.title) + '<div class="muted-note">' + esc(r.brief || '') + '</div></td>' +
-            '<td class="td-period">' + esc(r.dueDate) + '</td>' +
-            '<td>' + esc(groups) + '</td>' +
-            '<td>' + (r.closed ? '<span class="tag tag-off">已截止</span>' : '<span class="tag tag-ok">进行中</span>') + '</td>' +
-            '<td>' + op + '</td></tr>';
-        }).join('') : '<tr><td colspan="5">' + emptyHtml({
-          t: '该班还没有作业', d: '点右上角「发布作业」创建，小程序端按组别可见'
-        }) + '</td></tr>';
-
-        host.innerHTML =
-          '<div class="toolbar">' +
-          '<div class="toolbar-left"><span class="muted-note">发布后小程序端按 A / B 组可见，提交文件仍在小程序端上传</span></div>' +
-          '<div class="toolbar-right"><button class="btn" id="hw-refresh">刷新</button> ' +
-          (canReview ? '<button class="btn btn-primary" id="hw-add">发布作业</button>' : '') +
-          '</div></div>' +
-          '<div class="card"><div class="card-hd">作业列表 · 共 ' + rows.length + ' 条</div>' +
-          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-          '<th>标题</th><th>截止时间</th><th>目标组别</th><th>状态</th><th>操作</th>' +
-          '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
-        bind();
-      });
-    }
-
-    function bind() {
-      var rf = $('#hw-refresh', host);
-      if (rf) rf.onclick = function () { load(); };
-      var add = $('#hw-add', host);
-      if (add) add.onclick = function () { openPublish(); };
-      $$('[data-hw-del]', host).forEach(function (b) {
-        b.onclick = function () {
-          postEdit('/api/homework/' + Number(b.dataset.hwDel) + '/delete', {},
-            '删除作业', '删除「' + b.dataset.hwName + '」会一并移除提交记录，不可恢复。', 'L2', load);
-        };
-      });
-      $$('[data-hw-review]', host).forEach(function (b) {
-        b.onclick = function () { openReview(Number(b.dataset.hwReview)); };
-      });
-    }
-
-    function openPublish() {
-      var dlg = document.createElement('div');
-      dlg.className = 'dlg-mask';
-      dlg.innerHTML =
-        '<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="hw-p-hd">' +
-        '<div class="dlg-hd" id="hw-p-hd">发布作业</div>' +
-        '<div class="dlg-bd">' +
-        '<label class="fld">标题<input id="hw-p-title" maxlength="64" placeholder="如：第 3 周语文作业"></label>' +
-        '<label class="fld">简介<input id="hw-p-brief" maxlength="500" placeholder="选填"></label>' +
-        '<label class="fld">截止时间<input id="hw-p-due" placeholder="YYYY-MM-DD HH:mm"></label>' +
-        '<label class="fld">提交组别<select id="hw-p-groups">' +
-        '<option value="ALL">全班（A + B）</option><option value="A">A 组</option>' +
-        '<option value="B">B 组</option><option value="SELF">仅自己</option></select></label>' +
-        '<label class="fld">提交要求<select id="hw-p-req">' +
-        '<option value="NONE">无需上传</option><option value="IMAGE">仅图片</option>' +
-        '<option value="FILE">仅文件</option><option value="EITHER">图片或文件</option></select></label>' +
-        '</div><div class="dlg-ft"><button type="button" class="btn" id="hw-p-cancel">取消</button>' +
-        '<button type="button" class="btn btn-primary" id="hw-p-ok">发布</button></div></div>';
-      document.body.appendChild(dlg);
-      $('#hw-p-cancel', dlg).onclick = function () { dlg.remove(); };
-      dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
-      $('#hw-p-ok', dlg).onclick = function () {
-        var title = $('#hw-p-title', dlg).value.trim();
-        var due = $('#hw-p-due', dlg).value.trim();
-        if (!title) { toast('请填写作业标题', 'err'); return; }
-        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(due)) {
-          toast('截止时间格式应为 YYYY-MM-DD HH:mm', 'err'); return;
-        }
-        var g = $('#hw-p-groups', dlg).value;
-        var groups = g === 'ALL' ? ['A', 'B'] : [g];
-        $('#hw-p-ok', dlg).disabled = true;
-        api('/api/homework', {
-          method: 'POST',
-          body: {
-            title: title,
-            brief: $('#hw-p-brief', dlg).value.trim(),
-            dueDate: due,
-            groups: groups,
-            requireType: $('#hw-p-req', dlg).value
-          }
-        }).then(function (r) {
-          if (!r.ok) { $('#hw-p-ok', dlg).disabled = false; toast(r.errMsg || '发布失败', 'err'); return; }
-          dlg.remove(); toast('已发布'); load();
-        });
-      };
-    }
-
-    function openReview(id) {
-      api('/api/homework/' + id + '?classId=' + state.classId).then(function (d) {
-        if (!d.ok) { toast(d.errMsg || '加载失败', 'err'); return; }
-        var v = d.data || {};
-        var list = (v.list || []).filter(function (x) { return !!x.status; });
-        var body = list.length ? list.map(function (x) {
-          var status = x.status === 'DONE' ? '已通过' : (x.status === 'REJECT' ? '已打回' : '待批改');
-          return '<tr><td>' + esc(x.name) + '<div class="muted-note">' + esc(x.studentNo || '') + '</div></td>' +
-            '<td>' + esc(status) + '</td><td>' +
-            '<button class="btn btn-sm" data-hw-ok="' + x.id + '">通过</button> ' +
-            '<button class="btn btn-sm btn-danger" data-hw-no="' + x.id + '">打回</button></td></tr>';
-        }).join('') : '<tr><td colspan="3">还没有成员提交</td></tr>';
-
-        var dlg = document.createElement('div');
-        dlg.className = 'dlg-mask';
-        dlg.innerHTML = '<div class="dlg" role="dialog" aria-modal="true">' +
-          '<div class="dlg-hd">批改作业 · 已提交 ' + list.length + ' 人</div>' +
-          '<div class="dlg-bd"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-          '<th>成员</th><th>当前状态</th><th>操作</th></tr></thead><tbody>' + body + '</tbody></table></div></div>' +
-          '<div class="dlg-ft"><button type="button" class="btn" id="hw-rv-close">关闭</button></div></div>';
-        document.body.appendChild(dlg);
-        $('#hw-rv-close', dlg).onclick = function () { dlg.remove(); };
-        dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
-        function grade(mid, status) {
-          api('/api/homework/' + id + '/review', {
-            method: 'POST', body: { memberIds: [mid], status: status }
-          }).then(function (r) {
-            if (!r.ok) { toast(r.errMsg || '批改失败', 'err'); return; }
-            toast(status === 'DONE' ? '已通过' : '已打回');
-            dlg.remove(); openReview(id);
-          });
-        }
-        $$('[data-hw-ok]', dlg).forEach(function (b) {
-          b.onclick = function () { grade(Number(b.dataset.hwOk), 'DONE'); };
-        });
-        $$('[data-hw-no]', dlg).forEach(function (b) {
-          b.onclick = function () { grade(Number(b.dataset.hwNo), 'REJECT'); };
-        });
-      });
     }
 
     load();
@@ -4207,10 +4058,6 @@
     timetable: '课程表', timetable_apply: '调课申请', classes: '班级',
     roster: '名册', notice: '通知', bind: '班级绑定', webview: '网页', doc: '文档',
     fee_open: '班费/团费', notice_open: '打开通知', notice_publish: '发布通知',
-    homework_open: '打开作业',
-    /* 2026-10-28：首页「作业提交播报」被点开（跳作业页）。
-     * 缺这条映射统计页会裸奔成 home_feed_tap，门禁 check-admin-web 会判死。 */
-    home_feed_tap: '点开作业播报',
     class_open: '打开班级', roster_open: '打开名册', leave_open: '打开请假',
     /* 1.0.8.32：首页点「关注的学生」就地展开详情（不再跳名册页） */
     pin_open_detail: '查看关注学生详情',

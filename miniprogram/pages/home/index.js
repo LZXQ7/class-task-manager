@@ -10,15 +10,9 @@ const notice = require('../../utils/notice');
 const request = require('../../utils/request');
 const impersonate = require('../../utils/impersonate');
 const theme = require('../../utils/theme');
-/* ⚠️ 本页**不再** require remote-config（2026-10-28）：顶部横幅从「远程配置下发的
- *    静态欢迎语」改成「作业提交播报」。远程配置本身仍在 app.js 的 onLaunch/onShow
- *    全局拉取（60s 节流），机制没有停用，只是首页不再消费 homeBanner。 */
 
-/* 作业提交播报的节奏（毫秒）：每条停留 2.4s（够读一行「张三 提交了《XXX》」），
- * 播完最后一条也停 2.4s 再收起 —— 收起太快会像闪了一下就没了。
- * 单次最多播 5 条：再多用户要站在首页等十几秒，那就不是「播报」而是「刷屏」。 */
-const FEED_STEP_MS = 2400;
-const FEED_OUT_MS = 260;
+/* 首页不再消费 remote-config 的 homeBanner：远程配置仍在 app.js 全局拉取，
+ * 只是顶部横幅随 2026-11-28 作业功能下线一并移除。 */
 const FEED_PLAY_MAX = 5;
 
 /**
@@ -60,12 +54,6 @@ Page({
     pinDetailClassId: 0,
     /* v1.0.8.41：同步传姓名，卡片加载首帧就显示本次点的学生，不残留上一个人 */
     pinDetailName: '',
-    /* 作业提交播报（2026-10-28）：取代原「远程配置横幅」。
-     * show=横条可见；out=收尾淡出；queue=已排好的播报队列（正序，旧的先播）；
-     * idx=当前播到第几条（track 据此 translateY 上滚）。 */
-    hwFeedShow: false,
-    hwFeedOut: false,
-    hwFeedQueue: [],
     hwFeedIdx: 0,
     statusBarHeight: 20,
     // 体验模式标记（与登录 demo 同源）：true 时请假卡/名单展示「体验版常驻」标识（2026-11-12）。
@@ -205,9 +193,6 @@ Page({
   onHide() {
     if (this._leaveWinTimer) { clearTimeout(this._leaveWinTimer); this._leaveWinTimer = null; }
     if (this._doneTimer) { clearTimeout(this._doneTimer); this._doneTimer = null; }
-    /* 播报定时器（2026-10-28）：切走 Tab 必须停 —— 不停的话它会在后台一条条
-     * setData 到隐藏页上，回来看时已经播完、游标也写了，等于这段播报被吞掉。
-     * 停下不写游标（见 _endHwFeed），下次进来从头播。 */
     if (this._feedTimer) { clearTimeout(this._feedTimer); this._feedTimer = null; }
     if (this._audio) { this._audio.stop(); this.setData({ playing: false }); }
   },
@@ -221,9 +206,6 @@ Page({
     const app = getApp();
     if (app.track) app.track.pageView('home');
     app.setTabBar(0);
-    /* 作业提交播报（2026-10-28）：这里原来读的是 remoteConfig 下发的静态欢迎语。
-     * 播报统一由 load() 起（见那边的注释）：它的调用点就在下面几行，
-     * 放在 onShow 会与 load 重复发一次请求。 */
     // v0.7.31：不再立即播 —— 等「身份(app.ready) + 首屏数据(loading=false)」就绪、或 READY_MS 兜底超时再统一开播
     pageAnim.playReady(this, getApp());
     const p = this._applyIdentity();
@@ -329,128 +311,6 @@ Page({
         this.setData({ noticeUnacked: notice.unackedCount(list, meId) });
       })
       .catch(() => {});
-  },
-
-  /* ============================================================
-   * 作业提交播报（2026-10-28 用户需求）
-   * ------------------------------------------------------------
-   * 顶部原来那条「欢迎使用……请按时提交作业」是远程配置下发的静态文案，
-   * 天天同一句。改成动态播报：**本班有同学交了作业，就在这条横条里
-   * 滚动展示一遍「张三 提交了《XXX》」，播完自动收起**，等下一次新提交再出现。
-   *
-   * 三个关键口径：
-   *   ① **谁看过算数** —— 游标落在本地 storage（键含 成员id + 班级id），
-   *      换班 / 换号各记各的；**第一次没游标只记基线不播**（否则新装用户
-   *      一进首页就被灌 5 条别人的历史提交，像出了 bug）。
-   *   ② **播完才推进游标** —— 中途切走（onHide 停表）就不算看过，下次重播；
-   *      反过来说，播报只播一次、播完即消失，不会每次进首页重复刷。
-   *   ③ **能不能看** 由后端判（班委 / 超管 / 辅导员），普通成员静默拿空数组。
-   *      播报内容就是「谁交了」，属于提交名单信息，首页不该绕过那道权限。
-   * ============================================================ */
-
-  /** 拉一次播报数据并按游标决定播不播 */
-  _loadHwFeed() {
-    const app = getApp();
-    if (!app || !app.globalData) return;
-    const p = app.globalData.profile || {};
-    const m = this.data.member || {};
-    const meId = Number(m.id || p.id || 0);
-    // 🔴 按「当前查看班级」分槽记游标（铁律47：游标键含 meId+classId），切班后播报不串班
-    const classId = this.viewClassId();
-    // 身份还没就绪就不拉：拿不到成员/班级就没法分槽记游标，宁可不播
-    if (!meId) return;
-    this._feedKey = 'hwfeed:' + meId + ':' + classId;
-
-    api.homeworkFeed({ classId }, { toast: false })
-      .then((r) => {
-        const list = (r && r.list) || [];
-        if (!list.length) return;                 // 最近没人交：什么都不做
-        const newest = Number(list[0].at) || 0;   // 后端已按时间倒序
-        if (!newest) return;
-
-        let prev = 0;
-        try { prev = Number(wx.getStorageSync(this._feedKey) || 0); } catch (e) { prev = 0; }
-        if (!prev) { this._feedSetCursor(newest); return; }   // ① 首次只记基线
-
-        const fresh = list.filter(x => (Number(x.at) || 0) > prev);
-        if (!fresh.length) return;
-        this._playHwFeed(this._feedBuild(fresh));
-      })
-      .catch((e) => {
-        /* 未绑定（40001/40002）本来就没有播报 —— 首页此时画的是「你还没有绑定班级」，
-         * 报一条红字日志只会污染排查。其余失败必须落日志：
-         * 云函数挂掉时静默会被误判成「没人交作业」，这条线就永远查不出来。 */
-        if (e && (e.errCode === 40001 || e.errCode === 40002)) return;
-        console.error('[home] homeworkFeed 拉取失败', e);
-      });
-  },
-
-  /**
-   * 把后端行整理成播放队列（**正序**，旧的先播）。
-   * 同一人同一份作业只留最近一条：被打回后重交会刷新 updated_at，
-   * 后端因此会返回两条 —— 播成「张三交了 / 张三交了」就太蠢了。
-   */
-  _feedBuild(list) {
-    const seen = {};
-    const out = [];
-    for (const x of list) {                    // list 是倒序（新的在前）
-      const k = x.memberId + '-' + x.homeworkId;
-      if (seen[k]) continue;
-      seen[k] = 1;
-      out.push({
-        key: x.id || (k + '-' + x.at),
-        memberName: x.memberName || '同学',
-        homeworkTitle: x.homeworkTitle || '',
-        at: Number(x.at) || 0
-      });
-    }
-    return out.slice(0, FEED_PLAY_MAX).reverse();
-  },
-
-  /** 逐条滚动播放；播完最后一条再收起（_endHwFeed） */
-  _playHwFeed(queue) {
-    if (!queue || !queue.length) return;
-    if (this._feedTimer) { clearTimeout(this._feedTimer); this._feedTimer = null; }
-    let i = 0;
-    const show = () => {
-      this.setData({ hwFeedIdx: i, hwFeedShow: true, hwFeedOut: false });
-      i += 1;
-      this._feedTimer = setTimeout(() => {
-        if (i < queue.length) show();
-        else this._endHwFeed(queue);
-      }, FEED_STEP_MS);
-    };
-    show();
-  },
-
-  /** 收尾：淡出 + 塌陷高度，然后整体移除（游标在这时才推进） */
-  _endHwFeed(queue) {
-    this.setData({ hwFeedOut: true });
-    this._feedTimer = setTimeout(() => {
-      this.setData({ hwFeedShow: false, hwFeedOut: false, hwFeedQueue: [], hwFeedIdx: 0 });
-      this._feedTimer = null;
-      const last = queue[queue.length - 1];
-      if (last) this._feedSetCursor(Number(last.at) || 0);
-    }, FEED_OUT_MS);
-  },
-
-  /** 写「已播到哪」的游标（秒）。storage 异常不影响播报，吞掉但打日志 */
-  _feedSetCursor(at) {
-    if (!this._feedKey || !at) return;
-    try { wx.setStorageSync(this._feedKey, Number(at) || 0); }
-    catch (e) { console.error('[home] 播报游标写入失败', e); }
-  },
-
-  /** 点播报条 → 去看作业（点开即视为已读，游标立刻推进，避免回来又播一遍） */
-  onHwFeedTap() {
-    const app = getApp();
-    if (app && app.track) app.track.action('home_feed_tap');
-    const q = this.data.hwFeedQueue || [];
-    const last = q[q.length - 1];
-    if (last) this._feedSetCursor(Number(last.at) || 0);
-    if (this._feedTimer) { clearTimeout(this._feedTimer); this._feedTimer = null; }
-    this.setData({ hwFeedShow: false, hwFeedOut: false, hwFeedQueue: [], hwFeedIdx: 0 });
-    wx.navigateTo({ url: '/pages/homework/index', fail: () => {} });
   },
 
   /** 身份指纹：任一维度变化都视为换了身份，需要重拉数据 */
@@ -1159,11 +1019,6 @@ Page({
   },
 
   load(force) {
-    /* 作业提交播报（2026-10-28）：**必须放在 STALE_MS 早退之前**。
-     * 播报是「刚刚有人交作业」的即时信号，跟着首屏缓存跳过一次就失去意义了
-     * （用户切回首页看到的是 20s 前的数据，但播报不该跟着一起过期）。
-     * 请求本身 toast:false、失败静默，不挡首屏渲染。 */
-    this._loadHwFeed();
     /*
      * 需求①「切换页面若无变化则无需重载」：Tab 切换回来时，只要上一次数据还很新鲜
      * （STALE_MS 内拉过），就直接复用已渲染的内容、连请求都不发 —— 切回来「秒显」。
@@ -1744,15 +1599,6 @@ Page({
     if (getApp().track) getApp().track.action('notice_open');
     wx.navigateTo({
       url: '/pages/notice/index',
-      fail: () => wx.switchTab({ url: '/pages/mine/index' })
-    });
-  },
-
-  /** 作业（2026-10-24）：首页快捷入口，全员可见，进入作业列表；发布入口在列表页内（仅班委/超管） */
-  goHomework() {
-    if (getApp().track) getApp().track.action('homework_open');
-    wx.navigateTo({
-      url: '/pages/homework/index',
       fail: () => wx.switchTab({ url: '/pages/mine/index' })
     });
   },

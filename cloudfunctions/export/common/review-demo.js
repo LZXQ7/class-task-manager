@@ -119,8 +119,6 @@ const DEMO_WRITE_ACTIONS = [
   'confirm', 'undoConfirm',
   /* —— fee：班费 —— */
   'addExpense', 'deleteRecord', 'feeAppendImages', 'setTotal',
-  /* —— homework：作业 —— */
-  'publish', 'submit', 'delete', 'review',
   /* —— media：通知 / 附件 —— */
   'msgPublish', 'msgDelete', 'msgRecycleClear', 'publishNotice', 'clearNotices',
   'appNoticePublish', 'deleteAttachment', 'markNoticeRead', 'msgRead', 'msgRestore', 'testRemind',

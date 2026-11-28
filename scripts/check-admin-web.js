@@ -480,7 +480,7 @@ function stillPasses(file, tmpPath) {
       && /memSort: \{ key: 'pv', dir: 'desc' \}/.test(src)
       && /function redrawMemRows/.test(src)
       && /LS_MEM_SORT/.test(src);
-    // 判据四（2026-10-25）：埋点事件中文映射必须全覆盖，删掉任一映射（如 homework_open）
+    // 判据四（2026-10-25）：埋点事件中文映射必须全覆盖，删掉任一映射（如 fee_open）
     //   必须翻脸 —— 否则统计页会漏翻成英文 key（反复翻车的根因）
     const labelOk = eventLabelCoversMiniProgram(src);
     // 判据五（2026-11-16）：班级软删除必须有入口 + L3 勾选确认 + 走新接口，
@@ -882,9 +882,9 @@ t('使用统计：前端渲染成员各功能次数（中文标签 ×N）', () =
 /* ---------------- 使用统计：埋点事件中文映射必须全覆盖（防漏翻，2026-10-25） ---------------- */
 /**
  * 小程序里所有埋点事件键（track.pageView / track.action 的字面量参数）都必须在
- * admin-web 的 EVENT_LABEL 里有中文名，否则统计页会直接显示英文 key（如 homework_open）。
- * 这条门禁就是为堵「新增功能忘加映射」这种反复翻车的漏翻 —— 之前 1.0.8 作业模块上线，
- * 小程序已经 track.action('homework_open')，但 EVENT_LABEL 漏了它，统计页就裸奔成英文。
+ * admin-web 的 EVENT_LABEL 里有中文名，否则统计页会直接显示英文 key（如 fee_open）。
+ * 这条门禁就是为堵「新增功能忘加映射」这种反复翻车的漏翻 —— 历史上曾有模块上线时
+ * 小程序已经 track.action 上报，但 EVENT_LABEL 漏了它，统计页就裸奔成英文。
  */
 function extractEventLabelKeys(adminJsSrc) {
   const blk = /var EVENT_LABEL = \{([\s\S]*?)\};/.exec(adminJsSrc);
@@ -943,13 +943,6 @@ mutateAndExpectFail(
   "return '<span class=\"ev-count\"><b>' + esc(it.label) + '</b> ×' + esc(it.cnt) + '</span>';",
   "return '<span>' + esc(it.label) + '</span>';"
 );
-mutateAndExpectFail(
-  'EVENT_LABEL 漏掉 homework_open（统计页漏翻成英文 key）',
-  'public/app.js',
-  "    homework_open: '打开作业',\n",
-  "    /* 变异：漏翻 */\n"
-);
-
 /* ---------------- 班级软删除（2026-11-16 用户新增需求）---------------- */
 t('班级软删除：接口 / 列表与下拉共用过滤 / 前端 L3 确认齐全', () => {
   const idx = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
