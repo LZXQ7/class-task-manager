@@ -17,6 +17,7 @@ const util = require('../../utils/util');
 const pageAnim = require('../../utils/page-anim');
 const theme = require('../../utils/theme');
 const mem = require('../../utils/mem');
+const notice = require('../../utils/notice');
 
 /** 班级概况这类低频变化的数据：Tab 切回 / 短间隔重进时，新鲜窗口内不打接口（与首页 STALE_MS 同源）。 */
 const STALE_MS = 20000;
@@ -39,6 +40,8 @@ Page({
     stats: null,
     /** 班费余额（api.feeSummary.class.balance = total − 已消费）；拿不到 → null */
     feeBalance: null,
+    /** 通知入口未读角标（与首页角标共用 utils/notice 的按班缓存） */
+    noticeUnacked: 0,
     /**
      * 「班级管理」入口是否可见（2026-10-28 补）：
      * 首页精简后这个入口在首页消失，改挂到本页「班级概况」卡右上角。
@@ -292,8 +295,17 @@ Page({
    *   · fee.getSummary → guard.resolveClassId()：同一套跨班校验
    * 所以普通成员这条路径与改造前逐字等价，不需要后端任何改动。
    */
+  /** 通知角标只读按班缓存，不额外打接口；缓存未到达时保持 0 */
+  _syncNoticeBadge(classId) {
+    const app = getApp();
+    const p = (app && app.globalData && app.globalData.profile) || {};
+    const list = notice.read(0, Number(classId) || 0) || [];
+    this.setData({ noticeUnacked: notice.unackedCount(list, p.id || 0) });
+  },
+
   _loadClassData(classId, force) {
     const cid = Number(classId) || 0;
+    this._syncNoticeBadge(cid);
     const arg = classId ? { classId } : {};
     const key = mem.keys.classinfo(cid);
     const cached = mem.read(key);
@@ -526,6 +538,14 @@ Page({
    */
   onOpen(e) {
     const key = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key) || '';
+    // 通知支持按班查看：本班也要带 classId，短班名只用于导航标题
+    if (key === 'notice') {
+      const hit = (this.data.classList || []).find(c => c.id === this.data.viewClassId);
+      let url = '/pages/notice/index?classId=' + this.data.viewClassId;
+      if (hit && hit.short) url += '&name=' + encodeURIComponent(hit.short);
+      wx.navigateTo({ url, fail: () => {} });
+      return;
+    }
     const map = {
       roster:   '/pages/roster/index',
       fee:      '/pages/fee/index'

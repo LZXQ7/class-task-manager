@@ -83,6 +83,10 @@ Page({
     isSuper: false,
     /** 临时调课入口（2026-11-28）：只读 auth.login 下发的 profile.canShift，后台改权限后无需发版 */
     canShift: false,
+    /** 调课后 5 秒提醒条的排班能力位（同样只读登录下发） */
+    canSchedule: false,
+    canSpeech: false,
+    resyncBar: null,
     /** 辅导员（group_tag='X'）：可跨班查看课表（2026-10 需求） */
     isCounselor: false,
     /** 当前班是否已有课表 —— 由云端同步结果决定（空列表=该班还没有课表 ⇒ 走空态），不再按 classId 写死 */
@@ -157,14 +161,18 @@ Page({
     ],
     shiftSessionLabels: [],
 
-    /* #10 课程表长按弧形菜单 */
-    rmShow: false,
-    rmX: 0,
-    rmY: 0,
-    rmSid: 0,
-    rmItems: [],
-    /* #10 弧形菜单（左下角按钮）的独立状态：与「长按格子」的 rm* 完全分开，
-       两处菜单各开各的，不会互相抢 show。 */
+    /* 课程长按四项动作弹层（1.0.8.93）：不再经过弧形菜单，一步到位 */
+    cellActionShow: false,
+    cellActionSid: 0,
+    /* 临时调课课次分组筛选：默认全部；全班课（空 group_scope）任何筛选都显示 */
+    shiftGroupFilter: 'all',
+    shiftGroupFilters: [
+      { key: 'all', text: '全部' },
+      { key: 'A', text: 'A 组' },
+      { key: 'B', text: 'B 组' }
+    ],
+    shiftPeriodChips: [1, 2, 3, 4, 5],
+    /* #10 弧形菜单仅保留左下角 FAB；课程格子不再接 rm* 状态 */
     fmShow: false,
     fmX: 0,
     fmY: 0,
@@ -256,6 +264,8 @@ Page({
         isAdmin: !!(app && app.isAdmin && app.isAdmin()),
         isSuper: isSuper,
         canShift: !!(p.canShift || isSuper),
+        canSchedule: !!(p.canSchedule || isSuper),
+        canSpeech: !!(p.canSpeech || isSuper),
         isCounselor: firstCounselor,
         canSwitchClass: !!(firstCounselor || isSuper),
         showClassSwitch: !!(firstCounselor || (isSuper && switched))
@@ -1165,17 +1175,25 @@ Page({
     if (key === 'ai') this._loadAiPrompt();
   },
 
-  /** 本周可选课次（picker 用）。按「星期 + 节次」排序，标签一眼能认出是哪节课 */
+  /** 本周可选课次（picker 用）。按 A/B 筛选，全班课（空 group_scope）三种筛选都显示 */
   _syncShiftSessions() {
+    const filter = this.data.shiftGroupFilter || 'all';
     const list = (this._courses || []).slice()
-      .filter(c => !c.movedOut && !c.movedIn) // 调入/调出是显示层产物，不进调课选择器
+      .filter(c => !c.movedOut && !c.movedIn &&
+        (filter === 'all' || !c.groupScope || c.groupScope === 'ALL' || c.groupScope === filter)) // 调入/调出是显示层产物，不进调课选择器
       .sort((a, b) => (a.dayOfWeek - b.dayOfWeek) || (a.period - b.period));
     this._shiftSessions = list;
     const labels = list.map(c => '周' + util.weekdayShort(c.dayOfWeek) + ' 第' + c.period + '节 · '
-      + c.name + (c.groupScope ? '（' + c.groupScope + ' 组）' : ''));
+      + c.name + (c.groupScope ? '（' + c.groupScope + ' 组）' : '（全班课）'));
     let idx = Number(this.data.shiftSessionIndex) || 0;
     if (idx >= list.length) idx = 0;
     this.setData({ shiftSessionLabels: labels, shiftSessionIndex: idx });
+  },
+
+  onShiftGroupFilter(e) {
+    const key = String((e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key) || 'all');
+    this.setData({ shiftGroupFilter: key, shiftSessionIndex: 0 });
+    this._syncShiftSessions();
   },
 
   onShiftPickSession(e) { this.setData({ shiftSessionIndex: Number(e.detail.value) }); },
@@ -1201,77 +1219,48 @@ Page({
     return list[Number(this.data.shiftSessionIndex) || 0] || null;
   },
 
-  /* ---------------- 课程格子触摸转发（2026-11-28 用户口径） ----------------
-   * 用户：「课程长按也要跟左下角按钮一样（按住滑到选项松手即选中），不是现在长按后再点按钮」。
-   * 与 FAB 那套同构：bindlongpress 触发时 #rm-cell 才刚渲染，后续 touch 的 target 仍是
-   * 格子自身（不会冒泡进组件）⇒ 页面全程监听 touch*，用 selectComponent 转发给组件做
-   * 高亮 / 命中判定。touchmove 必须 catch（原生 page 滚动会把课程表带着滑，与 FAB 同坑）。 */
-  onCellTouchStart(e) {
-    const t = (e && e.touches && e.touches[0]) || (e && e.changedTouches && e.changedTouches[0]) || null;
-    this._cellTouch = t ? { x: t.clientX, y: t.clientY } : null;
-  },
-
-  onCellTouchMove(e) {
-    if (!this.data.rmShow) return;   // 菜单未展开：不转发、让 catch 只做拦滚动
-    const t = (e && e.touches && e.touches[0]) || (e && e.changedTouches && e.changedTouches[0]) || null;
-    if (!t) return;
-    const comp = this.selectComponent('#rm-cell');
-    if (comp && comp.moveTo) comp.moveTo(t.clientX, t.clientY);
-  },
-
-  onCellTouchEnd() {
-    if (!this.data.rmShow) return;
-    const comp = this.selectComponent('#rm-cell');
-    if (comp && comp.release) comp.release();
-  },
-
-  /** 长按课表格子 → 弹出弧形菜单（本周调整 / 指定日期 / 取消），选择后再开调课弹层 */
+  /* ---------------- 课程长按四项动作弹层（1.0.8.93） ----------------
+   * 用户口径：长按直接进「仅本周调 / 多个周次 / 本周不上 / 编辑课程」，
+   * 不再先弹三项弧形菜单再点一次。左下角 FAB 的弧形菜单保持原样。 */
   onCellLongPress(e) {
     if (e.currentTarget.dataset.personal) return;   // 个人选修课不参与临时调课
     if (!this.data.canShift) { util.toast('你没有临时调课权限，请联系管理员开通'); return; }
     const sid = Number(e.currentTarget.dataset.sid);
     if (!sid) { util.toast('这个格子没有课，长按无效'); return; }
-    if (!motion.on('radial')) {
-      // 退化：直接打开（原行为）
-      this._syncShiftSessions();
-      this._syncShiftWeekBtns();
-      const idx = (this._shiftSessions || []).findIndex(s => Number(s.sessionId) === sid);
-      this.setData({ shiftShow: true, shiftTab: 'week', shiftSessionIndex: idx >= 0 ? idx : 0, shiftKind: 'OFF' });
-      return;
-    }
-    // 取触点坐标（视口坐标，radial-menu 用 fixed 定位）
-    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || null;
-    const x = t ? t.clientX : ((e.detail && e.detail.x) || 0);
-    const y = t ? t.clientY : ((e.detail && e.detail.y) || 0);
-    this.setData({
-      rmShow: true,
-      rmX: x, rmY: y,
-      rmSid: sid,
-      rmItems: [
-        { key: 'week', label: '本周调整' },
-        { key: 'date', label: '指定日期' },
-        { key: 'cancel', label: '取消' }
-      ]
-    });
+    this.setData({ cellActionShow: true, cellActionSid: sid });
   },
 
-  /* 弧形菜单：选择后打开调课弹层并定位到该课次 */
-  onRmSelect(e) {
-    const key = e.detail.key;
-    this.setData({ rmShow: false });
-    if (!key || key === 'cancel') return;
-    const sid = this.data.rmSid;
+  onCellActionClose() { this.setData({ cellActionShow: false }); },
+
+  onCellAction(e) {
+    const key = String((e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key) || '');
+    const isWeek = key === 'week';
+    const sid = Number(this.data.cellActionSid);
+    this.setData({ cellActionShow: false });
+    if (!key || !sid) return;
+    const course = (this._courses || []).find(c => Number(c.sessionId) === sid);
+    if (!course) { util.toast('没找到这节课，请刷新后再试'); return; }
+
+    if (key === 'edit') {
+      if (course.movedIn) { util.toast('这是调课产生的临时显示，请在调课结果里撤销'); return; }
+      this.setData({ detailShow: true, detail: course });
+      return;
+    }
+
+    // 先把筛选切到这节课所在分组，避免用户先前选了 A 却长按了 B 课导致定位不到
+    this.setData({ shiftGroupFilter: course.groupScope || 'all', shiftSessionIndex: 0 });
     this._syncShiftSessions();
     this._syncShiftWeekBtns();
     const idx = (this._shiftSessions || []).findIndex(s => Number(s.sessionId) === sid);
+    if (idx < 0) { util.toast('这节课不在本周课次里，不能调课'); return; }
     this.setData({
       shiftShow: true,
-      shiftTab: key === 'date' ? 'date' : 'week',
-      shiftSessionIndex: idx >= 0 ? idx : 0,
-      shiftKind: 'OFF'
+      shiftTab: isWeek ? 'week' : (key === 'multi' ? 'multi' : 'week'),
+      shiftSessionIndex: idx,
+      shiftKind: key === 'off' ? 'OFF' : 'MOVE',
+      shiftToWeekIndex: 0
     });
   },
-  onRmClose() { this.setData({ rmShow: false }); },
 
   /** 统一提交：成功后落本地并刷新课表；服务端告警（撞车等）用弹窗说清楚 */
   _applyShift(payload, localItems, tipText, undoInfo) {
@@ -1296,6 +1285,7 @@ Page({
           util.toast(tipText + ((r && r.resetPublish) ? '（需重新发布值日）' : ''));
         }
         this._showUndoBar(undoInfo, tipText);
+        this._showResyncBar(r);
       })
       .catch((e) => {
         this.setData({ shiftSaving: false });
@@ -1319,6 +1309,63 @@ Page({
       this._undoTimer = null;
       this.setData({ undoBar: null });
     }, 8000);
+  },
+
+  /** 调课成功后 5 秒可点击的重排提醒条：点击才按当前游标重排值日/演讲 */
+  _showResyncBar(r) {
+    const info = (r && r.resync) || null;
+    if (this._resyncTimer) { clearTimeout(this._resyncTimer); this._resyncTimer = null; }
+    if (!info || (!info.dutyNoticeId && !info.speechNoticeId)) {
+      this.setData({ resyncBar: null });
+      return;
+    }
+    this.setData({
+      resyncBar: {
+        text: '调课已生效，可同步更新排班',
+        dutyNoticeId: Number(info.dutyNoticeId) || 0,
+        speechNoticeId: Number(info.speechNoticeId) || 0
+      }
+    });
+    this._resyncTimer = setTimeout(() => {
+      this._resyncTimer = null;
+      this.setData({ resyncBar: null });
+    }, 5000);
+  },
+
+  onResyncBarClose() {
+    if (this._resyncTimer) { clearTimeout(this._resyncTimer); this._resyncTimer = null; }
+    this.setData({ resyncBar: null });
+  },
+
+  /** 一次点击依次重排值日/演讲；无对应能力位时后端 40003，跳过即可 */
+  onResyncBar() {
+    if (this._resyncing) return;
+    const bar = this.data.resyncBar;
+    if (!bar) return;
+    const jobs = [];
+    if (this.data.canSchedule && bar.dutyNoticeId) jobs.push({ kind: 'duty', noticeId: bar.dutyNoticeId });
+    if (this.data.canSpeech && bar.speechNoticeId) jobs.push({ kind: 'speech', noticeId: bar.speechNoticeId });
+    if (!jobs.length) { util.toast('你没有排班权限，无法更新排班'); return; }
+    if (this._resyncTimer) { clearTimeout(this._resyncTimer); this._resyncTimer = null; }
+    this._resyncing = true;
+    this.setData({ resyncBar: null });
+    const done = (i) => {
+      if (i >= jobs.length) {
+        this._resyncing = false;
+        util.toast('已按当前序号更新排班');
+        return;
+      }
+      const job = jobs[i];
+      api.scheduleResync(job, { toast: false })
+        .then(() => done(i + 1))
+        .catch((e) => {
+          // 40003 = 该类排班权不在本账号上；跳过，不阻断另一类
+          if (e && e.errCode === 40003) { done(i + 1); return; }
+          this._resyncing = false;
+          util.toast((e && e.errMsg) || '同步排班失败');
+        });
+    };
+    done(0);
   },
 
   onShiftUndoBarClose() {

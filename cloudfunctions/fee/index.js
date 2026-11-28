@@ -23,6 +23,8 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const { getPool } = require('./common/db');
 const guard = require('./common/guard');
+const { NOT_TEST } = require('./common/test-account');
+const systemNotice = require('./common/system-notice');
 const { hasFeePerm } = require('./common/fee-perms');
 const { BizError, ok, fail } = require('./common/resp');
 const reviewDemo = require('./common/review-demo');   // 演示班级写操作硬闸（2026-11-13）
@@ -51,6 +53,36 @@ function feeTotalSetter(type, m) {
   if (guard.isSuper(m)) return true;
   if (type === 'league') return guard.isMonitor(m);           // 班长兼团支书
   return guard.isDutyAdmin(m);                                // 生活委员
+}
+
+/**
+ * 班费 / 团费新增消费通知（2026-11-28）：双记录分层。
+ * 普通成员只收到「新增了一笔消费」，不暴露金额；有登记/明细管理权的人
+ * 另收一条含金额与类型的通知。发布者本人不给自己发明细通知。
+ */
+async function notifyFeeExpense(pool, ctx, type, amount, note) {
+  const me = ctx.member;
+  const classId = guard.classIdOf(ctx);
+  const label = type === 'league' ? '团费' : '班费';
+  const [members] = await pool.query(
+    "SELECT id, role, is_super, group_tag, position, fee_perms FROM member WHERE class_id = ? AND status = 'ACTIVE' AND openid IS NOT NULL AND " +
+      NOT_TEST() + " AND group_tag <> 'X'",
+    [classId]
+  );
+  const detailIds = members.filter(m => m.id !== me.id && feeManager(type, m)).map(m => m.id);
+  const common = { classId, publisherId: me.id };
+  await systemNotice.writeNotice(pool, Object.assign({}, common, {
+    scope: 'ALL',
+    title: label + '新增消费',
+    content: '新增了一笔' + label + '消费，请到班费页查看最新余额。'
+  }));
+  if (detailIds.length) {
+    await systemNotice.writeNotice(pool, Object.assign({}, common, {
+      scope: 'PICK', memberIds: detailIds,
+      title: label + '消费明细',
+      content: '新增一笔' + label + '消费 ¥' + amount + (note ? '（' + note + '）' : '') + '，余额已相应减少。'
+    }));
+  }
 }
 
 /** JSON 列兼容：JSON 列在 dateStrings=true 下可能返回字符串，统一规整成数组 */
@@ -162,6 +194,7 @@ const routes = {
         'INSERT INTO class_fund_record (class_id, type, amount, note, images, operator_id, operator_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
         [classId, type, amount, note, JSON.stringify(images), me.id, me.name || '']
       );
+      await notifyFeeExpense(pool, ctx, type, amount, note);
       console.log(JSON.stringify({ fn: 'fee', action: 'addExpense', by: me.id, classId, type, amount, imgs: images.length, recId: r.insertId }));
       return { id: r.insertId };
     }

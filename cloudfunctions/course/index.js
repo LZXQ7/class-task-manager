@@ -7,6 +7,8 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const { getPool } = require('./common/db');
 const guard = require('./common/guard');
+const { NOT_TEST } = require('./common/test-account');
+const systemNotice = require('./common/system-notice');
 const reviewDemo = require('./common/review-demo');
 const week = require('./common/week');
 const audit = require('./common/audit');
@@ -27,6 +29,59 @@ function parseTimetableXlsx(...args) {
 }
 
 const DAY_TEXT = ['一', '二', '三', '四', '五', '六', '日'];
+
+/**
+ * 调课后的系统通知（2026-11-28）：三条双记录，一条给全班，两条按能力位定向。
+ * 动作通知的 link_url 内嵌 src/to/weeks，5 秒提醒条与信息页按钮都靠它触发
+ * schedule.resyncAfterShift；后端再鉴权 + 以 notice_msg_read 作一次性 claim。
+ */
+async function notifyShiftChange(pool, ctx, cfg, result) {
+  const me = ctx.member;
+  const classId = guard.classIdOf(ctx);
+  const weeks = (result.weeks || []).slice().sort((a, b) => a - b);
+  const src = Number(result.srcWeek) || weeks[0] || 0;
+  const to = Number(result.toWeek) || 0;
+  const [members] = await pool.query(
+    "SELECT id, role, is_super, group_tag, position, speech_perm, shift_perm FROM member WHERE class_id = ? AND status = 'ACTIVE' AND openid IS NOT NULL AND " +
+      NOT_TEST() + " AND group_tag <> 'X'",
+    [classId]
+  );
+  const dutyIds = members.filter(m => m.id !== me.id && (guard.isSuper(m) || guard.isDutyAdmin(m))).map(m => m.id);
+  const speechIds = members.filter(m => m.id !== me.id && guard.canSpeech(m)).map(m => m.id);
+  const currentWeek = week.currentWeek({ term_start: cfg.termStart, total_weeks: cfg.totalWeeks });
+  const label = weeks.length ? '第 ' + weeks.join('、') + ' 周' : '本周';
+  const common = { classId, publisherId: me.id, week: currentWeek };
+
+  // 普通成员：只提醒发生了调课，不暴露轮转/排班细节
+  await systemNotice.writeNotice(pool, Object.assign({}, common, {
+    scope: 'ALL',
+    title: '课表已调整',
+    content: label + '的课表已由有权限的成员调整，请在课表页查看最新安排。'
+  }));
+
+  const query = 'src=' + src + '&to=' + to + '&weeks=' + weeks.join(',');
+  let dutyNoticeId = 0;
+  if (dutyIds.length) {
+    dutyNoticeId = await systemNotice.writeNotice(pool, Object.assign({}, common, {
+      scope: 'PICK', memberIds: dutyIds, needAck: true,
+      title: '是否更新值日排班',
+      content: label + '的课表已调整，是否按当前轮转序号重新安排值日？点击后可一键重排。',
+      linkUrl: 'resync:duty?' + query,
+      linkName: '更新值日排班'
+    }));
+  }
+  let speechNoticeId = 0;
+  if (speechIds.length) {
+    speechNoticeId = await systemNotice.writeNotice(pool, Object.assign({}, common, {
+      scope: 'PICK', memberIds: speechIds, needAck: true,
+      title: '是否更新课前演讲排班',
+      content: label + '的课表已调整，是否按当前轮转序号重新安排课前演讲？点击后可一键重排。',
+      linkUrl: 'resync:speech?' + query,
+      linkName: '更新课前演讲排班'
+    }));
+  }
+  return { dutyNoticeId, speechNoticeId };
+}
 
 async function loadWeekRows(pool, wk, classId) {
   const [rows] = await pool.query(
@@ -886,6 +941,9 @@ const routes = {
           + '第 ' + toPeriod + ' 节（名单不变）');
       }
       const resetPublish = await toDraftWeeks(pool, weeks, classId);
+      const noticeIds = await notifyShiftChange(pool, ctx, cfg, {
+        weeks, kind, toWeek: writeToWeek, srcWeek: srcWeeks[0] || weeks[0] || 0
+      });
       console.log(JSON.stringify({
         fn: 'course', action: 'shiftSet', member: ctx.member.id, classId, kind,
         count: targets.length, weeks, moved: stats.moved, removed: stats.removed
@@ -899,7 +957,14 @@ const routes = {
         moved: stats.moved,
         removed: stats.removed,
         warnings,
-        resetPublish
+        resetPublish,
+        resync: {
+          dutyNoticeId: noticeIds.dutyNoticeId,
+          speechNoticeId: noticeIds.speechNoticeId,
+          weeks: weeks.slice(),
+          srcWeek: srcWeeks[0] || weeks[0] || 0,
+          toWeek: writeToWeek
+        }
       };
     }
   },

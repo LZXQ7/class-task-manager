@@ -151,6 +151,8 @@ module.exports = {
   speechSetSlotRules: C('schedule', 'speechSetSlotRules'),
   speechAiParse: C('schedule', 'speechAiParse'),
   speechAiApply: C('schedule', 'speechAiApply'),
+  /** 调课后 5 秒提醒条 / 通知动作：一次性按当前游标重排值日或演讲 */
+  scheduleResync: C('schedule', 'resyncAfterShift'),
 
   /* ---------- 一键生成 · AI（DeepSeek） ---------- */
   scheduleAiPrompt: C('schedule', 'aiPrompt'),

@@ -275,6 +275,8 @@
   border-radius: 999rpx;
 }
 .nt-btn:active { background: var(--brand-press); }
+/* 系统事件动作按钮（调课后重排值日/演讲） */
+.nt-resync-btn { margin-top: 16rpx; }
 .nt-space { height: 40rpx; }
 /* 超管「清空全部通知」入口：红色弱化文字居中，二次确认后才执行 */
 .nt-clear {

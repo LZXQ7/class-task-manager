@@ -76,3 +76,12 @@
 - **确认结果**：两处 AskUserQuestion 明确收窄：授权层级选「小程序端能力」；课表动作从「发布个人课表到全班」改「仅调课权限」。门禁先判红后修绿：`check-classinfo-fee.js`（20/20）、`check-classinfo-switch.js`（71/0）、`check-shift-perm.js`（12/12，5 变异全抓）。呈现类改动已按当日记录覆盖。
 
 ---
+
+## 2026-11-28 · 调课交互四项玻璃弹层 + A/B 分组筛选 + 通知动作
+
+- **需求原话**：「长按某个课程格子……长按后是这个样式，图片中白色底改成类似于底部导航栏的玻璃样式，仅本周调是这个样式，无需开始节次和结束节次，直接就是节次，一共五大节，1、2、3、4、5，无需调课原因。」「选择课次现在不清晰，ab组都混在一起比较杂乱，要筛选区分 A 组和 B 组，大课默认 AB 组都显示，调大课不论选的 A 组还是 B 组，都会一起调。」「调课应用后下面弹出存在 5 秒的提醒条，可选提醒条点击可同步更新值日和课前演讲。」「信息页增加通知……普通成员的信息页-通知，提醒调课，班费登记新的消费后也会写入通知。再检查还有无其他可以通知的。」
+- **我理解的口径**：① 课程长按不再展开三项弧形菜单，改为一步进入四项玻璃弹层：仅本周调 / 多个周次 / 本周不上 / 编辑课程；左下角 FAB 的弧形菜单保持不变。② 单周次调课只保留五大节 1~5 的落位选择，不出现开始节次 / 结束节次 / 调课原因。③ 临时调课课次选择器默认「全部」，另可筛 A / B；全班课（`group_scope` 为空）在三种筛选下都显示；独立 A/B session 仍按各自节次独立调，不按课程名联动。④ 调课成功后的 5 秒提醒条是可选动作，点击才强制按当前游标重排值日与课前演讲；重排范围为源周 + 目标周，目标周仅在其前一周已有排班时继续轮转。⑤ 通知复用 `notice_msg` + `notice_msg_target` 双记录；调课按能力位分别定向，班费新增消费双记录分层，请假审批仅通知申请人；信息页恢复通知入口。⑥ 动作通知需后端二次鉴权、一次性消费，防止双击与并发重复消耗游标。
+- **触发文件**：`miniprogram/pages/timetable/index.js`、`miniprogram/pages/timetable/index.wxml`、`miniprogram/pages/timetable/index.wxss`、`miniprogram/pages/classinfo/index.js`、`miniprogram/pages/classinfo/index.wxml`、`miniprogram/pages/notice/index.js`、`miniprogram/pages/notice/index.wxml`、`miniprogram/pages/notice/index.wxss`、`miniprogram/utils/notice.js`、`miniprogram/utils/api.js`、`cloudfunctions/common/system-notice.js`、`cloudfunctions/course/index.js`、`cloudfunctions/schedule/index.js`、`cloudfunctions/fee/index.js`、`cloudfunctions/common/review-demo.js`、`scripts/check-shift-ui-v2.js`、`scripts/check-shift-resync.js`、`scripts/check-system-notice.js`、`scripts/check-radial-menu.js`。
+- **确认结果**：用户通过多轮 AskUserQuestion 明确选择「长按直接进入图二弹层」「全班课=空 group_scope」「强制按当前游标重排」「复用 notice_msg 双记录」「请假审批仅通知当事人」「重排源周+目标周且目标周看前一周是否已排」「按能力位分别定向」「班费双记录分层」「A/B 筛选默认全部」，并两次要求继续完成未完成任务。口径录于此，门禁只查可追溯性，不替代正确性判断。
+
+---

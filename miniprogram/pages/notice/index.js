@@ -279,6 +279,27 @@ Page({
       .catch(() => { this._acking = false; });
   },
 
+  /** 系统事件动作通知：调课后按当前游标重排值日 / 演讲（后端一次性消费） */
+  onResync(e) {
+    if (this._resyncing) return;
+    const id = Number(e.currentTarget.dataset.id);
+    const kind = String(e.currentTarget.dataset.kind || '');
+    if (!id || !kind) return;
+    this._resyncing = true;
+    api.scheduleResync({ noticeId: id, kind }, { loading: '更新中' })
+      .then(() => {
+        this._resyncing = false;
+        util.toast('排班已更新');
+        notice.patchAcked(id);
+        const list = this.data.list.map((x) => (x.id === id ? Object.assign({}, x, { acked: true }) : x));
+        this.setData({ list });
+      })
+      .catch((err) => {
+        this._resyncing = false;
+        util.toast((err && err.errMsg) || '更新失败');
+      });
+  },
+
   /**
    * 删除自己收到的这条通知（软删除，仅对自己生效，不影响他人）
    * ----------------------------------------------------------------

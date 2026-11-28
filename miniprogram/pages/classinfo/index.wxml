@@ -85,7 +85,7 @@
       </view>
     </view>
 
-    <!-- 子节点：班级模块入口（「课程表」已于 2026-10-28 下线；「通知/作业」于 2026-11-02 移除） -->
+    <!-- 子节点：班级模块入口（「课程表」已于 2026-10-28 下线；「作业」于 2026-11-02 移除；通知于 1.0.8.93 恢复） -->
     <view class="ci-list">
       <view data-pressable class="ci-item card st-item st-3" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="roster">
         <view class="ci-item-ic"><app-icon name="people" variant="brand" size="{{40}}" /></view>
@@ -96,7 +96,17 @@
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
 
-      <view data-pressable class="ci-item card st-item st-4" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="fee">
+      <view data-pressable class="ci-item card st-item st-4" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="notice">
+        <view class="ci-item-ic"><app-icon name="bell" variant="brand" size="{{40}}" /></view>
+        <view class="ci-item-main">
+          <text class="ci-item-name">通知</text>
+          <text class="ci-item-sub">班级通知与调课提醒</text>
+        </view>
+        <view wx:if="{{noticeUnacked}}" class="ci-badge">{{noticeUnacked}}</view>
+        <app-icon name="arrow-right" variant="gray" size="{{32}}" />
+      </view>
+
+      <view data-pressable class="ci-item card st-item st-5" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onOpen" data-key="fee">
         <view class="ci-item-ic"><app-icon name="tag" variant="brand" size="{{40}}" /></view>
         <view class="ci-item-main">
           <text class="ci-item-name">班费</text>
@@ -106,7 +116,7 @@
       </view>
 
       <!-- 请假 v3（2026-11-01）：普通成员本人申请入口 + 审批人待批入口 -->
-      <view data-pressable wx:if="{{canApply}}" class="ci-item card st-item st-5" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoMyLeave">
+      <view data-pressable wx:if="{{canApply}}" class="ci-item card st-item st-6" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoMyLeave">
         <view class="ci-item-ic"><app-icon name="calendar" variant="brand" size="{{40}}" /></view>
         <view class="ci-item-main">
           <text class="ci-item-name">我的请假</text>
@@ -115,7 +125,7 @@
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>
 
-      <view data-pressable wx:if="{{canApprove}}" class="ci-item card st-item st-6" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoApprove">
+      <view data-pressable wx:if="{{canApprove}}" class="ci-item card st-item st-7" hover-class="tap-hover" hover-start-time="0" hover-stay-time="60" bindtap="onGoApprove">
         <view class="ci-item-ic"><app-icon name="check" variant="brand" size="{{40}}" /></view>
         <view class="ci-item-main">
           <text class="ci-item-name">请假审批</text>

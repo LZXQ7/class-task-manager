@@ -2,7 +2,7 @@
      「在弹层里滑到底 → 后面的页面跟着一起滑」就是这么来的。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(detailShow || formShow || weekPickerShow || shiftShow || calShow || rmShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(detailShow || formShow || weekPickerShow || shiftShow || calShow || cellActionShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <view class="page tt {{tClass}} {{paReady ? (animSeq === 0 ? 'pa-first' : (animSeq === 1 ? 'pa-lite-a' : 'pa-lite-b')) : 'pa-hold'}}">
 
@@ -181,10 +181,6 @@
                   hover-stay-time="60"
                   bindtap="onCell"
                   bindlongpress="onCellLongPress"
-                  bindtouchstart="onCellTouchStart"
-                  catchtouchmove="onCellTouchMove"
-                  bindtouchend="onCellTouchEnd"
-                  bindtouchcancel="onCellTouchEnd"
                 >
                   <view wx:if="{{co.groupScope}}" class="tt-cell-tag">{{co.groupScope}} 组</view>
                   <view wx:elif="{{co.personal}}" class="tt-cell-tag personal-tag">个</view>
@@ -195,7 +191,7 @@
                   <view wx:if="{{co.isHoliday}}" class="tt-cell-holiday">假期</view>
                 </view>
               </block>
-              <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:else class="tt-cell empty" data-r="{{r}}" data-c="{{c}}" bindtap="onCell" bindlongpress="onCellLongPress" bindtouchstart="onCellTouchStart" catchtouchmove="onCellTouchMove" bindtouchend="onCellTouchEnd" bindtouchcancel="onCellTouchEnd"></view>
+              <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:else class="tt-cell empty" data-r="{{r}}" data-c="{{c}}" bindtap="onCell" bindlongpress="onCellLongPress"></view>
             </view>
           </view>
         </view>
@@ -415,6 +411,20 @@
       <!-- ① 本周调整 -->
       <block wx:if="{{shiftTab === 'week' || shiftTab === 'multi'}}">
         <view class="f-block">
+          <text class="f-label">课次分组</text>
+          <view class="f-chips">
+            <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
+              wx:for="{{shiftGroupFilters}}"
+              wx:key="key"
+              class="f-chip chip-motion {{shiftGroupFilter === item.key ? 'on' : ''}}"
+              data-key="{{item.key}}"
+              bindtap="onShiftGroupFilter"
+            >{{item.text}}</view>
+          </view>
+          <text class="f-tip">大课在三种筛选下都会显示，选中 A / B 只影响各自的分组课</text>
+        </view>
+
+        <view class="f-block">
           <text class="f-label">选择课次</text>
           <picker mode="selector" range="{{shiftSessionLabels}}" value="{{shiftSessionIndex}}" bindchange="onShiftPickSession">
             <view class="ts-pick {{shiftSessionLabels.length ? '' : 'ph'}}">
@@ -455,7 +465,7 @@
           </view>
           <view class="f-chips">
             <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
-              wx:for="{{periodChips}}"
+              wx:for="{{shiftPeriodChips}}"
               wx:key="*this"
               class="f-chip chip-motion {{shiftToPeriod === item ? 'on' : ''}}"
               data-value="{{item}}"
@@ -696,15 +706,33 @@
     <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="tt-undo-x" bindtap="onShiftUndoBarClose">✕</text>
   </view>
 
-  <!-- #10 课程表长按弧形菜单：从触点放射性展开「本周调整 / 指定日期 / 取消」 -->
-  <radial-menu
-    id="rm-cell"
-    show="{{rmShow}}"
-    x="{{rmX}}"
-    y="{{rmY}}"
-    items="{{rmItems}}"
-    bind:close="onRmClose"
-    bind:select="onRmSelect"
-  />
+  <!-- 调课后 5 秒提醒条：点击才按当前游标重排值日/演讲，避免默认消耗新号 -->
+  <view wx:if="{{resyncBar}}" class="tt-undo-bar tt-resync-bar">
+    <text class="tt-undo-txt">{{resyncBar.text}}</text>
+    <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="tt-undo-act" bindtap="onResyncBar">同步排班</text>
+    <text hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="tt-undo-x" bindtap="onResyncBarClose">✕</text>
+  </view>
+
+  <!-- 课程长按四项动作弹层：白底改玻璃面板，长按直接进，不再先弹弧形菜单 -->
+  <bottom-sheet show="{{cellActionShow}}" title="调整课程" height="{{620}}" bind:close="onCellActionClose">
+    <view class="cell-act-list">
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cell-act-item" data-key="week" bindtap="onCellAction">
+        <text class="cell-act-title">仅本周调</text>
+        <text class="cell-act-sub">只改当前周，直接选 1~5 节落位</text>
+      </view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cell-act-item" data-key="multi" bindtap="onCellAction">
+        <text class="cell-act-title">多个周次</text>
+        <text class="cell-act-sub">一次勾选要调整的周次</text>
+      </view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cell-act-item" data-key="off" bindtap="onCellAction">
+        <text class="cell-act-title">本周不上</text>
+        <text class="cell-act-sub">只取消这一周这一节</text>
+      </view>
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cell-act-item" data-key="edit" bindtap="onCellAction">
+        <text class="cell-act-title">编辑课程</text>
+        <text class="cell-act-sub">改课程名、教室、周次等信息</text>
+      </view>
+    </view>
+  </bottom-sheet>
 
 </view>

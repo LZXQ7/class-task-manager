@@ -12,8 +12,8 @@
  *   ① 辅导员（groupTag='X'）：chips 建全、默认落主班、数据按 classId 拉
  *   ② 切班：参数真的换了、班名/人数/班费跟着换、isOtherClass 置位
  *   ③ 🔴 onShow 再跑 load 不被弹回主班（keep 分支）
- *   ④ 看别班时仅剩的子卡（roster / fee）URL 都带 classId；通知/作业子卡已于
- *      2026-11-02 移除，点这两个 key 不再跳转
+ *   ④ 看别班时 roster / fee / notice 三个子卡 URL 都带 classId；作业子卡已于
+ *      2026-11-02 移除，点 homework 不再跳转（通知于 2026-11-28 恢复）
  *   ⑤ 🔴 看本班时 URL 必须干净 —— roster 里 `otherClass: classId > 0`，
  *      带自己班 id 会被当成「查看别班」，语义就错了
  *   ⑥ 普通成员：不拉班级列表、请求不带 classId、无 chips
@@ -194,14 +194,13 @@ async function runAll(src, quiet) {
     page.load(); await settle();
     page.onClassPick({ currentTarget: { dataset: { id: 1 } } }); await settle();
     calls.nav.length = 0;
-    ['roster', 'fee'].forEach((k) =>
+    ['roster', 'fee', 'notice', 'homework'].forEach((k) =>
       page.onOpen({ currentTarget: { dataset: { key: k } } }));
     ok(calls.nav[0] === '/pages/roster/index?classId=1', '成员页带 classId=1 → ' + calls.nav[0]);
     ok(calls.nav[1] === '/pages/fee/index?classId=1', '班费页带 classId=1 → ' + calls.nav[1]);
-    /* 通知 / 作业子卡已于 2026-11-02 从「信息」页移除 ⇒ 点这两个 key 不再跳转 */
-    page.onOpen({ currentTarget: { dataset: { key: 'homework' } } });
-    page.onOpen({ currentTarget: { dataset: { key: 'notice' } } });
-    ok(calls.nav.length === 2, '移除通知/作业后仅 roster/fee 两个子卡跳转（共 ' + calls.nav.length + ' 条）');
+    ok(calls.nav[2] === '/pages/notice/index?classId=1', '通知页带 classId=1 → ' + calls.nav[2]);
+    /* 作业子卡仍为移除态；通知已于 2026-11-28 恢复，且按班深链 */
+    ok(calls.nav.length === 3, '恢复通知入口后仅 roster/notice/fee 三个子卡跳转（共 ' + calls.nav.length + ' 条）');
   }
 
   head('⑤ 🔴 看本班时点子卡（roster 里 classId>0 = 查看别班）');
@@ -270,6 +269,8 @@ async function runAll(src, quiet) {
       '成员页 URL 必须带 classId=1，否则进去查的是 class_id=0 → 0 人 → ' + calls.nav[0]);
     page.onOpen({ currentTarget: { dataset: { key: 'fee' } } });
     ok(calls.nav[1] === '/pages/fee/index?classId=1', '班费页同样带 classId=1 → ' + calls.nav[1]);
+    page.onOpen({ currentTarget: { dataset: { key: 'notice' } } });
+    ok(calls.nav[2] === '/pages/notice/index?classId=1', '通知页同样带 classId=1 → ' + calls.nav[2]);
   }
 
   head('⑨ 边界：class.list 返回空');
@@ -367,6 +368,11 @@ async function runAll(src, quiet) {
       name: '只认 dataset 不认组件 detail（class-picker 抛的事件全被丢掉）',
       from: 'const id = Number((e && e.detail && e.detail.id) ||',
       to: 'const id = Number((e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) ||'
+    },
+    {
+      name: '通知子卡退回不跳转（2026-11-28 恢复的通知入口被静默移除）',
+      from: "    if (key === 'notice') {\n      const hit = (this.data.classList || []).find(c => c.id === this.data.viewClassId);\n      let url = '/pages/notice/index?classId=' + this.data.viewClassId;\n      if (hit && hit.short) url += '&name=' + encodeURIComponent(hit.short);\n      wx.navigateTo({ url, fail: () => {} });\n      return;\n    }",
+      to: "    if (key === 'notice') { return; }"
     }
   ];
   let mPass = 0, mFail = 0;

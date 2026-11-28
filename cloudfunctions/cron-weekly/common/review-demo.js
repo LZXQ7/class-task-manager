@@ -135,7 +135,8 @@ const DEMO_WRITE_ACTIONS = [
   'aiApply', 'aiSettingSave', 'aiSettingClear', 'aiSettingTest',
   /* —— schedule：课前演讲写路由（独立 speechAuth，但演示班同样只读）—— */
   'speechGenerate', 'speechReassign', 'speechSwap', 'speechAdd', 'speechRemove', 'speechClear',
-  'speechPublish', 'speechSetSettings', 'speechSetSlotRules', 'speechAiApply'
+  'speechPublish', 'speechSetSettings', 'speechSetSlotRules', 'speechAiApply',
+  'resyncAfterShift'
 ];
 
 const DEMO_WRITE_SET = new Set(DEMO_WRITE_ACTIONS);

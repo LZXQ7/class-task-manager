@@ -1523,6 +1523,29 @@ async function saveSpeechCursors(db, classId, cursors) {
 }
 
 
+/**
+ * 调课后重排周计划（2026-11-28）：源周必排；目标周只有在「前一周已排班」时
+ * 才继续按当前游标轮转。纯函数，门禁用真实函数体回放四种边界。
+ */
+function resyncWeekPlan(weeks, srcWeek, hasPrev) {
+  const src = Number(srcWeek) || Number((weeks || [])[0]) || 0;
+  const list = Array.from(new Set((weeks || []).map(Number).filter(Boolean)));
+  const ordered = [src].concat(list.filter(w => w !== src));
+  const out = [];
+  for (const wk of ordered) {
+    if (wk !== srcWeek && !hasPrev(wk - 1)) continue;
+    out.push(wk);
+  }
+  return out;
+}
+
+/** 某周是否已有排班行：目标周「前一周排过了」才继续轮转的判据 */
+async function hasScheduledRows(pool, kind, classId, wk) {
+  const table = kind === 'speech' ? 'speech' : 'duty';
+  const [rows] = await pool.query('SELECT COUNT(*) AS n FROM ' + table + ' WHERE class_id = ? AND week = ?', [classId, wk]);
+  return Number(rows[0] && rows[0].n) > 0;
+}
+
 const routes = {
   listWeek: {
     auth: { needBind: true },
@@ -1779,7 +1802,10 @@ const routes = {
          * key = `${classDate}|${slotId}`，value = 该槽这批人（roster 元素）。 */
         const slotCache = new Map();
         /* 轮转起点 = 本周快照（重复生成同一周 ⇒ 幂等）；无快照则接着全局游标。 */
-        curStart = await loadWeekCursors(conn, classId, wk, loadCursors(cfg));
+        // 1.0.8.93 调课后强制重排：跳过同周幂等快照，直接以当前全局游标起跑，名单按预期后移。
+        curStart = payload.forceFromCurrent
+          ? loadCursors(cfg)
+          : await loadWeekCursors(conn, classId, wk, loadCursors(cfg));
         const state = buildState(roster, curStart);
         /*
          * ⚠️ v0.7.23 删掉了这里原有的「全员 mark > 0 → 全班 duty_count 清零，从 1 号重开」；
@@ -3109,7 +3135,10 @@ const routes = {
           'SELECT pending_cursors FROM speech_publish WHERE class_id = ? AND week < ? AND pending_cursors IS NOT NULL ORDER BY week DESC LIMIT 1',
           [classId, wk]
         );
-        const start = generationStartOf(pubRows[0] && pubRows[0].base_cursors, prevRows[0] && prevRows[0].pending_cursors, current);
+        // 1.0.8.93 调课后强制重排：不再回 base/prevPending，直接按当前 speech_cursor 起跑。
+        const start = payload.forceFromCurrent
+          ? { start: current, base: current }
+          : generationStartOf(pubRows[0] && pubRows[0].base_cursors, prevRows[0] && prevRows[0].pending_cursors, current);
         if (start.stale) console.log(JSON.stringify({ fn: 'schedule', action: 'speechGenerate', classId, week: wk, staleBase: true, ignoredBase: pubRows[0].base_cursors, usedPrev: prevRows[0].pending_cursors, current }));
 
         /* ④ 筛场次骨架 + 轮转选人（默认每场 2 人；「排班方式」里 need=1 的格子只排 1 人） */
@@ -4009,6 +4038,78 @@ const routes = {
       const pool = getPool();
       await pool.query('DELETE FROM ai_setting WHERE member_id = ?', [ctx.member && ctx.member.id]);
       return { configured: false, keyMask: '' };
+    }
+  },
+
+  /**
+   * 调课后的一次性重排动作（2026-11-28）：5 秒提醒条与信息页动作按钮共用。
+   * notice_msg_read 是 claim —— 写入成功即占住这次动作；排班失败则删掉 claim 允许重试。
+   * 能力位在后端二次鉴权，前端传 kind 不能提权。
+   */
+  resyncAfterShift: {
+    auth: { needBind: true },
+    handler: async (payload, ctx) => {
+      const me = guard.requireBind(ctx);
+      const kind = payload.kind === 'speech' ? 'speech' : 'duty';
+      if (kind === 'duty') guard.requireScheduleAuth(ctx); else guard.requireSpeechAuth(ctx);
+      const noticeId = Number(payload.noticeId);
+      if (!noticeId) throw new BizError(41001, '参数错误');
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT n.id, n.class_id, n.link_url, n.publisher_id,
+                t.member_id AS target_id, r.member_id AS read_id
+           FROM notice_msg n
+           LEFT JOIN notice_msg_target t ON t.notice_id = n.id AND t.member_id = ?
+           LEFT JOIN notice_msg_read r ON r.notice_id = n.id AND r.member_id = ?
+          WHERE n.id = ? LIMIT 1`,
+        [me.id, me.id, noticeId]
+      );
+      const hit = rows[0];
+      if (!hit) throw new BizError(41001, '通知不存在');
+      const m = /^resync:(duty|speech)\?(.+)$/.exec(String(hit.link_url || ''));
+      if (!m || m[1] !== kind) throw new BizError(41001, '这条通知没有重排动作');
+      // 动作通知按能力位 PICK 定向；发布者本人可用 5 秒提醒条直接消费同一次动作。
+      if (!hit.target_id && Number(hit.publisher_id) !== me.id) throw new BizError(40003, '你不是这条重排通知的接收人');
+      if (hit.read_id) throw new BizError(41001, '这条重排提醒已处理过');
+
+      const q = {};
+      m[2].split('&').forEach((part) => {
+        const i = part.indexOf('=');
+        if (i > 0) q[part.slice(0, i)] = decodeURIComponent(part.slice(i + 1));
+      });
+      const weeks = String(q.weeks || '').split(',').map(Number).filter(Boolean);
+      const src = Number(q.src) || weeks[0] || 0;
+      if (!weeks.length) throw new BizError(41001, '这条通知没有有效周次');
+      const classId = guard.classIdOf(ctx);
+
+      const [claim] = await pool.query(
+        'INSERT IGNORE INTO notice_msg_read (notice_id, member_id) VALUES (?, ?)',
+        [noticeId, me.id]
+      );
+      if (!claim.affectedRows) throw new BizError(41001, '这条重排提醒已处理过');
+
+      const checked = {};
+      for (const wk of weeks) checked[wk] = await hasScheduledRows(pool, kind, classId, wk - 1);
+      const plan = resyncWeekPlan(weeks, src, wk => !!checked[wk]);
+      const applied = [];
+      const skipped = weeks.filter(wk => plan.indexOf(wk) < 0 && wk !== src);
+      try {
+        for (const wk of plan) {
+          if (kind === 'duty') {
+            // 只删目标周快照：generate 在 forceFromCurrent 下直接用全局游标起跑，名单后移。
+            await pool.query('DELETE FROM duty_week_cursor WHERE class_id = ? AND week = ?', [classId, wk]);
+            await routes.generate.handler({ week: wk, forceFromCurrent: true }, ctx);
+          } else {
+            await routes.speechGenerate.handler({ week: wk, forceFromCurrent: true }, ctx);
+          }
+          applied.push(wk);
+        }
+      } catch (e) {
+        await pool.query('DELETE FROM notice_msg_read WHERE notice_id = ? AND member_id = ?', [noticeId, me.id]);
+        throw e;
+      }
+      console.log(JSON.stringify({ fn: 'schedule', action: 'resyncAfterShift', member: me.id, classId, kind, noticeId, applied, skipped }));
+      return { kind, applied, skipped, noticeId };
     }
   }
 };

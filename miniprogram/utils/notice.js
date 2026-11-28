@@ -65,6 +65,8 @@ function estimateLines(text) {
 function toItems(list) {
   return (list || []).map(x => {
     const ackList = (x.ackList || []).map(a => ({ name: a.name, seq: a.seq || 0 }));
+    // 系统事件动作通知（2026-11-28）：link_url = resync:duty|speech?...，通知页据此渲染重排按钮
+    const resync = /^resync:(duty|speech)[:?]/.exec(String(x.linkUrl || ''));
     // 确认人序号预览：最多展示前 12 个，多了折叠成「+N」，避免一条通知占半屏
     const seqs = ackList.map(a => a.seq);
     const preview = seqs.slice(0, 12).join('、');
@@ -75,6 +77,7 @@ function toItems(list) {
       // 否则 WXML 里 `item.images.length` 在 undefined 上静默出错
       images: Array.isArray(x.images) ? x.images : [],
       linkLabel: x.linkName || '在线文档',
+      resyncKind: resync ? resync[1] : '',
       // 标题选填（2026-09-25）：没填标题就用内容前 16 字兜底展示
       titleText: String(x.title || '').trim() || String(x.content || '').trim().slice(0, 16) || '班级通知',
       // 回执可见性（需求②）：只有发布人自己或超管能看「多少人确认 + 确认人序号/名字」，

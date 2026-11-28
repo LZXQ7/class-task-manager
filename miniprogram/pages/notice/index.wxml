@@ -107,6 +107,9 @@
         </view>
 
         <!-- 金山文档等外链：小程序打不开浏览器页面，只能复制后到浏览器打开 -->
+      <!-- 系统事件动作通知：一次点击后端二次鉴权并消费，重复点击直接提示已处理 -->
+      <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.resyncKind && !item.acked}}" class="nt-btn nt-resync-btn" data-id="{{item.id}}" data-kind="{{item.resyncKind}}" bindtap="onResync">{{item.linkLabel}}</view>
+
       <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:if="{{item.linkUrl}}" class="nt-link" data-url="{{item.linkUrl}}" bindtap="onLink">
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
         <text class="nt-linktext">{{item.linkLabel}}</text>
