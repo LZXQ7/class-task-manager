@@ -67,3 +67,12 @@
 - **确认结果**：用户以 bug 报告 + 体验口径形式直接授权，无需选择。两个反馈回路均先判红再修：`check-speech-rotate-order.js`（症状回放按学号复现 2→56、按 id 得 56→2 + 两处 SQL 接线 + 4 变异，红→绿）、`check-radial-menu.js` 扩展 `cellTouchForward`（判据红 + 3 变异，红→绿）。诊断阶段向用户展示了根因定位（SQL 排序字段 / 格子缺 touch 转发），用户未要求改口径。
 
 ---
+
+## 2026-11-28 · 信息页班费显示「剩余班费」 + 后台单独授予「临时调课」
+
+- **需求原话**：①「小程序信息页，班费下面……当前班费显示剩余班费」（附截图圈出「当前班费 ¥2800」）；②「后台管理页面，成员页，编辑成员可增加权限，设置课程表、调课」；追问后收窄为「仅调课权限吧」；③「后台页面要和小程序相照应，就是我在后台给谁权限，谁的小程序页面就会有相应权限的按钮，而不是每次都要更新小程序再上传审核」。
+- **我理解的口径**：① 信息页那行读数必须是**余额**（后端 `feeSummary.class.balance = total − 已消费`）而不是总额，文案同步改「剩余班费」；字段名 `feeTotal` → `feeBalance`，避免状态语义漂移（M5）。② 只做**临时调课**一项，不做「设置课程表」；沿用 `speech_perm` 的「后台单独授予 + 登录实时下发」模式：写 `member.shift_perm`，`auth.login` 每次下发 `profile.canShift`，小程序课表页入口只读下发值——**后台改权限后无需发版/审核**。③ 不放宽 `requireCommittee`（还守着请假登记等），只给 `course.shiftSet/shiftRemove` 新增 `needShiftAuth`；原有班委的后端调课权不变，小程序入口仍维持「超管 + 被授权者」的窄口径，避免一次改动让所有班委突然多按钮。
+- **触发文件**：`miniprogram/pages/classinfo/index.wxml`（文案 + `feeBalance` 绑定）、`miniprogram/pages/classinfo/index.js`、`cloudfunctions/admin-web/public/app.js`（成员编辑「单独授予权限（临时调课）」勾选框、列表 `+临时调课` 标签）、`cloudfunctions/admin-web/lib/mod-member.js`、`cloudfunctions/common/guard.js`、`cloudfunctions/course/index.js`、`cloudfunctions/auth/index.js`、`miniprogram/pages/timetable/index.{js,wxml}`、`scripts/migrate-shift-perm.sql`。
+- **确认结果**：两处 AskUserQuestion 明确收窄：授权层级选「小程序端能力」；课表动作从「发布个人课表到全班」改「仅调课权限」。门禁先判红后修绿：`check-classinfo-fee.js`（20/20）、`check-classinfo-switch.js`（71/0）、`check-shift-perm.js`（12/12，5 变异全抓）。呈现类改动已按当日记录覆盖。
+
+---

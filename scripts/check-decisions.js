@@ -155,7 +155,9 @@ const M = [
   { name: '删掉记录体的「确认结果」要素', patch: { decisions: S.decisions.replace('- **确认结果**：「按推荐来」→「我不知道三个都有什么区别，按最优的来」→「确认，开始执行 (Recommended)」。', '- **答复结果**：「按推荐来」。') }, judge: b => b.some(x => /field_0_确认结果/.test(x)) },
   { name: '删掉「能力边界」说明（弱化自我约束）', patch: { decisions: S.decisions.replace('能力边界', '说明') }, judge: b => b.some(x => /formatDoc/.test(x)) },
   { name: '改了呈现文件但无记录覆盖', patch: { changedFiles: ['miniprogram/pages/duty/index.wxml'], added: {} }, judge: b => b.some(x => /covered::miniprogram\/pages\/duty\/index\.wxml/.test(x)) },
-  { name: '改了后台呈现文件但无记录覆盖', patch: { changedFiles: ['cloudfunctions/admin-web/public/app.js'], added: {} }, judge: b => b.some(x => /covered::cloudfunctions/.test(x)) },
+  // 变异样本须选「确定不在任何真实记录触发文件里」的虚构路径：曾用真实 app.js，
+  // 一旦当日记录覆盖了它，audit 正确判已覆盖 ⇒ 自证误报漏放（测试数据污染）。
+  { name: '改了后台呈现文件但无记录覆盖', patch: { changedFiles: ['cloudfunctions/admin-web/public/_probe_uncovered.js'], added: {} }, judge: b => b.some(x => /covered::cloudfunctions\/admin-web\/public\/_probe_uncovered\.js/.test(x)) },
   { name: '改了页面 js 的导航 API 但无记录覆盖', patch: { changedFiles: ['miniprogram/pages/mine/index.js'], added: { 'miniprogram/pages/mine/index.js': 'wx.navigateTo({url:...})' } }, judge: b => b.some(x => /covered::miniprogram\/pages\/mine\/index\.js/.test(x)) },
   // 第一性原理实例：新建页面（未跟踪呈现文件）无记录必须翻红——这是本次本质修复的回归测试
   { name: '新建未跟踪 wxml 页面无记录覆盖', patch: { changedFiles: ['miniprogram/pages/newfeature/index.wxml'], added: {} }, judge: b => b.some(x => /covered::miniprogram\/pages\/newfeature\/index\.wxml/.test(x)) },

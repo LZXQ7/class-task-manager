@@ -100,7 +100,7 @@
         <view class="ci-item-ic"><app-icon name="tag" variant="brand" size="{{40}}" /></view>
         <view class="ci-item-main">
           <text class="ci-item-name">班费</text>
-          <text class="ci-item-sub">{{feeTotal != null ? '当前班费 ¥' + feeTotal : '班费收支与余额'}}</text>
+          <text class="ci-item-sub">{{feeBalance != null ? '剩余班费 ¥' + feeBalance : '班费收支与余额'}}</text>
         </view>
         <app-icon name="arrow-right" variant="gray" size="{{32}}" />
       </view>

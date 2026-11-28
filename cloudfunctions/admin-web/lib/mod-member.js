@@ -42,6 +42,8 @@ function maskMember(r) {
     feePerms: normalizeFeePerms(r.fee_perms),
     // 后台单独授予的课前演讲排班权（2026-11-17）：只额外授予；学习委员/生活委员/超管本就自带
     speechPerm: Number(r.speech_perm) === 1,
+    // 后台单独授予的临时调课权（2026-11-28）：auth.login 会实时下发到小程序
+    shiftPerm: Number(r.shift_perm) === 1,
     bound: !!r.openid,
     lastDutyAt: typeof r.last_duty_at === 'string' ? r.last_duty_at.slice(0, 10) : r.last_duty_at
   };
@@ -186,6 +188,9 @@ function validate(patch) {
   if (patch.speechPerm !== undefined) {
     if (typeof patch.speechPerm !== 'boolean') throw new BizError(40001, '权限格式不合法');
   }
+  if (patch.shiftPerm !== undefined) {
+    if (typeof patch.shiftPerm !== 'boolean') throw new BizError(40001, '权限格式不合法');
+  }
   return patch;
 }
 
@@ -211,6 +216,7 @@ async function updateMember(id, patch, session, req) {
     delete patch.dutyOff;
     delete patch.feePerms;
     delete patch.speechPerm;
+    delete patch.shiftPerm;
   }
 
   const sets = [];
@@ -227,6 +233,7 @@ async function updateMember(id, patch, session, req) {
   if (patch.dutyOff !== undefined) put('duty_off', patch.dutyOff ? 1 : 0);
   if (patch.feePerms !== undefined) put('fee_perms', stringifyFeePerms(patch.feePerms));
   if (patch.speechPerm !== undefined) put('speech_perm', patch.speechPerm ? 1 : 0);
+  if (patch.shiftPerm !== undefined) put('shift_perm', patch.shiftPerm ? 1 : 0);
 
   // is_super 一律走单独的 grant 接口，不在通用 patch 里顺手改 ——
   // 超级管理员是整个后台的权限根，不能当普通字段随手保存。
@@ -304,6 +311,7 @@ async function addMember(data, session, req) {
   if (!permsMod.has(session && session.perms, 'members.grant')) {
     delete data.feePerms;
     delete data.speechPerm;
+    delete data.shiftPerm;
   }
   const classId = Number(data.classId);
   if (!classId) throw new BizError(40001, '请选择班级');
@@ -313,7 +321,7 @@ async function addMember(data, session, req) {
   if (dup.length) throw new BizError(40001, '学号已存在');
 
   const [r] = await pool.query(
-    'INSERT INTO member (class_id, name, student_no, group_tag, role, position, status, fee_perms, speech_perm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO member (class_id, name, student_no, group_tag, role, position, status, fee_perms, speech_perm, shift_perm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       classId,
       data.name,
@@ -323,7 +331,8 @@ async function addMember(data, session, req) {
       data.position || '',
       data.status || 'ACTIVE',
       stringifyFeePerms(data.feePerms),
-      data.speechPerm ? 1 : 0
+      data.speechPerm ? 1 : 0,
+      data.shiftPerm ? 1 : 0
     ]
   );
   await logAction(session, {

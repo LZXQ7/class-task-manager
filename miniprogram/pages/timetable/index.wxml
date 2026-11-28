@@ -203,7 +203,7 @@
     </view>
 
     <view wx:if="{{showScrollHint}}" class="tt-scroll-hint">← 左右滑动可查看周六 / 周日 →</view>
-    <view wx:if="{{isSuper}}" class="tt-scroll-hint">长按某个格子可以快速临时调课</view>
+    <view wx:if="{{canShift && hasTimetable}}" class="tt-scroll-hint">长按某个格子可以快速临时调课</view>
 
     <!-- 分组课提示 -->
     <view wx:if="{{tip}}" class="tt-wrap">

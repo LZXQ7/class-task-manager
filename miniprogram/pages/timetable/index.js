@@ -81,6 +81,8 @@ Page({
     failed: false,
     isAdmin: false,
     isSuper: false,
+    /** 临时调课入口（2026-11-28）：只读 auth.login 下发的 profile.canShift，后台改权限后无需发版 */
+    canShift: false,
     /** 辅导员（group_tag='X'）：可跨班查看课表（2026-10 需求） */
     isCounselor: false,
     /** 当前班是否已有课表 —— 由云端同步结果决定（空列表=该班还没有课表 ⇒ 走空态），不再按 classId 写死 */
@@ -253,6 +255,7 @@ Page({
       const patch = {
         isAdmin: !!(app && app.isAdmin && app.isAdmin()),
         isSuper: isSuper,
+        canShift: !!(p.canShift || isSuper),
         isCounselor: firstCounselor,
         canSwitchClass: !!(firstCounselor || isSuper),
         showClassSwitch: !!(firstCounselor || (isSuper && switched))
@@ -678,7 +681,7 @@ Page({
 
   _openFabRadial(x, y) {
     const items = [{ key: 'ALL', label: '全部' }, { key: 'A', label: 'A 组' }, { key: 'B', label: 'B 组' }];
-    if (this.data.isSuper) items.push({ key: 'SHIFT', label: '临时调课' });
+    if (this.data.canShift) items.push({ key: 'SHIFT', label: '临时调课' });
     this.setData({ fmShow: true, fmX: x, fmY: y, fmItems: items });
   },
 
@@ -1225,7 +1228,7 @@ Page({
   /** 长按课表格子 → 弹出弧形菜单（本周调整 / 指定日期 / 取消），选择后再开调课弹层 */
   onCellLongPress(e) {
     if (e.currentTarget.dataset.personal) return;   // 个人选修课不参与临时调课
-    if (!this.data.isSuper) { util.toast('只有超级管理员可以临时调课'); return; }
+    if (!this.data.canShift) { util.toast('你没有临时调课权限，请联系管理员开通'); return; }
     const sid = Number(e.currentTarget.dataset.sid);
     if (!sid) { util.toast('这个格子没有课，长按无效'); return; }
     if (!motion.on('radial')) {

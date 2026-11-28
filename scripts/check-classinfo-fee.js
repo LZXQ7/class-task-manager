@@ -29,6 +29,8 @@ const ROOT = path.join(__dirname, '..', 'miniprogram');
 const FEE_FILE = path.join(ROOT, 'pages', 'fee', 'index.js');
 const FEE_WXML = path.join(ROOT, 'pages', 'fee', 'index.wxml');
 const FEE_WXSS = path.join(ROOT, 'pages', 'fee', 'index.wxss');
+const CI_FILE = path.join(ROOT, 'pages', 'classinfo', 'index.js');
+const CI_WXML = path.join(ROOT, 'pages', 'classinfo', 'index.wxml');
 const UTIL_FILE = path.join(ROOT, 'utils', 'util.js');
 
 /* ---------------- 线上实拉的响应（2026-10-28） ---------------- */
@@ -179,6 +181,19 @@ function auditFeeLayout(js, wxml, wxss) {
   ok('静态·fee 页 _loadFee 的 catch 不再空吞（必须落 console.error）',
     /\.catch\(\(e\)\s*=>\s*\{[^}]*console\.error/.test(feeSrc.replace(/\s+/g, (m) => m.includes('\n') ? ' ' : m)));
 
+  /* 2026-11-28 用户口径：信息页班费卡下面显示「剩余班费」，不是「当前班费」。
+   * 后端 getSummary 同时给 total / expenseTotal / balance，其中 balance = total − 已消费；
+   * 旧实现拿 total 当「当前班费」是状态语义漂移（M5），这里把文案与读数一起钉死。 */
+  const ciSrc = fs.readFileSync(CI_FILE, 'utf8');
+  const ciWxml = fs.readFileSync(CI_WXML, 'utf8');
+  const balanceLabelOk = (s) => /剩余班费 ¥/.test(s) && !/当前班费/.test(s);
+  const balanceValueOk = (s) => /c\.balance/.test(s) && !/c\.total/.test(s);
+  ok('静态·信息页班费卡文案为「剩余班费 ¥」（无「当前班费」）', balanceLabelOk(ciWxml));
+  ok('静态·信息页读数取 balance（不是 total）', balanceValueOk(ciSrc));
+  ok('自证·把文案改回「当前班费」/ 读数改回 total 必须翻红',
+    !balanceLabelOk(ciWxml.replace('剩余班费 ¥', '当前班费 ¥'))
+    && !balanceValueOk(ciSrc.replace('c.balance', 'c.total')));
+
   const feeWxml = fs.readFileSync(FEE_WXML, 'utf8');
   const feeWxss = fs.readFileSync(FEE_WXSS, 'utf8');
   const layoutProblems = auditFeeLayout(feeSrc, feeWxml, feeWxss);
@@ -209,7 +224,9 @@ function auditFeeLayout(js, wxml, wxss) {
     ci.data.className === '示例专业A1班', '实得 ' + JSON.stringify(ci.data.className));
   ok('班级信息·成员统计仍然正常',
     ci.data.stats && ci.data.stats.total === 56 && ci.data.stats.groupA === 28 && ci.data.stats.groupB === 28);
-  ok('班级信息·班费总额仍然正常', ci.data.feeTotal === 280, '实得 ' + ci.data.feeTotal);
+  ok('班级信息·班费显示剩余 273.9（线上 total=280 不得冒充余额）',
+    ci.data.feeBalance === 273.9 && ci.data.feeBalance !== 280,
+    '实得 ' + ci.data.feeBalance);
   ok('班级信息·超管可见「班级管理」入口', ci.data.canManageClass === true);
 
   const ciMember = await settle((() => {

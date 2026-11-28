@@ -749,7 +749,7 @@ const routes = {
    * 同时把已排的值日跟着挪（或删掉），并让已发布的周退回草稿。
    */
   shiftSet: {
-    auth: { needCommittee: true },
+    auth: { needShiftAuth: true },
     handler: async (payload, ctx) => {
       const kind = payload.kind === 'MOVE' ? 'MOVE' : 'OFF';
       const note = String(payload.note || '').slice(0, 64);
@@ -910,7 +910,7 @@ const routes = {
    * 否则课表已经复原、值日却还留在被挪到的那一天上。
    */
   shiftRemove: {
-    auth: { needCommittee: true },
+    auth: { needShiftAuth: true },
     handler: async (payload, ctx) => {
       const pool = getPool();
       const classId = guard.classIdOf(ctx);
@@ -2302,6 +2302,7 @@ exports.main = async (event) => {
     if (route.auth && route.auth.needScheduleAuth) guard.requireScheduleAuth(ctx);
     if (route.auth && route.auth.needTimetablePublish) guard.requireTimetablePublish(ctx);
     if (route.auth && route.auth.needCommittee) guard.requireCommittee(ctx);
+    if (route.auth && route.auth.needShiftAuth) guard.requireShiftAuth(ctx);
     if (route.auth && route.auth.needSuper) guard.requireSuper(ctx);
     const data = await route.handler(payload, ctx);
     return ok(data);

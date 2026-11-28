@@ -2701,6 +2701,7 @@
             '<td>' + roleText(m.role) + '</td>' +
             '<td>' + esc(m.position || '—') + permTags(m.feePerms) +
               (m.speechPerm ? ' <span class="tag tag-all" title="单独授予：可排课前演讲">+课前演讲</span>' : '') +
+              (m.shiftPerm ? ' <span class="tag tag-all" title="单独授予：可临时调课（小程序实时生效）">+临时调课</span>' : '') +
             '</td>' +
             '<td>' + statusTag(m.status) + '</td>' +
             // 绑定状态来自 /api/members 的 bound 字段（openid 是否为空），与小程序登录态同源。
@@ -3094,9 +3095,16 @@
         (m.speechPerm ? ' checked' : '') + '> 可排课前演讲</label>' +
       '<div class="hint">学习委员、生活委员、超管本就自带该权限，无需勾选；' +
       '勾上等于额外授予某人，不撤销任何职位权限。值日排班仍归生活委员，此项只影响课前演讲。' +
-      '</div></div>'
+      '</div></div>' +
+      // 临时调课权（2026-11-28）：后台勾上 → auth.login 下次下发 canShift →
+      // 小程序课表页出现「临时调课」按钮，不需要重新发版/审核。
+      '<div class="field"><span class="field-label">单独授予权限（临时调课）</span>' +
+      '<label class="chk"><input type="checkbox" id="f-perm-shift"' +
+        (m.shiftPerm ? ' checked' : '') + '> 可临时调课</label>' +
+      '<div class="hint">超管与班委本就能调课，无需勾选；此项用于单独授权其他成员。' +
+      '保存后对方重新进入小程序即生效，无需发版。</div></div>'
     ) : '<div class="field"><span class="field-label">单独授权</span>' +
-      '<div class="hint">当前账号无「单独授权」权限，不能修改不排值日 / 班费消费授权 / 课前演讲授权。</div></div>';
+      '<div class="hint">当前账号无「单独授权」权限，不能修改不排值日 / 班费消费授权 / 课前演讲授权 / 临时调课授权。</div></div>';
     return fld('姓名', '<input type="text" id="f-name" value="' + esc(m.name || '') + '">') +
       fld('学号', '<input type="text" id="f-no" value="' + esc(m.studentNo || '') + '"' + (m.id ? '' : '') + '>') +
       fld('分组', '<select id="f-group">' +
@@ -3131,6 +3139,10 @@
       body.dutyOff = !!(duty && duty.value === '1');
       body.speechPerm = (function () {
         var c = $('#f-perm-speech', dlg);
+        return !!(c && c.checked);
+      })();
+      body.shiftPerm = (function () {
+        var c = $('#f-perm-shift', dlg);
         return !!(c && c.checked);
       })();
       body.feePerms = (function () {

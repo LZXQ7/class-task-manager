@@ -241,11 +241,24 @@ Page({
      * 根因：首次进入时 onShow 早于登录完成，profile 还是 null → canViewClass=false，
      * 之后再没人重算。修复：未完成登录时等 app.ready()，就绪后重套一次身份。
      */
+    /*
+     * §44 需求（2026-11-28「首页没加载好就切页 → 连接失败」）：
+     * auth 未就绪时**不要在下面第 276 行发首屏请求**。冷启动 login 还在飞，
+     * 此刻 dutyToday 打向未热的容器，超时→retry 放大→错误态；用户一切页就更明显。
+     * 统一收口到 app.ready()：登录后**无条件**重拉一次（老用户缓存 profile 指纹不变，
+     * 旧逻辑「仅指纹变化才重拉」会漏掉这次兜底 ⇒ 失败永远卡在错误屏）。
+     * 用 _authGatePending 标记让下面的 load 调用在等待期间跳过，避免重复发。
+     */
+    let authGatePending = false;
     if (app && app.globalData && !app.globalData.authChecked) {
+      authGatePending = true;
+      this._authGatePending = true;
       app.ready().then(() => {
+        this._authGatePending = false;
         const p2 = this._applyIdentity();
         const fp2 = this._identityFpOf(p2);
-        if (fp2 !== this._identityFp) { this._identityFp = fp2; this.load(true); }
+        this._identityFp = fp2;
+        this.load(true);   // 无条件兜底重拉：登录前那次若失败，这里必补回来
       });
     }
     // 角标：从 utils/notice 缓存同步读取（命中即有，无需网络）。空缓存保持 0。
@@ -273,7 +286,10 @@ Page({
     const gView = Number(app.globalData.viewClassId) || 0;
     const classChanged = gView !== (this._shownViewClassId || 0);
     this._shownViewClassId = gView;
-    this.load(identityChanged || swapDirty || dutyDirty || rosterDirty || classChanged);
+    // auth 未就绪的首屏：跳过这次 load，等上面 app.ready() 回调无条件兜底重拉
+    if (!this._authGatePending) {
+      this.load(identityChanged || swapDirty || dutyDirty || rosterDirty || classChanged);
+    }
     // 今日课次灰化/进行中计时器：先按当前时刻刷新一遍（回前台可能跨过上课/下课点），再续排到点翻面
     this._refreshDoneFlags();
     this._scheduleDoneTimer();

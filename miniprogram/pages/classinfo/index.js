@@ -37,8 +37,8 @@ Page({
     className: '',
     /** 成员统计（api.memberStats）：{ total, groupA, groupB } */
     stats: null,
-    /** 班费总额（api.feeSummary.class.total），非超管/生活委员可能拿不到 → null */
-    feeTotal: null,
+    /** 班费余额（api.feeSummary.class.balance = total − 已消费）；拿不到 → null */
+    feeBalance: null,
     /**
      * 「班级管理」入口是否可见（2026-10-28 补）：
      * 首页精简后这个入口在首页消失，改挂到本页「班级概况」卡右上角。
@@ -279,7 +279,7 @@ Page({
       /* 先清空再拉：不清的话切班瞬间 hero 里还挂着上一个班的人数，
        * 用户会以为「两个班人数一样」，比空白更容易误导。 */
       stats: null,
-      feeTotal: null
+      feeBalance: null
     });
     // 同步到全局「当前查看班级」：信息页是切班中心，其余 Tab 跟随此值联动
     getApp().globalData.viewClassId = Number(id) || 0;
@@ -301,7 +301,7 @@ Page({
     /* SWR：先用内存缓存同步渲染 —— 切回本页 / 切回同一个班时瞬间出数，不闪骨架、不白屏。
      * 缓存只在本运行期有效（不落 storage，与首页 / 通知策略一致）。 */
     if (cached) {
-      this.setData({ loading: false, stats: cached.stats, feeTotal: cached.feeTotal });
+      this.setData({ loading: false, stats: cached.stats, feeBalance: cached.feeBalance });
     }
     /* 频率闸门：同一班 + 数据仍在新鲜窗口内 + 非强制 → 不打接口。
      * onShow 每次都跑、Tab 切回都重跑，但班级概况这类低频变化的数据没必要每次打；
@@ -327,7 +327,7 @@ Page({
         this._hasData = true;
         this._lastLoad = Date.now();
         this._lastClassId = cid;
-        mem.write(key, { stats: r, feeTotal: this.data.feeTotal });
+        mem.write(key, { stats: r, feeBalance: this.data.feeBalance });
         this.setData({ loading: false, stats: r });
       })
       .catch((e) => {
@@ -337,13 +337,13 @@ Page({
         this.setData({ loading: false, stats: null });
       });
 
-    // 班费总额（仅生活委员 / 管委会成员拿得到；拿不到就保持 null，卡里显示通用文案）
+    // 班费余额（total − 已消费，后端 getSummary 直接给 balance）；拿不到保持 null，卡里显示通用文案
     api.feeSummary(arg, { toast: false })
       .then((r) => {
         const c = (r && r.class) || {};
-        const feeTotal = (c.total != null ? Number(c.total) : null);
-        mem.write(key, { stats: this.data.stats, feeTotal });
-        this.setData({ feeTotal });
+        const feeBalance = (c.balance != null ? Number(c.balance) : null);
+        mem.write(key, { stats: this.data.stats, feeBalance });
+        this.setData({ feeBalance });
       })
       .catch((e) => {
         console.error('[classinfo] feeSummary failed', e && e.stack ? e.stack : e);

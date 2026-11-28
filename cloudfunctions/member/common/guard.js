@@ -274,6 +274,35 @@ function requireCommittee(ctx) {
   throw new BizError(40003, '仅班委可操作');
 }
 
+/* ---------------- 后台单独授予的临时调课权（2026-11-28） ----------------
+ *
+ * 用户口径：「后台给谁权限，谁的小程序页面就会有相应按钮，而不是每次都
+ * 更新小程序再上传审核」。所以这里用 member.shift_perm（由后台成员编辑
+ * 弹层写入），auth.login 每次下发 canShift，小程序入口只读下发值。
+ *
+ * ⚠️ 只放宽 `course.shiftSet / shiftRemove` 两条调课写路由，不改
+ *    requireCommittee 本身 —— 那条还守着请假登记、个人课表读等，
+ *    放宽等于顺手把无关权限也给出去了（M1/M5 同族风险）。
+ *    班委原本就能调课（后端），这里只是让「被单独授权的普通成员」也能调。
+ */
+/** 后台单独授予的临时调课权（member.shift_perm=1） */
+function hasShiftPerm(member) {
+  return !!member && Number(member.shift_perm) === 1;
+}
+
+/** 调课权：超管 | 原有班委 | 后台单独授予 */
+function canShift(member) {
+  if (!member) return false;
+  return isSuper(member) || isCommittee(member) || hasShiftPerm(member);
+}
+
+/** 仅用于 course.shiftSet / shiftRemove */
+function requireShiftAuth(ctx) {
+  const m = requireBind(ctx);
+  if (canShift(m)) return m;
+  throw new BizError(40003, '仅班委或经后台授权的成员可临时调课');
+}
+
 /**
  * 请假登记守卫（2026-09-29 需求④）：超管 / 本班**学生班委**。
  *
@@ -363,4 +392,4 @@ async function resolveClassId(pool, ctx, payload) {
   return own;
 }
 
-module.exports = { getContext, requireBind, requireAdmin, isAdmin, isSuper, requireSuper, classIdOf, isCounselor, staffClassIds, resolveClassId, isDemoMember, demoClassIds, ADMIN_ROLES, isDutyAdmin, isMonitor, isViceMonitor, requireTimetablePublish, requireScheduleAuth, requireRosterEdit, requirePositionGrant, isGrantedPosition, POSITION_DUTY_ADMIN, POSITION_MONITOR, POSITION_VICE_MONITOR, isCommittee, requireCommittee, requireLeaveRegister, requireLeaveView, isLeaveApprover, POSITION_STUDY, isStudyAdmin, hasSpeechPerm, canSpeech, requireSpeechAuth };
+module.exports = { getContext, requireBind, requireAdmin, isAdmin, isSuper, requireSuper, classIdOf, isCounselor, staffClassIds, resolveClassId, isDemoMember, demoClassIds, ADMIN_ROLES, isDutyAdmin, isMonitor, isViceMonitor, requireTimetablePublish, requireScheduleAuth, requireRosterEdit, requirePositionGrant, isGrantedPosition, POSITION_DUTY_ADMIN, POSITION_MONITOR, POSITION_VICE_MONITOR, isCommittee, requireCommittee, hasShiftPerm, canShift, requireShiftAuth, requireLeaveRegister, requireLeaveView, isLeaveApprover, POSITION_STUDY, isStudyAdmin, hasSpeechPerm, canSpeech, requireSpeechAuth };

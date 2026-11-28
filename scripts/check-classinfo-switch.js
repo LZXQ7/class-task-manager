@@ -72,7 +72,12 @@ function makeHarness(profile, opts, src) {
     feeSummary: (p) => {
       calls.feeSummary.push(p || {});
       const id = Number((p && p.classId) || profile.classId || 0);
-      return Promise.resolve({ class: { total: id === 3 ? 280 : 0 } });
+      // 与主门禁同口径：线上快照 total=280 / expenseTotal=6.1 / balance=273.9
+      return Promise.resolve({ class: {
+        total: id === 3 ? 280 : 0,
+        expenseTotal: id === 3 ? 6.1 : 0,
+        balance: id === 3 ? 273.9 : 0
+      } });
     }
   };
   const util = {
@@ -153,7 +158,7 @@ async function runAll(src, quiet) {
     ok(JSON.stringify(calls.feeSummary[0]) === '{}', 'feeSummary 先以空参数出数');
     ok(calls.feeSummary.some((c) => JSON.stringify(c) === '{"classId":3}'), 'chips 落定后 feeSummary 带 classId=3');
     ok(page.data.stats.total === 59, '显示 59 人（示例班级A 真实人数）');
-    ok(page.data.feeTotal === 280, '班费显示 280');
+    ok(page.data.feeBalance === 273.9, '班费显示剩余 273.9（非总额 280）');
     ok(page.data.isOtherClass === false, '看本班时 isOtherClass = false');
   }
 
@@ -167,7 +172,7 @@ async function runAll(src, quiet) {
     ok(page.data.viewClassId === 1, 'viewClassId = 1');
     ok(page.data.className === '示例专业B1班', '班名跟着换成 2601');
     ok(page.data.stats.total === 57, '人数换成 57（与 示例班级A 的 59 不同）');
-    ok(page.data.feeTotal === 0, '班费换成 2601 的 0（该班无 class_fund 行）');
+    ok(page.data.feeBalance === 0, '班费余额换成 2601 的 0（该班无 class_fund 行）');
     ok(page.data.isOtherClass === true, 'isOtherClass = true');
     ok(calls.track.some((t) => t[0] === 'class_switch'), '埋点 class_switch 已上报');
   }

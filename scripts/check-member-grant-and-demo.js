@@ -140,7 +140,7 @@ function loadConfig() {
 
   section('B. updateMember：无 grant 时三项不写库（防越权 / 防伪造提交）');
   const patchNoGrant = {
-    name: '改名', dutyOff: true, feePerms: ['class'], speechPerm: true
+    name: '改名', dutyOff: true, feePerms: ['class'], speechPerm: true, shiftPerm: true
   };
   const r1 = loadMember({});
   await r1.mod.updateMember(5, Object.assign({}, patchNoGrant), { perms: ['members', 'members.edit'], memberId: 1 }, {});
@@ -150,6 +150,7 @@ function loadConfig() {
   check(upd1 && upd1.sql.indexOf('duty_off') < 0, '无 grant：duty_off 不写');
   check(upd1 && upd1.sql.indexOf('fee_perms') < 0, '无 grant：fee_perms 不写');
   check(upd1 && upd1.sql.indexOf('speech_perm') < 0, '无 grant：speech_perm 不写');
+  check(upd1 && upd1.sql.indexOf('shift_perm') < 0, '无 grant：shift_perm 不写');
 
   const r2 = loadMember({});
   await r2.mod.updateMember(5, Object.assign({}, patchNoGrant), { perms: ['members', 'members.edit', 'members.grant'], memberId: 1 }, {});
@@ -157,11 +158,12 @@ function loadConfig() {
   check(upd2 && upd2.sql.indexOf('duty_off') >= 0, '有 grant：duty_off 照常写');
   check(upd2 && upd2.sql.indexOf('fee_perms') >= 0, '有 grant：fee_perms 照常写');
   check(upd2 && upd2.sql.indexOf('speech_perm') >= 0, '有 grant：speech_perm 照常写');
+  check(upd2 && upd2.sql.indexOf('shift_perm') >= 0, '有 grant：shift_perm 照常写');
 
   section('C. addMember：无 grant 时不把单独授权塞进新增');
   const addPatch = {
     classId: 1, name: '新人', studentNo: '000000000099', groupTag: 'A',
-    role: 'MEMBER', status: 'ACTIVE', position: '', feePerms: ['class'], speechPerm: true
+    role: 'MEMBER', status: 'ACTIVE', position: '', feePerms: ['class'], speechPerm: true, shiftPerm: true
   };
   const r3 = loadMember({});
   await r3.mod.addMember(Object.assign({}, addPatch), { perms: ['members', 'members.add'], memberId: 1 }, {});
@@ -199,7 +201,7 @@ function loadConfig() {
   // F.1 后端去掉 grant 校验 → 无权限时三项会被写库
   await mut('后端去掉 members.grant 校验',
     MEMBER_SRC.replace(
-      "if (!permsMod.has(session && session.perms, 'members.grant')) {\n    delete patch.dutyOff;\n    delete patch.feePerms;\n    delete patch.speechPerm;\n  }",
+      "if (!permsMod.has(session && session.perms, 'members.grant')) {\n    delete patch.dutyOff;\n    delete patch.feePerms;\n    delete patch.speechPerm;\n    delete patch.shiftPerm;\n  }",
       ''
     ),
     async (src) => {

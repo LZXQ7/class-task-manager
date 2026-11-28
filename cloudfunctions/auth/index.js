@@ -264,6 +264,14 @@ const routes = {
            *             入口可见性依据；真正拦截在 schedule 的 guard.requireSpeechAuth。
            */
           canSpeech: !!guard.canSpeech(m),
+          /*
+           * canShift（2026-11-28）：临时调课入口可见性，每次登录实时下发。
+           *   仅「超管」或「后台单独授予 shift_perm」出现按钮；原有班委的后端
+           *   调课权不变（course 守卫仍放行），但小程序入口维持旧的窄口径，
+           *   避免一次授权改动让所有班委突然多出按钮。
+           *   ⚠️ 前端只读这个字段，不从职位字面量推导 ⇒ 后台改权限后无需发版。
+           */
+          canShift: !!(guard.isSuper(m) || guard.hasShiftPerm(m)),
           canRosterEdit: !!(guard.isSuper(m) || guard.isCounselor(m) || guard.isMonitor(m)),
           canGrantPosition: !!guard.isSuper(m),
           canLeave: !!(guard.isSuper(m) || guard.isCommittee(m)),

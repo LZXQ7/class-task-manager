@@ -12,6 +12,19 @@ const util = (typeof require === 'function') ? require('./util') : null;
    写接口成功后清空。门禁在**无 require 的 vm**里加载本文件 ⇒ 沙盒内 cache=null 全链路 no-op。 */
 const cache = (typeof require === 'function') ? require('./req-cache') : null;
 
+/* 启动期 in-flight 去重（2026-11-28「首页没加载好就切页 → 连接失败」）：
+ * 冷启动时 login + 首页 dutyToday + prefetchTabs + recheckAuth 会并发打向同一批冷容器，
+ * 其中 dutyToday / msgList 常被两条链路各调一次、参数完全相同。容器未热时这些请求
+ * 一起超时 → 各自 retry → 雪崩。这里对**读请求**按 name+action+payload 建索引：
+ * 同一把钥匙在飞时共享同一个 Promise，只真正发一次；写请求绝不合并（有副作用）。
+ * key 用稳定序列化（对象键排序），保证 {a:1,b:2} 与 {b:2,a:1} 视为同一请求。 */
+const inflight = new Map();
+function stableKey(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(stableKey).join(',') + ']';
+  return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableKey(v[k])).join(',') + '}';
+}
+
 let inited = false;
 function cloudInit() {
   if (inited || typeof wx === 'undefined' || !wx.cloud) return;
@@ -101,6 +114,14 @@ function call(name, action, payload, opt) {
     if (hit !== null && hit !== undefined) return Promise.resolve(hit);
   }
 
+  /* in-flight 去重（仅读）：完全相同的读请求在飞时共享同一个 Promise。
+     放在缓存之后 —— 已缓存命中的直接返回，不必进索引；写请求跳过。 */
+  const dedupeKey = isWrite ? '' : (name + '|' + action + '|' + stableKey(payload));
+  if (dedupeKey) {
+    const pending = inflight.get(dedupeKey);
+    if (pending) return pending;
+  }
+
   function invoke() {
     return new Promise((resolve, reject) => {
       if (loadingText) wx.showLoading({ title: loadingText, mask: true });
@@ -172,7 +193,17 @@ function call(name, action, payload, opt) {
       throw err;
     });
   }
-  return run(1);
+  const p = run(1);
+  if (dedupeKey) {
+    inflight.set(dedupeKey, p);
+    // 无论成功失败都释放索引：失败后由调用方决定是否再试，不被永久锁死；
+    // 成功走缓存，下次自然命中。用 then 的第二个参数，避免再产生一条 rejected 链。
+    p.then(
+      () => { if (inflight.get(dedupeKey) === p) inflight.delete(dedupeKey); },
+      () => { if (inflight.get(dedupeKey) === p) inflight.delete(dedupeKey); }
+    );
+  }
+  return p;
 }
 
 /** 上传本地文件到云存储 */
