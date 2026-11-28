@@ -21,7 +21,7 @@ const { getPool } = require('./common/db');
 const week = require('./common/week');
 // 轮转取人内核：与 schedule 的「一键生成」共用同一份实现（禁止再写第二套算法）
 const {
-  pickBySeq, buildState, loadDayBlocks, loadCursors, toSeqSet,
+  pickBySeq, buildState, loadDayBlocks, incomingDutyPlan, loadCursors, toSeqSet,
   loadWeekCursors, saveWeekCursors, syncGlobalCursors,
   resolveNeed, loadSlots, slotOf
 } = require('./common/schedule-core');
@@ -149,6 +149,9 @@ async function generateWeek(pool, wk, classId) {
       if (!classDate) { holidaySkipped += 1; continue; }
       rotatePlan.push({ s, slot, classDate });
     }
+    /* 2026-11-28：跨周调入的补课也要进每周自动生成 —— 与 schedule.generate / AI 上下文
+       / duty 读取端同源（共享内核 incomingDutyPlan），否则自动草稿会漏掉补的那一节。 */
+    incomingDutyPlan(sessions, wk, cfg, cal, shifts, week).forEach(x => rotatePlan.push(x));
     rotatePlan.sort((a, b) => (
       a.classDate < b.classDate ? -1
         : a.classDate > b.classDate ? 1

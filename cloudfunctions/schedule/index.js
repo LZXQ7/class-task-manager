@@ -14,7 +14,7 @@ const reviewDemo = require('./common/review-demo');   // 演示班级写操作�
  * cron-weekly 的每周自动生成与 AI 计划校验共用同一份 —— 三条链路必须给出同样的名单。
  * 2026-10-07 v2：轮转位置 = 独立游标（class.round_cursor_a/b），不再用 duty_count 推断。 */
 const {
-  pickBySeq, buildState, loadDayBlocks, loadCursors, saveCursors, toSeqSet,
+  pickBySeq, buildState, loadDayBlocks, incomingDutyPlan, loadCursors, saveCursors, toSeqSet,
   loadWeekCursors, saveWeekCursors, syncGlobalCursors, dropWeekCursorsFrom,
   bumpCursorForManual, resolveNeed, loadSlots, slotOf, fillByRotation,
   parseSubMap, parseStartSeqs, parseAvoidPairs, applyStartFrom, validatePlan
@@ -492,13 +492,7 @@ async function buildAiContext(pool, wk, classId) {
    * 排完之后再补，导致保洁只能捡周尾号 —— 用户 2026-10-31 实锤：周二第 2 节 9、11，
    * 下午打扫 410 却从 35 号起。 */
   const cleanSessions = [];
-  for (const s of rawSessions) {
-    if (!week.matchesWeeks(s.weeks, wk, s.week_rule)) continue;
-    // 临时调课优先：OFF → 本周不上；MOVE → 用调课后的星期 / 节次
-    const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
-    if (!slot) continue;
-    const date = week.classDateOf(cfg, wk, slot.day, cal);
-    if (!date) continue;   // 法定放假且无调课 → 本周不上
+  const addRow = (s, slot, date) => {
     const dayDuties = duties.filter(d => String(d.class_date).slice(0, 10) === date);
     const row = {
       sessionId: s.id,
@@ -522,7 +516,19 @@ async function buildAiContext(pool, wk, classId) {
       busySameDaySeqs: dayDuties.filter(d => d.source === 'MANUAL').map(d => seqById.get(d.member_id)).filter(Boolean)
     };
     if (s.kind === 'CLEAN') cleanSessions.push(row); else sessions.push(row);
+  };
+  for (const s of rawSessions) {
+    if (!week.matchesWeeks(s.weeks, wk, s.week_rule)) continue;
+    // 临时调课优先：OFF → 本周不上；MOVE → 用调课后的星期 / 节次
+    const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
+    if (!slot) continue;
+    const date = week.classDateOf(cfg, wk, slot.day, cal);
+    if (!date) continue;   // 法定放假且无调课 → 本周不上
+    addRow(s, slot, date);
   }
+  /* 2026-11-28：跨周调入的补课也要进 AI 上下文，否则 AI 计划里没有这一场、
+     一键生成与 AI 生成给出的名单会不一致（与 generate / duty 读取端同源）。 */
+  incomingDutyPlan(rawSessions, wk, cfg, cal, shifts, week).forEach(x => addRow(x.s, x.slot, x.classDate));
 
   return {
     cfg, roster, sessions, cleanSessions,
@@ -1845,6 +1851,10 @@ const routes = {
           if (!classDate) { holidaySkipped += 1; continue; }
           rotatePlan.push({ s, slot, classDate });
         }
+        /* 2026-11-28：跨周调课的调入侧（别的周把课补到本周）——常规 resolveSlot 解析不到
+           （shiftKey 用的是源周），必须单独追加，否则课表显示「自第8周调入」、值日却不排。
+           与课表/演讲/duty 读取端同源，统一走共享内核 incomingDutyPlan。 */
+        incomingDutyPlan(sessions, wk, cfg, cal, shifts, week).forEach(x => rotatePlan.push(x));
         /* ② 轮转取人顺序 = **实际上课日期**顺序（同日再按节次、课次 id）。
          * ⚠️ 不能按 SQL 的 day_of_week 顺序迭代：调休（MOVE）只是把「周三的课」挪到周六上，
          * session 行的 day_of_week 仍是 3 —— 按 星期几 迭代会让调来的那天（如 10/10）

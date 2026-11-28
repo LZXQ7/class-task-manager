@@ -24,6 +24,48 @@
 const { pickBySeq, inferCursor, buildState } = require('./round-robin');
 
 /**
+ * 跨周调课「调入侧」的补课，追加进值日轮转计划（2026-11-28）。
+ * ------------------------------------------------------------
+ * 三处值日生成（schedule.generate 一键生成 / schedule.buildAiContext AI 上下文 /
+ * cron-weekly 每周自动生成）都是 `for session: resolveSlot → classDateOf → push`，
+ * 而 resolveSlot 只解析**源周调出**（shiftKey(sid, 源周)）——目标周查不到，会退回
+ * 课次原本的星期/节次，甚至被 weeks 过滤掉。课表端与课前演讲都用 incomingOf 显式追加
+ * 补课，值日生成链路此前只有读取端 duty/index.js:260 有 ⇒ 同一课在课表显示「调入」、
+ * 值日却不排（跨周调课的值日漏排）。
+ *
+ * 本函数返回的是**已落位**的 rotatePlan 条目（slot 直接用 toDay/toPeriod），
+ * 调用方 concat 到自己的 rotatePlan 后再统一按日期排序 —— 绝不能把补课 session
+ * 塞回 sessions 让循环再 resolveSlot 一遍（那样又退回原落位，等于没修）。
+ * 与 week.incomingOf / classDateOf 同源，纯函数、 week 工具注入，便于门禁真跑。
+ *
+ * @param {Array}  sessions 原始 session 行（需含 id/day_of_week/period/group_scope/kind/weeks/week_rule）
+ * @param {number} wk        目标周
+ * @param {object} cfg/cal   week.getConfig / loadCalendar 结果
+ * @param {object} shifts    week.loadSessionShifts 结果
+ * @param {object} weekTool  week 模块（incomingOf / classDateOf）
+ * @returns {Array<{s:object, slot:{day,period,shifted}, classDate:string, incoming:true}>}
+ */
+function incomingDutyPlan(sessions, wk, cfg, cal, shifts, weekTool) {
+  const out = [];
+  if (!weekTool || !weekTool.incomingOf || !weekTool.classDateOf) return out;
+  weekTool.incomingOf(shifts, wk).forEach((ov) => {
+    const s = (sessions || []).filter(x => Number(x.id) === Number(ov.sessionId))[0];
+    if (!s) return;                                  // 补课课次不存在（脏数据），跳过
+    const day = Number(ov.toDay) || Number(s.day_of_week);
+    const period = Number(ov.toPeriod) || Number(s.period);
+    const classDate = weekTool.classDateOf(cfg, wk, day, cal);
+    if (!classDate) return;                          // 目标日放假 → 与常规课同一口径跳过
+    out.push({
+      s: Object.assign({}, s, { weeks: '', week_rule: 'ALL' }),  // 补课本周必上，豁免隔周过滤
+      slot: { day, period, shifted: true },
+      classDate,
+      incoming: true
+    });
+  });
+  return out;
+}
+
+/**
  * 当日已有的值日者 / 已请假者。
  * 与轮转取人放在一起：两个入口（手动生成 / 每周自动生成）都要用，
  * 且必须用同一份口径，否则「同日不重复」的判定会不一致。
@@ -976,6 +1018,7 @@ module.exports = {
   inferCursor,
   buildState,
   loadDayBlocks,
+  incomingDutyPlan,
   loadCursors,
   saveCursors,
   loadWeekCursors,
