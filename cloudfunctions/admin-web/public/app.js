@@ -1935,6 +1935,9 @@
       api('/api/speech?' + qs).then(function (d) {
         if (!d.ok) { host.innerHTML = errHtml(d); return; }
         var v = d.data;
+        /* 首次进入不填周次时后端会按班级学期算「当前周」并回传，回填到 state.spWeek：
+           ① 输入框与标题显示真实周次；② 发布按钮的 `if (!state.spWeek)` 守卫不再误拦。 */
+        if (!state.spWeek && v.week) state.spWeek = v.week;
         var rows = v.items || [];
         var pub = v.publishInfo || {};
         var pubBadge = v.published

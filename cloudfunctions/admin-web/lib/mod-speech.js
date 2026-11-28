@@ -30,9 +30,18 @@ const WD = ['日', '一', '二', '三', '四', '五', '六'];
 async function listSpeech(q) {
   const pool = getPool();
   const classId = Number(q.classId);
-  const wk = Number(q.week);
   if (!classId) throw new BizError(40001, '缺少班级');
-  if (!wk) throw new BizError(40001, '缺少周次');
+  /* 周次缺省 = 当前教学周（2026-11-28 修「首次进演讲页报缺少周次」）。
+     管理视角「不填 = 本周」，与前端输入框 placeholder「本周」同义。
+     周次真源在 common/week.currentWeek(cfg)，按班级 term_start + total_weeks 算，
+     不在前端硬编码。回传 week 让前端回填 state.spWeek（否则发布按钮仍拦「请先填写周次」）。 */
+  let wk = Number(q.week);
+  if (!wk) {
+    const cfg = await week.getConfig(pool, classId);
+    /* getConfig 返回驼峰 termStart/totalWeeks，currentWeek 读下划线字段 —— 必须显式映射，
+       不能把整个 cfg 直接传进去（否则 term_start=undefined → NaN 周次）。与全项目范式一致。 */
+    wk = week.currentWeek({ term_start: cfg.termStart, total_weeks: cfg.totalWeeks });
+  }
 
   /* ① 发布态 */
   const [pubRows] = await pool.query(
@@ -91,6 +100,7 @@ async function listSpeech(q) {
   items.forEach((it) => sessions.add(it.date + '|' + it.slot + '|' + it.scope));
 
   return {
+    week: wk,
     published,
     publishInfo: pub ? {
       status: pub.status,

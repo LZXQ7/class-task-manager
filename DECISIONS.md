@@ -112,3 +112,12 @@
 - **确认结果**：用户逐项确认页面范围 / 操作范围 / 权限归属 / 学号口径 / 通知页权限。先建 `check-admin-speech-notice.js` 判红，再修绿并保留变异自证；部署前下载线上包 diff，code update 后复核 DB_* + VPC。
 
 ---
+
+## 2026-11-28 · 修 1.0.8.96 演讲页「缺少周次」首次加载失败
+
+- **需求原话**：真机截图「课前演讲」页报错——加载失败 / 缺少周次 / 重试。
+- **我理解的口径**：这是 1.0.8.96 演讲页的负载 bug，不是新功能。根因两层：①前端 `renderSpeech` 首次 `state.spWeek=0`，拼 query 时 `state.spWeek ? '&week=' : ''` 省掉 week；②后端 `mod-speech.listSpeech` 的 `if (!wk) throw 缺少周次` 直接拒绝。管理视角「不填 = 本周」，与前端输入框 placeholder「本周」同义，故采用**后端缺省周次兜底**（H1），而非前端硬编码默认值（假修复）或前端自行算周次（前端无班级配置数据）。周次真源 = `common/week.currentWeek`，按班级 `term_start` + `total_weeks` 算；`getConfig` 返回驼峰 `termStart/totalWeeks`，`currentWeek` 读下划线 `term_start/total_weeks`，**必须显式映射**（传整 cfg 会得到 NaN 周次）。后端回传 `week` 让前端回填 `state.spWeek`，否则发布按钮 `if (!state.spWeek)` 守卫仍误拦。
+- **触发文件**：`cloudfunctions/admin-web/lib/mod-speech.js`（缺省周次兜底 + 回传 week）、`cloudfunctions/admin-web/public/app.js`（回填 state.spWeek）、`scripts/check-admin-speech-week.js`（新建，真跑后端函数体 + 真实 week 模块，6 项判据 + 2 组变异）。
+- **确认结果**：先建 `check-admin-speech-week.js` 判红 4 项（复现「缺少周次」），再修绿 7/7。回路用真实 `week.js` 替掉 stub，专门抓「getConfig 驼峰 vs currentWeek 下划线」契约错配（传整 cfg → NaN）。真实生产库回放：当前周算出 11、该周 17 条名单。用户选完整发版 1.0.8.97。
+
+---
