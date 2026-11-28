@@ -2,7 +2,7 @@
      「在弹层里滑到底 → 后面的页面跟着一起滑」就是这么来的。
      page-meta 的 page-style 是官方/社区验证的锁页面滚动方案（Vant Weapp 的 popup 同款）。
      ⚠️ 新增 / 改名的弹层 show 标志必须同步进下面表达式，否则 scripts/check-scroll-lock.js 会报错。 -->
-<page-meta page-style="{{(detailShow || formShow || weekPickerShow || shiftShow || calShow) ? 'overflow:hidden' : ''}}"></page-meta>
+<page-meta page-style="{{(detailShow || formShow || weekPickerShow || shiftShow || calShow || rmShow) ? 'overflow:hidden' : ''}}"></page-meta>
 
 <view class="page tt {{tClass}} {{paReady ? (animSeq === 0 ? 'pa-first' : (animSeq === 1 ? 'pa-lite-a' : 'pa-lite-b')) : 'pa-hold'}}">
 
@@ -181,6 +181,10 @@
                   hover-stay-time="60"
                   bindtap="onCell"
                   bindlongpress="onCellLongPress"
+                  bindtouchstart="onCellTouchStart"
+                  catchtouchmove="onCellTouchMove"
+                  bindtouchend="onCellTouchEnd"
+                  bindtouchcancel="onCellTouchEnd"
                 >
                   <view wx:if="{{co.groupScope}}" class="tt-cell-tag">{{co.groupScope}} 组</view>
                   <view wx:elif="{{co.personal}}" class="tt-cell-tag personal-tag">个</view>
@@ -191,7 +195,7 @@
                   <view wx:if="{{co.isHoliday}}" class="tt-cell-holiday">假期</view>
                 </view>
               </block>
-              <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:else class="tt-cell empty" data-r="{{r}}" data-c="{{c}}" bindtap="onCell" bindlongpress="onCellLongPress"></view>
+              <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable wx:else class="tt-cell empty" data-r="{{r}}" data-c="{{c}}" bindtap="onCell" bindlongpress="onCellLongPress" bindtouchstart="onCellTouchStart" catchtouchmove="onCellTouchMove" bindtouchend="onCellTouchEnd" bindtouchcancel="onCellTouchEnd"></view>
             </view>
           </view>
         </view>
@@ -694,6 +698,7 @@
 
   <!-- #10 课程表长按弧形菜单：从触点放射性展开「本周调整 / 指定日期 / 取消」 -->
   <radial-menu
+    id="rm-cell"
     show="{{rmShow}}"
     x="{{rmX}}"
     y="{{rmY}}"

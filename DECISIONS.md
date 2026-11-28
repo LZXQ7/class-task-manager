@@ -58,3 +58,12 @@
 - **确认结果**：用户以 bug 报告形式授权修复，并在模式切换后明确「请继续完成未完成的任务」。诊断回路（真实 week.js 症状回放 + 门禁判据）先行判红，修复后转绿，未引入新的交互口径。
 
 ---
+
+## 2026-11-28 · 演讲名单顺序改为轮转出场序 + 课程长按改为拖拽松手选中
+
+- **需求原话**：①「先是 56，完了才是 2 号，56 在前面」（附截图：演讲卡上午 B 组显示「示例成员02 2 / 示例成员56 56」）；②「课程长按也是和左下角的按钮一样，而不是现在长按后再点按钮」（附截图：格子长按后弹出三个圆形按钮，仍需再点一下）。
+- **我理解的口径**：① 组内顺序是**轮转出场序**，不是学号升序——游标走到 56 后回绕到 2，所以 56 必须排在 2 前面；AUTO 行按 `plan.rows` 顺序 `INSERT`，`speech.id` 递增即出场序，按 `student_no` 排会把回绕场景翻成 2→56。② 课程格子长按的交互口径**与左下角 FAB 完全一致**：按住展开、手指拖到选项上高亮、松手即选中、拖到空白处松手收回——不是当前「长按展开后再点一下按钮」。两处都要保持深浅色安全与既有弹层行为不变。
+- **触发文件**：`cloudfunctions/schedule/index.js`（speechList 与 loadSpeechSessions 两处 SQL 的 `ORDER BY` 由 `m.student_no` 改 `sp.id`）、`miniprogram/pages/timetable/index.wxml`（page-meta 加 `rmShow` 锁滚动；有课格 + 空格子绑 `touchstart/catchtouchmove/touchend/touchcancel`；课程菜单加 `id="rm-cell"`）、`miniprogram/pages/timetable/index.js`（新增 `onCellTouchStart/Move/End` 转发给 `#rm-cell` 的 `moveTo/release`）。两处 SQL 与两处格子属同源，必须一起改（M1 同源漏改）。
+- **确认结果**：用户以 bug 报告 + 体验口径形式直接授权，无需选择。两个反馈回路均先判红再修：`check-speech-rotate-order.js`（症状回放按学号复现 2→56、按 id 得 56→2 + 两处 SQL 接线 + 4 变异，红→绿）、`check-radial-menu.js` 扩展 `cellTouchForward`（判据红 + 3 变异，红→绿）。诊断阶段向用户展示了根因定位（SQL 排序字段 / 格子缺 touch 转发），用户未要求改口径。
+
+---

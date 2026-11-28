@@ -2925,12 +2925,15 @@ const routes = {
       if (!admin && !published) {
         return { status: 'DRAFT', unpublished: true, days: [], setting, canSpeech: false, roster: [], slotRules: [] };
       }
+      /* 组内顺序 = 轮转出场序，不是学号序（2026-11-28 用户口径：「先是 56，完了才是 2 号」）。
+         AUTO 行按 plan.rows 顺序逐条 INSERT ⇒ sp.id 递增即出场序；游标到 56 后回绕到 2，
+         按 student_no 排会翻成 2→56。改 ORDER BY 时勿换回 m.student_no（门禁 check-speech-rotate-order 守）。 */
       const [rows] = await pool.query(
         `SELECT sp.id, sp.class_date, sp.slot, sp.member_id, sp.scope, sp.source, sp.status,
                 m.name, m.student_no
            FROM speech sp LEFT JOIN member m ON m.id = sp.member_id
           WHERE sp.class_id = ? AND sp.week = ? AND sp.status <> 'SWAPPED_OUT'
-          ORDER BY sp.class_date, sp.slot, m.student_no`, [classId, wk]
+          ORDER BY sp.class_date, sp.slot, sp.id`, [classId, wk]
       );
       const dayMap = {};
       rows.forEach(r => {
@@ -2980,13 +2983,15 @@ const routes = {
       const published = !!(pubRows[0] && pubRows[0].status === 'PUBLISHED');
       /* ① 本周全部场次骨架（含空场） */
       const sessions = await loadSpeechSessions(pool, classId, wk);
-      /* ② 本周已排的人（有效行） */
+      /* ② 本周已排的人（有效行）
+         组内顺序同 speechList：按 sp.id = 轮转出场序，勿改回 m.student_no
+         （游标回绕场景下 56→2 会被翻成 2→56，用户 2026-11-28 实锤）。 */
       const [rows] = await pool.query(
         `SELECT sp.id, sp.class_date, sp.slot, sp.scope, sp.member_id,
                 m.name, m.student_no, m.group_tag
            FROM speech sp LEFT JOIN member m ON m.id = sp.member_id
           WHERE sp.class_id = ? AND sp.week = ? AND sp.status <> 'SWAPPED_OUT'
-          ORDER BY sp.class_date, sp.slot, m.student_no`, [classId, wk]
+          ORDER BY sp.class_date, sp.slot, sp.id`, [classId, wk]
       );
       /* ③ 按 (date|slot|scope) 归组；组内的人带 seqText 给前端胶囊。
          1.0.8.68：key 必须带 scope —— 同一天同一时段可能既有全体课又有 A 组课

@@ -225,7 +225,23 @@ function staticProbes() {
       && !/data-pressable/.test((WXML.match(/<view[^>]*class="rm-mask[^>]*>/) || [''])[0]),
     // 遮罩改柔和径向渐变；色标用 rpx（组件 wxss 百分比色标真机整条丢弃）
     maskRadial: /\.rm-mask\s*\{[^}]*radial-gradient/.test(WXSS) &&
-      /--bg-mask-soft/.test(WXSS) && /0rpx/.test(WXSS) && /1000rpx/.test(WXSS)
+      /--bg-mask-soft/.test(WXSS) && /0rpx/.test(WXSS) && /1000rpx/.test(WXSS),
+    /* 🔴 2026-11-28 用户口径：「课程长按也要跟左下角按钮一样（按住滑到选项松手即选中），
+       不是现在长按后再点按钮」。FAB 那条已靠 touch 转发实现；课程格子菜单缺三件：
+       ① 组件要有 id="rm-cell" 才能 selectComponent；②有课格 + 空格子都要绑 touchstart/move/end；
+       ③页面 handler 要调该组件的 moveTo/release。缺任一 ⇒ 只有 onItem 的 bindtap 生效。
+       另：touchmove 必须 catch（原生 page 滚动会把课程表带着滑，与 FAB 同坑），
+       且菜单展开时 page-meta 要锁 overflow（防穿透）。 */
+    cellTouchForward: /id="rm-cell"/.test(TT_WXML_RAW) &&
+      /bindtouchstart="onCellTouchStart"/.test(TT_WXML_RAW) &&
+      /catchtouchmove="onCellTouchMove"/.test(TT_WXML_RAW) &&
+      /bindtouchend="onCellTouchEnd"/.test(TT_WXML_RAW) &&
+      /bindtouchcancel="onCellTouchEnd"/.test(TT_WXML_RAW) &&
+      /onCellTouchMove/.test(TT_WXML_RAW) && /onCellLongPress/.test(TT_WXML_RAW) &&
+      /selectComponent\('#rm-cell'\)/.test(TT_JS_RAW) &&
+      /onCellTouchMove\s*\(/.test(TT_JS_RAW) && /onCellTouchEnd\s*\(/.test(TT_JS_RAW) &&
+      /comp\.moveTo/.test(TT_JS_RAW) && /comp\.release/.test(TT_JS_RAW) &&
+      /rmShow\s*\|\|/.test((TT_WXML_RAW.match(/<page-meta[^>]*>/) || [''])[0])
   };
 }
 
@@ -371,6 +387,33 @@ const mutants = [
         'background: var(--bg-mask, rgba(0,0,0,0.45));');
       return m === null ? null : { wxss: m };
     }
+  },
+  {
+    /* 2026-11-28：课程长按菜单删 id ⇒ 页面拿不到组件，退回答「长按后再点」 */
+    name: '课程菜单删 id（页面转发不到，退回长按后再点）',
+    scope: 'ttwxml', expect: 'cellTouchForward',
+    build: () => {
+      const m = mutate(TT_WXML_RAW, 'id="rm-cell"', '');
+      return m === null ? null : { ttwxml: m };
+    }
+  },
+  {
+    /* 2026-11-28：页面不再转发课程格子的 touch ⇒ release 收不到，松手不选中 */
+    name: '页面不转发课程 touch（松手不选中）',
+    scope: 'ttjs', expect: 'cellTouchForward',
+    build: () => {
+      const m = mutate(TT_JS_RAW, "selectComponent('#rm-cell')", "selectComponent('#rm-none')");
+      return m === null ? null : { ttjs: m };
+    }
+  },
+  {
+    /* 2026-11-28：课程格子 touchmove 退回 bind ⇒ 长按拖动带着课程表一起滑 */
+    name: '课程 touchmove 退回 bind（拖动穿透滚动）',
+    scope: 'ttwxml', expect: 'cellTouchForward',
+    build: () => {
+      const m = mutate(TT_WXML_RAW, 'catchtouchmove="onCellTouchMove"', 'bindtouchmove="onCellTouchMove"');
+      return m === null ? null : { ttwxml: m };
+    }
   }
 ];
 
@@ -397,6 +440,16 @@ function runWith(over) {
     /selectComponent\('#rm-fab'\)/.test(ttjs) && /comp\.moveTo/.test(ttjs) && /comp\.release/.test(ttjs);
   res.noScrollBubble = /catchtouchmove="onFabTouchMove"/.test(ttwxml) &&
     !/bindtouchmove="onFabTouchMove"/.test(ttwxml);
+  res.cellTouchForward = /id="rm-cell"/.test(ttwxml) &&
+    /bindtouchstart="onCellTouchStart"/.test(ttwxml) &&
+    /catchtouchmove="onCellTouchMove"/.test(ttwxml) &&
+    /bindtouchend="onCellTouchEnd"/.test(ttwxml) &&
+    /bindtouchcancel="onCellTouchEnd"/.test(ttwxml) &&
+    /onCellTouchMove/.test(ttwxml) && /onCellLongPress/.test(ttwxml) &&
+    /selectComponent\('#rm-cell'\)/.test(ttjs) &&
+    /onCellTouchMove\s*\(/.test(ttjs) && /onCellTouchEnd\s*\(/.test(ttjs) &&
+    /comp\.moveTo/.test(ttjs) && /comp\.release/.test(ttjs) &&
+    /rmShow\s*\|\|/.test((ttwxml.match(/<page-meta[^>]*>/) || [''])[0]);
   const sp = springProbes(wxss);
   res.hotSpring = sp.hotSpring;
   res.reducedNoBounce = sp.reducedNoBounce;

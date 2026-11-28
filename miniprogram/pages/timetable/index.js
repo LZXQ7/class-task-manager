@@ -1198,6 +1198,30 @@ Page({
     return list[Number(this.data.shiftSessionIndex) || 0] || null;
   },
 
+  /* ---------------- 课程格子触摸转发（2026-11-28 用户口径） ----------------
+   * 用户：「课程长按也要跟左下角按钮一样（按住滑到选项松手即选中），不是现在长按后再点按钮」。
+   * 与 FAB 那套同构：bindlongpress 触发时 #rm-cell 才刚渲染，后续 touch 的 target 仍是
+   * 格子自身（不会冒泡进组件）⇒ 页面全程监听 touch*，用 selectComponent 转发给组件做
+   * 高亮 / 命中判定。touchmove 必须 catch（原生 page 滚动会把课程表带着滑，与 FAB 同坑）。 */
+  onCellTouchStart(e) {
+    const t = (e && e.touches && e.touches[0]) || (e && e.changedTouches && e.changedTouches[0]) || null;
+    this._cellTouch = t ? { x: t.clientX, y: t.clientY } : null;
+  },
+
+  onCellTouchMove(e) {
+    if (!this.data.rmShow) return;   // 菜单未展开：不转发、让 catch 只做拦滚动
+    const t = (e && e.touches && e.touches[0]) || (e && e.changedTouches && e.changedTouches[0]) || null;
+    if (!t) return;
+    const comp = this.selectComponent('#rm-cell');
+    if (comp && comp.moveTo) comp.moveTo(t.clientX, t.clientY);
+  },
+
+  onCellTouchEnd() {
+    if (!this.data.rmShow) return;
+    const comp = this.selectComponent('#rm-cell');
+    if (comp && comp.release) comp.release();
+  },
+
   /** 长按课表格子 → 弹出弧形菜单（本周调整 / 指定日期 / 取消），选择后再开调课弹层 */
   onCellLongPress(e) {
     if (e.currentTarget.dataset.personal) return;   // 个人选修课不参与临时调课
