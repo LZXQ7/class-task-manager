@@ -719,7 +719,7 @@ const NOTICE_PAGE = 'pages/notice/index';
  *   门禁 182 过 / 16 存量红（清单一致、零新增）；wcsc/src-bytes/release-docs 全过。
  * ---------------------------------------------------------------------------
  */
-const APP_VERSION = '1.0.8.93';
+const APP_VERSION = '1.0.8.94';
 
 /**
  * ICP 备案号（2026-10-12 备案通过后展示）。

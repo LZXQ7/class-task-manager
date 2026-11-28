@@ -33,6 +33,8 @@ Component({
     items: { type: Array, value: () => [] },
     /** 展开半径（px） */
     radius: { type: Number, value: RADIUS },
+    /** 底部让位（px）：悬浮 tabBar 占位；菜单下沿不得越过它（2026-11-28） */
+    bottomInset: { type: Number, value: 0 },
     /**
      * 弧的张角范围（度）。**屏幕坐标 y 向下**：0 = 正右，-90 = 正上。
      * ⚠️ 触发点贴着屏幕边（如课表左下角那个按钮）时，必须把范围收进**右上象限**
@@ -80,6 +82,7 @@ Component({
       }
       const HALF = 32;    // 圆形按钮半径（112rpx ≈ 60px）
       const MARGIN = 8;
+      const bottomGuard = Number(this.properties.bottomInset) || 0;
       if (pts.length) {
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         pts.forEach(p => {
@@ -90,7 +93,7 @@ Component({
         if (minX - HALF < MARGIN) shiftX = MARGIN + HALF - minX;
         if (maxX + HALF > vw - MARGIN) shiftX = Math.min(shiftX, vw - MARGIN - HALF - maxX);
         if (minY - HALF < MARGIN) shiftY = MARGIN + HALF - minY;
-        if (maxY + HALF > vh - MARGIN) shiftY = Math.min(shiftY, vh - MARGIN - HALF - maxY);
+        if (maxY + HALF > vh - MARGIN - bottomGuard) shiftY = Math.min(shiftY, vh - MARGIN - bottomGuard - HALF - maxY);
         pts.forEach(p => { p.dx += shiftX; p.dy += shiftY; });
       }
 

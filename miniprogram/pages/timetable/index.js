@@ -126,6 +126,8 @@ Page({
     fabMenuOpen: false,
     /** 右下角加课按钮是否可见（2026-10-15）：人人可见，但普通同学只能加个人选修课（限 2 门） */
     fabShow: false,
+    /** 悬浮 tabBar 占位（px）：传给弧形菜单做底部让位，避免「临时调课」被遮住 */
+    tabbarPx: 49,
 
     failMsg: '',
 
@@ -164,6 +166,8 @@ Page({
     /* 课程长按四项动作弹层（1.0.8.93）：不再经过弧形菜单，一步到位 */
     cellActionShow: false,
     cellActionSid: 0,
+    /** 底部抽屉三档吸附：面板下移 0.5=可见 50%，0.7=可见 30%，0=顶部全开 */
+    cellActionDetents: [0.5, 0.7],
     /* 临时调课课次分组筛选：默认全部；全班课（空 group_scope）任何筛选都显示 */
     shiftGroupFilter: 'all',
     shiftGroupFilters: [
@@ -223,8 +227,10 @@ Page({
     theme.mount(this);   // 深色模式（C-4）：挂 t-light / t-dark 到本页根节点
     // 课表相关的一律用本地常量，不依赖登录返回的 config
     const cw = util.currentWeek(tt.TERM_START, tt.TOTAL_WEEKS) || 1;
+    const metrics = (app && typeof app.sheetMetrics === 'function') ? app.sheetMetrics() : null;
     this.setData({
       statusBarHeight: app.globalData.statusBarHeight || 20,
+      tabbarPx: (metrics && metrics.tabbarPx) || 49,
       termStart: tt.TERM_START,
       totalWeeks: tt.TOTAL_WEEKS,
       current: cw,

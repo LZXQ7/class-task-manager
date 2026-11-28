@@ -85,3 +85,12 @@
 - **确认结果**：用户通过多轮 AskUserQuestion 明确选择「长按直接进入图二弹层」「全班课=空 group_scope」「强制按当前游标重排」「复用 notice_msg 双记录」「请假审批仅通知当事人」「重排源周+目标周且目标周看前一周是否已排」「按能力位分别定向」「班费双记录分层」「A/B 筛选默认全部」，并两次要求继续完成未完成任务。口径录于此，门禁只查可追溯性，不替代正确性判断。
 
 ---
+
+## 2026-11-28 · 调整课程弹层三档吸附 + 弧形菜单避底栏 + 加号几何居中
+
+- **需求原话**：「调整课程页显示不全，可以上下拖动，到30%、50%、顶部的位置有弹性吸附。」「临时调课会被底部导航栏遮挡，不要重合了。」「右边加号不在圆形中心。」「改动的所有功能都可以正常使用吗，例如调课，通知等，检测一下确保全部可用再出结果。」（附三张真机截图）
+- **我理解的口径**：① 长按课程的「调整课程」弹层要一次容纳四项，并支持 Drag + Spring 的 snap points：可见 30% / 50% / 顶部三档；detents 用面板下移比例表达，分别是 0.7 / 0.5 / 0，非顶部档保留轻微 overshoot，边界超额继续 Rubber-banding。② 左下角弧形菜单的「临时调课」不得压到悬浮 tabBar：radial-menu 接收真实 `tabbarPx` 作为底部让位，仍整条弧平移，保持等间距与拖拽命中一致。③ 右下角「＋」不再依赖全角字形重心，改为横竖两条绝对居中的几何线。④ 「确保全部可用」按项目纪律只能做到确定性门禁、真函数回放、云函数线上包核验与路由冒烟；真机视觉与手势仍需用户设体验版验收，不得声称已完成真机验证。
+- **触发文件**：`miniprogram/pages/timetable/index.js`、`miniprogram/pages/timetable/index.wxml`、`miniprogram/pages/timetable/index.wxss`、`miniprogram/components/radial-menu/index.js`、`miniprogram/components/bottom-sheet/index.js`、`scripts/check-timetable-polish-1093.js`。
+- **确认结果**：用户以真机截图 + 明确诉求直接授权，无口径分歧；先建 `check-timetable-polish-1093.js` 判红（16 红），再修绿，并保留三组变异自证。
+
+---

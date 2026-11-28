@@ -100,10 +100,11 @@ function evalAll(s) {
     /* 底栏玻璃是中性底 ⇒ 文字必须转品牌色。留着 `color: #FFFFFF` 就是白字压白玻璃，看不见。 */
     rmBrandText: /color:\s*var\(--brand\b/.test(rmBtn),
     fabGlass: /background:\s*var\(--tabbar-bg\b/.test(fab),
-    /* 课表「＋」不再用图标：图标库里 plus 只有 white 变体，浅色玻璃上会消失 ⇒ 改成品牌色文字。
-       wxss 有 .fab-plus 规则 + wxml 用 <text class="fab-plus">，两边都要对得上。 */
-    fabPlusText: /\.fab-plus\s*\{[^}]*color:\s*var\(--brand\b/.test(stripCss(s.ttWxss))
-      && /<text class="fab-plus">/.test(stripXml(s.ttWxml))
+    /* 课表「＋」不再用图标：图标库里 plus 只有 white 变体，浅色玻璃上会消失。
+       2026-11-28 起也不再用全角字形（重心偏左上），改成两条品牌色几何线；
+       wxss 共用块给背景色，wxml 必须有横竖两条 view，且不得回退 white plus 图标。 */
+    fabPlusText: /\.fab-plus-h,\s*\.fab-plus-v\s*\{[^}]*background:\s*var\(--brand\b/.test(stripCss(s.ttWxss))
+      && /<view class="fab-plus">[\s\S]*?<view class="fab-plus-h"><\/view>[\s\S]*?<view class="fab-plus-v"><\/view>/.test(stripXml(s.ttWxml))
       && !/name="plus"/.test(stripXml(s.ttWxml))
   };
 }
@@ -132,7 +133,7 @@ check(S.rmGlass, '弧形菜单 .rm-btn 用 var(--tabbar-bg)（不再是实心渐
 check(S.rmBrandText, '弧形菜单按钮文字转品牌色（中性玻璃上白字看不见）');
 check(S.rmFallbacks, 'radial-menu 补了 @supports not + prefers-reduced-transparency 两条降级');
 check(S.fabGlass, '课表 .fab 用 var(--tabbar-bg)（与底栏、弧形菜单同一组令牌）');
-check(S.fabPlusText, '课表「＋」是品牌色文字而不是 plus 图标（图标库只有 white 变体）');
+check(S.fabPlusText, '课表「＋」是品牌色几何线而不是 plus 图标或全角字形（图标库只有 white 变体）');
 
 /* ---------------- 变异自证 ---------------- */
 console.log('\n── ⑤ 变异自证（改坏 → 对应契约必须翻红）');
@@ -163,7 +164,7 @@ const MUT = [
     from: '  background: var(--tabbar-bg, rgba(255, 255, 255, 0.35));',
     to: '  background: rgba(51,112,255,0.84);' },
   { name: '课表「＋」改回 white 图标（浅色玻璃上会消失）', file: 'ttWxml', probe: 'fabPlusText',
-    from: '<text class="fab-plus">＋</text>',
+    from: '<view class="fab-plus-h"></view>\n      <view class="fab-plus-v"></view>',
     to: '<app-icon name="plus" variant="white" size="{{44}}" />' }
 ];
 

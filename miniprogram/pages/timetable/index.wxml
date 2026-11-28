@@ -249,6 +249,7 @@
       x="{{fmX}}"
       y="{{fmY}}"
       radius="{{140}}"
+      bottom-inset="{{tabbarPx}}"
       span-start="{{-105}}"
       span-end="{{5}}"
       items="{{fmItems}}"
@@ -260,7 +261,10 @@
   <!-- 新增课次 FAB：人人可见，**一律是添加个人选修课**（仅自己可见，含超管 —— 2026-10-16 用户定口径）；
        !isCounselor 保留在 wxml（辅导员只看不改，门禁 check-timetable-local 逐入口点名守卫） -->
   <view data-pressable wx:if="{{fabShow && !isCounselor}}" class="fab" hover-class="press-dim" hover-start-time="0" hover-stay-time="60" bindtap="onFab">
-    <text class="fab-plus">＋</text>
+    <view class="fab-plus">
+      <view class="fab-plus-h"></view>
+      <view class="fab-plus-v"></view>
+    </view>
   </view>
 
   <!-- 课次详情 -->
@@ -714,7 +718,7 @@
   </view>
 
   <!-- 课程长按四项动作弹层：白底改玻璃面板，长按直接进，不再先弹弧形菜单 -->
-  <bottom-sheet show="{{cellActionShow}}" title="调整课程" height="{{620}}" bind:close="onCellActionClose">
+  <bottom-sheet show="{{cellActionShow}}" title="调整课程" height="{{900}}" detents="{{cellActionDetents}}" bind:close="onCellActionClose">
     <view class="cell-act-list">
       <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="cell-act-item" data-key="week" bindtap="onCellAction">
         <text class="cell-act-title">仅本周调</text>

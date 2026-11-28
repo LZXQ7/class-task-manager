@@ -250,12 +250,35 @@
   z-index: 700;
 }
 .fab:active { filter: brightness(.92); }
-/* 「＋」不再用图标：图标库里 plus 只有 white 变体，放在浅色玻璃上会看不见 */
+/* 「＋」不再用图标或全角字形：图标库里 plus 只有 white 变体，全角字形重心偏左上。
+   用两条几何线绝对居中，圆心与按钮圆心严格重合（2026-11-28 用户实锤）。 */
 .fab-plus {
-  font-size: 56rpx;
-  line-height: 1;
-  font-weight: 400;
-  color: var(--brand, #3370FF);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40rpx;
+  height: 40rpx;
+  transform: translate(-50%, -50%);
+}
+.fab-plus-h,
+.fab-plus-v {
+  position: absolute;
+  background: var(--brand, #3370FF);
+  border-radius: 2rpx;
+}
+.fab-plus-h {
+  left: 0;
+  top: 50%;
+  width: 40rpx;
+  height: 4rpx;
+  transform: translateY(-50%);
+}
+.fab-plus-v {
+  left: 50%;
+  top: 0;
+  width: 4rpx;
+  height: 40rpx;
+  transform: translateX(-50%);
 }
 
 /* 临时调课：左下角胶囊（超管）。与右侧「＋」分列两边，互不遮挡。 */
