@@ -25,16 +25,24 @@ function check(cond, msg) {
   if (!cond) failed += 1;
 }
 
-/** 抽 loadSpeechSessions 函数体（行首 } 收尾，供变异限定锚点） */
-function lsBodyOf(src) {
-  const s = src.indexOf('async function loadSpeechSessions');
+/** 抽顶层 `function name(...) {...}` 整段（按花括号配对） */
+function fnBodyOf(src, name) {
+  const s = src.indexOf('function ' + name + '(');
   if (s < 0) return { body: '', start: -1, end: -1 };
-  const e = src.indexOf('\n}', s);
-  return { body: e < 0 ? '' : src.slice(s, e), start: s, end: e };
+  let d = 0, started = false;
+  for (let k = s; k < src.length; k += 1) {
+    if (src[k] === '{') { d += 1; started = true; }
+    else if (src[k] === '}') { d -= 1; if (started && !d) return { body: src.slice(s, k + 1), start: s, end: k + 1 }; }
+  }
+  return { body: '', start: -1, end: -1 };
 }
 
 function evalAll(src) {
-  const lsBody = lsBodyOf(src).body;
+  /* 2026-11-28：周次过滤实体从 loadSpeechSessions 内联抽到共享落位函数
+     speechSessionSlot（三处同源）。判据绑「实体」：过滤在落位函数里 + loadSpeechSessions
+     调用该函数；不再绑具体函数名/位置，避免重构后假红。 */
+  const slotBody = fnBodyOf(src, 'speechSessionSlot').body;
+  const lsBody = fnBodyOf(src, 'loadSpeechSessions').body;
 
   const sbStart = src.indexOf('  speechBoard: {');
   const re = /\n  [A-Za-z_$][\w$]*:\s*\{/g;
@@ -44,25 +52,30 @@ function evalAll(src) {
   const byKeyBlock = (sbBody.match(/const byKey = \{[\s\S]*?\n      \}\);/) || [''])[0];
 
   return {
-    lsHasFilter: /week\.matchesWeeks\s*\(\s*s\.weeks\s*,\s*wk\s*,\s*s\.week_rule\s*\)/.test(lsBody),
-    lsFilterBeforePush: lsHasFilterBeforePush(lsBody),
+    lsHasFilter: /week\.matchesWeeks\s*\(\s*s\.weeks\s*,\s*wk\s*,\s*s\.week_rule\s*\)/.test(slotBody),
+    lsFilterBeforePush: filterBeforeReturn(slotBody),
+    loadUsesSlot: /speechSessionSlot\s*\(/.test(lsBody),
     byKeyHasScope: /const scope = r\.scope\s*===\s*'A'/.test(byKeyBlock)
       && /const key = date \+ '\|' \+ r\.slot \+ '\|' \+ scope/.test(byKeyBlock),
     memberUsesScope: /byKey\[date \+ '\|' \+ slot \+ '\|' \+ scope\]/.test(sbBody),
     noOldKey: !/byKey\[date \+ '\|' \+ slot\]/.test(sbBody)
   };
 }
-function lsHasFilterBeforePush(body) {
+function filterBeforeReturn(body) {
   const i = body.indexOf('matchesWeeks');
-  const j = body.indexOf('out.push');
-  return i >= 0 && j >= 0 && i < j;
+  const j = body.indexOf('return Object.assign');
+  if (i >= 0 && j >= 0) return i < j;
+  // 兼容旧内联形态（out.push）
+  const k = body.indexOf('out.push');
+  return i >= 0 && k >= 0 && i < k;
 }
 
 const S = evalAll(SRC);
 
-console.log('── ① loadSpeechSessions 源头过滤周次（隔周课不再重复）');
-check(S.lsHasFilter, 'loadSpeechSessions 调用 week.matchesWeeks(s.weeks, wk, s.week_rule)');
-check(S.lsFilterBeforePush, '周次过滤在 out.push 之前（非本周课次不进骨架）');
+console.log('── ① 演讲场次源头过滤周次（隔周课不再重复）');
+check(S.lsHasFilter, '共享落位函数 speechSessionSlot 调用 week.matchesWeeks(s.weeks, wk, s.week_rule)');
+check(S.lsFilterBeforePush, '周次过滤在构造场次项之前（非本周课次不进骨架）');
+check(S.loadUsesSlot, 'loadSpeechSessions 复用共享落位函数（三处同源，杜绝 drift）');
 
 console.log('\n── ② speechBoard 人归组带 scope（A/B 组不串人）');
 check(S.byKeyHasScope, 'byKey 归组 key = date|slot|scope（scope 由 r.scope 派生 A/B/ALL）');
@@ -71,18 +84,24 @@ check(S.noOldKey, '没有残留只按 date|slot 的旧取人写法');
 
 console.log('\n── ③ 变异自证（改坏 → 判据必须翻红）');
 const MUT = [
-  { name: '去掉 loadSpeechSessions 的周次过滤（隔周课又变两条）', probe: 'lsHasFilter',
+  { name: '去掉共享落位函数的周次过滤（隔周课又变两条）', probe: 'lsHasFilter',
     apply: (src) => {
-      const { body, start } = lsBodyOf(src);
-      return start < 0 ? src : src.slice(0, start) + body.replace(/^\s*if \(!week\.matchesWeeks\(s\.weeks, wk, s\.week_rule\)\) return;\r?\n/m, '') + src.slice(start + body.length);
+      const { body, start, end } = fnBodyOf(src, 'speechSessionSlot');
+      return start < 0 ? src : src.slice(0, start) + body.replace(/if \(!week\.matchesWeeks\(s\.weeks, wk, s\.week_rule\)\) return null;/, '') + src.slice(end);
     } },
-  { name: '把周次过滤挪到 out.push 之后（形同虚设）', probe: 'lsFilterBeforePush',
+  { name: '把周次过滤挪到构造场次项之后（形同虚设）', probe: 'lsFilterBeforePush',
     apply: (src) => {
-      const { body, start } = lsBodyOf(src);
-      const needle = "    if (!week.matchesWeeks(s.weeks, wk, s.week_rule)) return;";
+      const { body, start, end } = fnBodyOf(src, 'speechSessionSlot');
+      const needle = '  if (!week.matchesWeeks(s.weeks, wk, s.week_rule)) return null;';
       if (start < 0 || body.indexOf(needle) < 0) return src;
-      const moved = body.replace(needle + '\n', '').replace('      out.push({', needle + '\n      out.push({');
-      return src.slice(0, start) + moved + src.slice(start + body.length);
+      // 插到 return 语句之后（不可达位置），模拟「过滤形同虚设」
+      const moved = body.replace(needle + '\n', '').replace('  }, extra || {});\n}', '  }, extra || {});\n' + needle + '\n}');
+      return src.slice(0, start) + moved + src.slice(end);
+    } },
+  { name: 'loadSpeechSessions 不再复用共享落位函数（退回内联 drift）', probe: 'loadUsesSlot',
+    apply: (src) => {
+      const { body, start, end } = fnBodyOf(src, 'loadSpeechSessions');
+      return start < 0 ? src : src.slice(0, start) + body.replace(/speechSessionSlot\s*\(s, wk, cfg, cal, shifts, \{ courseName: s\.courseName \|\| '' \}\)/, 'null') + src.slice(end);
     } },
   { name: 'byKey 归组去掉 scope 段（A/B 组串人）', probe: 'byKeyHasScope',
     from: "const key = date + '|' + r.slot + '|' + scope;", to: "const key = date + '|' + r.slot;" },

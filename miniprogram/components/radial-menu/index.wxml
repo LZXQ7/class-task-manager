@@ -4,7 +4,10 @@
      · 按钮是**圆形**、品牌蓝（不再是白色方块）
      ⚠️ hot 下标由组件自己算（moveTo），wxml 只负责加 .hot 类 -->
 <view wx:if="{{visible}}" class="rm-root {{open ? 'in' : ''}}">
-  <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable class="rm-mask" bindtap="onMask" catchtouchmove="noop"></view>
+  <!-- 2026-11-28：遮罩去掉 press-shrink / data-pressable —— 按住遮罩会命中全站
+       press-shrink 让整块遮罩缩放，露出明显的灰色矩形边缘（用户截图实锤，与
+       1.0.8.72 bottom-sheet 同款根因，那次漏改了本组件）。遮罩只负责点空白收起菜单。 -->
+  <view class="rm-mask" bindtap="onMask" catchtouchmove="noop"></view>
   <view class="rm-origin" style="left:{{x}}px; top:{{y}}px;">
     <view hover-class="press-shrink" hover-start-time="0" hover-stay-time="60" data-pressable
       wx:for="{{arranged}}"

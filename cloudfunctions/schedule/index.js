@@ -1274,6 +1274,65 @@ function decorateDuty(d, periods, meId) {
  * ============================================================ */
 
 /**
+ * 把一行 session 按「本周实际落位」加工成演讲场次骨架项；返回 null 表示本周不上 / 非演讲节次。
+ * 🔴 2026-11-28 跨周调课：唯一实现，speechGenerate / speechAiParse / loadSpeechSessions
+ *    三处共用，杜绝「一处改了别处没改」（M1 同源漏改）。此前三处都是内联复制，
+ *    全用 resolveSlot（只解析源周调出），漏了 incomingOf（跨周调入的补课），
+ *    导致「第8周B组课调到第13周第1节」后课表显示补课、演讲却排不到那一场。
+ * @param s        session 行（需含 id/day_of_week/period/group_scope/weeks/week_rule）
+ * @param wk        当前周
+ * @param cfg/cal   班级配置 / 校历
+ * @param shifts    week.loadSessionShifts() 结果
+ * @param extra     附加字段（courseName 等，原样带出）
+ */
+function speechSessionSlot(s, wk, cfg, cal, shifts, extra) {
+  const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
+  if (!slot) return null;
+  /* 1.0.8.68：课次本周是否生效（隔周课：单周课/双周课各一条 session，本周只该出一条）。
+     与生成端 speechCore.buildSlots 第 47 行同一口径 —— 少了这层，
+     speechBoard 会把单周+双周两条都列出来（用户看到的「同一时段两节课」）。 */
+  if (!week.matchesWeeks(s.weeks, wk, s.week_rule)) return null;
+  const p = Number(slot.period);
+  if (p !== speechCore.AM_PERIOD && p !== speechCore.PM_PERIOD) return null;
+  const classDate = week.classDateOf(cfg, wk, slot.day, cal);
+  if (!classDate) return null;
+  return Object.assign({
+    id: s.id, day_of_week: slot.day, period: p, group_scope: s.group_scope,
+    weeks: s.weeks, week_rule: s.week_rule, class_date: classDate
+  }, extra || {});
+}
+
+/**
+ * 追加「从别的周调入本周」的补课场次（2026-11-28）。
+ * 跨周 MOVE 的调入侧不属于该课次本周的常规落位 —— resolveSlot(sid, 目标周) 查不到
+ * shiftKey(sid, 源周)，会退回课次原本的星期/节次（甚至被 weeks 过滤掉），必须像
+ * 课表端 course/index.js 的 incomingOf 那样显式追加，否则演讲永远排不到补课那一场。
+ * ⚠️ 只处理 AM(1)/PM(3) 演讲节次；补课的 group_scope 沿用原 session（跟课走）。
+ * @param out      输出数组（原地 push）
+ * @param sessRows 本周查出的原始 session 行（按 id 找补课对应课次）
+ */
+function appendIncomingSpeechSessions(out, sessRows, wk, cfg, cal, shifts) {
+  week.incomingOf(shifts, wk).forEach((ov) => {
+    const s = (sessRows || []).filter(x => Number(x.id) === Number(ov.sessionId))[0];
+    if (!s) return;                       // 补课的课次不存在（脏数据），跳过
+    const day = Number(ov.toDay) || Number(s.day_of_week);
+    const p = Number(ov.toPeriod) || Number(s.period);
+    if (p !== speechCore.AM_PERIOD && p !== speechCore.PM_PERIOD) return;  // 演讲只盯第1/3节
+    const classDate = week.classDateOf(cfg, wk, day, cal);
+    if (!classDate) return;
+    /* weeks/week_rule 用课次原值保留给 AI 课名映射；buildSlots 里还有一层 matchesWeeks，
+       但补课落位是本团队显式指定到本周的「多一次」课，不能用源周 weeks 再过滤 —— 见下行。 */
+    out.push({
+      id: s.id, day_of_week: day, period: p, group_scope: s.group_scope,
+      // 🔴 补课必须用「未指定周次」= 每周生效，避免 buildSlots 的 matchesWeeks 把
+      //    「weeks 只写了源周(如 8)」的补课在目标周(13)再次过滤掉（这是本 bug 的第二层）。
+      weeks: '', week_rule: 'ALL', class_date: classDate,
+      courseName: s.courseName || '', shiftedIn: true
+    });
+  });
+}
+
+/**
  * 本周可排演讲的场次（带课名）。
  * 与 speechGenerate / speechAiParse 原来的内联查询同一口径，抽出来给设置页复用，
  * 避免「设置页看到的场次」与「实际排的场次」对不上。
@@ -1289,21 +1348,10 @@ async function loadSpeechSessions(db, classId, wk) {
   const shifts = await week.loadSessionShifts(db);
   const out = [];
   rows.forEach(s => {
-    const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
-    if (!slot) return;
-    /* 1.0.8.68：课次本周是否生效（隔周课：单周课/双周课各一条 session，本周只该出一条）。
-       与生成端 speechCore.buildSlots 第 47 行同一口径 —— 少了这层，
-       speechBoard 会把单周+双周两条都列出来（用户看到的「同一时段两节课」）。 */
-    if (!week.matchesWeeks(s.weeks, wk, s.week_rule)) return;
-    const p = Number(slot.period);
-    if (p !== speechCore.AM_PERIOD && p !== speechCore.PM_PERIOD) return;
-    const classDate = week.classDateOf(cfg, wk, slot.day, cal);
-    if (!classDate) return;
-    out.push({
-      id: s.id, day_of_week: slot.day, period: p, group_scope: s.group_scope,
-      weeks: s.weeks, week_rule: s.week_rule, class_date: classDate, courseName: s.courseName || ''
-    });
+    const item = speechSessionSlot(s, wk, cfg, cal, shifts, { courseName: s.courseName || '' });
+    if (item) out.push(item);
   });
+  appendIncomingSpeechSessions(out, rows, wk, cfg, cal, shifts);
   return out;
 }
 
@@ -3014,12 +3062,13 @@ const routes = {
         const shifts = await week.loadSessionShifts(conn);
         const sessions = [];
         sessionRows.forEach(s => {
-          const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
-          if (!slot) return;
-          const classDate = week.classDateOf(cfg, wk, slot.day, cal);
-          if (!classDate) return;
-          sessions.push(Object.assign({}, s, { day_of_week: slot.day, period: slot.period, class_date: classDate }));
+          /* 2026-11-28：统一走共享落位函数（与 loadSpeechSessions / speechAiParse 同一口径，
+             含 matchesWeeks 隔周课过滤），杜绝三处 drift。 */
+          const item = speechSessionSlot(s, wk, cfg, cal, shifts);
+          if (item) sessions.push(item);
         });
+        /* 跨周调入的补课（源周把课移到本周）也要排演讲 —— 与课表 incomingOf 同源。 */
+        appendIncomingSpeechSessions(sessions, sessionRows, wk, cfg, cal, shifts);
         if (!sessions.length) throw new BizError(41002, '本班尚未录入课程表，无法生成演讲安排');
 
         /* ② 取名册（排除教职工/测试号），按序号升序
@@ -3432,15 +3481,12 @@ const routes = {
       const shifts = await week.loadSessionShifts(pool);
       const sessions = [];
       sessionRows.forEach(s => {
-        const slot = week.resolveSlot(s.id, s.day_of_week, s.period, wk, shifts);
-        if (!slot) return;
-        const classDate = week.classDateOf(cfg, wk, slot.day, cal);
-        if (!classDate) return;
-        const p = Number(slot.period);
-        if (p !== speechCore.AM_PERIOD && p !== speechCore.PM_PERIOD) return;
-        sessions.push({ id: s.id, day_of_week: slot.day, period: p, group_scope: s.group_scope,
-          weeks: s.weeks, week_rule: s.week_rule, class_date: classDate, courseName: s.courseName || '' });
+        /* 2026-11-28：与 speechGenerate / loadSpeechSessions 共用落位函数（含 matchesWeeks）。 */
+        const item = speechSessionSlot(s, wk, cfg, cal, shifts, { courseName: s.courseName || '' });
+        if (item) sessions.push(item);
       });
+      /* 跨周调入的补课也要让 AI 看到（否则说「把那节课调到周X」时预览里没这节课）。 */
+      appendIncomingSpeechSessions(sessions, sessionRows, wk, cfg, cal, shifts);
       if (!sessions.length) throw new BizError(41002, '本周第1节/第3节没有集体课，无需排演讲');
 
       /* ② 让 AI 只解析"指令"，输出 JSON；姓名由内核决定 */

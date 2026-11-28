@@ -11,7 +11,11 @@
 .rm-mask {
   position: absolute;
   left: 0; right: 0; top: 0; bottom: 0;
-  background: var(--bg-mask, rgba(0,0,0,0.45));
+  /* 2026-11-28：柔和径向遮罩 —— 中心（菜单弹出处偏上）用 --bg-mask-soft 更透、
+     四周边缘回到 --bg-mask 聚拢，不再是死板一整块灰 + press-shrink 缩放露出的矩形。
+     ⚠️ 色标用 rpx：组件 wxss 里百分比色标会被真机整条丢弃（见 nav-bar/index.wxss 同款）。
+     与 bottom-sheet 1.0.8.72 同一套令牌，深浅色自动翻。 */
+  background: radial-gradient(ellipse 160% 110% at 50% 40%, var(--bg-mask-soft, rgba(0,0,0,0.26)) 0rpx, var(--bg-mask, rgba(0,0,0,0.45)) 1000rpx);
   opacity: 0;
   transition: opacity .2s ease;
 }
@@ -26,6 +30,12 @@
 .rm-item {
   position: absolute;
   left: 0; top: 0;
+  /* 🔴 2026-11-28「长按格子后的按钮没作用」根因：父级 .rm-root 设 pointer-events:none
+     （防未展开时吞页面点击），pointer-events 是**继承**属性 ⇒ 按钮 .rm-item 也变 none，
+     其 bindtap="onItem" 永远收不到点击。FAB 菜单靠页面 touch 转发 + release() 命中判定
+     选中，掩盖了这个缺陷；长按格子菜单没有 touch 转发、只有 bindtap，于是彻底点不动。
+     这里显式恢复 auto —— 只在节点存在期间（visible）生效，收起后节点卸载不影响页面。 */
+  pointer-events: auto;
   /* 先移到触点中心，再向外推 (dx,dy)，再缩放；起点 scale(0) 保证「弹出」感 */
   transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0);
   opacity: 0;

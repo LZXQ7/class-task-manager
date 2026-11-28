@@ -214,7 +214,18 @@ function staticProbes() {
     methods: /moveTo\s*\(/.test(JS) && /release\s*\(/.test(JS),
     // 手指滑上/移开都要「弹一下」，且减弱动效时不弹
     hotSpring: sp.hotSpring,
-    reducedNoBounce: sp.reducedNoBounce
+    reducedNoBounce: sp.reducedNoBounce,
+    /* 🔴 2026-11-28「长按格子后的按钮没作用」：.rm-root 设 pointer-events:none，
+       pointer-events 继承 ⇒ 按钮 .rm-item 也变 none，bindtap 收不到点击。
+       FAB 靠 touch 转发掩盖了这点，长按格子菜单只有 bindtap ⇒ 彻底点不动。 */
+    itemClickable: /\.rm-item\s*\{[^}]*pointer-events:\s*auto/.test(WXSS),
+    /* 遮罩不再带 press-shrink / data-pressable（按压缩放露出灰色矩形边缘，
+       1.0.8.72 已在 bottom-sheet 修过、本组件漏同步 —— 2026-11-28 用户截图实锤）。 */
+    maskNoPress: !/hover-class="press-shrink"/.test((WXML.match(/class="rm-mask[^"]*"[^>]*>/) || [''])[0])
+      && !/data-pressable/.test((WXML.match(/<view[^>]*class="rm-mask[^>]*>/) || [''])[0]),
+    // 遮罩改柔和径向渐变；色标用 rpx（组件 wxss 百分比色标真机整条丢弃）
+    maskRadial: /\.rm-mask\s*\{[^}]*radial-gradient/.test(WXSS) &&
+      /--bg-mask-soft/.test(WXSS) && /0rpx/.test(WXSS) && /1000rpx/.test(WXSS)
   };
 }
 
@@ -330,12 +341,43 @@ const mutants = [
       const m = mutate(WXSS, '.rm-btn { transition: box-shadow .12s ease, filter .12s ease; }', '');
       return m === null ? null : { wxss: m };
     }
+  },
+  {
+    /* 2026-11-28：删掉 .rm-item 的 pointer-events:auto ⇒ 按钮又点不动（长按格子菜单失效） */
+    name: '按钮 pointer-events 恢复被删（长按格子按钮又点不动）',
+    scope: 'wxss', expect: 'itemClickable',
+    build: () => {
+      const m = mutate(WXSS, '  pointer-events: auto;', '  /* pointer-events removed */');
+      return m === null ? null : { wxss: m };
+    }
+  },
+  {
+    /* 2026-11-28：遮罩又加回 press-shrink/data-pressable（灰矩形边缘回来） */
+    name: '遮罩按压态回来（灰矩形边缘）',
+    scope: 'wxml', expect: 'maskNoPress',
+    build: () => {
+      const m = mutate(WXML, '<view class="rm-mask" bindtap="onMask"',
+        '<view hover-class="press-shrink" data-pressable class="rm-mask" bindtap="onMask"');
+      return m === null ? null : { wxml: m };
+    }
+  },
+  {
+    /* 2026-11-28：遮罩退回纯色（死板一整块灰） */
+    name: '遮罩退回纯色径向渐变被删',
+    scope: 'wxss', expect: 'maskRadial',
+    build: () => {
+      const m = mutate(WXSS,
+        'background: radial-gradient(ellipse 160% 110% at 50% 40%, var(--bg-mask-soft, rgba(0,0,0,0.26)) 0rpx, var(--bg-mask, rgba(0,0,0,0.45)) 1000rpx);',
+        'background: var(--bg-mask, rgba(0,0,0,0.45));');
+      return m === null ? null : { wxss: m };
+    }
   }
 ];
 
 function runWith(over) {
   const js = over.js || JS;
   const wxss = over.wxss || WXSS;
+  const wxml = over.wxml || WXML;
   const ttwxml = over.ttwxml || TT_WXML_RAW;
   const ttjs = over.ttjs || TT_JS_RAW;
   const desc = loadComponent(js);
@@ -345,6 +387,11 @@ function runWith(over) {
     /\.rm-btn\s*\{[^}]*width:\s*\d+rpx/.test(wxss) &&
     /\.rm-btn\s*\{[^}]*height:\s*\d+rpx/.test(wxss) && /var\(--brand/.test(wxss);
   res.longPressOnly = /bindlongpress="onFabRadial"/.test(ttwxml) && !/bindtap="onFabRadial"/.test(ttwxml);
+  res.itemClickable = /\.rm-item\s*\{[^}]*pointer-events:\s*auto/.test(wxss);
+  res.maskNoPress = !/hover-class="press-shrink"/.test((wxml.match(/class="rm-mask[^"]*"[^>]*>/) || [''])[0])
+    && !/data-pressable/.test((wxml.match(/<view[^>]*class="rm-mask[^>]*>/) || [''])[0]);
+  res.maskRadial = /\.rm-mask\s*\{[^}]*radial-gradient/.test(wxss) &&
+    /--bg-mask-soft/.test(wxss) && /0rpx/.test(wxss) && /1000rpx/.test(wxss);
   res.touchForward = /(?:bind|catch)touchmove="onFabTouchMove"/.test(ttwxml) &&
     /bindtouchend="onFabTouchEnd"/.test(ttwxml) &&
     /selectComponent\('#rm-fab'\)/.test(ttjs) && /comp\.moveTo/.test(ttjs) && /comp\.release/.test(ttjs);
@@ -378,7 +425,8 @@ function runWith(over) {
 mutants.forEach(mt => {
   const over = mt.build();
   if (!over) { bad('变异锚点没命中源码：' + mt.name); return; }
-  const changed = Object.keys(over).some(k => over[k] !== (k === 'js' ? JS : k === 'wxss' ? WXSS : k === 'ttwxml' ? TT_WXML_RAW : TT_JS_RAW));
+  const BASES = { js: JS, wxss: WXSS, wxml: WXML, ttwxml: TT_WXML_RAW, ttjs: TT_JS_RAW };
+  const changed = Object.keys(over).some(k => over[k] !== BASES[k]);
   if (!changed) { bad('变异替换没生效：' + mt.name); return; }
   const r = runWith(over);
   check(r[mt.expect] === false, '变异被抓：' + mt.name);
