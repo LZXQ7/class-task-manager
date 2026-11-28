@@ -108,7 +108,9 @@ function judge(f) {
     const src = f['fn_' + fn] || '';
     push(/require\('\.\/common\/review-demo'\)/.test(src), `${fn}: 未 require review-demo`);
     const callIdx = src.indexOf('reviewDemo.gateDemoWrite(');
-    const ctxIdx = src.indexOf('const ctx = await guard.getContext()');
+    // 兼容服务端票据桥接：入口可能是 getContext() 或 getContext(event)，
+    // 判据绑「取到 ctx 」这个语义，不绑具体参数形态。
+    const ctxIdx = src.indexOf('const ctx = await guard.getContext(');
     push(callIdx >= 0, `${fn}: main 未调用 reviewDemo.gateDemoWrite`);
     push(callIdx >= 0 && ctxIdx >= 0 && callIdx > ctxIdx,
       `${fn}: gateDemoWrite 必须在取到 ctx 之后调用`);

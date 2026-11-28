@@ -31,6 +31,7 @@ const modAccounts = require('./lib/mod-accounts');
 const modRoster = require('./lib/mod-roster');
 const modUsage = require('./lib/mod-usage');
 const modScheduleRules = require('./lib/mod-schedule-rules');
+const bridge = require('./lib/bridge');
 const perms = require('./lib/perms');
 
 const app = express();
@@ -488,6 +489,160 @@ app.post('/api/schedule-rules', requirePerm('rules'), (req, res) => handle(res, 
   const pool = getPool();
   return modScheduleRules.saveScheduleRules(pool, (req.body || {}).classId, req.body || {}, req.session2);
 }));
+
+/* ============================================================
+ * 后台编辑入口 · 服务端票据桥接（2026-11-28）
+ * ============================================================
+ * 用户在网页后台能编辑的小程序内容，一律走 bridge.call 调**小程序云函数原有
+ * action**，不在 admin-web 重写写库 SQL。这样游标推进、通知双记录、审计日志、
+ * 演示班硬闸与小程序端逐字同源（M1 同源漏改）。
+ *
+ * 三层闸：
+ *   requirePerm  页签/操作位 —— 前端隐藏按钮只是体验，这里才是真边界；
+ *   requireSuperSession 高风险批量操作仅超管（清空 / 覆盖 / 解绑 / 回收站清空）；
+ *   requireConfirm 二次确认 —— 前端弹确认后提交 confirm:true，后端不认口头确认。
+ */
+/** 仅超管：与 perms.js 的 SUPER_ONLY 同口径，member.is_super 实时来自 session */
+function requireSuperSession(req, res, next) {
+  const s = req.session2;
+  if (!s) return res.status(401).json({ ok: false, errMsg: '未登录或登录已过期' });
+  if (!s.isSuper) return res.status(403).json({ ok: false, errCode: 40302, errMsg: '该操作仅超级管理员可执行' });
+  next();
+}
+
+/** 二次确认：前端必须先弹确认框，再带 confirm:true 提交 */
+function requireConfirm(req, res, next) {
+  if (!req.body || req.body.confirm !== true) {
+    return res.status(400).json({ ok: false, errCode: 40009, errMsg: '请二次确认后再执行' });
+  }
+  next();
+}
+
+/** 桥接目标班级：只有超管可覆盖本人主班；其余角色传 0，验票层还会再挡一次 */
+function bridgeClass(req) {
+  if (!req.session2 || !req.session2.isSuper) return 0;
+  const raw = (req.body && req.body.classId !== undefined)
+    ? req.body.classId
+    : (req.query && req.query.classId);
+  return Number(raw) || 0;
+}
+
+/* ---------- 通知：发布 / 软删 / 恢复 / 清空回收站 ---------- */
+app.post('/api/notice', requirePerm('notice'), (req, res) => handle(res, () =>
+  bridge.call(req, 'media', 'msgPublish', req.body || {}, bridgeClass(req))
+));
+app.post('/api/notice/recycle/clear', requirePerm('notice'), requireSuperSession, requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'media', 'msgRecycleClear', {}, bridgeClass(req))
+));
+app.post('/api/notice/:id/delete', requirePerm('notice'), requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'media', 'msgDelete', Object.assign({ noticeId: Number(req.params.id) }, req.body || {}), bridgeClass(req))
+));
+app.post('/api/notice/:id/restore', requirePerm('notice'), (req, res) => handle(res, () =>
+  bridge.call(req, 'media', 'msgRestore', Object.assign({ noticeId: Number(req.params.id) }, req.body || {}), bridgeClass(req))
+));
+
+/* ---------- 作业：列表 / 发布 / 批改 / 删除（新增独立页签） ---------- */
+app.get('/api/homework', requirePerm('homework'), (req, res) => handle(res, () =>
+  bridge.call(req, 'homework', 'list', req.query || {}, bridgeClass(req))
+));
+app.get('/api/homework/:id', requirePerm('homework'), (req, res) => handle(res, () =>
+  bridge.call(req, 'homework', 'detail', { id: Number(req.params.id) }, bridgeClass(req))
+));
+app.post('/api/homework', requirePerm('homework'), (req, res) => handle(res, () =>
+  bridge.call(req, 'homework', 'publish', req.body || {}, bridgeClass(req))
+));
+app.post('/api/homework/:id/review', requirePerm('homework'), (req, res) => handle(res, () =>
+  bridge.call(req, 'homework', 'review', Object.assign({ homeworkId: Number(req.params.id) }, req.body || {}), bridgeClass(req))
+));
+app.post('/api/homework/:id/delete', requirePerm('homework'), requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'homework', 'delete', { homeworkId: Number(req.params.id) }, bridgeClass(req))
+));
+
+/* ---------- 课前演讲：名单编辑 + 设置；清空仅超管 ---------- */
+app.post('/api/speech/generate', requirePerm('speech'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'speechGenerate', Object.assign({}, req.body || {}), bridgeClass(req))
+));
+app.post('/api/speech/reassign', requirePerm('speech'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'speechReassign', req.body || {}, bridgeClass(req))
+));
+app.post('/api/speech/swap', requirePerm('speech'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'speechSwap', req.body || {}, bridgeClass(req))
+));
+app.post('/api/speech/add', requirePerm('speech'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'speechAdd', req.body || {}, bridgeClass(req))
+));
+app.post('/api/speech/:id/delete', requirePerm('speech'), requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'speechRemove', { id: Number(req.params.id) }, bridgeClass(req))
+));
+app.post('/api/speech/clear', requirePerm('speech'), requireSuperSession, requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'speechClear', req.body || {}, bridgeClass(req))
+));
+app.post('/api/speech/settings', requirePerm('speech'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'speechSetSettings', req.body || {}, bridgeClass(req))
+));
+app.post('/api/speech/slot-rules', requirePerm('speech'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'speechSetSlotRules', req.body || {}, bridgeClass(req))
+));
+
+/* ---------- 值日：生成 / 换人 / 撤销 / 手工加 / 发布；清空仅超管 ---------- */
+app.post('/api/duty/generate', requirePerm('duty'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'generate', Object.assign({}, req.body || {}), bridgeClass(req))
+));
+app.post('/api/duty/reassign', requirePerm('duty'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'reassign', req.body || {}, bridgeClass(req))
+));
+app.post('/api/duty/reassign-undo', requirePerm('duty'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'reassignUndo', req.body || {}, bridgeClass(req))
+));
+app.post('/api/duty/add', requirePerm('duty'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'addManual', req.body || {}, bridgeClass(req))
+));
+app.post('/api/duty/clear', requirePerm('duty'), requireSuperSession, requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'clear', req.body || {}, bridgeClass(req))
+));
+app.post('/api/duty/publish', requirePerm('duty'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'publish', req.body || {}, bridgeClass(req))
+));
+app.post('/api/duty/unpublish', requirePerm('duty'), (req, res) => handle(res, () =>
+  bridge.call(req, 'schedule', 'unpublish', req.body || {}, bridgeClass(req))
+));
+
+/* ---------- 课程表：发布到全班 / 临时调课 / 节假日 / 调休 ---------- */
+app.post('/api/timetable/publish-to-class', requirePerm('course'), requireSuperSession, requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'course', 'publishToClass', {}, bridgeClass(req))
+));
+app.post('/api/timetable/shift', requirePerm('course'), (req, res) => handle(res, () =>
+  bridge.call(req, 'course', 'shiftSet', req.body || {}, bridgeClass(req))
+));
+app.post('/api/timetable/shift/remove', requirePerm('course'), (req, res) => handle(res, () =>
+  bridge.call(req, 'course', 'shiftRemove', req.body || {}, bridgeClass(req))
+));
+app.post('/api/timetable/holiday', requirePerm('course'), requireSuperSession, (req, res) => handle(res, () =>
+  bridge.call(req, 'course', 'saveHoliday', req.body || {}, bridgeClass(req))
+));
+app.post('/api/timetable/holiday/remove', requirePerm('course'), requireSuperSession, requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'course', 'removeHoliday', req.body || {}, bridgeClass(req))
+));
+app.post('/api/timetable/day-shift', requirePerm('course'), requireSuperSession, (req, res) => handle(res, () =>
+  bridge.call(req, 'course', 'saveShift', req.body || {}, bridgeClass(req))
+));
+app.post('/api/timetable/day-shift/remove', requirePerm('course'), requireSuperSession, requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'course', 'removeShift', req.body || {}, bridgeClass(req))
+));
+
+/* ---------- 班级口令 / 成员备注 / 微信解绑 ---------- */
+app.post('/api/classes/:id/token', requirePerm('class'), requireSuperSession, requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'class', 'randomToken', { classId: Number(req.params.id) }, 0)
+));
+app.post('/api/members/:id/note', requirePerm('members.edit'), (req, res) => handle(res, () =>
+  bridge.call(req, 'member', 'noteSave', Object.assign({ memberId: Number(req.params.id) }, req.body || {}), 0)
+));
+app.post('/api/members/:id/note/:noteId/delete', requirePerm('members.edit'), requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'member', 'noteDelete', { id: Number(req.params.noteId) }, 0)
+));
+app.post('/api/members/:id/unbind', requirePerm('members.edit'), requireSuperSession, requireConfirm, (req, res) => handle(res, () =>
+  bridge.call(req, 'member', 'unbind', Object.assign({ memberId: Number(req.params.id) }, req.body || {}), bridgeClass(req))
+));
 
 /* ============================================================
  * 静态页面（与 API 同源 —— 见文件头「为什么必须单函数同源」）

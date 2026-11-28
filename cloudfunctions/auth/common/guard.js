@@ -18,7 +18,25 @@ const ADMIN_ROLES = ['ADMIN', 'MONITOR'];
  * - impersonated 是否处于「切换账号」模拟态
  * 每次多一条 impersonation 查询（该表最多几行，代价可忽略）。
  */
-async function getContext() {
+async function getContext(event) {
+  /* 服务端票据桥接（2026-11-28）：后台 HTTP 云函数没有微信上下文，用短时效票据
+     换一份与小程序同构的 ctx，从而直接复用既有 route.handler，不再复制写库逻辑。
+     ⚠️ 票据字段是保留字，只有服务端 callFunction 才会带；小程序请求即便伪造该字段，
+        也必须有有效的 admin_sid 才能验票通过（见 common/admin-bridge.js S1~S4）。 */
+  const bridgeTicket = event && event.__wbAdminBridge;
+  if (bridgeTicket) {
+    const adminBridge = require('./admin-bridge');
+    const member = await adminBridge.verifyTicket(bridgeTicket, getPool());
+    if (!member) throw new BizError(40001, '后台票据无效或已过期，请重新登录后台');
+    return {
+      openid: String(member.openid || ''),
+      appid: '',
+      member,
+      realMember: member,
+      impersonated: false,
+      adminBridge: true
+    };
+  }
   const wxContext = cloud.getWXContext();
   const openid = wxContext.OPENID;
   if (!openid) throw new BizError(40001, '无法获取用户身份，请重新进入小程序');

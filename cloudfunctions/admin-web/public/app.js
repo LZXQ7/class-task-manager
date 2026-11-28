@@ -280,6 +280,49 @@
     return run();
   }
 
+  /* ---------------- 后台编辑入口通用件（2026-11-28） ----------------
+   * 新增的后台写操作统一走这里：
+   *   · 二次确认用站内 confirmDialog（不用浏览器原生 confirm，风格与全站一致）；
+   *   · POST 带 confirm:true —— 后端 requireConfirm 会验，前端口头确认不算；
+   *   · classId 统一回填当前选择器，后端只有超管能覆盖主班。
+   */
+  function postEdit(path, body, title, detail, level, done) {
+    confirmDialog({
+      title: title || '确认操作',
+      body: detail || '',
+      okText: '确认执行',
+      level: level || 'L1'
+    }).then(function (yes) {
+      if (!yes) return;
+      var payload = Object.assign({}, body || {}, { confirm: true, classId: state.classId });
+      api(path, { method: 'POST', body: payload }).then(function (r) {
+        if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); return; }
+        toast('已提交');
+        if (done) done();
+      });
+    });
+  }
+
+  /** 不需二次确认的轻量写（如生成草稿、切换周次） */
+  function postQuick(path, body, done) {
+    var payload = Object.assign({}, body || {}, { classId: state.classId });
+    api(path, { method: 'POST', body: payload }).then(function (r) {
+      if (!r.ok) { toast(r.errMsg || '操作失败', 'err'); return; }
+      toast('已提交');
+      if (done) done();
+    });
+  }
+
+  /** 与后端 requireSuperSession 同一判据：/api/me 下发的 isSuper */
+  function superOnly() {
+    return !!(state.user && state.user.isSuper);
+  }
+
+  /** 成员备注：与 member.noteSave 的 noteScopeOk 同口径（超管 / 辅导员） */
+  function canMemberNote() {
+    return superOnly() || !!(state.user && state.user.position === '辅导员');
+  }
+
   function needAuth(d) {
     if (d && d.errMsg === '登录已过期，请重新登录') {
       showLogin();
@@ -296,7 +339,7 @@
    *    `config`（系统配置）与 `class`（账号班级）同属「班级/系统管理」，共用一个权限。
    */
   /* 导航顺序口径（2026-11-16 用户要求）：**标题字数越少越靠上，同字数保持原相对顺序**。
-   * 即 2 字（概览/成员/请假/班费/通知）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
+   * 即 2 字（概览/成员/请假/班费/通知/作业）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
    * 账号班级/系统配置/排班规则/使用统计/课前演讲/操作审计/后台账号）。「值日记录/换班申请」自然
    * 落在「课程表」下面。⚠️ 只调整声明顺序，key 是 localStorage 里的 state.view，不可改。
    * 改顺序须同步 lib/perms.js 的 VIEWS 数组 + index.html 注释 + check-admin-nav-order。 */
@@ -306,6 +349,7 @@
     leave:     { title: '请假',     perm: 'leave',     render: renderLeave },
     fee:       { title: '班费',     perm: 'fee',       render: renderFee },
     notice:    { title: '通知',     perm: 'notice',    render: renderNotice },
+    homework:  { title: '作业',     perm: 'homework',  render: renderHomework },
     countdown: { title: '倒数日',   perm: 'countdown', render: renderCountdown },
     timetable: { title: '课程表',   perm: 'course',    render: renderTimetable },
     duty:      { title: '值日记录', perm: 'duty',      render: renderDuty },
@@ -358,7 +402,7 @@
    *   日常 8 项（2/2/2/2/3/3/4/4）→ 管理 4 项（4/4/4/4）→ 审计 2 项（4/4）
    */
   var NAV_GROUPS = [
-    { label: '日常', views: ['overview', 'member', 'leave', 'fee', 'notice', 'countdown', 'timetable', 'duty', 'swap'] },
+    { label: '日常', views: ['overview', 'member', 'leave', 'fee', 'notice', 'homework', 'countdown', 'timetable', 'duty', 'swap'] },
     { label: '管理', views: ['class', 'config', 'rules', 'usage', 'speech'] },
     { label: '审计与账号', views: ['audit', 'accounts'] }
   ];
@@ -699,6 +743,12 @@
           '<button class="btn btn-primary" id="btn-add">添加课次</button>' +
           '<button class="btn btn-danger" id="btn-clear">清空课表</button>' +
           '<button class="btn btn-primary" id="btn-import">导入课表</button>' +
+          (superOnly()
+            ? '<button class="btn" id="btn-shift">临时调课</button> ' +
+              '<button class="btn" id="btn-shift-undo">撤销调课</button> ' +
+              '<button class="btn" id="btn-holiday">节假日</button> ' +
+              '<button class="btn btn-danger" id="btn-publish-class">发布到全班</button>'
+            : '') +
           '</div></div>' +
           '<div class="card">' +
           '<div class="card-hd">' + esc(cls ? cls.name : '') +
@@ -736,7 +786,8 @@
             }).join('');
           }).join('') +
           '</tbody></table></div>' +
-          '<div class="card muted-note">改课次会让该班<strong>全部已发布周次退回草稿</strong>，需在小程序端重新发布。</div>';
+          '<div class="card muted-note">改课次或调课会让该班<strong>全部已发布周次退回草稿</strong>；' +
+          '可在后台点「发布到全班」或回小程序端重新发布。</div>';
         bindSeg(host);
         var bi = $('#btn-import', host);
         if (bi) bi.onclick = openImportDialog;
@@ -744,6 +795,17 @@
         if (ba) ba.onclick = openAddDialog;
         var bc = $('#btn-clear', host);
         if (bc) bc.onclick = openClearDialog;
+        var bs = $('#btn-shift', host);
+        if (bs) bs.onclick = function () { openShiftDialog(); };
+        var bu = $('#btn-shift-undo', host);
+        if (bu) bu.onclick = function () { openShiftUndoDialog(); };
+        var bh = $('#btn-holiday', host);
+        if (bh) bh.onclick = function () { openHolidayDialog(); };
+        var bp = $('#btn-publish-class', host);
+        if (bp) bp.onclick = function () {
+          postEdit('/api/timetable/publish-to-class', {}, '发布个人课表到全班',
+            '会用你自己的个人课表<strong>覆盖全班课次</strong>，并清掉未开始的值日，不可撤销。', 'L3', softReload);
+        };
         $$('[data-edit-session]', host).forEach(function (b) {
           b.onclick = function () { openSessionDialog(Number(b.dataset.editSession)); };
         });
@@ -751,6 +813,126 @@
           b.onclick = function () { removeSession(Number(b.dataset.delSession), b.dataset.name, b.dataset.when); };
         });
       });
+  }
+
+  /* 成员备注：走 member.noteSave，与小程序成员详情弹层同源 */
+  function openMemberNoteDialog(memberId, name) {
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    dlg.innerHTML =
+      '<div class="dlg" role="dialog" aria-modal="true">' +
+      '<div class="dlg-hd">成员备注 · ' + esc(name) + '</div>' +
+      '<div class="dlg-bd"><div class="muted-note">备注只有超管与辅导员可见，成员本人看不到。</div>' +
+      '<label class="fld">内容<textarea id="mn-body" maxlength="500" rows="4" placeholder="如：本周值日需调换"></textarea></label>' +
+      '</div><div class="dlg-ft"><button type="button" class="btn" id="mn-cancel">取消</button>' +
+      '<button type="button" class="btn btn-primary" id="mn-ok">保存</button></div></div>';
+    document.body.appendChild(dlg);
+    $('#mn-cancel', dlg).onclick = function () { dlg.remove(); };
+    dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+    $('#mn-ok', dlg).onclick = function () {
+      var content = $('#mn-body', dlg).value.trim();
+      if (!content) { toast('请填写备注内容', 'err'); return; }
+      $('#mn-ok', dlg).disabled = true;
+      api('/api/members/' + memberId + '/note', {
+        method: 'POST', body: { content: content }
+      }).then(function (r) {
+        if (!r.ok) { $('#mn-ok', dlg).disabled = false; toast(r.errMsg || '保存失败', 'err'); return; }
+        dlg.remove(); toast('已保存');
+      });
+    };
+  }
+
+  /* 临时调课：走 course.shiftSet，与小程序长按课程的四项弹层同源 */
+  function openShiftDialog() {
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    dlg.innerHTML =
+      '<div class="dlg" role="dialog" aria-modal="true">' +
+      '<div class="dlg-hd">临时调课</div>' +
+      '<div class="dlg-bd"><div class="muted-note">按课次 ID 定位（表格里没有 ID 列时，先在「编辑课次」里查看）；' +
+      'MOVE 需填目标星期与节次。调课后会写站内通知，可一键同步值日/演讲。</div>' +
+      '<label class="fld">课次 ID（逗号分隔）<input id="sh-ids" placeholder="如 12,13"></label>' +
+      '<label class="fld">周次<input type="number" id="sh-week" min="1" max="40" placeholder="如 11"></label>' +
+      '<label class="fld">类型<select id="sh-kind">' +
+      '<option value="OFF">本周不上</option><option value="MOVE">调到别处</option></select></label>' +
+      '<label class="fld">目标星期（1=周一…7=周日）<input type="number" id="sh-day" min="1" max="7"></label>' +
+      '<label class="fld">目标节次（1-5）<input type="number" id="sh-period" min="1" max="5"></label>' +
+      '<label class="fld">备注<input id="sh-note" maxlength="64"></label>' +
+      '</div><div class="dlg-ft"><button type="button" class="btn" id="sh-cancel">取消</button>' +
+      '<button type="button" class="btn btn-primary" id="sh-ok">提交</button></div></div>';
+    document.body.appendChild(dlg);
+    $('#sh-cancel', dlg).onclick = function () { dlg.remove(); };
+    dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+    $('#sh-ok', dlg).onclick = function () {
+      var ids = ($('#sh-ids', dlg).value.match(/\d+/g) || []).map(Number);
+      var week = Number($('#sh-week', dlg).value) || 0;
+      var kind = $('#sh-kind', dlg).value;
+      if (!ids.length || !week) { toast('请填写课次 ID 与周次', 'err'); return; }
+      var body = { sessionIds: ids, week: week, kind: kind, note: $('#sh-note', dlg).value.trim() };
+      if (kind === 'MOVE') {
+        body.toDay = Number($('#sh-day', dlg).value) || 0;
+        body.toPeriod = Number($('#sh-period', dlg).value) || 0;
+        if (!body.toDay || !body.toPeriod) { toast('MOVE 需填目标星期与节次', 'err'); return; }
+      }
+      $('#sh-ok', dlg).disabled = true;
+      api('/api/timetable/shift', { method: 'POST', body: body }).then(function (r) {
+        if (!r.ok) { $('#sh-ok', dlg).disabled = false; toast(r.errMsg || '调课失败', 'err'); return; }
+        dlg.remove(); toast('已调课'); softReload();
+      });
+    };
+  }
+
+  /* 撤销调课：走 course.shiftRemove，与小程序「撤销」同源 */
+  function openShiftUndoDialog() {
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    dlg.innerHTML =
+      '<div class="dlg" role="dialog" aria-modal="true">' +
+      '<div class="dlg-hd">撤销调课</div>' +
+      '<div class="dlg-bd"><div class="muted-note">按课次 ID + 周次定位要撤销的调课记录；' +
+      '撤销后跟着挪走的值日会复位。会同时把相关周次退回草稿。</div>' +
+      '<label class="fld">课次 ID（逗号分隔）<input id="su-ids" placeholder="如 12,13"></label>' +
+      '<label class="fld">周次（逗号分隔）<input id="su-weeks" placeholder="如 11,12"></label>' +
+      '</div><div class="dlg-ft"><button type="button" class="btn" id="su-cancel">取消</button>' +
+      '<button type="button" class="btn btn-primary" id="su-ok">撤销</button></div></div>';
+    document.body.appendChild(dlg);
+    $('#su-cancel', dlg).onclick = function () { dlg.remove(); };
+    dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+    $('#su-ok', dlg).onclick = function () {
+      var ids = ($('#su-ids', dlg).value.match(/\d+/g) || []).map(Number);
+      var weeks = ($('#su-weeks', dlg).value.match(/\d+/g) || []).map(Number);
+      if (!ids.length || !weeks.length) { toast('请填写课次 ID 与周次', 'err'); return; }
+      postEdit('/api/timetable/shift/remove', { sessionIds: ids, weeks: weeks },
+        '撤销调课', '将移除所选课次在指定周次的调课记录，并复位跟着挪走的值日。', 'L2', function () {
+          dlg.remove(); softReload();
+        });
+    };
+  }
+
+  /* 节假日 / 调休：超管专属，走 course.saveHoliday */
+  function openHolidayDialog() {
+    var dlg = document.createElement('div');
+    dlg.className = 'dlg-mask';
+    dlg.innerHTML =
+      '<div class="dlg" role="dialog" aria-modal="true">' +
+      '<div class="dlg-hd">登记节假日</div>' +
+      '<div class="dlg-bd"><div class="muted-note">登记后该日期不生成值日与演讲；调休上班日可单独标记。</div>' +
+      '<label class="fld">日期<input type="date" id="hd-date"></label>' +
+      '<label class="fld">类型<select id="hd-kind">' +
+      '<option value="OFF">放假</option><option value="MAKEUP">调休上班</option></select></label>' +
+      '<label class="fld">名称<input id="hd-name" maxlength="32" placeholder="选填"></label>' +
+      '</div><div class="dlg-ft"><button type="button" class="btn" id="hd-cancel">取消</button>' +
+      '<button type="button" class="btn btn-primary" id="hd-ok">保存</button></div></div>';
+    document.body.appendChild(dlg);
+    $('#hd-cancel', dlg).onclick = function () { dlg.remove(); };
+    dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+    $('#hd-ok', dlg).onclick = function () {
+      var date = $('#hd-date', dlg).value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast('请选择日期', 'err'); return; }
+      postQuick('/api/timetable/holiday', {
+        date: date, kind: $('#hd-kind', dlg).value, name: $('#hd-name', dlg).value.trim()
+      }, function () { dlg.remove(); softReload(); });
+    };
   }
 
   function segBtn(v, label, cur) {
@@ -1660,7 +1842,15 @@
           '<select id="duty-status">' + statusOpts + '</select>' +
           '<select id="duty-kind">' + kindOpts + '</select>' +
           '</div>' +
-          '<div class="toolbar-right"><button class="btn" id="duty-refresh">刷新</button></div>' +
+          '<div class="toolbar-right">' +
+          '<label class="muted-note">周次 </label>' +
+          '<input type="number" id="duty-week" min="1" max="40" style="width:72px" value="' + (state.dutyWeek || '') + '" placeholder="本周">' +
+          '<button class="btn" id="duty-refresh">刷新</button> ' +
+          '<button class="btn" id="duty-generate">生成</button> ' +
+          '<button class="btn" id="duty-publish">发布</button> ' +
+          '<button class="btn" id="duty-unpublish">撤回发布</button> ' +
+          (superOnly() ? '<button class="btn btn-danger" id="duty-clear">清空本周</button> ' : '') +
+          '</div>' +
           '</div>' +
           '<div class="card">' +
           /* 2026-11-16 焕新 · UX 规范 P0：标题处显示**总条数**（后端 total），
@@ -1696,6 +1886,36 @@
       if (kdEl) kdEl.onchange = function () { f.kind = kdEl.value; reloadFromFirst(); };
       var rf = $('#duty-refresh', host);
       if (rf) rf.onclick = function () { load(); };
+
+      var wkEl = $('#duty-week', host);
+      function dutyWeek() {
+        var w = wkEl ? (parseInt(wkEl.value, 10) || 0) : 0;
+        if (!w) { toast('请先填写周次'); return 0; }
+        state.dutyWeek = w;
+        return w;
+      }
+      var genBtn = $('#duty-generate', host);
+      if (genBtn) genBtn.onclick = function () {
+        var w = dutyWeek(); if (!w) return;
+        postEdit('/api/duty/generate', { week: w }, '生成第 ' + w + ' 周值日',
+          '生成会覆盖本周自动排班（手工添加的行保留），已发布周次会退回草稿。', 'L2', load);
+      };
+      var pubBtn = $('#duty-publish', host);
+      if (pubBtn) pubBtn.onclick = function () {
+        var w = dutyWeek(); if (!w) return;
+        postQuick('/api/duty/publish', { week: w }, load);
+      };
+      var unpubBtn = $('#duty-unpublish', host);
+      if (unpubBtn) unpubBtn.onclick = function () {
+        var w = dutyWeek(); if (!w) return;
+        postQuick('/api/duty/unpublish', { week: w }, load);
+      };
+      var clrBtn = $('#duty-clear', host);
+      if (clrBtn) clrBtn.onclick = function () {
+        var w = dutyWeek(); if (!w) return;
+        postEdit('/api/duty/clear', { week: w }, '清空第 ' + w + ' 周值日',
+          '本周所有值日记录与轮转快照都会被删除，轮转计数同步回退，不可恢复。', 'L3', load);
+      };
 
       $$('[data-duty-status]', host).forEach(function (s) {
         s.onchange = function () {
@@ -1953,10 +2173,14 @@
             '<td>' + esc(scope) + '</td>' +
             '<td>' + esc(r.name) + '<span class="muted-note"> · 尾号 ' + esc(r.studentNoTail) + '</span></td>' +
             '<td>' + esc(src) + '</td>' +
+            '<td><button class="btn btn-sm" data-sp-swap="' + r.id +
+              '" data-sp-name="' + esc(r.name) + '">换人</button> ' +
+            '<button class="btn btn-sm btn-danger" data-sp-del="' + r.id +
+              '" data-sp-name="' + esc(r.name) + '">删除</button></td>' +
             '</tr>';
-        }).join('') : '<tr><td colspan="5">' + emptyHtml({
+        }).join('') : '<tr><td colspan="6">' + emptyHtml({
           t: '本周还没有演讲安排',
-          d: '在小程序演讲排班页生成后，名单会显示在这里'
+          d: '点「生成本周」按当前游标排班，与小程序端同一套逻辑'
         }) + '</td></tr>';
 
         var setting = v.setting || {};
@@ -1968,6 +2192,9 @@
           '</div>' +
           '<div class="toolbar-right">' +
           '<button class="btn" id="sp-refresh">刷新</button> ' +
+          '<button class="btn" id="sp-generate">生成本周</button> ' +
+          '<button class="btn" id="sp-cursor">游标设置</button> ' +
+          (superOnly() ? '<button class="btn btn-danger" id="sp-clear">清空</button> ' : '') +
           '<button class="btn btn-primary" id="sp-publish">' + (v.published ? '撤回发布' : '发布本周') + '</button>' +
           '</div>' +
           '</div>' +
@@ -1977,11 +2204,11 @@
           (v.stats ? v.stats.people : 0) + ' 人 / ' + (v.stats ? v.stats.sessions : 0) + ' 场；' +
           '游标 A=' + (cursor.A || 0) + ' · B=' + (cursor.B || 0) + '）</span></div>' +
           '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-          '<th>日期</th><th>时段</th><th>组别</th><th>演讲人</th><th>来源</th>' +
+          '<th>日期</th><th>时段</th><th>组别</th><th>演讲人</th><th>来源</th><th>操作</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div></div>' +
           '<div class="card"><div class="card-hd">发布 / 撤回说明</div>' +
-          '<div class="card-bd muted-note">发布后小程序端可见本周名单；撤回会把演讲游标回滚到本周生成前的位置，' +
-          '重排仍得到同一批人（与小程序端同一套逻辑）。后台只做发布/撤回，排班生成仍在小程序端进行。' +
+          '<div class="card-bd muted-note">生成、换人、清空、发布与撤回全部调用小程序同源逻辑；' +
+          '撤回会把演讲游标回滚到本周生成前的位置，重排仍得到同一批人。' +
           (setting.needN ? ' 本班每场默认 ' + setting.needN + ' 人。' : '') + '</div></div>';
 
         bind(v);
@@ -1998,6 +2225,28 @@
       }
       var rf = $('#sp-refresh', host);
       if (rf) rf.onclick = function () { load(); };
+      var gen = $('#sp-generate', host);
+      if (gen) gen.onclick = function () {
+        if (!state.spWeek) { toast('请先填写周次'); return; }
+        postQuick('/api/speech/generate', { week: state.spWeek }, load);
+      };
+      var clr = $('#sp-clear', host);
+      if (clr) clr.onclick = function () {
+        if (!state.spWeek) { toast('请先填写周次'); return; }
+        postEdit('/api/speech/clear', { week: state.spWeek }, '清空本周演讲名单',
+          '清空第 ' + state.spWeek + ' 周名单，游标回滚到本周生成前、发布态退回草稿。', 'L3', load);
+      };
+      var curBtn = $('#sp-cursor', host);
+      if (curBtn) curBtn.onclick = function () { openCursorDialog(v); };
+      $$('[data-sp-swap]', host).forEach(function (b) {
+        b.onclick = function () { openSpeechReassign(Number(b.dataset.spSwap), b.dataset.spName); };
+      });
+      $$('[data-sp-del]', host).forEach(function (b) {
+        b.onclick = function () {
+          postEdit('/api/speech/' + Number(b.dataset.spDel) + '/delete', {},
+            '删除演讲安排', '移除本周 ' + b.dataset.spName + ' 的一条名单，游标保持不变。', 'L1', load);
+        };
+      });
       var pb = $('#sp-publish', host);
       if (pb) pb.onclick = function () {
         if (!state.spWeek) { toast('请先填写周次'); return; }
@@ -2017,10 +2266,63 @@
       };
     }
 
+    function openSpeechReassign(id, currentName) {
+      api('/api/members?classId=' + state.classId + '&page=1&pageSize=0&scope=ALL').then(function (d) {
+        if (!d.ok) { toast(d.errMsg || '加载成员失败', 'err'); return; }
+        var list = (d.data && d.data.items) || [];
+        var opts = list.map(function (m) {
+          return '<option value="' + m.id + '">' + esc(m.name) +
+            (m.studentNo ? ' · ' + esc(m.studentNo) : '') + '</option>';
+        }).join('');
+        var dlg = document.createElement('div');
+        dlg.className = 'dlg-mask';
+        dlg.innerHTML = '<div class="dlg" role="dialog" aria-modal="true">' +
+          '<div class="dlg-hd">演讲换人 · ' + esc(currentName) + '</div>' +
+          '<div class="dlg-bd"><div class="muted-note">原名单会标记为已换出，新成员插到同一场；游标与发布态不变。</div>' +
+          '<label class="fld">替换为<select id="sp-to">' + opts + '</select></label>' +
+          '</div><div class="dlg-ft"><button type="button" class="btn" id="sp-sw-cancel">取消</button>' +
+          '<button type="button" class="btn btn-primary" id="sp-sw-ok">确认换人</button></div></div>';
+        document.body.appendChild(dlg);
+        $('#sp-sw-cancel', dlg).onclick = function () { dlg.remove(); };
+        dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+        $('#sp-sw-ok', dlg).onclick = function () {
+          var mid = Number($('#sp-to', dlg).value) || 0;
+          if (!mid) { toast('请选择成员', 'err'); return; }
+          $('#sp-sw-ok', dlg).disabled = true;
+          api('/api/speech/reassign', { method: 'POST', body: { id: id, memberId: mid } }).then(function (r) {
+            if (!r.ok) { $('#sp-sw-ok', dlg).disabled = false; toast(r.errMsg || '换人失败', 'err'); return; }
+            dlg.remove(); toast('已换人'); load();
+          });
+        };
+      });
+    }
+
+    function openCursorDialog(v) {
+      var cursor = (v && v.cursor) || {};
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML = '<div class="dlg" role="dialog" aria-modal="true">' +
+        '<div class="dlg-hd">设置演讲游标</div>' +
+        '<div class="dlg-bd"><div class="muted-note">游标决定下次从谁开始；保存后本班所有发布快照会清空。</div>' +
+        '<label class="fld">A 组游标<input type="number" id="sp-ca" min="0" value="' + Number(cursor.A || 0) + '"></label>' +
+        '<label class="fld">B 组游标<input type="number" id="sp-cb" min="0" value="' + Number(cursor.B || 0) + '"></label>' +
+        '</div><div class="dlg-ft"><button type="button" class="btn" id="sp-cancel">取消</button>' +
+        '<button type="button" class="btn btn-primary" id="sp-save">保存</button></div></div>';
+      document.body.appendChild(dlg);
+      $('#sp-cancel', dlg).onclick = function () { dlg.remove(); };
+      dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+      $('#sp-save', dlg).onclick = function () {
+        postQuick('/api/speech/settings', {
+          cursorA: Number($('#sp-ca', dlg).value) || 0,
+          cursorB: Number($('#sp-cb', dlg).value) || 0
+        }, function () { dlg.remove(); load(); });
+      };
+    }
+
     load();
   }
 
-  /* ---------------- 班级通知（只读，2026-11-28） ---------------- */
+  /* ---------------- 班级通知（可编辑，2026-11-28） ---------------- */
 
   function renderNotice(host) {
     if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
@@ -2041,10 +2343,12 @@
             '<td>' + esc(r.scopeText) + '</td>' +
             '<td>' + esc(r.publisherName) + '</td>' +
             '<td>' + ack + '</td>' +
+            '<td><button class="btn btn-sm btn-danger" data-nt-del="' + r.id +
+              '" data-nt-title="' + esc(r.title) + '">删除</button></td>' +
             '</tr>';
-        }).join('') : '<tr><td colspan="5">' + emptyHtml({
+        }).join('') : '<tr><td colspan="6">' + emptyHtml({
           t: '该班还没有通知',
-          d: '通知由小程序端发布，这里只做查看与回执统计'
+          d: '点右上角「发布通知」创建，发布后小程序端可见'
         }) + '</td></tr>';
 
         host.innerHTML =
@@ -2052,13 +2356,15 @@
           '<div class="toolbar-left">' +
           '<input type="search" id="nt-kw" placeholder="搜标题或内容" value="' + esc(state.ntKeyword) + '">' +
           '</div>' +
-          '<div class="toolbar-right"><button class="btn" id="nt-refresh">刷新</button></div>' +
+          '<div class="toolbar-right"><button class="btn" id="nt-refresh">刷新</button> ' +
+          (superOnly() ? '<button class="btn btn-danger" id="nt-recycle-clear">清空回收站</button> ' : '') +
+          '<button class="btn btn-primary" id="nt-add">发布通知</button></div>' +
           '</div>' +
           '<div class="card">' +
           '<div class="card-hd">班级通知 · 共 ' + rows.length + ' 条' +
           '<span class="muted-note">（需回执 ' + d.data.needAckCount + ' 条；回执只显示人数，不列具体成员）</span></div>' +
           '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
-          '<th>发布时间</th><th>标题 / 摘要</th><th>范围</th><th>发布人</th><th>回执</th>' +
+          '<th>发布时间</th><th>标题 / 摘要</th><th>范围</th><th>发布人</th><th>回执</th><th>操作</th>' +
           '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
 
         bind();
@@ -2076,6 +2382,203 @@
       }
       var rf = $('#nt-refresh', host);
       if (rf) rf.onclick = function () { load(); };
+      var add = $('#nt-add', host);
+      if (add) add.onclick = function () { openPublish(); };
+      var rc = $('#nt-recycle-clear', host);
+      if (rc) rc.onclick = function () {
+        postEdit('/api/notice/recycle/clear', {}, '清空通知回收站',
+          '会彻底删除你回收站里的所有通知，不可恢复；他人回收站不受影响。', 'L3', load);
+      };
+      $$('[data-nt-del]', host).forEach(function (b) {
+        b.onclick = function () {
+          postEdit('/api/notice/' + Number(b.dataset.ntDel) + '/delete', {},
+            '删除通知', '删除「' + b.dataset.ntTitle + '」后，小程序端该条进入回收站（可恢复）。', 'L1', load);
+        };
+      });
+    }
+
+    function openPublish() {
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML =
+        '<div class="dlg" role="dialog" aria-modal="true">' +
+        '<div class="dlg-hd">发布班级通知</div>' +
+        '<div class="dlg-bd">' +
+        '<label class="fld">标题<input id="nt-p-title" maxlength="60" placeholder="选填，留空取正文前 20 字"></label>' +
+        '<label class="fld">正文<textarea id="nt-p-body" maxlength="2000" rows="5" placeholder="通知内容"></textarea></label>' +
+        '<label class="fld"><input type="checkbox" id="nt-p-ack"> 需要成员点「收到」确认</label>' +
+        '<label class="fld"><input type="checkbox" id="nt-p-popup"> 成员下次打开首页弹一次</label>' +
+        '</div><div class="dlg-ft"><button type="button" class="btn" id="nt-p-cancel">取消</button>' +
+        '<button type="button" class="btn btn-primary" id="nt-p-ok">发布</button></div></div>';
+      document.body.appendChild(dlg);
+      $('#nt-p-cancel', dlg).onclick = function () { dlg.remove(); };
+      dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+      $('#nt-p-ok', dlg).onclick = function () {
+        var content = $('#nt-p-body', dlg).value.trim();
+        if (!content) { toast('请填写通知正文', 'err'); return; }
+        $('#nt-p-ok', dlg).disabled = true;
+        api('/api/notice', {
+          method: 'POST',
+          body: {
+            title: $('#nt-p-title', dlg).value.trim(),
+            content: content,
+            needAck: $('#nt-p-ack', dlg).checked ? 1 : 0,
+            popup: $('#nt-p-popup', dlg).checked ? 1 : 0,
+            scope: 'ALL'
+          }
+        }).then(function (r) {
+          if (!r.ok) { $('#nt-p-ok', dlg).disabled = false; toast(r.errMsg || '发布失败', 'err'); return; }
+          dlg.remove(); toast('已发布'); load();
+        });
+      };
+    }
+
+    load();
+  }
+
+  /* ---------------- 作业（后台编辑入口，2026-11-28） ----------------
+   * 发布 / 批改 / 删除全部调用小程序 homework 云函数的同名 action，
+   * 经服务端票据桥接执行 —— 后台不另写一份作业表 SQL。
+   */
+  function renderHomework(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+
+    function load() {
+      api('/api/homework?classId=' + state.classId).then(function (d) {
+        if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        var rows = (d.data && d.data.list) || [];
+        var canReview = !!(d.data && d.data.canReview) || superOnly();
+        var body = rows.length ? rows.map(function (r) {
+          var groups = (r.groups || []).join(' / ');
+          var op = (canReview ? '<button class="btn btn-sm" data-hw-review="' + r.id + '">批改</button> ' : '') +
+            (r.canDelete ? '<button class="btn btn-sm btn-danger" data-hw-del="' + r.id +
+              '" data-hw-name="' + esc(r.title) + '">删除</button>' : '');
+          return '<tr>' +
+            '<td>' + esc(r.title) + '<div class="muted-note">' + esc(r.brief || '') + '</div></td>' +
+            '<td class="td-period">' + esc(r.dueDate) + '</td>' +
+            '<td>' + esc(groups) + '</td>' +
+            '<td>' + (r.closed ? '<span class="tag tag-off">已截止</span>' : '<span class="tag tag-ok">进行中</span>') + '</td>' +
+            '<td>' + op + '</td></tr>';
+        }).join('') : '<tr><td colspan="5">' + emptyHtml({
+          t: '该班还没有作业', d: '点右上角「发布作业」创建，小程序端按组别可见'
+        }) + '</td></tr>';
+
+        host.innerHTML =
+          '<div class="toolbar">' +
+          '<div class="toolbar-left"><span class="muted-note">发布后小程序端按 A / B 组可见，提交文件仍在小程序端上传</span></div>' +
+          '<div class="toolbar-right"><button class="btn" id="hw-refresh">刷新</button> ' +
+          (canReview ? '<button class="btn btn-primary" id="hw-add">发布作业</button>' : '') +
+          '</div></div>' +
+          '<div class="card"><div class="card-hd">作业列表 · 共 ' + rows.length + ' 条</div>' +
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>标题</th><th>截止时间</th><th>目标组别</th><th>状态</th><th>操作</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+        bind();
+      });
+    }
+
+    function bind() {
+      var rf = $('#hw-refresh', host);
+      if (rf) rf.onclick = function () { load(); };
+      var add = $('#hw-add', host);
+      if (add) add.onclick = function () { openPublish(); };
+      $$('[data-hw-del]', host).forEach(function (b) {
+        b.onclick = function () {
+          postEdit('/api/homework/' + Number(b.dataset.hwDel) + '/delete', {},
+            '删除作业', '删除「' + b.dataset.hwName + '」会一并移除提交记录，不可恢复。', 'L2', load);
+        };
+      });
+      $$('[data-hw-review]', host).forEach(function (b) {
+        b.onclick = function () { openReview(Number(b.dataset.hwReview)); };
+      });
+    }
+
+    function openPublish() {
+      var dlg = document.createElement('div');
+      dlg.className = 'dlg-mask';
+      dlg.innerHTML =
+        '<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="hw-p-hd">' +
+        '<div class="dlg-hd" id="hw-p-hd">发布作业</div>' +
+        '<div class="dlg-bd">' +
+        '<label class="fld">标题<input id="hw-p-title" maxlength="64" placeholder="如：第 3 周语文作业"></label>' +
+        '<label class="fld">简介<input id="hw-p-brief" maxlength="500" placeholder="选填"></label>' +
+        '<label class="fld">截止时间<input id="hw-p-due" placeholder="YYYY-MM-DD HH:mm"></label>' +
+        '<label class="fld">提交组别<select id="hw-p-groups">' +
+        '<option value="ALL">全班（A + B）</option><option value="A">A 组</option>' +
+        '<option value="B">B 组</option><option value="SELF">仅自己</option></select></label>' +
+        '<label class="fld">提交要求<select id="hw-p-req">' +
+        '<option value="NONE">无需上传</option><option value="IMAGE">仅图片</option>' +
+        '<option value="FILE">仅文件</option><option value="EITHER">图片或文件</option></select></label>' +
+        '</div><div class="dlg-ft"><button type="button" class="btn" id="hw-p-cancel">取消</button>' +
+        '<button type="button" class="btn btn-primary" id="hw-p-ok">发布</button></div></div>';
+      document.body.appendChild(dlg);
+      $('#hw-p-cancel', dlg).onclick = function () { dlg.remove(); };
+      dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+      $('#hw-p-ok', dlg).onclick = function () {
+        var title = $('#hw-p-title', dlg).value.trim();
+        var due = $('#hw-p-due', dlg).value.trim();
+        if (!title) { toast('请填写作业标题', 'err'); return; }
+        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(due)) {
+          toast('截止时间格式应为 YYYY-MM-DD HH:mm', 'err'); return;
+        }
+        var g = $('#hw-p-groups', dlg).value;
+        var groups = g === 'ALL' ? ['A', 'B'] : [g];
+        $('#hw-p-ok', dlg).disabled = true;
+        api('/api/homework', {
+          method: 'POST',
+          body: {
+            title: title,
+            brief: $('#hw-p-brief', dlg).value.trim(),
+            dueDate: due,
+            groups: groups,
+            requireType: $('#hw-p-req', dlg).value
+          }
+        }).then(function (r) {
+          if (!r.ok) { $('#hw-p-ok', dlg).disabled = false; toast(r.errMsg || '发布失败', 'err'); return; }
+          dlg.remove(); toast('已发布'); load();
+        });
+      };
+    }
+
+    function openReview(id) {
+      api('/api/homework/' + id + '?classId=' + state.classId).then(function (d) {
+        if (!d.ok) { toast(d.errMsg || '加载失败', 'err'); return; }
+        var v = d.data || {};
+        var list = (v.list || []).filter(function (x) { return !!x.status; });
+        var body = list.length ? list.map(function (x) {
+          var status = x.status === 'DONE' ? '已通过' : (x.status === 'REJECT' ? '已打回' : '待批改');
+          return '<tr><td>' + esc(x.name) + '<div class="muted-note">' + esc(x.studentNo || '') + '</div></td>' +
+            '<td>' + esc(status) + '</td><td>' +
+            '<button class="btn btn-sm" data-hw-ok="' + x.id + '">通过</button> ' +
+            '<button class="btn btn-sm btn-danger" data-hw-no="' + x.id + '">打回</button></td></tr>';
+        }).join('') : '<tr><td colspan="3">还没有成员提交</td></tr>';
+
+        var dlg = document.createElement('div');
+        dlg.className = 'dlg-mask';
+        dlg.innerHTML = '<div class="dlg" role="dialog" aria-modal="true">' +
+          '<div class="dlg-hd">批改作业 · 已提交 ' + list.length + ' 人</div>' +
+          '<div class="dlg-bd"><div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>成员</th><th>当前状态</th><th>操作</th></tr></thead><tbody>' + body + '</tbody></table></div></div>' +
+          '<div class="dlg-ft"><button type="button" class="btn" id="hw-rv-close">关闭</button></div></div>';
+        document.body.appendChild(dlg);
+        $('#hw-rv-close', dlg).onclick = function () { dlg.remove(); };
+        dlg.onclick = function (e) { if (e.target === dlg) dlg.remove(); };
+        function grade(mid, status) {
+          api('/api/homework/' + id + '/review', {
+            method: 'POST', body: { memberIds: [mid], status: status }
+          }).then(function (r) {
+            if (!r.ok) { toast(r.errMsg || '批改失败', 'err'); return; }
+            toast(status === 'DONE' ? '已通过' : '已打回');
+            dlg.remove(); openReview(id);
+          });
+        }
+        $$('[data-hw-ok]', dlg).forEach(function (b) {
+          b.onclick = function () { grade(Number(b.dataset.hwOk), 'DONE'); };
+        });
+        $$('[data-hw-no]', dlg).forEach(function (b) {
+          b.onclick = function () { grade(Number(b.dataset.hwNo), 'REJECT'); };
+        });
+      });
     }
 
     load();
@@ -2874,6 +3377,11 @@
             // 避免受保护行/只读行的静态说明把列撑宽导致「删除」按钮右偏（2026-11-18）。
             '<td class="td-ops td-ops-members">' +
             (canEdit ? '<button class="link" data-m-edit="' + m.id + '">编辑</button>' : '') +
+            (canEdit && canMemberNote() ? '<button class="link" data-m-note="' + m.id +
+              '" data-m-name="' + esc(m.name) + '">备注</button>' : '') +
+            (canEdit && superOnly() && m.bound && !(m.protectedSuper && m.isSuper)
+              ? '<button class="link link-danger" data-m-unbind="' + m.id +
+                '" data-m-name="' + esc(m.name) + '">解绑微信</button>' : '') +
             (canSuper && !(m.protectedSuper && m.isSuper)
               ? '<button class="link" data-m-super="' + m.id + '" data-v="' + (m.isSuper ? 0 : 1) + '">' +
                 (m.isSuper ? '取消超管' : '设为超管') + '</button>'
@@ -2947,6 +3455,15 @@
       };
       $$('[data-m-edit]', host).forEach(function (b) {
         b.onclick = function () { openMemberDialog(Number(b.dataset.mEdit)); };
+      });
+      $$('[data-m-note]', host).forEach(function (b) {
+        b.onclick = function () { openMemberNoteDialog(Number(b.dataset.mNote), b.dataset.mName); };
+      });
+      $$('[data-m-unbind]', host).forEach(function (b) {
+        b.onclick = function () {
+          postEdit('/api/members/' + Number(b.dataset.mUnbind) + '/unbind', {},
+            '解除微信绑定', '解除「' + b.dataset.mName + '」的微信绑定：该成员需重新绑定才能进入小程序。', 'L3', reload);
+        };
       });
       $$('[data-m-super]', host).forEach(function (b) {
         b.onclick = async function () {
@@ -3345,6 +3862,8 @@
             '<td>' + classStatusTag(c, true) + '</td>' +
             '<td class="td-ops">' +
             '<button class="link" data-c-edit="' + c.id + '">配置</button>' +
+            (superOnly() && !c.isDemo ? '<button class="link" data-c-token="' + c.id +
+              '" data-c-name="' + esc(c.name) + '">重置口令</button>' : '') +
             (canImport ? '<button class="link" data-c-import="' + c.id + '" data-c-name="' + esc(c.name) + '">导入名单</button>' : '') +
             /* 软删除：需要 class 权限；演示班是审核入口，不给删 */
             (canCreate && !c.isDemo ? '<button class="link" data-c-del="' + c.id + '" data-c-name="' + esc(c.name) + '">删除</button>' : '') +
@@ -3354,6 +3873,12 @@
         '<div class="card muted-note">敏感字段（学期、周数、绑定开关、大节时间）仅超级管理员可改 —— 后台使用者本就限定为超管。</div>';
       $$('[data-c-edit]', host).forEach(function (b) {
         b.onclick = function () { openClassDialog(Number(b.dataset.cEdit)); };
+      });
+      $$('[data-c-token]', host).forEach(function (b) {
+        b.onclick = function () {
+          postEdit('/api/classes/' + Number(b.dataset.cToken) + '/token', {},
+            '重置入班口令', '重置「' + b.dataset.cName + '」的入班口令：旧口令与已发二维码立即失效。', 'L2', reload);
+        };
       });
       $$('[data-c-import]', host).forEach(function (b) {
         b.onclick = function () { openRosterDialog(Number(b.dataset.cImport), b.dataset.cName, reload); };

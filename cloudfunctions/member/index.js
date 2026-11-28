@@ -1793,7 +1793,7 @@ exports.main = async (event) => {
     const route = routes[action];
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
-    const ctx = await guard.getContext();
+    const ctx = await guard.getContext(event);
     /* 演示态（生效班级为演示班，含免绑定 reviewDemo / 超管 switchDemo）：拦截破坏性动作
        （v1.0.6.4，2026-10-29 扩展判定为「演示班」） */
     await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);   // 演示班级只读硬闸（写名单一律拒）

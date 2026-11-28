@@ -587,7 +587,7 @@ exports.main = async (event) => {
     const route = routes[action];
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
-    const ctx = await guard.getContext();
+    const ctx = await guard.getContext(event);
     await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);   // 演示班级只读硬闸
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     const data = await route.handler(payload, ctx);

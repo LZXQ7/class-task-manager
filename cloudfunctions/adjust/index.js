@@ -1423,7 +1423,7 @@ exports.main = async (event) => {
     const route = routes[action];
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
-    const ctx = await guard.getContext();
+    const ctx = await guard.getContext(event);
     /* 演示班级只读硬闸（2026-11-13）：演示身份下所有写操作（含请假登记/上传假条/审批）
        一律 40010，绝不落库。读操作在建表返回前就 return，零开销。 */
     await reviewDemo.gateDemoWrite(getPool(), guard, ctx, action);

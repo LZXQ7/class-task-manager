@@ -58,7 +58,7 @@ exports.main = async (event) => {
     const route = routes[action];
     if (!route) return fail(41001, '未知操作');
     const payload = (event && event.payload) || {};
-    const ctx = await guard.getContext();
+    const ctx = await guard.getContext(event);
     if (route.auth && route.auth.needBind) guard.requireBind(ctx);
     const data = await route.handler(payload, ctx);
     return ok(data);

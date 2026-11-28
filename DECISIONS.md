@@ -121,3 +121,12 @@
 - **确认结果**：先建 `check-admin-speech-week.js` 判红 4 项（复现「缺少周次」），再修绿 7/7。回路用真实 `week.js` 替掉 stub，专门抓「getConfig 驼峰 vs currentWeek 下划线」契约错配（传整 cfg → NaN）。真实生产库回放：当前周算出 11、该周 17 条名单。用户选完整发版 1.0.8.97。
 
 ---
+
+## 2026-11-28 · 后台补齐小程序内容编辑入口（服务端票据桥接）
+
+- **需求原话**：「小程序内容能在后台页面编辑的，都加上编辑入口。」
+- **我理解的口径**：先盘点小程序端所有写操作与后台 16 个页签的真实增删改能力，列出 A 类（已有页签但只读/半只读）、B 类（完全无页签）、C 类（个人私有/原生能力，不搬后台）。用户通过两轮 AskUserQuestion 确认：①覆盖 A 类全部门窗 + 新增作业页，不含 app_config 与教职工管理页；②个人私有数据保持只读；③高影响写操作仅超管且必须二次确认；④走完整发版闭环。技术路线上用户明确选择「服务端票据桥接」——在共用鉴权层开一条仅服务端可用的票据通道，后台调用现有云函数 action，逻辑零复制；代价是改动安全核心并全量重新部署 13 个云函数。
+- **触发文件**：`cloudfunctions/common/admin-bridge.js`（新建）、`cloudfunctions/common/guard.js`、`cloudfunctions/admin-web/lib/bridge.js`（新建）、`cloudfunctions/admin-web/index.js`、`cloudfunctions/admin-web/lib/perms.js`、`cloudfunctions/admin-web/public/app.js`、`cloudfunctions/admin-web/public/index.html`、13 个云函数 `index.js` 入口、`scripts/check-admin-bridge-edits.js`（新建）、`scripts/check-admin-nav-order.js`、`scripts/check-demo-backend-readonly.js`。
+- **确认结果**：链路安全口径 = 票据只由后台服务端用 HttpOnly Cookie 中的 sid 签发、60 秒过期、验票回查 admin_session/admin_user/member 三表、票据 memberId 必须与会话一致、非超管不能跨班覆盖 class_id；权限判定仍在后台路由 requirePerm / requireSuperSession，云函数侧只负责「这是一个有效后台账号」。后台页签权限与小程序内部角色判定不一致时，按小程序端真实能力收敛按钮可见性（学习委员不列作业页、调课与备注仅相应角色可见），避免「可点却 403」。
+
+---
