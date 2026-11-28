@@ -25,6 +25,8 @@ const modFee = require('./lib/mod-fee');
 const modDuty = require('./lib/mod-duty');
 const modSwap = require('./lib/mod-swap');
 const modCountdown = require('./lib/mod-countdown');
+const modSpeech = require('./lib/mod-speech');
+const modNotice = require('./lib/mod-notice');
 const modAccounts = require('./lib/mod-accounts');
 const modRoster = require('./lib/mod-roster');
 const modUsage = require('./lib/mod-usage');
@@ -442,6 +444,24 @@ app.post('/api/swap/:id/cancel', requirePerm('swap'), (req, res) => handle(res, 
  */
 app.get('/api/countdown', requirePerm('countdown'), (req, res) => handle(res, () =>
   modCountdown.listCountdown(req.query)
+));
+
+/* ---------------- 课前演讲（2026-11-28 新增） ----------------
+ * 只读名单 + 发布态 + 双游标；发布/撤回走 common/speech-core.publishWeek 与小程序同源。
+ * 发布是写操作，mod-speech 内部写 admin_audit_log 留痕。
+ */
+app.get('/api/speech', requirePerm('speech'), (req, res) => handle(res, () =>
+  modSpeech.listSpeech(req.query)
+));
+app.post('/api/speech/publish', requirePerm('speech'), (req, res) => handle(res, () =>
+  modSpeech.publishWeek(req.body || {}, req.session2, req)
+));
+
+/* ---------------- 班级通知（2026-11-28 新增，只读） ----------------
+ * 回执只给数字（ackCount / recipientCount），不逐人列已读明细。
+ */
+app.get('/api/notice', requirePerm('notice'), (req, res) => handle(res, () =>
+  modNotice.listNotice(req.query)
 ));
 
 /* ---------------- 后台账号开通（2026-11-15 新增，仅超管） ----------------

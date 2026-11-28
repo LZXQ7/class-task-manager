@@ -36,10 +36,14 @@ function check(cond, msg) {
 
 const F = {
   js: 'cloudfunctions/schedule/index.js',
+  core: 'cloudfunctions/common/speech-core.js',
   mig: 'scripts/migrate-speech-base-cursors.sql'
 };
 const SRC = {};
 Object.keys(F).forEach((k) => { SRC[k] = fs.existsSync(path.join(ROOT, F[k])) ? read(F[k]) : ''; });
+/* 2026-11-28 抽共享层：游标纯函数上移到 speech-core.js，schedule 改为引用。
+ * 门禁把两份源码拼接：函数体真跑/变异从 speech-core 段命中，路由体判据从 schedule 段命中。 */
+SRC.js = SRC.js + '\n' + SRC.core;
 
 /** 抽顶层 `function name(...) {...}` 整段（按花括号配对） */
 function fnSource(js, name) {
@@ -112,8 +116,9 @@ function collect(js) {
     clearRollback: /cur\.reuse/.test(clr) && /saveSpeechCursors\(pool,\s*classId,\s*cur\.start\)/.test(clr),
     clearResetsBase: /base_cursors\s*=\s*NULL/.test(clr),
 
-    publishSnapBase: /startCursorsOf\(pub\[0\]\s*&&\s*pub\[0\]\.base_cursors,\s*before\)/.test(pub),
-    publishLegacy: /!snap\.reuse\s*&&\s*pending/.test(pub),
+    /* 2026-11-28 发布/撤回上移 speech-core.publishWeek，判据从共享层取（schedule 路由已精简）。 */
+    publishSnapBase: /startCursorsOf\(pub\[0\]\s*&&\s*pub\[0\]\.base_cursors,\s*before\)/.test(js),
+    publishLegacy: /!snap\.reuse\s*&&\s*pending/.test(js),
 
     aiAdvance: /saveSpeechCursors\(conn,\s*classId,\s*\{\s*A:\s*Number\(pending\.A\)/.test(app),
     aiBase: /generationStartOf\([^)]*base_cursors[^)]*prevRows\[0\][^)]*pending_cursors[^)]*current\)/.test(app)
@@ -138,7 +143,7 @@ function collect(js) {
 
 const S = collect(SRC.js);
 console.log('── ① 起点决策函数（真跑）');
-check(S.hasFn, 'schedule/index.js 有顶层纯函数 startCursorsOf(baseRaw, current)');
+check(S.hasFn, 'speech-core.js 有纯函数 startCursorsOf(baseRaw, current)（schedule 与 admin-web 共用）');
 check(S.firstGenStart, '本周首次生成：起点 = 当前游标（27/20）');
 check(S.firstGenFresh, '首次生成 reuse=false 且把当前游标记成 base');
 check(S.reuseStart, '同周重排：起点回到 base（41/40），不跳到别处');

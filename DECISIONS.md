@@ -103,3 +103,12 @@
 - **确认结果**：用户明确选「五页首屏数据全预热」。先建 `check-startup-prefetch-tabs.js` 判红（现状只见 3 项预热、10 红），再修绿，保留四组变异自证（去掉任一页关键预热必须翻红）。
 
 ---
+
+## 2026-11-28 · 后台新增课前演讲页 + 班级通知页
+
+- **需求原话**：「后台管理页面增加课前演讲页，检查一下小程序有什么可以增加到后台管理查看的。」
+- **我理解的口径**：后台 admin-web 现有 14 页签完全无演讲、无通知明细视图；小程序端演讲数据（speech/speech_cursor/speech_publish/speech_setting，线上 84 行活跃）与通知（notice_msg 系列 33 行）教师端想核查却看不到。经 AskUserQuestion 四轮确认：①本轮加「课前演讲」+「班级通知」两页；②演讲页 = 只读 + 后台发布/撤回，通知页 = 只读；③演讲页独立 `speech` 权限位、默认学习委员+生活委员（+超管），与小程序端演讲排班权一致；④学生标识显示「姓名 + 学号尾 2 位」；⑤通知页独立 `notice` 权限位、默认超管+辅导员，回执只给数字不给逐人已读明细。发布/撤回是写操作，必须与小程序 `schedule.speechPublish` 共用同一套游标快照逻辑（`startCursorsOf` / `saveSpeechCursors` / cursor_snapshot 回滚 + 旧记录 pending 兼容），后台不得自造第二套（M1 同源漏改高危）。
+- **触发文件**：`cloudfunctions/admin-web/lib/perms.js`、`cloudfunctions/admin-web/index.js`、`cloudfunctions/admin-web/lib/mod-speech.js`（新建）、`cloudfunctions/admin-web/lib/mod-notice.js`（新建）、`cloudfunctions/admin-web/public/app.js`、`cloudfunctions/admin-web/public/index.html`、`cloudfunctions/common/speech-core.js`（抽共享游标逻辑）、`cloudfunctions/schedule/index.js`（改为引共享）、`scripts/check-admin-nav-order.js`、`scripts/check-admin-speech-notice.js`（新建）。
+- **确认结果**：用户逐项确认页面范围 / 操作范围 / 权限归属 / 学号口径 / 通知页权限。先建 `check-admin-speech-notice.js` 判红，再修绿并保留变异自证；部署前下载线上包 diff，code update 后复核 DB_* + VPC。
+
+---

@@ -296,8 +296,8 @@
    *    `config`（系统配置）与 `class`（账号班级）同属「班级/系统管理」，共用一个权限。
    */
   /* 导航顺序口径（2026-11-16 用户要求）：**标题字数越少越靠上，同字数保持原相对顺序**。
-   * 即 2 字（概览/成员/请假/班费）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
-   * 账号班级/系统配置/排班规则/使用统计/操作审计/后台账号）。「值日记录/换班申请」自然
+   * 即 2 字（概览/成员/请假/班费/通知）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
+   * 账号班级/系统配置/排班规则/使用统计/课前演讲/操作审计/后台账号）。「值日记录/换班申请」自然
    * 落在「课程表」下面。⚠️ 只调整声明顺序，key 是 localStorage 里的 state.view，不可改。
    * 改顺序须同步 lib/perms.js 的 VIEWS 数组 + index.html 注释 + check-admin-nav-order。 */
   var VIEWS = {
@@ -305,6 +305,7 @@
     member:    { title: '成员',     perm: 'members',   render: renderMember },
     leave:     { title: '请假',     perm: 'leave',     render: renderLeave },
     fee:       { title: '班费',     perm: 'fee',       render: renderFee },
+    notice:    { title: '通知',     perm: 'notice',    render: renderNotice },
     countdown: { title: '倒数日',   perm: 'countdown', render: renderCountdown },
     timetable: { title: '课程表',   perm: 'course',    render: renderTimetable },
     duty:      { title: '值日记录', perm: 'duty',      render: renderDuty },
@@ -313,6 +314,7 @@
     config:    { title: '系统配置', perm: 'class',     render: renderConfig },
     rules:     { title: '排班规则', perm: 'rules',     render: renderRules },
     usage:     { title: '使用统计', perm: 'usage',     render: renderUsage },
+    speech:    { title: '课前演讲', perm: 'speech',    render: renderSpeech },
     audit:     { title: '操作审计', perm: 'audit',     render: renderAudit },
     accounts:  { title: '后台账号', perm: 'accounts',  render: renderAccount }
   };
@@ -356,8 +358,8 @@
    *   日常 8 项（2/2/2/2/3/3/4/4）→ 管理 4 项（4/4/4/4）→ 审计 2 项（4/4）
    */
   var NAV_GROUPS = [
-    { label: '日常', views: ['overview', 'member', 'leave', 'fee', 'countdown', 'timetable', 'duty', 'swap'] },
-    { label: '管理', views: ['class', 'config', 'rules', 'usage'] },
+    { label: '日常', views: ['overview', 'member', 'leave', 'fee', 'notice', 'countdown', 'timetable', 'duty', 'swap'] },
+    { label: '管理', views: ['class', 'config', 'rules', 'usage', 'speech'] },
     { label: '审计与账号', views: ['audit', 'accounts'] }
   ];
 
@@ -1916,6 +1918,160 @@
         };
       }
       var rf = $('#cd-refresh', host);
+      if (rf) rf.onclick = function () { load(); };
+    }
+
+    load();
+  }
+
+  /* ---------------- 课前演讲（只读 + 后台发布/撤回，2026-11-28） ---------------- */
+
+  function renderSpeech(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+    if (state.spWeek === undefined) state.spWeek = 0;
+
+    function load() {
+      var qs = 'classId=' + state.classId + (state.spWeek ? '&week=' + state.spWeek : '');
+      api('/api/speech?' + qs).then(function (d) {
+        if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        var v = d.data;
+        var rows = v.items || [];
+        var pub = v.publishInfo || {};
+        var pubBadge = v.published
+          ? '<span class="tag tag-ok">已发布' + (pub.publishedAt ? ' · ' + esc(pub.publishedAt) : '') + '</span>'
+          : '<span class="tag tag-warn">草稿（未发布）</span>';
+        var cursor = v.cursor || {};
+        var body = rows.length ? rows.map(function (r) {
+          var scope = r.scope === 'ALL' ? '全班' : (r.scope === 'A' ? 'A 组' : 'B 组');
+          var src = r.source === 'MANUAL' ? '手动' : '轮转';
+          return '<tr>' +
+            '<td class="td-period">' + esc(r.date) + '<span class="muted-note"> ' + esc(r.weekday) + '</span></td>' +
+            '<td>' + esc(r.slotText) + '</td>' +
+            '<td>' + esc(scope) + '</td>' +
+            '<td>' + esc(r.name) + '<span class="muted-note"> · 尾号 ' + esc(r.studentNoTail) + '</span></td>' +
+            '<td>' + esc(src) + '</td>' +
+            '</tr>';
+        }).join('') : '<tr><td colspan="5">' + emptyHtml({
+          t: '本周还没有演讲安排',
+          d: '在小程序演讲排班页生成后，名单会显示在这里'
+        }) + '</td></tr>';
+
+        var setting = v.setting || {};
+        host.innerHTML =
+          '<div class="toolbar">' +
+          '<div class="toolbar-left">' +
+          '<label class="muted-note">周次 </label>' +
+          '<input type="number" id="sp-week" min="1" max="30" style="width:72px" value="' + (state.spWeek || '') + '" placeholder="本周">' +
+          '</div>' +
+          '<div class="toolbar-right">' +
+          '<button class="btn" id="sp-refresh">刷新</button> ' +
+          '<button class="btn btn-primary" id="sp-publish">' + (v.published ? '撤回发布' : '发布本周') + '</button>' +
+          '</div>' +
+          '</div>' +
+          '<div class="card">' +
+          '<div class="card-hd">课前演讲 · 第 ' + (state.spWeek || '当前周') + ' 周 ' + pubBadge +
+          '<span class="muted-note">（名单共 ' + (v.stats ? v.stats.total : 0) + ' 人次 / ' +
+          (v.stats ? v.stats.people : 0) + ' 人 / ' + (v.stats ? v.stats.sessions : 0) + ' 场；' +
+          '游标 A=' + (cursor.A || 0) + ' · B=' + (cursor.B || 0) + '）</span></div>' +
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>日期</th><th>时段</th><th>组别</th><th>演讲人</th><th>来源</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div></div>' +
+          '<div class="card"><div class="card-hd">发布 / 撤回说明</div>' +
+          '<div class="card-bd muted-note">发布后小程序端可见本周名单；撤回会把演讲游标回滚到本周生成前的位置，' +
+          '重排仍得到同一批人（与小程序端同一套逻辑）。后台只做发布/撤回，排班生成仍在小程序端进行。' +
+          (setting.needN ? ' 本班每场默认 ' + setting.needN + ' 人。' : '') + '</div></div>';
+
+        bind(v);
+      });
+    }
+
+    function bind(v) {
+      var wk = $('#sp-week', host);
+      if (wk) {
+        wk.onchange = function () {
+          state.spWeek = Math.max(0, parseInt(wk.value, 10) || 0);
+          load();
+        };
+      }
+      var rf = $('#sp-refresh', host);
+      if (rf) rf.onclick = function () { load(); };
+      var pb = $('#sp-publish', host);
+      if (pb) pb.onclick = function () {
+        if (!state.spWeek) { toast('请先填写周次'); return; }
+        var next = v.published ? 'DRAFT' : 'PUBLISHED';
+        var tip = v.published ? '确认撤回本周演讲发布？游标会回滚到本周生成前。' : '确认发布本周演讲名单？';
+        if (!window.confirm(tip)) return;
+        pb.disabled = true;
+        api('/api/speech/publish', {
+          method: 'POST',
+          body: { classId: state.classId, week: state.spWeek, status: next }
+        }).then(function (r) {
+          pb.disabled = false;
+          if (!r.ok) { toast(r.errMsg || '操作失败'); return; }
+          toast(next === 'PUBLISHED' ? '已发布' : '已撤回');
+          load();
+        }).catch(function () { pb.disabled = false; });
+      };
+    }
+
+    load();
+  }
+
+  /* ---------------- 班级通知（只读，2026-11-28） ---------------- */
+
+  function renderNotice(host) {
+    if (!state.classId) { host.innerHTML = errHtml({ errMsg: '请先在右上角选择班级' }); return; }
+    if (state.ntKeyword === undefined) state.ntKeyword = '';
+
+    function load() {
+      var qs = 'classId=' + state.classId + (state.ntKeyword ? '&keyword=' + encodeURIComponent(state.ntKeyword) : '');
+      api('/api/notice?' + qs).then(function (d) {
+        if (!d.ok) { host.innerHTML = errHtml(d); return; }
+        var rows = d.data.items || [];
+        var body = rows.length ? rows.map(function (r) {
+          var ack = r.needAck
+            ? (r.ackCount + ' / ' + r.recipientCount)
+            : '<span class="muted-note">无需回执</span>';
+          return '<tr>' +
+            '<td class="td-period">' + esc(r.createdAt) + '</td>' +
+            '<td>' + esc(r.title) + '<div class="muted-note">' + esc(r.content.slice(0, 60)) + '</div></td>' +
+            '<td>' + esc(r.scopeText) + '</td>' +
+            '<td>' + esc(r.publisherName) + '</td>' +
+            '<td>' + ack + '</td>' +
+            '</tr>';
+        }).join('') : '<tr><td colspan="5">' + emptyHtml({
+          t: '该班还没有通知',
+          d: '通知由小程序端发布，这里只做查看与回执统计'
+        }) + '</td></tr>';
+
+        host.innerHTML =
+          '<div class="toolbar">' +
+          '<div class="toolbar-left">' +
+          '<input type="search" id="nt-kw" placeholder="搜标题或内容" value="' + esc(state.ntKeyword) + '">' +
+          '</div>' +
+          '<div class="toolbar-right"><button class="btn" id="nt-refresh">刷新</button></div>' +
+          '</div>' +
+          '<div class="card">' +
+          '<div class="card-hd">班级通知 · 共 ' + rows.length + ' 条' +
+          '<span class="muted-note">（需回执 ' + d.data.needAckCount + ' 条；回执只显示人数，不列具体成员）</span></div>' +
+          '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>发布时间</th><th>标题 / 摘要</th><th>范围</th><th>发布人</th><th>回执</th>' +
+          '</tr></thead><tbody>' + body + '</tbody></table></div></div>';
+
+        bind();
+      });
+    }
+
+    function bind() {
+      var kw = $('#nt-kw', host);
+      if (kw) {
+        var t = null;
+        kw.oninput = function () {
+          clearTimeout(t);
+          t = setTimeout(function () { state.ntKeyword = kw.value.trim(); load(); }, 300);
+        };
+      }
+      var rf = $('#nt-refresh', host);
       if (rf) rf.onclick = function () { load(); };
     }
 

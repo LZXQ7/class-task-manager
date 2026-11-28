@@ -57,7 +57,7 @@ const permViews = parsePermViews(PERMS);
 
 /* ① 前端 VIEWS 解析 + 字数升序 */
 section('① 前端 app.js VIEWS 声明顺序 = 标题字数升序');
-check(!!appViews && appViews.length === 14, '解析到前端 VIEWS 共 14 项（实得 ' + (appViews ? appViews.length : 0) + '）');
+check(!!appViews && appViews.length === 16, '解析到前端 VIEWS 共 16 项（实得 ' + (appViews ? appViews.length : 0) + '）');
 if (appViews) {
   const titles = appViews.map((v) => v.title);
   const lens = titles.map(titleLen);
@@ -74,14 +74,14 @@ if (appViews) {
     '2 字组顺序：概览/成员/请假/班费');
   check(idx('后台账号') === titles.length - 1, '后台账号 仍在最后');
   // 前端 key 不可改（localStorage 依赖）
-  ['overview', 'member', 'leave', 'fee', 'countdown', 'timetable', 'duty', 'swap',
-   'class', 'config', 'rules', 'usage', 'audit', 'accounts'].forEach((k) =>
+  ['overview', 'member', 'leave', 'fee', 'notice', 'countdown', 'timetable', 'duty', 'swap',
+   'class', 'config', 'rules', 'usage', 'speech', 'audit', 'accounts'].forEach((k) =>
     check(appViews.some((v) => v.key === k), '前端 key 保留 ' + k));
 }
 
 /* ② 权限真源 VIEWS 与前端同口径 */
 section('② 权限真源 perms.js VIEWS 顺序与前端一致');
-check(!!permViews && permViews.length === 13, '解析到 perms VIEWS 共 13 项（实得 ' + (permViews ? permViews.length : 0) + '）');
+check(!!permViews && permViews.length === 15, '解析到 perms VIEWS 共 15 项（实得 ' + (permViews ? permViews.length : 0) + '）');
 if (permViews && appViews) {
   const pLens = permViews.map((v) => titleLen(v.title));
   check(pLens.every((n, i) => i === 0 || n >= pLens[i - 1]),
@@ -92,7 +92,7 @@ if (permViews && appViews) {
   const appSeq = appViews.map((v) => v.title).filter((t) => t !== '系统配置');
   const permSeq = permViews.map((v) => v.title);
   check(JSON.stringify(appSeq) === JSON.stringify(permSeq),
-    '两处共有 13 项按标题顺序完全一致');
+    '两处共有 15 项按标题顺序完全一致');
   const pTitle = permViews.map((v) => v.title);
   check(pTitle.indexOf('课程表') < pTitle.indexOf('值日记录'), 'perms：值日记录在课程表下面');
 }

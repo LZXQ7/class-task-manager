@@ -164,11 +164,13 @@ const pubBody = SCH_SRC.slice(SCH_SRC.indexOf('speechPublish:'), SCH_SRC.indexOf
 const genSql = genBody.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 check(/saveSpeechCursors\(conn,\s*classId,\s*plan\.cursors\)/.test(genSql),
       'speechGenerate 生成即推进 speech_cursor（否则下一周又从原起点重排同一批人）');
-check(/async function saveSpeechCursors[\s\S]{0,400}INSERT INTO speech_cursor/.test(SCH_SRC),
-      '写游标的 saveSpeechCursors 真落 SQL（不是空壳）');
+/* 2026-11-28 抽共享层：saveSpeechCursors 与发布事务上移 speech-core.js，
+ * schedule 与 admin-web 共用。这两项判据改查 CORE_SRC（真源），不再查 SCH_SRC。 */
+check(/async function saveSpeechCursors[\s\S]{0,400}INSERT INTO speech_cursor/.test(CORE_SRC),
+      '写游标的 saveSpeechCursors 真落 SQL（不是空壳，在 speech-core 共享层）');
 check(/base_cursors/.test(genSql), 'speechGenerate 记下本周之前的游标 base_cursors（同周重排幂等）');
-check(/base_cursors/.test(pubBody) && /cursor_snapshot/.test(pubBody),
-      'speechPublish 撤回快照取 base_cursors（本周之前的游标）');
+check(/base_cursors/.test(CORE_SRC) && /cursor_snapshot/.test(CORE_SRC),
+      'speechPublish 撤回快照取 base_cursors（本周之前的游标，共享层 publishWeek）');
 check(/speechAiParse[\s\S]{0,4000}callAi|callAi[\s\S]{0,6000}speechAiParse/.test(SCH_SRC),
       'AI 智能排班解析走 callAi（ai-proxy）');
 check(/单双号|奇数.*A|奇数.*偶数|seq\s*%\s*2/.test(SCH_SRC),

@@ -174,4 +174,158 @@ function assign(slots, roster, cursors, options) {
   };
 }
 
-module.exports = { AM_PERIOD, PM_PERIOD, buildSlots, assign };
+/* ============================================================
+ * 演讲游标与发布/撤回（2026-11-28 抽共享层）
+ * ------------------------------------------------------------
+ * 这四个纯函数原先内联在 schedule/index.js。后台 admin-web 新增「课前演讲」页
+ * 要提供发布/撤回，必须复用同一套游标快照口径 —— 否则后台撤回不回滚游标、
+ * 或两端各写一份导致漂移（M1 同源漏改）。故上移到本文件，schedule 与
+ * admin-web 均 require 同一份真源。改完必须 sync-common.js 同步 17 份。
+ * ============================================================ */
+
+/** 解析游标 JSON（脏值一律 null，不让坏数据把整周排班搞挂） */
+function parseCursorPair(raw) {
+  if (!raw) return null;
+  try {
+    const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!o || typeof o === 'object' !== true) return null;
+    return { A: Math.max(0, Number(o.A) || 0), B: Math.max(0, Number(o.B) || 0) };
+  } catch (e) { return null; }
+}
+
+/**
+ * 决定本次生成的起点游标（v3，用于清空/撤回回滚）。
+ * base 可信 → 回到 base（同周重排/清空得同一批人）；否则用当前游标。
+ * ⚠️ 坏 JSON 一律当「没有 base」，按当前游标起跑 —— 设置坏了不能让整周排不了班。
+ */
+function startCursorsOf(baseRaw, current) {
+  const cur = {
+    A: Math.max(0, Number(current && current.A) || 0),
+    B: Math.max(0, Number(current && current.B) || 0)
+  };
+  let base = null;
+  if (baseRaw) {
+    try {
+      const o = typeof baseRaw === 'string' ? JSON.parse(baseRaw) : baseRaw;
+      if (o && typeof o === 'object') {
+        base = { A: Math.max(0, Number(o.A) || 0), B: Math.max(0, Number(o.B) || 0) };
+      }
+    } catch (e) {
+      base = null;
+      console.error('base_cursors 解析失败，按当前游标起跑', e && e.message);
+    }
+  }
+  if (!base) return { start: cur, base: cur, reuse: false };
+  return { start: base, base, reuse: true };
+}
+
+/**
+ * 生成起点（v4，2026-11-26）：用「上一已生成周」的 pending 纠正陈旧 base。
+ * 权威起点 = 周次小于本周、且已生成过的最大那周的 pending_cursors。
+ * 没有上一周时退回本周自身 base（首周幂等），两者都没有才用当前游标。
+ */
+function generationStartOf(baseRaw, prevRaw, current) {
+  const cur = {
+    A: Math.max(0, Number(current && current.A) || 0),
+    B: Math.max(0, Number(current && current.B) || 0)
+  };
+  const prev = parseCursorPair(prevRaw);
+  if (prevRaw && !prev) return { start: cur, base: cur, reuse: false, stale: true };
+  const base = parseCursorPair(baseRaw);
+  const expected = prev || base;
+  if (!expected) return { start: cur, base: cur, reuse: false, stale: false };
+  const stale = !!(prev && base && (prev.A !== base.A || prev.B !== base.B));
+  return { start: expected, base: expected, reuse: true, stale };
+}
+
+/** 写双游标（幂等 upsert）。db 可以是 pool 或事务连接。 */
+async function saveSpeechCursors(db, classId, cursors) {
+  const c = cursors || {};
+  for (const g of ['A', 'B']) {
+    await db.query(
+      `INSERT INTO speech_cursor (class_id, grp, cursor_val) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE cursor_val = VALUES(cursor_val)`,
+      [classId, g, Math.max(0, Number(c[g]) || 0)]
+    );
+  }
+}
+
+/**
+ * 发布 / 撤回一周演讲（唯一真源）。schedule.speechPublish 与 admin-web 共用。
+ * @param {object} pool      mysql pool（含 getConnection / query）
+ * @param {object} opt       { classId, week, status:'PUBLISHED'|'DRAFT', actorId, now }
+ *   · now = () => 时间戳字符串（由调用方注入，schedule 用 week.nowStamp()）
+ * @returns {object} { status }
+ * 抛错约定：参数/无安排抛 { errCode, errMsg }（BizError 形状），两端统一包装。
+ */
+async function publishWeek(pool, opt) {
+  const classId = Number(opt && opt.classId);
+  const wk = Number(opt && opt.week);
+  const status = opt && opt.status === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
+  const actorId = Number(opt && opt.actorId) || 0;
+  const now = typeof opt.now === 'function' ? opt.now : () => '';
+  if (!classId || !wk) { const e = new Error('参数错误'); e.errCode = 41001; throw e; }
+
+  const [count] = await pool.query(
+    'SELECT COUNT(*) AS n FROM speech WHERE class_id = ? AND week = ? AND status <> ?',
+    [classId, wk, 'SWAPPED_OUT']
+  );
+  if (!count[0].n) { const e = new Error('本周还没有演讲安排，请先生成'); e.errCode = 41001; throw e; }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    if (status === 'PUBLISHED') {
+      /* v3：游标在生成时已推进；这里只把「本周之前的游标」记成撤回快照。
+       * 只有旧记录（没有 base_cursors）才把 pending 落到游标 —— 向后兼容。 */
+      const [pub] = await conn.query(
+        'SELECT pending_cursors, base_cursors FROM speech_publish WHERE class_id = ? AND week = ?',
+        [classId, wk]
+      );
+      const pending = (pub[0] && pub[0].pending_cursors) ? JSON.parse(pub[0].pending_cursors) : null;
+      const [curRows] = await conn.query('SELECT grp, cursor_val FROM speech_cursor WHERE class_id = ?', [classId]);
+      const before = { A: 0, B: 0 };
+      curRows.forEach((c) => { if (c.grp === 'A' || c.grp === 'B') before[c.grp] = Number(c.cursor_val) || 0; });
+      const snap = startCursorsOf(pub[0] && pub[0].base_cursors, before);
+      if (!snap.reuse && pending) await saveSpeechCursors(conn, classId, pending);
+      await conn.query(
+        `INSERT INTO speech_publish (class_id, week, status, published_at, published_by, cursor_snapshot)
+         VALUES (?, ?, 'PUBLISHED', ?, ?, ?)
+         ON DUPLICATE KEY UPDATE status = 'PUBLISHED', published_at = VALUES(published_at),
+           published_by = VALUES(published_by), cursor_snapshot = VALUES(cursor_snapshot)`,
+        [classId, wk, now(), actorId, JSON.stringify(snap.start)]
+      );
+    } else {
+      /* v2：撤回回滚游标。从 cursor_snapshot 恢复到 speech_cursor。 */
+      const [pub] = await conn.query(
+        'SELECT cursor_snapshot FROM speech_publish WHERE class_id = ? AND week = ?', [classId, wk]
+      );
+      const snap = (pub[0] && pub[0].cursor_snapshot) ? JSON.parse(pub[0].cursor_snapshot) : null;
+      if (snap) {
+        for (const g of ['A', 'B']) {
+          await conn.query(
+            `INSERT INTO speech_cursor (class_id, grp, cursor_val) VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE cursor_val = VALUES(cursor_val)`,
+            [classId, g, Number(snap[g]) || 0]
+          );
+        }
+      }
+      await conn.query(
+        "UPDATE speech_publish SET status = 'DRAFT', published_at = NULL, published_by = NULL WHERE class_id = ? AND week = ?",
+        [classId, wk]
+      );
+    }
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+  return { status };
+}
+
+module.exports = {
+  AM_PERIOD, PM_PERIOD, buildSlots, assign,
+  parseCursorPair, startCursorsOf, generationStartOf, saveSpeechCursors, publishWeek
+};

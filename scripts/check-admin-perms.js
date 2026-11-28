@@ -69,6 +69,14 @@ const cons = T['辅导员'] || [];
 check(cons.indexOf('accounts') < 0 && cons.indexOf('audit') < 0,
   '辅导员不含后台账号 / 操作审计（这两项是超管专属）');
 
+// 2026-11-28 两个新页的权限归属（AskUserQuestion 定口径）
+check(P.ALL_VIEWS.indexOf('speech') >= 0 && P.ALL_VIEWS.indexOf('notice') >= 0,
+  'ALL_VIEWS 含 speech / notice 两个新页签');
+check((T['学习委员'] || []).indexOf('speech') >= 0 && dutyPos.indexOf('speech') >= 0,
+  'speech 默认给学习委员 + 生活委员（与小程序演讲排班权一致）');
+check(cons.indexOf('notice') >= 0 && (T['生活委员'] || []).indexOf('notice') < 0,
+  'notice 默认给辅导员、不给生活委员（回执统计只对管理岗开放）');
+
 /* 超管专属页签任何模板都不许出现 */
 const SUPER_ONLY = P.SUPER_ONLY;
 check(SUPER_ONLY.indexOf('audit') >= 0 && SUPER_ONLY.indexOf('accounts') >= 0,
@@ -192,8 +200,8 @@ section('⑤ 变异自证（改坏 → 判据必须翻红）');
 
 // 5.1 给生活委员偷偷加 members
 const T2src = PERMS.replace(
-  "'生活委员': ['overview', 'fee', 'duty', 'rules', 'swap'],",
-  "'生活委员': ['overview', 'members', 'fee', 'duty', 'rules', 'swap'],"
+  "'生活委员': ['overview', 'fee', 'duty', 'rules', 'swap', 'speech'],",
+  "'生活委员': ['overview', 'members', 'fee', 'duty', 'rules', 'swap', 'speech'],"
 );
 const sb2 = { module: { exports: {} }, exports: {}, console };
 sb2.exports = sb2.module.exports;

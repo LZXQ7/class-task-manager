@@ -31,7 +31,9 @@ function check(cond, msg) {
   if (!cond) failed += 1;
 }
 
-const JS = read('cloudfunctions/schedule/index.js');
+/* 2026-11-28 抽共享层：游标纯函数上移到 speech-core.js。
+ * 拼接两份源码：函数体真跑/变异从 speech-core 命中，路由体判据从 schedule 命中。 */
+const JS = read('cloudfunctions/schedule/index.js') + '\n' + read('cloudfunctions/common/speech-core.js');
 
 function fnSource(js, name) {
   const i = js.indexOf('function ' + name + '(');
@@ -83,7 +85,7 @@ const set = routeBody(JS, 'speechSetSettings');
 const clr = routeBody(JS, 'speechClear');
 
 console.log('── ① 起点决策函数（真跑生产回放）');
-check(!!F && !!F.generationStartOf, 'schedule/index.js 有纯函数 generationStartOf(base, prev, current)');
+check(!!F && !!F.generationStartOf, 'speech-core.js 有纯函数 generationStartOf(base, prev, current)（共用真源）');
 check(stale && !stale.threw && stale.start && stale.start.A === 5 && stale.start.B === 52,
   '★ 陈旧 base A47/B20 被 wk12 pending A5/B52 纠正（否则 B22/A49 重现）');
 check(stale && stale.reuse === true && stale.stale === true, '陈旧 base 标 stale=true（日志可追）但仍采纳权威 prev');

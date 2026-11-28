@@ -25,8 +25,8 @@
 
 /** 页签定义。
  * **顺序口径（2026-11-16 用户要求）：标题字数越少越靠上，同字数保持原相对顺序**——
- *   2 字（概览/成员/请假/班费）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
- *   账号班级/排班规则/使用统计/操作审计/后台账号）。前端实际导航顺序由
+ *   2 字（概览/成员/请假/班费/通知）→ 3 字（倒数日/课程表）→ 4 字（值日记录/换班申请/
+ *   账号班级/排班规则/使用统计/课前演讲/操作审计/后台账号）。前端实际导航顺序由
  *   `public/app.js` 的 VIEWS 对象声明顺序决定（那里另有「系统配置」共用 class 权限），
  *   本数组主要供权限解析/navFor 使用，两处顺序须保持一致，改一处必改另一处。 */
 const VIEWS = [
@@ -34,6 +34,7 @@ const VIEWS = [
   { key: 'members',   label: '成员',     desc: '成员档案、分组、停用、固定' },
   { key: 'leave',     label: '请假',     desc: '请假记录、代登记、审批' },
   { key: 'fee',       label: '班费',     desc: '班费 / 团费总额与消费流水' },
+  { key: 'notice',    label: '通知',     desc: '班级通知与回执统计（只读）' },
   { key: 'countdown', label: '倒数日',   desc: '谁添加了哪些日子（只读）' },
   { key: 'course',    label: '课程表',   desc: '课程与课次维护' },
   { key: 'duty',      label: '值日记录', desc: '值日明细、状态与换人' },
@@ -41,6 +42,7 @@ const VIEWS = [
   { key: 'class',     label: '账号班级', desc: '班级信息与教职工账号' },
   { key: 'rules',     label: '排班规则', desc: '值日轮转规则与发布' },
   { key: 'usage',     label: '使用统计', desc: '活跃度与功能使用分布' },
+  { key: 'speech',    label: '课前演讲', desc: '演讲名单 / 发布态 / 发布撤回' },
   { key: 'audit',     label: '操作审计', desc: '谁在后台改了什么' },
   { key: 'accounts',  label: '后台账号', desc: '开通 / 收回后台登录权限' }
 ];
@@ -139,7 +141,7 @@ function isProtectedSuper(member) {
  */
 const POSITION_PERMS = {
   // 辅导员：看全局、管人管请假管钱，但不参与班委的值日排班，也看不到审计
-  '辅导员': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'usage'],
+  '辅导员': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'usage', 'notice'],
   // 班长兼团支书：班里实际的总负责人，班委能做的事他都要能兜底
   '班长兼团支书': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'rules', 'usage'],
   '班长': ['overview', 'members', 'leave', 'fee', 'course', 'class', 'duty', 'swap', 'countdown', 'rules', 'usage'],
@@ -147,9 +149,9 @@ const POSITION_PERMS = {
   // 副班长：管人与临时调换；**不碰钱、不改排班规则**（规则改动影响所有人的轮次）
   '副班长': ['overview', 'members', 'leave', 'course', 'duty', 'swap', 'countdown'],
   // 学习委员：学业相关（成员、请假、课程表），不碰值与钱
-  '学习委员': ['overview', 'members', 'leave', 'course', 'countdown'],
+  '学习委员': ['overview', 'members', 'leave', 'course', 'countdown', 'speech'],
   // 生活委员：用户点名——班费 + 排班规则 + 值日记录（顺带给换班，他要知道谁跟谁换了）
-  '生活委员': ['overview', 'fee', 'duty', 'rules', 'swap'],
+  '生活委员': ['overview', 'fee', 'duty', 'rules', 'swap', 'speech'],
   // 文体委员：活动现场执行，值日与调换
   '文体委员': ['overview', 'duty', 'swap', 'countdown'],
   // 组织宣传委员 / 心理委员：以信息收集为主，只读型
